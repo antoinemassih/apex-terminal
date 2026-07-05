@@ -49,17 +49,17 @@ pub(crate) fn draw_content(
         .action("+ New Play", PanelTone::Accent)
         .show(ui, t, |_ui, _t| {});
     if header_resp.action_clicked {
-        watchlist.play_editor_open = !watchlist.play_editor_open;
-        if watchlist.play_editor_open && !panes.is_empty() {
+        watchlist.play_editor.open = !watchlist.play_editor.open;
+        if watchlist.play_editor.open && !panes.is_empty() {
             spawn_play_lines(watchlist, &mut panes[ap]);
-        } else if !watchlist.play_editor_open && !panes.is_empty() {
+        } else if !watchlist.play_editor.open && !panes.is_empty() {
             panes[ap].play_lines.clear();
             panes[ap].play_click_to_set = None;
         }
     }
 
     // ── Play editor (inline) ──
-    if watchlist.play_editor_open {
+    if watchlist.play_editor.open {
         let chart = if !panes.is_empty() { Some(&mut panes[ap]) } else { None };
         draw_play_editor(ui, watchlist, chart, t);
         ui.add_space(gap_sm());
@@ -141,23 +141,23 @@ pub(crate) fn draw_content(
 fn spawn_play_lines(watchlist: &mut Watchlist, chart: &mut Chart) {
     chart.play_lines.clear();
     let last = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
-    let is_long = watchlist.play_editor_direction == PlayDirection::Long;
+    let is_long = watchlist.play_editor.direction == PlayDirection::Long;
     let sign = if is_long { 1.0 } else { -1.0 };
 
     let entry = last;
     let target = last * (1.0 + sign * 0.02);
     let stop = last * (1.0 - sign * 0.02);
 
-    watchlist.play_editor_symbol = chart.symbol.clone();
-    watchlist.play_editor_entry = format!("{:.2}", entry);
-    watchlist.play_editor_target = format!("{:.2}", target);
-    watchlist.play_editor_stop = format!("{:.2}", stop);
+    watchlist.play_editor.symbol = chart.symbol.clone();
+    watchlist.play_editor.entry = format!("{:.2}", entry);
+    watchlist.play_editor.target = format!("{:.2}", target);
+    watchlist.play_editor.stop = format!("{:.2}", stop);
 
     let id = chart.next_play_line_id;
     chart.play_lines.push(PlayLine { id, kind: PlayLineKind::Entry, price: entry });
     chart.play_lines.push(PlayLine { id: id + 1, kind: PlayLineKind::Target, price: target });
 
-    let pt = watchlist.play_editor_type;
+    let pt = watchlist.play_editor.kind;
     let has_stop = pt != PlayType::Scalp;
     if has_stop {
         chart.play_lines.push(PlayLine { id: id + 2, kind: PlayLineKind::Stop, price: stop });
@@ -166,17 +166,17 @@ fn spawn_play_lines(watchlist: &mut Watchlist, chart: &mut Chart) {
     // Swing starts with T2 by default
     if pt == PlayType::Swing {
         let t2 = last * (1.0 + sign * 0.04);
-        watchlist.play_editor_has_t2 = true;
-        watchlist.play_editor_t2 = format!("{:.2}", t2);
-        watchlist.play_editor_t2_pct = "33".into();
+        watchlist.play_editor.has_t2 = true;
+        watchlist.play_editor.t2 = format!("{:.2}", t2);
+        watchlist.play_editor.t2_pct = "33".into();
         chart.play_lines.push(PlayLine { id: id + 3, kind: PlayLineKind::Target2, price: t2 });
         // Set T1 allocation
-        watchlist.play_editor_target_pct = "50".into();
+        watchlist.play_editor.target_pct = "50".into();
         chart.next_play_line_id = id + 4;
     } else {
-        watchlist.play_editor_has_t2 = false;
-        watchlist.play_editor_has_t3 = false;
-        watchlist.play_editor_target_pct = "100".into();
+        watchlist.play_editor.has_t2 = false;
+        watchlist.play_editor.has_t3 = false;
+        watchlist.play_editor.target_pct = "100".into();
         chart.next_play_line_id = id + 3;
     }
 }
@@ -192,11 +192,11 @@ fn draw_play_editor(
     if let Some(ref chart) = chart {
         for pl in &chart.play_lines {
             let field = match pl.kind {
-                PlayLineKind::Entry   => &mut watchlist.play_editor_entry,
-                PlayLineKind::Target  => &mut watchlist.play_editor_target,
-                PlayLineKind::Stop    => &mut watchlist.play_editor_stop,
-                PlayLineKind::Target2 => &mut watchlist.play_editor_t2,
-                PlayLineKind::Target3 => &mut watchlist.play_editor_t3,
+                PlayLineKind::Entry   => &mut watchlist.play_editor.entry,
+                PlayLineKind::Target  => &mut watchlist.play_editor.target,
+                PlayLineKind::Stop    => &mut watchlist.play_editor.stop,
+                PlayLineKind::Target2 => &mut watchlist.play_editor.t2,
+                PlayLineKind::Target3 => &mut watchlist.play_editor.t3,
             };
             let field_id = egui::Id::new(("play_price", pl.kind as u8));
             if !ui.memory(|m| m.has_focus(field_id)) {
@@ -205,7 +205,7 @@ fn draw_play_editor(
         }
     }
 
-    let pt = watchlist.play_editor_type;
+    let pt = watchlist.play_editor.kind;
 
     crate::ui_kit::widgets::OutlinedBox::new()
         .fill(tint(t, Tone::Border, alpha_faint()))
@@ -224,8 +224,8 @@ fn draw_play_editor(
                     let label = format!("{} {}", pty.icon(), pty.label());
                     if ui.add(Button::new(label.as_str()).variant(Variant::Chip).active(sel).size(Size::Xs)
                         .min_size(egui::vec2(0.0, row_height_compact()))).clicked() {
-                        let prev = watchlist.play_editor_type;
-                        watchlist.play_editor_type = *pty;
+                        let prev = watchlist.play_editor.kind;
+                        watchlist.play_editor.kind = *pty;
                         if prev != *pty {
                             if let Some(ref mut c) = chart { spawn_play_lines(watchlist, c); }
                         }
@@ -251,10 +251,10 @@ fn draw_play_editor(
                     (PlayDirection::Long, "LONG", t.bull),
                     (PlayDirection::Short, "SHORT", t.bear),
                 ] {
-                    let sel = watchlist.play_editor_direction == dir;
+                    let sel = watchlist.play_editor.direction == dir;
                     if ui.add(Button::toggle(label, sel).tint(color).size(Size::Sm)
                         .min_size(egui::vec2(56.0, row_height_default()))).clicked() {
-                        watchlist.play_editor_direction = dir;
+                        watchlist.play_editor.direction = dir;
                         if let Some(ref mut c) = chart { spawn_play_lines(watchlist, c); }
                     }
                 }
@@ -264,7 +264,7 @@ fn draw_play_editor(
             // ── Symbol ──
             ui.horizontal(|ui| {
                 dim_label(ui, "Symbol", t.dim);
-                Input::new(&mut watchlist.play_editor_symbol)
+                Input::new(&mut watchlist.play_editor.symbol)
                     .width(80.0).font_size(font_sm()).placeholder("AAPL").show(ui, t);
             });
             ui.add_space(gap_xs());
@@ -275,7 +275,7 @@ fn draw_play_editor(
             // Entry
             ui.horizontal(|ui| {
                 dim_label(ui, "Entry", t.dim);
-                let resp = Input::new(&mut watchlist.play_editor_entry)
+                let resp = Input::new(&mut watchlist.play_editor.entry)
                     .id(egui::Id::new(("play_price", PlayLineKind::Entry as u8)))
                     .width(70.0).font_size(font_sm()).placeholder("150.00").show(ui, t);
                 if resp.lost_focus { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
@@ -292,11 +292,11 @@ fn draw_play_editor(
             ui.horizontal(|ui| {
                 crate::ui_kit::widgets::Header::section("LEGS").show(ui, t);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if !watchlist.play_editor_has_t2 && pt != PlayType::Scalp {
+                    if !watchlist.play_editor.has_t2 && pt != PlayType::Scalp {
                         if Button::small_action("+ Add Target").tint(t.accent).show(ui, t).clicked() {
                             add_target_line(watchlist, chart.as_deref_mut(), PlayLineKind::Target2);
                         }
-                    } else if watchlist.play_editor_has_t2 && !watchlist.play_editor_has_t3 && pt != PlayType::Scalp {
+                    } else if watchlist.play_editor.has_t2 && !watchlist.play_editor.has_t3 && pt != PlayType::Scalp {
                         if Button::small_action("+ Add T3").tint(t.accent).show(ui, t).clicked() {
                             add_target_line(watchlist, chart.as_deref_mut(), PlayLineKind::Target3);
                         }
@@ -308,37 +308,37 @@ fn draw_play_editor(
             // T1 — primary target with allocation
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("T1").monospace().size(font_xs()).strong().color(color_subtle(t.bull)));
-                let resp = Input::new(&mut watchlist.play_editor_target)
+                let resp = Input::new(&mut watchlist.play_editor.target)
                     .id(egui::Id::new(("play_price", PlayLineKind::Target as u8)))
                     .width(65.0).font_size(font_sm()).show(ui, t);
                 if resp.lost_focus { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
                 if click_to_set_btn(ui, crosshair, t, chart.as_ref().map_or(false, |c| c.play_click_to_set == Some(PlayLineKind::Target))) {
                     if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target); }
                 }
-                pct_stepper(ui, &mut watchlist.play_editor_target_pct, t);
+                pct_stepper(ui, &mut watchlist.play_editor.target_pct, t);
             });
 
             // T2
-            if watchlist.play_editor_has_t2 {
+            if watchlist.play_editor.has_t2 {
                 let mut remove_t2 = false;
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("T2").monospace().size(font_xs()).strong().color(COLOR_T2));
-                    let resp = Input::new(&mut watchlist.play_editor_t2)
+                    let resp = Input::new(&mut watchlist.play_editor.t2)
                         .id(egui::Id::new(("play_price", PlayLineKind::Target2 as u8)))
                         .width(65.0).font_size(font_sm()).show(ui, t);
                     if resp.lost_focus { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
                     if click_to_set_btn(ui, crosshair, t, chart.as_ref().map_or(false, |c| c.play_click_to_set == Some(PlayLineKind::Target2))) {
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target2); }
                     }
-                    pct_stepper(ui, &mut watchlist.play_editor_t2_pct, t);
+                    pct_stepper(ui, &mut watchlist.play_editor.t2_pct, t);
                     let r = ui.add(Button::icon(Icon::X).variant(Variant::InlineClose).size(Size::Sm)
                         .min_size(BTN_ICON_SM).placement(IconPlacement::ListRow).tone_destructive());
                     Tooltip::new("Remove target").show(ui, &r, t);
                     if r.clicked() { remove_t2 = true; }
                 });
                 if remove_t2 {
-                    watchlist.play_editor_has_t2 = false;
-                    watchlist.play_editor_has_t3 = false;
+                    watchlist.play_editor.has_t2 = false;
+                    watchlist.play_editor.has_t3 = false;
                     if let Some(ref mut c) = chart {
                         c.play_lines.retain(|l| l.kind != PlayLineKind::Target2 && l.kind != PlayLineKind::Target3);
                     }
@@ -346,25 +346,25 @@ fn draw_play_editor(
             }
 
             // T3
-            if watchlist.play_editor_has_t3 {
+            if watchlist.play_editor.has_t3 {
                 let mut remove_t3 = false;
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("T3").monospace().size(font_xs()).strong().color(COLOR_T3));
-                    let resp = Input::new(&mut watchlist.play_editor_t3)
+                    let resp = Input::new(&mut watchlist.play_editor.t3)
                         .id(egui::Id::new(("play_price", PlayLineKind::Target3 as u8)))
                         .width(65.0).font_size(font_sm()).show(ui, t);
                     if resp.lost_focus { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
                     if click_to_set_btn(ui, crosshair, t, chart.as_ref().map_or(false, |c| c.play_click_to_set == Some(PlayLineKind::Target3))) {
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target3); }
                     }
-                    pct_stepper(ui, &mut watchlist.play_editor_t3_pct, t);
+                    pct_stepper(ui, &mut watchlist.play_editor.t3_pct, t);
                     let r = ui.add(Button::icon(Icon::X).variant(Variant::InlineClose).size(Size::Sm)
                         .min_size(BTN_ICON_SM).placement(IconPlacement::ListRow).tone_destructive());
                     Tooltip::new("Remove target").show(ui, &r, t);
                     if r.clicked() { remove_t3 = true; }
                 });
                 if remove_t3 {
-                    watchlist.play_editor_has_t3 = false;
+                    watchlist.play_editor.has_t3 = false;
                     if let Some(ref mut c) = chart {
                         c.play_lines.retain(|l| l.kind != PlayLineKind::Target3);
                     }
@@ -377,7 +377,7 @@ fn draw_play_editor(
                 ui.horizontal(|ui| {
                     let stop_label = egui::RichText::new("STOP").monospace().size(font_xs()).color(color_subtle(t.bear));
                     ui.label(stop_label);
-                    let resp = Input::new(&mut watchlist.play_editor_stop)
+                    let resp = Input::new(&mut watchlist.play_editor.stop)
                         .id(egui::Id::new(("play_price", PlayLineKind::Stop as u8)))
                         .width(70.0).font_size(font_sm()).placeholder("148.00").show(ui, t);
                     if resp.lost_focus { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
@@ -388,9 +388,9 @@ fn draw_play_editor(
             }
 
             // ── R:R display ──
-            let entry_f = watchlist.play_editor_entry.parse::<f32>().unwrap_or(0.0);
-            let target_f = watchlist.play_editor_target.parse::<f32>().unwrap_or(0.0);
-            let stop_f = watchlist.play_editor_stop.parse::<f32>().unwrap_or(0.0);
+            let entry_f = watchlist.play_editor.entry.parse::<f32>().unwrap_or(0.0);
+            let target_f = watchlist.play_editor.target.parse::<f32>().unwrap_or(0.0);
+            let stop_f = watchlist.play_editor.stop.parse::<f32>().unwrap_or(0.0);
             let risk = (entry_f - stop_f).abs();
             let reward = (target_f - entry_f).abs();
             if risk > 0.001 && pt != PlayType::Scalp {
@@ -412,79 +412,79 @@ fn draw_play_editor(
             // ── Tag chips + custom input ──
             ui.horizontal_wrapped(|ui| {
                 for tag in TAG_PRESETS {
-                    let active = watchlist.play_editor_tags.iter().any(|t| t == tag);
+                    let active = watchlist.play_editor.tags.iter().any(|t| t == tag);
                     if Button::toggle(*tag, active)
                         .corner_radius(current().r_md as f32)
                         .min_size(egui::vec2(0.0, 16.0))
                         .show(ui, t).clicked() {
-                        if active { watchlist.play_editor_tags.retain(|x| x != tag); }
-                        else { watchlist.play_editor_tags.push(tag.to_string()); }
+                        if active { watchlist.play_editor.tags.retain(|x| x != tag); }
+                        else { watchlist.play_editor.tags.push(tag.to_string()); }
                     }
                 }
             });
             // Custom tag input
             ui.horizontal(|ui| {
                 dim_label(ui, "+", t.dim);
-                let resp = Input::new(&mut watchlist.play_editor_custom_tag)
+                let resp = Input::new(&mut watchlist.play_editor.custom_tag)
                     .width(80.0).font_size(font_xs()).placeholder("custom tag").show(ui, t);
                 if resp.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    let tag = watchlist.play_editor_custom_tag.trim().to_lowercase();
-                    if !tag.is_empty() && !watchlist.play_editor_tags.contains(&tag) {
-                        watchlist.play_editor_tags.push(tag);
+                    let tag = watchlist.play_editor.custom_tag.trim().to_lowercase();
+                    if !tag.is_empty() && !watchlist.play_editor.tags.contains(&tag) {
+                        watchlist.play_editor.tags.push(tag);
                     }
-                    watchlist.play_editor_custom_tag.clear();
+                    watchlist.play_editor.custom_tag.clear();
                 }
                 // Show active custom tags (non-preset) as removable chips
-                let custom: Vec<String> = watchlist.play_editor_tags.iter()
+                let custom: Vec<String> = watchlist.play_editor.tags.iter()
                     .filter(|tg| !TAG_PRESETS.contains(&tg.as_str()))
                     .cloned().collect();
                 for ct in &custom {
                     let custom_tag_lbl = format!("{} \u{00D7}", ct);
                     if ui.add(Button::new(custom_tag_lbl.as_str()).variant(Variant::Chip).active(true).size(Size::Xs)
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
-                        watchlist.play_editor_tags.retain(|x| x != ct);
+                        watchlist.play_editor.tags.retain(|x| x != ct);
                     }
                 }
             });
             ui.add_space(gap_xs());
 
             // ── Notes ──
-            Input::new(&mut watchlist.play_editor_notes)
+            Input::new(&mut watchlist.play_editor.notes)
                 .multiline(true).width(ui.available_width())
                 .font_size(font_sm()).placeholder("Strategy notes...").show(ui, t);
             ui.add_space(gap_sm());
 
             // ── Buttons ──
             ui.horizontal(|ui| {
-                let can_create = !watchlist.play_editor_symbol.trim().is_empty()
-                    && watchlist.play_editor_entry.parse::<f32>().is_ok();
+                let can_create = !watchlist.play_editor.symbol.trim().is_empty()
+                    && watchlist.play_editor.entry.parse::<f32>().is_ok();
 
                 if Button::action("Create Play").tint(t.accent).disabled(!can_create).show(ui, t).clicked() {
-                    let entry = watchlist.play_editor_entry.parse::<f32>().unwrap_or(0.0);
-                    let target = watchlist.play_editor_target.parse::<f32>().unwrap_or(entry * 1.02);
-                    let stop = watchlist.play_editor_stop.parse::<f32>().unwrap_or(entry * 0.98);
+                    let entry = watchlist.play_editor.entry.parse::<f32>().unwrap_or(0.0);
+                    let target = watchlist.play_editor.target.parse::<f32>().unwrap_or(entry * 1.02);
+                    let stop = watchlist.play_editor.stop.parse::<f32>().unwrap_or(entry * 0.98);
                     let mut play = Play::new(
-                        watchlist.play_editor_symbol.trim(),
-                        watchlist.play_editor_direction, watchlist.play_editor_type,
+                        watchlist.play_editor.symbol.trim(),
+                        watchlist.play_editor.direction, watchlist.play_editor.kind,
                         entry, target, stop);
-                    play.notes = watchlist.play_editor_notes.trim().to_string();
+                    play.notes = watchlist.play_editor.notes.trim().to_string();
                     play.quantity = 1; // not important anymore
-                    play.tags = watchlist.play_editor_tags.clone();
+                    play.tags = watchlist.play_editor.tags.clone();
                     play.author = crate::chart_renderer::gpu::author_handle();
 
                     // Add target allocations
-                    let t1_pct = watchlist.play_editor_target_pct.parse::<f32>().unwrap_or(100.0) / 100.0;
+                    let t1_pct = watchlist.play_editor.target_pct.parse::<f32>().unwrap_or(100.0) / 100.0;
                     play.targets.push(PlayTarget { price: target, pct: t1_pct, label: "T1".into() });
 
-                    if watchlist.play_editor_has_t2 {
-                        if let Ok(p) = watchlist.play_editor_t2.parse::<f32>() {
-                            let pct = watchlist.play_editor_t2_pct.parse::<f32>().unwrap_or(25.0) / 100.0;
+                    if watchlist.play_editor.has_t2 {
+                        if let Ok(p) = watchlist.play_editor.t2.parse::<f32>() {
+                            let pct = watchlist.play_editor.t2_pct.parse::<f32>().unwrap_or(25.0) / 100.0;
                             play.targets.push(PlayTarget { price: p, pct, label: "T2".into() });
                         }
                     }
-                    if watchlist.play_editor_has_t3 {
-                        if let Ok(p) = watchlist.play_editor_t3.parse::<f32>() {
-                            let pct = watchlist.play_editor_t3_pct.parse::<f32>().unwrap_or(25.0) / 100.0;
+                    if watchlist.play_editor.has_t3 {
+                        if let Ok(p) = watchlist.play_editor.t3.parse::<f32>() {
+                            let pct = watchlist.play_editor.t3_pct.parse::<f32>().unwrap_or(25.0) / 100.0;
                             play.targets.push(PlayTarget { price: p, pct, label: "T3".into() });
                         }
                     }
@@ -509,20 +509,20 @@ fn draw_play_editor(
 }
 
 fn add_target_line(watchlist: &mut Watchlist, chart: Option<&mut Chart>, kind: PlayLineKind) {
-    let entry = watchlist.play_editor_entry.parse::<f32>().unwrap_or(100.0);
-    let target = watchlist.play_editor_target.parse::<f32>().unwrap_or(entry * 1.02);
-    let is_long = watchlist.play_editor_direction == PlayDirection::Long;
+    let entry = watchlist.play_editor.entry.parse::<f32>().unwrap_or(100.0);
+    let target = watchlist.play_editor.target.parse::<f32>().unwrap_or(entry * 1.02);
+    let is_long = watchlist.play_editor.direction == PlayDirection::Long;
     let sign: f32 = if is_long { 1.0 } else { -1.0 };
 
     match kind {
         PlayLineKind::Target2 => {
-            watchlist.play_editor_has_t2 = true;
+            watchlist.play_editor.has_t2 = true;
             let t2 = entry + (target - entry) * 1.5 * sign;
-            watchlist.play_editor_t2 = format!("{:.2}", t2);
-            watchlist.play_editor_t2_pct = "33".into();
+            watchlist.play_editor.t2 = format!("{:.2}", t2);
+            watchlist.play_editor.t2_pct = "33".into();
             // Adjust T1 allocation
-            let t1 = watchlist.play_editor_target_pct.parse::<f32>().unwrap_or(100.0);
-            if t1 > 50.0 { watchlist.play_editor_target_pct = "50".into(); }
+            let t1 = watchlist.play_editor.target_pct.parse::<f32>().unwrap_or(100.0);
+            if t1 > 50.0 { watchlist.play_editor.target_pct = "50".into(); }
             if let Some(c) = chart {
                 let id = c.next_play_line_id;
                 c.play_lines.push(PlayLine { id, kind: PlayLineKind::Target2, price: t2 });
@@ -530,11 +530,11 @@ fn add_target_line(watchlist: &mut Watchlist, chart: Option<&mut Chart>, kind: P
             }
         }
         PlayLineKind::Target3 => {
-            watchlist.play_editor_has_t3 = true;
-            let t2 = watchlist.play_editor_t2.parse::<f32>().unwrap_or(target * 1.5);
+            watchlist.play_editor.has_t3 = true;
+            let t2 = watchlist.play_editor.t2.parse::<f32>().unwrap_or(target * 1.5);
             let t3 = entry + (t2 - entry) * 1.5 * sign;
-            watchlist.play_editor_t3 = format!("{:.2}", t3);
-            watchlist.play_editor_t3_pct = "17".into();
+            watchlist.play_editor.t3 = format!("{:.2}", t3);
+            watchlist.play_editor.t3_pct = "17".into();
             if let Some(c) = chart {
                 let id = c.next_play_line_id;
                 c.play_lines.push(PlayLine { id, kind: PlayLineKind::Target3, price: t3 });
@@ -582,11 +582,11 @@ fn click_to_set_btn(ui: &mut egui::Ui, icon: &str, t: &Theme, active: bool) -> b
 fn sync_form_to_lines(watchlist: &Watchlist, chart: Option<&mut Chart>) {
     let Some(chart) = chart else { return; };
     let fields: &[(PlayLineKind, &str)] = &[
-        (PlayLineKind::Entry, &watchlist.play_editor_entry),
-        (PlayLineKind::Target, &watchlist.play_editor_target),
-        (PlayLineKind::Stop, &watchlist.play_editor_stop),
-        (PlayLineKind::Target2, &watchlist.play_editor_t2),
-        (PlayLineKind::Target3, &watchlist.play_editor_t3),
+        (PlayLineKind::Entry, &watchlist.play_editor.entry),
+        (PlayLineKind::Target, &watchlist.play_editor.target),
+        (PlayLineKind::Stop, &watchlist.play_editor.stop),
+        (PlayLineKind::Target2, &watchlist.play_editor.t2),
+        (PlayLineKind::Target3, &watchlist.play_editor.t3),
     ];
     for (kind, val) in fields {
         if let Ok(price) = val.parse::<f32>() {
@@ -598,19 +598,19 @@ fn sync_form_to_lines(watchlist: &Watchlist, chart: Option<&mut Chart>) {
 }
 
 fn clear_editor(watchlist: &mut Watchlist) {
-    watchlist.play_editor_open = false;
-    watchlist.play_editor_symbol.clear();
-    watchlist.play_editor_entry.clear();
-    watchlist.play_editor_target.clear();
-    watchlist.play_editor_stop.clear();
-    watchlist.play_editor_notes.clear();
-    watchlist.play_editor_tags.clear();
-    watchlist.play_editor_has_t2 = false;
-    watchlist.play_editor_has_t3 = false;
-    watchlist.play_editor_t2.clear();
-    watchlist.play_editor_t3.clear();
-    watchlist.play_editor_custom_tag.clear();
-    watchlist.play_editor_target_pct = "100".into();
+    watchlist.play_editor.open = false;
+    watchlist.play_editor.symbol.clear();
+    watchlist.play_editor.entry.clear();
+    watchlist.play_editor.target.clear();
+    watchlist.play_editor.stop.clear();
+    watchlist.play_editor.notes.clear();
+    watchlist.play_editor.tags.clear();
+    watchlist.play_editor.has_t2 = false;
+    watchlist.play_editor.has_t3 = false;
+    watchlist.play_editor.t2.clear();
+    watchlist.play_editor.t3.clear();
+    watchlist.play_editor.custom_tag.clear();
+    watchlist.play_editor.target_pct = "100".into();
 }
 
 fn convert_play_to_orders(play: &Play, chart: &mut Chart) {

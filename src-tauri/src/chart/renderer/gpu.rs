@@ -5469,6 +5469,59 @@ pub(crate) struct LinkGroup {
     pub(crate) color: egui::Color32,
 }
 
+/// Play-editor form state (WS-E E3, Watchlist-split strangler slice 1).
+/// Grouped out of the Watchlist god-struct: 19 transient input-buffer fields
+/// for the play-entry form. Not persisted (ephemeral UI). `kind` was
+/// `play_editor_type` (renamed — `type` is a reserved word). The explicit
+/// `Default` mirrors the original per-field seeds exactly (qty=1, pct seeds).
+pub(crate) struct PlayEditorState {
+    pub(crate) open: bool,
+    pub(crate) symbol: String,
+    pub(crate) entry: String,
+    pub(crate) target: String,
+    pub(crate) stop: String,
+    pub(crate) notes: String,
+    pub(crate) direction: super::PlayDirection,
+    pub(crate) kind: super::PlayType,
+    pub(crate) qty: u32,
+    pub(crate) qty_str: String,
+    pub(crate) tags: Vec<String>,
+    pub(crate) t2: String,
+    pub(crate) t2_pct: String,
+    pub(crate) t3: String,
+    pub(crate) t3_pct: String,
+    pub(crate) has_t2: bool,
+    pub(crate) has_t3: bool,
+    pub(crate) custom_tag: String,
+    pub(crate) target_pct: String,
+}
+
+impl Default for PlayEditorState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            symbol: String::new(),
+            entry: String::new(),
+            target: String::new(),
+            stop: String::new(),
+            notes: String::new(),
+            direction: super::PlayDirection::Long,
+            kind: super::PlayType::Directional,
+            qty: 1,
+            qty_str: "1".into(),
+            tags: vec![],
+            t2: String::new(),
+            t2_pct: "25".into(),
+            t3: String::new(),
+            t3_pct: "25".into(),
+            has_t2: false,
+            has_t3: false,
+            custom_tag: String::new(),
+            target_pct: "100".into(),
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5735,25 +5788,9 @@ pub(crate) struct Watchlist {
     /// size plays from their stop distance and aggregate portfolio risk.
     pub(crate) account_size: f32,
     pub(crate) risk_pct: f32,
-    pub(crate) play_editor_open: bool,
-    pub(crate) play_editor_symbol: String,
-    pub(crate) play_editor_entry: String,
-    pub(crate) play_editor_target: String,
-    pub(crate) play_editor_stop: String,
-    pub(crate) play_editor_notes: String,
-    pub(crate) play_editor_direction: super::PlayDirection,
-    pub(crate) play_editor_type: super::PlayType,
-    pub(crate) play_editor_qty: u32,
-    pub(crate) play_editor_qty_str: String,
-    pub(crate) play_editor_tags: Vec<String>,
-    pub(crate) play_editor_t2: String,
-    pub(crate) play_editor_t2_pct: String,
-    pub(crate) play_editor_t3: String,
-    pub(crate) play_editor_t3_pct: String,
-    pub(crate) play_editor_has_t2: bool,
-    pub(crate) play_editor_has_t3: bool,
-    pub(crate) play_editor_custom_tag: String,
-    pub(crate) play_editor_target_pct: String,  // T1 allocation %
+    /// Play-editor form state (WS-E E3 strangler slice 1) — was 19 flat
+    /// `play_editor_*` fields, now grouped into PlayEditorState.
+    pub(crate) play_editor: PlayEditorState,
     pub(crate) play_templates: Vec<super::PlayTemplate>,
     pub(crate) widget_presets: Vec<super::WidgetPreset>,
     pub(crate) widget_preset_name: String, // input buffer for naming a new preset
@@ -6041,16 +6078,8 @@ impl Watchlist {
                heatmap_templates: vec!["Default".into()],
                spreadsheet_templates: vec!["Default".into()],
                plays: vec![], feed: vec![], feed_filter_symbol: String::new(),
-               account_size: 100000.0, risk_pct: 0.01, play_editor_open: false,
-               play_editor_symbol: String::new(), play_editor_entry: String::new(),
-               play_editor_target: String::new(), play_editor_stop: String::new(),
-               play_editor_notes: String::new(), play_editor_direction: super::PlayDirection::Long,
-               play_editor_type: super::PlayType::Directional, play_editor_qty: 1,
-               play_editor_qty_str: "1".into(), play_editor_tags: vec![],
-               play_editor_t2: String::new(), play_editor_t2_pct: "25".into(),
-               play_editor_t3: String::new(), play_editor_t3_pct: "25".into(),
-               play_editor_has_t2: false, play_editor_has_t3: false,
-               play_editor_custom_tag: String::new(), play_editor_target_pct: "100".into(),
+               account_size: 100000.0, risk_pct: 0.01,
+               play_editor: PlayEditorState::default(),
                play_templates: vec![],
                widget_presets: vec![], widget_preset_name: String::new(),
                discord_open: false,
