@@ -11,6 +11,7 @@
 //! - Render thread processes commands between frames (non-blocking)
 
 pub mod gpu;
+pub(crate) mod watchlist_state; // WS-E E3: 24 Watchlist sub-context state types extracted from gpu.rs
 pub(crate) mod playbook_store;  // WS-E E2: playbook persistence/sharing extracted from gpu.rs
 pub(crate) mod theme_registry;  // WS-E E2: live theme store extracted from gpu.rs
 pub(crate) mod pane_ops;        // WS-E E2: pane layout OPS from gpu.rs (distinct from pane_layout TYPE module below)
