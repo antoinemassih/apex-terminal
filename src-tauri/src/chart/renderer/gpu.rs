@@ -4501,17 +4501,17 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
             }
             ChartCommand::SearchResults { query, results, source } => {
                 if source == "watchlist" && !query.is_empty()
-                    && watchlist.search_query.to_lowercase().starts_with(&query.to_lowercase()) {
+                    && watchlist.search.query.to_lowercase().starts_with(&query.to_lowercase()) {
                     for (sym, name) in results {
-                        if !watchlist.search_results.iter().any(|(s, _)| s == sym) {
-                            watchlist.search_results.push((sym.clone(), name.clone()));
+                        if !watchlist.search.results.iter().any(|(s, _)| s == sym) {
+                            watchlist.search.results.push((sym.clone(), name.clone()));
                         }
                     }
                 } else if source == "chain" && !query.is_empty()
                     && watchlist.chain.sym_input.to_lowercase().starts_with(&query.to_lowercase()) {
                     for (sym, name) in results {
-                        if !watchlist.search_results.iter().any(|(s, _)| s == sym) {
-                            watchlist.search_results.push((sym.clone(), name.clone()));
+                        if !watchlist.search.results.iter().any(|(s, _)| s == sym) {
+                            watchlist.search.results.push((sym.clone(), name.clone()));
                         }
                     }
                 } else if let Some(idx_str) = source.strip_prefix("pane_picker_") {
@@ -5956,6 +5956,22 @@ impl Default for WorkspaceState {
     }
 }
 
+/// Watchlist symbol-search state (WS-E E3, Watchlist-split slice 20). 4 fields
+/// (query/results/sel/refocus) for the add-symbol search box. Not synced/
+/// persisted; single consumer (watchlist_panel). Explicit Default (sel -1 = none).
+pub(crate) struct SearchState {
+    pub(crate) query: String,
+    pub(crate) results: Vec<(String, String)>,
+    pub(crate) sel: i32,
+    pub(crate) refocus: bool,
+}
+
+impl Default for SearchState {
+    fn default() -> Self {
+        Self { query: String::new(), results: vec![], sel: -1, refocus: false }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5968,10 +5984,8 @@ pub(crate) struct Watchlist {
     pub(crate) active_watchlist_idx: usize,
     pub(crate) watchlist_name_editing: bool,
     pub(crate) watchlist_name_buf: String,
-    pub(crate) search_query: String,
-    pub(crate) search_results: Vec<(String, String)>,
-    pub(crate) search_sel: i32, // -1 = none, 0+ = highlighted suggestion index
-    pub(crate) search_refocus: bool, // request refocus on search bar after adding
+    /// Symbol-search box state (WS-E E3 slice 20) — was search_query/results/sel/refocus.
+    pub(crate) search: SearchState,
     pub(crate) options_visible: bool, // toggle options section below stocks
     pub(crate) options_split: f32, // fraction of height for stocks (0.3..0.9), rest for options
     pub(crate) divider_dragging: bool, // true while dragging the stocks/options divider
@@ -6329,7 +6343,7 @@ impl Watchlist {
                link_groups,
                saved_watchlists, active_watchlist_idx: active_idx,
                watchlist_name_editing: false, watchlist_name_buf: String::new(),
-               search_query: String::new(), search_results: vec![], search_sel: -1, search_refocus: false,
+               search: SearchState::default(),
                options_visible: true, options_split: 0.6, divider_dragging: false, divider_y: 0.0, divider_total_h: 0.0,
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
                renaming_section: None, rename_buf: String::new(),
@@ -8354,18 +8368,18 @@ impl ApplicationHandler for App {
                         ChartCommand::SearchResults { ref query, ref results, ref source } => {
                             // Only apply if query still matches current search
                             if source == "watchlist" && !query.is_empty()
-                                && cw.watchlist.search_query.to_lowercase().starts_with(&query.to_lowercase()) {
+                                && cw.watchlist.search.query.to_lowercase().starts_with(&query.to_lowercase()) {
                                 // Merge: keep static results and append API results that aren't already present
                                 for (sym, name) in results {
-                                    if !cw.watchlist.search_results.iter().any(|(s, _)| s == sym) {
-                                        cw.watchlist.search_results.push((sym.clone(), name.clone()));
+                                    if !cw.watchlist.search.results.iter().any(|(s, _)| s == sym) {
+                                        cw.watchlist.search.results.push((sym.clone(), name.clone()));
                                     }
                                 }
                             } else if source == "chain" && !query.is_empty()
                                 && cw.watchlist.chain.sym_input.to_lowercase().starts_with(&query.to_lowercase()) {
                                 for (sym, name) in results {
-                                    if !cw.watchlist.search_results.iter().any(|(s, _)| s == sym) {
-                                        cw.watchlist.search_results.push((sym.clone(), name.clone()));
+                                    if !cw.watchlist.search.results.iter().any(|(s, _)| s == sym) {
+                                        cw.watchlist.search.results.push((sym.clone(), name.clone()));
                                     }
                                 }
                             }

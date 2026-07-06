@@ -243,7 +243,7 @@ if is_spawn || watchlist.open {
                     // Search field (left portion)
                     let search_rect = egui::Rect::from_min_size(full_rect.min, egui::vec2(search_w, search_h));
                     let search_resp = ui.allocate_ui_at_rect(search_rect, |ui| {
-                        SearchInput::new(&mut watchlist.search_query)
+                        SearchInput::new(&mut watchlist.search.query)
                             .placeholder("Add symbol...")
                             .width(search_w)
                             .size(crate::ui_kit::widgets::tokens::Size::Sm)
@@ -268,59 +268,59 @@ if is_spawn || watchlist.open {
                     if col_resp.clicked() { watchlist.update_sidebar_state(|s| s.wl_columns_open = !s.wl_columns_open); }
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &col_resp);
                     // Refocus after adding a symbol
-                    if watchlist.search_refocus {
-                        watchlist.search_refocus = false;
+                    if watchlist.search.refocus {
+                        watchlist.search.refocus = false;
                         search_resp.response.request_focus();
                     }
                     if search_resp.response.changed() {
-                        watchlist.search_sel = -1; // reset selection on text change
-                        if !watchlist.search_query.is_empty() {
+                        watchlist.search.sel = -1; // reset selection on text change
+                        if !watchlist.search.query.is_empty() {
                             // Immediate: static results
-                            watchlist.search_results = crate::ui_kit::symbols::search_symbols(&watchlist.search_query, 8)
+                            watchlist.search.results = crate::ui_kit::symbols::search_symbols(&watchlist.search.query, 8)
                                 .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
                             // Background: ApexIB search (results merge via SearchResults command)
-                            fetch_search_background(watchlist.search_query.clone(), "watchlist".to_string());
+                            fetch_search_background(watchlist.search.query.clone(), "watchlist".to_string());
                         } else {
-                            watchlist.search_results.clear();
+                            watchlist.search.results.clear();
                         }
                     }
                     // Arrow key navigation + Enter to select
-                    let has_results = !watchlist.search_query.is_empty() && !watchlist.search_results.is_empty();
+                    let has_results = !watchlist.search.query.is_empty() && !watchlist.search.results.is_empty();
                     if has_results && search_resp.response.has_focus() {
-                        let max = watchlist.search_results.len() as i32;
+                        let max = watchlist.search.results.len() as i32;
                         if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                            watchlist.search_sel = (watchlist.search_sel + 1).min(max - 1);
+                            watchlist.search.sel = (watchlist.search.sel + 1).min(max - 1);
                         }
                         if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
-                            watchlist.search_sel = (watchlist.search_sel - 1).max(-1);
+                            watchlist.search.sel = (watchlist.search.sel - 1).max(-1);
                         }
                     }
                     // Enter: add highlighted or typed symbol
-                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.search_query.is_empty() {
-                        let sym = if watchlist.search_sel >= 0 && (watchlist.search_sel as usize) < watchlist.search_results.len() {
-                            watchlist.search_results[watchlist.search_sel as usize].0.clone()
+                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.search.query.is_empty() {
+                        let sym = if watchlist.search.sel >= 0 && (watchlist.search.sel as usize) < watchlist.search.results.len() {
+                            watchlist.search.results[watchlist.search.sel as usize].0.clone()
                         } else {
-                            watchlist.search_query.trim().to_uppercase()
+                            watchlist.search.query.trim().to_uppercase()
                         };
                         watchlist.add_symbol(&sym);
                         fetch_watchlist_prices(vec![sym]);
-                        watchlist.search_query.clear();
-                        watchlist.search_results.clear();
-                        watchlist.search_sel = -1;
-                        watchlist.search_refocus = true;
+                        watchlist.search.query.clear();
+                        watchlist.search.results.clear();
+                        watchlist.search.sel = -1;
+                        watchlist.search.refocus = true;
                         watchlist.persist();
                     }
                     // Escape clears search
                     if search_resp.response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        watchlist.search_query.clear();
-                        watchlist.search_results.clear();
-                        watchlist.search_sel = -1;
+                        watchlist.search.query.clear();
+                        watchlist.search.results.clear();
+                        watchlist.search.sel = -1;
                     }
                     // Suggestion dropdown
                     if has_results {
                         PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
-                            for (i, (sym, name)) in watchlist.search_results.clone().iter().enumerate() {
-                                let is_sel = i as i32 == watchlist.search_sel;
+                            for (i, (sym, name)) in watchlist.search.results.clone().iter().enumerate() {
+                                let is_sel = i as i32 == watchlist.search.sel;
                                 let bg = if is_sel { tint(t, Tone::Accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                                 let fg = if is_sel { t.text } else { t.dim };
                                 let lbl = format!("{:6} {}", sym, name);
@@ -330,10 +330,10 @@ if is_spawn || watchlist.open {
                                 if resp.clicked() {
                                     watchlist.add_symbol(sym);
                                     fetch_watchlist_prices(vec![sym.clone()]);
-                                    watchlist.search_query.clear();
-                                    watchlist.search_results.clear();
-                                    watchlist.search_sel = -1;
-                                    watchlist.search_refocus = true;
+                                    watchlist.search.query.clear();
+                                    watchlist.search.results.clear();
+                                    watchlist.search.sel = -1;
+                                    watchlist.search.refocus = true;
                                     watchlist.persist();
                                 }
                                 if resp.hovered() {
@@ -342,7 +342,7 @@ if is_spawn || watchlist.open {
                                     // over the list overwrites keyboard (arrow) navigation
                                     // every frame, so Up/Down never appears to move.
                                     if ui.input(|inp| inp.pointer.is_moving()) {
-                                        watchlist.search_sel = i as i32;
+                                        watchlist.search.sel = i as i32;
                                     }
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                 }
@@ -1606,7 +1606,7 @@ if is_spawn || watchlist.open {
                         }
                         // Search — static immediate + ApexIB background
                         if sym_resp.response.changed() && !watchlist.chain.sym_input.is_empty() {
-                            watchlist.search_results = crate::ui_kit::symbols::search_symbols(&watchlist.chain.sym_input, 5)
+                            watchlist.search.results = crate::ui_kit::symbols::search_symbols(&watchlist.chain.sym_input, 5)
                                 .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
                             // Also fire ApexIB search in background
                             fetch_search_background(watchlist.chain.sym_input.clone(), "chain".to_string());
@@ -1614,7 +1614,7 @@ if is_spawn || watchlist.open {
                         if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain.sym_input.is_empty() {
                             watchlist.chain.symbol = watchlist.chain.sym_input.trim().to_uppercase();
                             watchlist.chain.sym_input.clear();
-                            watchlist.search_results.clear();
+                            watchlist.search.results.clear();
                             watchlist.chain.near = crate::chart_renderer::gpu::OptionChain::default();
                             watchlist.chain.underlying_price = 0.0; // reset price for new symbol
                             watchlist.chain.center_offset = 0;
@@ -1622,15 +1622,15 @@ if is_spawn || watchlist.open {
                         }
                     });
                     // Search suggestions popup
-                    if !watchlist.chain.sym_input.is_empty() && !watchlist.search_results.is_empty() {
+                    if !watchlist.chain.sym_input.is_empty() && !watchlist.search.results.is_empty() {
                         PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
-                            for (sym, name) in watchlist.search_results.clone() {
+                            for (sym, name) in watchlist.search.results.clone() {
                                 let chain_sugg_lbl = format!("{} {}", sym, name);
                                 if ui.add(Button::new(chain_sugg_lbl.as_str()).variant(Variant::Ghost).size(Size::Sm)
                                     .full_width(true).min_size(egui::vec2(ui.available_width(), row_height_compact()))).clicked() {
                                     watchlist.chain.symbol = sym;
                                     watchlist.chain.sym_input.clear();
-                                    watchlist.search_results.clear();
+                                    watchlist.search.results.clear();
                                     watchlist.chain.near = crate::chart_renderer::gpu::OptionChain::default();
                                     watchlist.chain.underlying_price = 0.0;
                                     watchlist.chain.center_offset = 0;
