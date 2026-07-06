@@ -44,25 +44,27 @@ pub fn draw(ctx: &egui::Context, t: &Theme) {
     // holding the read lock; `&'static str` fields outlive the guard and the
     // chords are owned Strings. Sort categories alphabetically; keep
     // registration order within each category.
-    let cats: Vec<(&'static str, Vec<(String, &'static str)>)> = {
-        let reg = crate::foundation::shortcuts::registry().read().unwrap();
-        let mut v: Vec<(&'static str, Vec<(String, &'static str)>)> = reg
-            .by_category()
-            .into_iter()
-            .map(|(cat, entries)| {
-                let rows: Vec<(String, &'static str)> = entries
-                    .iter()
-                    .map(|e| (
-                        crate::foundation::shortcuts::ShortcutRegistry::format_for_kbd(e.shortcut),
-                        e.description,
-                    ))
-                    .collect();
-                (cat, rows)
-            })
-            .collect();
-        v.sort_by(|a, b| a.0.cmp(b.0));
-        v
-    };
+    // Fallible read (`.ok()`), not a panicking unwrap: on the (practically
+    // impossible) poisoned lock we render an empty cheatsheet, never panic in UI.
+    let cats: Vec<(&'static str, Vec<(String, &'static str)>)> =
+        crate::foundation::shortcuts::registry().read().ok().map(|reg| {
+            let mut v: Vec<(&'static str, Vec<(String, &'static str)>)> = reg
+                .by_category()
+                .into_iter()
+                .map(|(cat, entries)| {
+                    let rows: Vec<(String, &'static str)> = entries
+                        .iter()
+                        .map(|e| (
+                            crate::foundation::shortcuts::ShortcutRegistry::format_for_kbd(e.shortcut),
+                            e.description,
+                        ))
+                        .collect();
+                    (cat, rows)
+                })
+                .collect();
+            v.sort_by(|a, b| a.0.cmp(b.0));
+            v
+        }).unwrap_or_default();
 
     let mut close = false;
     let resp = Modal::new("KEYBOARD SHORTCUTS")
