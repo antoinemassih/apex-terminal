@@ -2000,7 +2000,7 @@ if is_spawn || watchlist.open {
                         let off_0 = watchlist.chain.near_offset;
                         let sm_0 = watchlist.chain.near_strike_mode;
                         let nmf_0 = watchlist.chain.near_nmf;
-                        render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_0, off_0, sm_0, nmf_0);
+                        render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_opts.list, sel, scroll_w, ns_0, off_0, sm_0, nmf_0);
 
                         ui.add_space(gap_md());
                         let sep_r = ui.available_rect_before_wrap();
@@ -2057,7 +2057,7 @@ if is_spawn || watchlist.open {
                         let off_f = watchlist.chain.far_offset;
                         let sm_f = watchlist.chain.far_strike_mode;
                         let nmf_f = watchlist.chain.far_nmf;
-                        render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f, sm_f, nmf_f);
+                        render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_opts.list, sel, scroll_w, ns_f, off_f, sm_f, nmf_f);
                     });
                     // Normal click: just open option chart (no watchlist add).
                     // Split off the OCC so we can populate both pending fields.

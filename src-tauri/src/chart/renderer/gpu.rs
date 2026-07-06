@@ -5972,6 +5972,20 @@ impl Default for SearchState {
     }
 }
 
+/// Saved-options watchlist state (WS-E E3, Watchlist-split slice 21). The saved
+/// option contracts + their DTE filter. Not synced/persisted; single consumer
+/// (watchlist_panel). Explicit Default (dte_filter -1 = all).
+pub(crate) struct SavedOptionsState {
+    pub(crate) list: Vec<SavedOption>,
+    pub(crate) dte_filter: i32,
+}
+
+impl Default for SavedOptionsState {
+    fn default() -> Self {
+        Self { list: vec![], dte_filter: -1 }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6102,9 +6116,8 @@ pub(crate) struct Watchlist {
     pub(crate) alerts_panel_open: bool,
     // Options chain (WS-E E3 slice 7) — was 24 flat `chain_*` fields.
     pub(crate) chain: ChainState,
-    // Saved options
-    pub(crate) saved_options: Vec<SavedOption>,
-    pub(crate) dte_filter: i32,
+    // Saved options (WS-E E3 slice 21) — was saved_options + dte_filter.
+    pub(crate) saved_opts: SavedOptionsState,
     // Workspaces (WS-E E3 slice 19) — was 7 flat workspace-mgmt fields,
     // grouped into WorkspaceState.
     pub(crate) workspace: WorkspaceState,
@@ -6373,7 +6386,7 @@ impl Watchlist {
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(), alerts_panel_open: false,
                chain: ChainState::default(),
-               saved_options: vec![], dte_filter: -1,
+               saved_opts: SavedOptionsState::default(),
                heat: HeatState::default(),
                workspace: WorkspaceState::default(),
                active_pane_idx: 0,
