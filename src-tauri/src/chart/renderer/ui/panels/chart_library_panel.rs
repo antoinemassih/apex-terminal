@@ -57,7 +57,7 @@ pub(crate) fn draw(
     if !is_spawn && !watchlist.charts_library_open { return false; }
 
     // Read-only inputs resolved before the body borrows `watchlist`.
-    let active_ws = watchlist.active_workspace.clone();
+    let active_ws = watchlist.workspace.active.clone();
     let names = list_workspaces();
     let pane_h = pane_tabs_header_h(watchlist);
     let title_font = watchlist.pane_header_size.title_font();
@@ -98,12 +98,12 @@ pub(crate) fn draw(
                     // Save the current pane area as a new chart.
                     PanelSection::new("SAVE CURRENT").show(ui, t, |ui, t| {
                         ui.horizontal(|ui| {
-                            Input::new(&mut watchlist.workspace_save_name)
+                            Input::new(&mut watchlist.workspace.save_name)
                                 .placeholder("Chart name…")
                                 .min_width(150.0)
                                 .size(Size::Sm)
                                 .show(ui, t);
-                            let can_save = !watchlist.workspace_save_name.trim().is_empty();
+                            let can_save = !watchlist.workspace.save_name.trim().is_empty();
                             if can_save
                                 && Button::small_action("Save").tint(t.accent).show(ui, t).clicked()
                             {
@@ -189,21 +189,21 @@ pub(crate) fn draw(
 
     // ── Act on captured intents (full &mut access here) ──────────────────────
     if save_now {
-        let name = watchlist.workspace_save_name.trim().to_string();
+        let name = watchlist.workspace.save_name.trim().to_string();
         if !name.is_empty() {
             save_workspace(&name, panes, layout, watchlist);
-            watchlist.active_workspace = name;
-            watchlist.workspace_save_name.clear();
+            watchlist.workspace.active = name;
+            watchlist.workspace.save_name.clear();
         }
     }
     if let Some(name) = apply {
-        watchlist.active_workspace = name.clone();
-        watchlist.pending_workspace_load = Some(name);
+        watchlist.workspace.active = name.clone();
+        watchlist.workspace.pending_load = Some(name);
     }
     if let Some(name) = delete {
         delete_workspace(&name);
-        if watchlist.active_workspace == name {
-            watchlist.active_workspace.clear();
+        if watchlist.workspace.active == name {
+            watchlist.workspace.active.clear();
         }
     }
     spawn_close

@@ -10,7 +10,7 @@
 //! - **Expanded**: a wider menu listing full workspace names with an active
 //!   marker, plus create / save / save-as controls in the footer.
 //!
-//! Expand/collapse is driven by `watchlist.workspace_nav_expanded`, toggled
+//! Expand/collapse is driven by `watchlist.workspace.nav_expanded`, toggled
 //! from the button immediately left of the Paper/Live `$` toggle in the top
 //! toolbar. Right-click a workspace for Rename / Delete.
 
@@ -53,13 +53,13 @@ pub(crate) fn render_workspace_rail(
     watchlist: &mut Watchlist,
     t: &Theme,
 ) {
-    let expanded = watchlist.workspace_nav_expanded;
+    let expanded = watchlist.workspace.nav_expanded;
     let width = if expanded { EXPANDED_W } else { COLLAPSED_W };
 
     let names = list_workspaces();
-    let active = watchlist.active_workspace.clone();
+    let active = watchlist.workspace.active.clone();
     let active_is_saved = names.contains(&active);
-    let renaming = watchlist.workspace_rename_target.clone();
+    let renaming = watchlist.workspace.rename_target.clone();
 
     // ── Deferred actions (applied after the panel closure releases borrows) ──
     let mut switch_to:    Option<String> = None;
@@ -99,7 +99,7 @@ pub(crate) fn render_workspace_rail(
                             ui.label(egui::RichText::new(format!("Rename “{target}”"))
                                 .monospace().size(font_xs()).color(tint(t, Tone::Dim, 200)));
                             ui.add_space(gap_xs());
-                            Input::new(&mut watchlist.workspace_rename_buf)
+                            Input::new(&mut watchlist.workspace.rename_buf)
                                 .placeholder("New name…")
                                 .min_width(EXPANDED_W - 24.0)
                                 .size(KitSize::Sm)
@@ -136,13 +136,13 @@ pub(crate) fn render_workspace_rail(
                             }
                             ui.add_space(gap_sm());
                             // Save-as (name + button).
-                            Input::new(&mut watchlist.workspace_save_name)
+                            Input::new(&mut watchlist.workspace.save_name)
                                 .placeholder("Save as…")
                                 .min_width(EXPANDED_W - 24.0)
                                 .size(KitSize::Sm)
                                 .show(ui, t);
                             ui.add_space(gap_xs());
-                            if !watchlist.workspace_save_name.trim().is_empty()
+                            if !watchlist.workspace.save_name.trim().is_empty()
                                 && KitButton::new("Save As").variant(KitVariant::Primary)
                                     .size(KitSize::Sm).tint(t.accent)
                                     .min_size(egui::vec2(EXPANDED_W - 16.0, ROW_H))
@@ -241,48 +241,48 @@ pub(crate) fn render_workspace_rail(
 
     if new_blank {
         autosave_current(watchlist);
-        watchlist.pending_new_blank = true;
+        watchlist.workspace.pending_new_blank = true;
     }
     if let Some(name) = switch_to {
         autosave_current(watchlist);
-        watchlist.active_workspace = name.clone();
-        watchlist.pending_workspace_load = Some(name);
+        watchlist.workspace.active = name.clone();
+        watchlist.workspace.pending_load = Some(name);
     }
     if save_active {
         save_workspace(&active, panes, layout, watchlist);
     }
     if save_as {
-        let name = watchlist.workspace_save_name.trim().to_string();
+        let name = watchlist.workspace.save_name.trim().to_string();
         if !name.is_empty() {
             save_workspace(&name, panes, layout, watchlist);
-            watchlist.active_workspace = name;
-            watchlist.workspace_save_name.clear();
+            watchlist.workspace.active = name;
+            watchlist.workspace.save_name.clear();
         }
     }
     if let Some(name) = rename_start {
-        watchlist.workspace_rename_buf = name.clone();
-        watchlist.workspace_rename_target = Some(name);
-        watchlist.workspace_nav_expanded = true; // expand so the rename field shows
+        watchlist.workspace.rename_buf = name.clone();
+        watchlist.workspace.rename_target = Some(name);
+        watchlist.workspace.nav_expanded = true; // expand so the rename field shows
     }
     if commit_rename {
-        if let Some(old) = watchlist.workspace_rename_target.take() {
-            let new = watchlist.workspace_rename_buf.trim().to_string();
+        if let Some(old) = watchlist.workspace.rename_target.take() {
+            let new = watchlist.workspace.rename_buf.trim().to_string();
             if !new.is_empty() && new != old {
                 rename_workspace(&old, &new);
-                if watchlist.active_workspace == old { watchlist.active_workspace = new; }
+                if watchlist.workspace.active == old { watchlist.workspace.active = new; }
             }
-            watchlist.workspace_rename_buf.clear();
+            watchlist.workspace.rename_buf.clear();
         }
     }
     if cancel_rename {
-        watchlist.workspace_rename_target = None;
-        watchlist.workspace_rename_buf.clear();
+        watchlist.workspace.rename_target = None;
+        watchlist.workspace.rename_buf.clear();
     }
     if let Some(name) = delete_req {
         delete_workspace(&name);
-        if watchlist.active_workspace == name { watchlist.active_workspace.clear(); }
-        if watchlist.workspace_rename_target.as_deref() == Some(name.as_str()) {
-            watchlist.workspace_rename_target = None;
+        if watchlist.workspace.active == name { watchlist.workspace.active.clear(); }
+        if watchlist.workspace.rename_target.as_deref() == Some(name.as_str()) {
+            watchlist.workspace.rename_target = None;
         }
     }
 }

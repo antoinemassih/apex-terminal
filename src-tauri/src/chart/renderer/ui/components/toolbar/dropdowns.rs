@@ -283,8 +283,8 @@ pub(crate) fn render_layout_dropdown(
                         if apply_hov { t.accent } else { tint(t, Tone::Accent, 180) });
                     if apply_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if apply_hov && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                        watchlist.active_workspace = tpl_name.clone();
-                        watchlist.pending_workspace_load = Some(tpl_name.clone());
+                        watchlist.workspace.active = tpl_name.clone();
+                        watchlist.workspace.pending_load = Some(tpl_name.clone());
                         close_dd = true;
                     }
                     ui.allocate_space(egui::vec2(236.0, 24.0));

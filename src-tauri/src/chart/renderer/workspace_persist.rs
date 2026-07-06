@@ -125,7 +125,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
         // workspace remembers its full view, not just the chart panes.
         "ui": {
             "active_pane":        wl.active_pane_idx,
-            "rail_expanded":      wl.workspace_nav_expanded,
+            "rail_expanded":      wl.workspace.nav_expanded,
             "object_tree_open":   wl.object_tree_open,
             "watchlist_open":     wl.open,
             "signals_panel_open": wl.signals_panel.open,

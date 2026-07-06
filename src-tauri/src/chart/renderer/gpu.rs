@@ -5927,6 +5927,35 @@ impl Default for PaneSplitState {
     }
 }
 
+/// Workspace-management state (WS-E E3, Watchlist-split slice 19). 7 fields
+/// (active / save-name / pending-load / nav-expanded / pending-new-blank /
+/// rename target+buf). `active` + `save_name` mirror SidebarState (flat there);
+/// `nav_expanded` persists to workspace JSON under the UNCHANGED "rail_expanded"
+/// key. Mixed original prefixes -> semantic field names.
+pub(crate) struct WorkspaceState {
+    pub(crate) active: String,          // was active_workspace
+    pub(crate) save_name: String,       // was workspace_save_name
+    pub(crate) pending_load: Option<String>, // was pending_workspace_load
+    pub(crate) nav_expanded: bool,      // was workspace_nav_expanded
+    pub(crate) pending_new_blank: bool,
+    pub(crate) rename_target: Option<String>, // was workspace_rename_target
+    pub(crate) rename_buf: String,      // was workspace_rename_buf
+}
+
+impl Default for WorkspaceState {
+    fn default() -> Self {
+        Self {
+            active: "Default".into(),
+            save_name: String::new(),
+            pending_load: None,
+            nav_expanded: false,
+            pending_new_blank: false,
+            rename_target: None,
+            rename_buf: String::new(),
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6062,19 +6091,9 @@ pub(crate) struct Watchlist {
     // Saved options
     pub(crate) saved_options: Vec<SavedOption>,
     pub(crate) dte_filter: i32,
-    // Workspaces
-    pub(crate) active_workspace: String,
-    pub(crate) workspace_save_name: String,
-    pub(crate) pending_workspace_load: Option<String>,
-    /// Workspace nav rail: true = expanded (named menu), false = collapsed
-    /// (initials column). Toggled from the top toolbar. Session-scoped.
-    pub(crate) workspace_nav_expanded: bool,
-    /// Set by the workspace rail's "new" action; the frame loop resets the
-    /// live panes to a blank single-pane "Untitled" workspace at a safe point.
-    pub(crate) pending_new_blank: bool,
-    /// Inline-rename target (the workspace name being edited) + its edit buffer.
-    pub(crate) workspace_rename_target: Option<String>,
-    pub(crate) workspace_rename_buf: String,
+    // Workspaces (WS-E E3 slice 19) — was 7 flat workspace-mgmt fields,
+    // grouped into WorkspaceState.
+    pub(crate) workspace: WorkspaceState,
     /// Active (focused) pane index, mirrored from the render loop each frame so
     /// `workspace_to_json` can persist it without threading `active_pane`
     /// through every `save_workspace` call site.
@@ -6342,9 +6361,7 @@ impl Watchlist {
                chain: ChainState::default(),
                saved_options: vec![], dte_filter: -1,
                heat: HeatState::default(),
-               active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
-               workspace_nav_expanded: false, pending_new_blank: false,
-               workspace_rename_target: None, workspace_rename_buf: String::new(),
+               workspace: WorkspaceState::default(),
                active_pane_idx: 0,
                pane_split: PaneSplitState::default(),
                // Phase 1 PaneGrid topology — None means "use legacy 8-fraction path".
@@ -6853,8 +6870,8 @@ impl Watchlist {
         let dashboard_templates = self.dashboard_templates.clone();
         let heatmap_templates = self.heatmap_templates.clone();
         let spreadsheet_templates = self.spreadsheet_templates.clone();
-        let active_workspace = self.active_workspace.clone();
-        let workspace_save_name = self.workspace_save_name.clone();
+        let active_workspace = self.workspace.active.clone();
+        let workspace_save_name = self.workspace.save_name.clone();
         self.layout_state_store.update(|s| {
             s.link_groups = link_groups;
             s.broadcast_mode = broadcast_mode;
@@ -6916,8 +6933,8 @@ impl Watchlist {
         self.dashboard_templates = snap.dashboard_templates;
         self.heatmap_templates = snap.heatmap_templates;
         self.spreadsheet_templates = snap.spreadsheet_templates;
-        self.active_workspace = snap.active_workspace;
-        self.workspace_save_name = snap.workspace_save_name;
+        self.workspace.active = snap.active_workspace;
+        self.workspace.save_name = snap.workspace_save_name;
     }
 
     // ── Wave 3 (state): Store<ChatState> accessor / mutator ─────────────────
@@ -8439,8 +8456,8 @@ impl ApplicationHandler for App {
                 // Process pending "new blank workspace" — reset the live panes to
                 // a single default pane and switch to a fresh untitled name
                 // (unsaved until the user saves it from the workspace rail).
-                if cw.watchlist.pending_new_blank {
-                    cw.watchlist.pending_new_blank = false;
+                if cw.watchlist.workspace.pending_new_blank {
+                    cw.watchlist.workspace.pending_new_blank = false;
                     let mut chart = Chart::new();
                     // Trigger the initial bar fetch + drawing load for the fresh
                     // pane (mirrors the per-pane load path), so the blank
@@ -8450,10 +8467,10 @@ impl ApplicationHandler for App {
                     cw.layout = Layout::One;
                     cw.active_pane = 0;
                     cw.watchlist.pane_layout = None; // re-materialize from Layout::One
-                    cw.watchlist.active_workspace = next_untitled_workspace_name();
+                    cw.watchlist.workspace.active = next_untitled_workspace_name();
                 }
                 // Process pending workspace load
-                if let Some(ws_name) = cw.watchlist.pending_workspace_load.take() {
+                if let Some(ws_name) = cw.watchlist.workspace.pending_load.take() {
                     let path = workspace_dir().join(format!("{}.json", ws_name));
                     if let Ok(data) = std::fs::read_to_string(&path) {
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
@@ -8660,7 +8677,7 @@ impl ApplicationHandler for App {
                             // keep their current state.
                             if let Some(ui) = json.get("ui") {
                                 let gb = |k: &str, def: bool| ui.get(k).and_then(|v| v.as_bool()).unwrap_or(def);
-                                cw.watchlist.workspace_nav_expanded = gb("rail_expanded", cw.watchlist.workspace_nav_expanded);
+                                cw.watchlist.workspace.nav_expanded = gb("rail_expanded", cw.watchlist.workspace.nav_expanded);
                                 cw.watchlist.object_tree_open   = gb("object_tree_open", false);
                                 cw.watchlist.open               = gb("watchlist_open", false);
                                 cw.watchlist.signals_panel.open = gb("signals_panel_open", false);

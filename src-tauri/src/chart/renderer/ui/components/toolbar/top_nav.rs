@@ -558,7 +558,7 @@ pub(crate) fn render(
 
             // ── Workspace rail expand/collapse toggle (left of the $ toggle) ──
             {
-                let ws_expanded = watchlist.workspace_nav_expanded;
+                let ws_expanded = watchlist.workspace.nav_expanded;
                 let resp = KitButton::icon(Icon::SIDEBAR)
                     .variant(KitVariant::Ghost).size(KitSize::Sm)
                     .active(ws_expanded)
@@ -569,7 +569,7 @@ pub(crate) fn render(
                 Tooltip::new(if ws_expanded { "Collapse workspaces" } else { "Expand workspaces" })
                     .show(ui, &resp, t);
                 if resp.clicked() {
-                    watchlist.workspace_nav_expanded = !watchlist.workspace_nav_expanded;
+                    watchlist.workspace.nav_expanded = !watchlist.workspace.nav_expanded;
                 }
             }
 
@@ -703,7 +703,7 @@ pub(crate) fn render(
 
                     // Workspace list
                     for name in &ws_names {
-                        let is_active = *name == watchlist.active_workspace;
+                        let is_active = *name == watchlist.workspace.active;
                         ui.horizontal(|ui| {
                             // Active dot
                             if is_active {
@@ -712,8 +712,8 @@ pub(crate) fn render(
                                 ui.label(egui::RichText::new("  ").size(font_xs()));
                             }
                             if ui.add(SelectableRow::new(name, is_active)).clicked() && !is_active {
-                                watchlist.active_workspace = name.clone();
-                                watchlist.pending_workspace_load = Some(name.clone());
+                                watchlist.workspace.active = name.clone();
+                                watchlist.workspace.pending_load = Some(name.clone());
                                 ui.close_menu();
                             }
                         });
@@ -724,8 +724,8 @@ pub(crate) fn render(
                     ui.add_space(gap_sm());
 
                     // Save current
-                    if !watchlist.active_workspace.is_empty() {
-                        let save_resp = ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
+                    if !watchlist.workspace.active.is_empty() {
+                        let save_resp = ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.workspace.active))
                             .monospace().size(font_sm()).color(t.accent));
                         #[cfg(debug_assertions)]
                         crate::dev_inspector::record(
@@ -734,7 +734,7 @@ pub(crate) fn render(
                             )
                         );
                         if save_resp.clicked() {
-                            let ws_name = watchlist.active_workspace.clone();
+                            let ws_name = watchlist.workspace.active.clone();
                             save_workspace(&ws_name, panes, *layout, watchlist);
                             ui.close_menu();
                         }
@@ -743,19 +743,19 @@ pub(crate) fn render(
                     // Save as new
                     ui.add_space(gap_sm());
                     ui.horizontal(|ui| {
-                        crate::ui_kit::widgets::Input::new(&mut watchlist.workspace_save_name)
+                        crate::ui_kit::widgets::Input::new(&mut watchlist.workspace.save_name)
                             .placeholder("New workspace…")
                             .min_width(130.0)
                             .size(crate::ui_kit::widgets::Size::Sm)
                             .show(ui, t);
-                        let can_save = !watchlist.workspace_save_name.trim().is_empty();
+                        let can_save = !watchlist.workspace.save_name.trim().is_empty();
                         if can_save {
                             if KitButton::new("Save As").variant(KitVariant::Primary).size(KitSize::Sm)
                                 .tint(t.accent).show(ui, t).clicked() {
-                                let name = watchlist.workspace_save_name.trim().to_string();
+                                let name = watchlist.workspace.save_name.trim().to_string();
                                 save_workspace(&name, panes, *layout, watchlist);
-                                watchlist.active_workspace = name;
-                                watchlist.workspace_save_name.clear();
+                                watchlist.workspace.active = name;
+                                watchlist.workspace.save_name.clear();
                                 ui.close_menu();
                             }
                         }
@@ -769,7 +769,7 @@ pub(crate) fn render(
                     ws_menu.response.hovered(), false, "workspace");
                 {
                     use crate::ui_kit::widgets::Tooltip;
-                    let active_ws = watchlist.active_workspace.clone();
+                    let active_ws = watchlist.workspace.active.clone();
                     Tooltip::rich(move |ui, theme| {
                         ui.label(egui::RichText::new("Workspaces").size(font_sm()).strong().color(theme.text()));
                         ui.label(egui::RichText::new(format!("Active: {}", active_ws)).size(font_xs()).color(theme.dim()));
@@ -777,7 +777,7 @@ pub(crate) fn render(
                 }
                 #[cfg(debug_assertions)]
                 {
-                    let ws_name = watchlist.active_workspace.clone();
+                    let ws_name = watchlist.workspace.active.clone();
                     crate::dev_inspector::record(
                         crate::dev_inspector::WidgetRecord::from_response(
                             "toolbar.workspace_btn", "button", &ws_name, &ws_menu.response, ui,
