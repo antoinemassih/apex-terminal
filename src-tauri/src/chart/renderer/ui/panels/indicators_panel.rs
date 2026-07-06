@@ -377,7 +377,7 @@ fn swing_label(mode: u8) -> &'static str {
 /// Rail registration — see [`super::right_rail`].
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "indicators",
-    is_open: |w| w.indicators_panel_open,
+    is_open: |w| w.indicators.panel_open,
     render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot)),
 };
 
@@ -389,7 +389,7 @@ pub(crate) fn draw(
     t: &Theme,
     slot: Option<super::side_panel_shell::RailSlot>,
 ) {
-    if !watchlist.indicators_panel_open || panes.is_empty() {
+    if !watchlist.indicators.panel_open || panes.is_empty() {
         return;
     }
     let ap = ap.min(panes.len() - 1);
@@ -410,7 +410,7 @@ pub(crate) fn draw(
             // Snapshot section fractions into a local so the group can
             // own the &mut without locking out the body closures that
             // also need &mut watchlist (for library search state).
-            let mut fracs = watchlist.indicators_section_fracs;
+            let mut fracs = watchlist.indicators.section_fracs;
             let chart = &mut panes[ap];
             PanelSectionGroup::new(&mut fracs)
                 .min_section_height(40.0)
@@ -845,7 +845,7 @@ fn draw_library_section(
     ap: usize,
 ) {
     ui.horizontal(|ui| {
-        Input::new(&mut watchlist.indicators_panel_search)
+        Input::new(&mut watchlist.indicators.panel_search)
             .leading_icon(Icon::MAGNIFYING_GLASS)
             .placeholder("Search…")
             .size(KitSize::Sm)
@@ -855,7 +855,7 @@ fn draw_library_section(
     });
     ui.add_space(gap_xs());
 
-    let query = watchlist.indicators_panel_search.trim().to_lowercase();
+    let query = watchlist.indicators.panel_search.trim().to_lowercase();
     let force_open = !query.is_empty();
 
     for (sec_idx, sec) in LIB_SECTIONS.iter().enumerate() {
@@ -866,7 +866,7 @@ fn draw_library_section(
         // Bridge collapse state: derive a plain bool (no borrow into watchlist)
         // so the body closure can mutably borrow watchlist + chart freely.
         // After the closure returns, write the final expanded value back.
-        let mut expanded = force_open || !watchlist.indicators_lib_collapsed.contains(sec.title as &str);
+        let mut expanded = force_open || !watchlist.indicators.lib_collapsed.contains(sec.title as &str);
 
         PanelSubSection::new(sec.title, sec.title)
             .count(match_count)
@@ -883,9 +883,9 @@ fn draw_library_section(
         if !force_open {
             let key = sec.title.to_string();
             if expanded {
-                watchlist.indicators_lib_collapsed.remove(&key);
+                watchlist.indicators.lib_collapsed.remove(&key);
             } else {
-                watchlist.indicators_lib_collapsed.insert(key);
+                watchlist.indicators.lib_collapsed.insert(key);
             }
         }
 

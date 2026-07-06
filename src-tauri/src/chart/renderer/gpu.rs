@@ -5833,6 +5833,27 @@ impl Default for TimeframeState {
     }
 }
 
+/// Indicators sidebar-panel state (WS-E E3, Watchlist-split slice 13). 4
+/// indicators_* fields. `panel_open` + `section_fracs` mirror the persisted
+/// SidebarState (kept flat there). Explicit Default (section_fracs 0.18/0.25/0.57).
+pub(crate) struct IndicatorsState {
+    pub(crate) panel_open: bool,
+    pub(crate) panel_search: String,
+    pub(crate) lib_collapsed: std::collections::HashSet<String>,
+    pub(crate) section_fracs: [f32; 3],
+}
+
+impl Default for IndicatorsState {
+    fn default() -> Self {
+        Self {
+            panel_open: false,
+            panel_search: String::new(),
+            lib_collapsed: std::collections::HashSet::new(),
+            section_fracs: [0.18, 0.25, 0.57],
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6105,10 +6126,8 @@ pub(crate) struct Watchlist {
     /// Signals sidebar-panel state (WS-E E3 slice 11) — was signals_panel_open/tab/splits.
     pub(crate) signals_panel: SignalsPanelState,
     // Indicators panel — unified active list / library / tool toggles.
-    pub(crate) indicators_panel_open: bool,
-    pub(crate) indicators_panel_search: String,
-    pub(crate) indicators_lib_collapsed: std::collections::HashSet<String>,
-    pub(crate) indicators_section_fracs: [f32; 3],
+    /// Indicators sidebar-panel state (WS-E E3 slice 13) — was 4 flat indicators_* fields.
+    pub(crate) indicators: IndicatorsState,
     // Feed sidebar — subdivided sections
     /// Feed sidebar-panel state (WS-E E3 slice 10) — was feed_panel_open/tab/splits.
     pub(crate) feed_panel: FeedPanelState,
@@ -6319,9 +6338,7 @@ impl Watchlist {
                analysis: AnalysisState::default(),
                auto_chart_open: false,
                signals_panel: SignalsPanelState::default(),
-               indicators_panel_open: false, indicators_panel_search: String::new(),
-               indicators_lib_collapsed: std::collections::HashSet::new(),
-               indicators_section_fracs: [0.18, 0.25, 0.57],
+               indicators: IndicatorsState::default(),
                feed_panel: FeedPanelState::default(),
                playbook_panel_open: false,
                journal_panel_open: false,
@@ -6665,8 +6682,8 @@ impl Watchlist {
         let analysis_open = self.analysis.open;
         let auto_chart_open = self.auto_chart_open;
         let signals_panel_open = self.signals_panel.open;
-        let indicators_panel_open = self.indicators_panel_open;
-        let indicators_section_fracs = self.indicators_section_fracs;
+        let indicators_panel_open = self.indicators.panel_open;
+        let indicators_section_fracs = self.indicators.section_fracs;
         let feed_panel_open = self.feed_panel.open;
         let playbook_panel_open = self.playbook_panel_open;
         let journal_panel_open = self.journal_panel_open;
@@ -6749,8 +6766,8 @@ impl Watchlist {
         self.analysis.open = snap.analysis_open;
         self.auto_chart_open = snap.auto_chart_open;
         self.signals_panel.open = snap.signals_panel_open;
-        self.indicators_panel_open = snap.indicators_panel_open;
-        self.indicators_section_fracs = snap.indicators_section_fracs;
+        self.indicators.panel_open = snap.indicators_panel_open;
+        self.indicators.section_fracs = snap.indicators_section_fracs;
         self.feed_panel.open = snap.feed_panel_open;
         self.playbook_panel_open = snap.playbook_panel_open;
         self.journal_panel_open = snap.journal_panel_open;

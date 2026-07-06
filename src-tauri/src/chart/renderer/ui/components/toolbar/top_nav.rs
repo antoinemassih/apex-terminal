@@ -1200,7 +1200,7 @@ pub(crate) fn render(
                 panel_toggle!(Icon::CURRENCY_DOLLAR, "Orders",     orders_panel_open,     "Orders Panel",                                "right_orders");
                 panel_toggle!(Icon::CHART_LINE,      "Analysis",   watchlist.analysis.open, analysis_open, "Analysis Sidebar",              "right_analysis");
                 panel_toggle!(Icon::CHART_LINE,      "Auto-Chart", auto_chart_open,       "Auto-Charting (lines, levels, patterns, tuning)", "right_autochart");
-                panel_toggle!(Icon::PULSE,           "Indicators", indicators_panel_open, "Indicators (Active + Library + Tools)",       "right_indicators");
+                panel_toggle!(Icon::PULSE,           "Indicators", watchlist.indicators.panel_open, indicators_panel_open, "Indicators (Active + Library + Tools)",       "right_indicators");
 
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
                 {
