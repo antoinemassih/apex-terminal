@@ -4440,12 +4440,12 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                 watchlist.heatmap.cells = cells.clone();
             }
             ChartCommand::TapeEntry { symbol, price, qty, time, is_buy } => {
-                watchlist.tape_entries.push(TapeRow {
+                watchlist.tape.entries.push(TapeRow {
                     symbol: symbol.clone(), price: *price, qty: *qty, time: *time, is_buy: *is_buy,
                 });
                 // Cap at 500 entries
-                if watchlist.tape_entries.len() > 500 {
-                    watchlist.tape_entries.drain(..watchlist.tape_entries.len() - 500);
+                if watchlist.tape.entries.len() > 500 {
+                    watchlist.tape.entries.drain(..watchlist.tape.entries.len() - 500);
                 }
             }
             ChartCommand::ChainData { symbol, dte, underlying_price, calls, puts, placeholder } => {
@@ -5895,6 +5895,14 @@ pub(crate) struct HeatmapState {
     pub(crate) last_fetch: Option<std::time::Instant>,
 }
 
+/// Time & Sales (tape) panel state (WS-E E3, Watchlist-split slice 17). 2
+/// tape_* fields. `open` mirrors the persisted SidebarState flag. All Default.
+#[derive(Default)]
+pub(crate) struct TapeState {
+    pub(crate) open: bool,
+    pub(crate) entries: Vec<TapeRow>,
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6126,8 +6134,8 @@ pub(crate) struct Watchlist {
     /// Discord chat-panel state (WS-E E3 slice 5) — was 17 flat `discord_*` fields.
     pub(crate) discord: DiscordState,
     // Time & Sales
-    pub(crate) tape_open: bool,
-    pub(crate) tape_entries: Vec<TapeRow>,
+    /// Time & Sales (tape) panel state (WS-E E3 slice 17) — was tape_open + tape_entries.
+    pub(crate) tape: TapeState,
     // News feed panel (WS-E E3 slice 15) — 4 news_* fields grouped into NewsState.
     pub(crate) news: NewsState,
     // Trade Journal panel
@@ -6350,8 +6358,7 @@ impl Watchlist {
                play_templates: vec![],
                widget_presets: vec![], widget_preset_name: String::new(),
                discord: DiscordState::default(),
-               tape_open: false,
-               tape_entries: vec![],
+               tape: TapeState::default(),
                news: NewsState::default(),
                journal_open: false,
                scanner: ScannerState::default(),
@@ -6696,7 +6703,7 @@ impl Watchlist {
         let widget_gallery_open = self.widget_gallery_open;
         let filter_open = self.filter_open;
         let wl_columns_open = self.wl_columns_open;
-        let tape_open = self.tape_open;
+        let tape_open = self.tape.open;
         let news_open = self.news.open;
         let journal_open = self.journal_open;
         let scanner_open = self.scanner.open;
@@ -6780,7 +6787,7 @@ impl Watchlist {
         self.widget_gallery_open = snap.widget_gallery_open;
         self.filter_open = snap.filter_open;
         self.wl_columns_open = snap.wl_columns_open;
-        self.tape_open = snap.tape_open;
+        self.tape.open = snap.tape_open;
         self.news.open = snap.news_open;
         self.journal_open = snap.journal_open;
         self.scanner.open = snap.scanner_open;
@@ -8287,11 +8294,11 @@ impl ApplicationHandler for App {
                             cw.watchlist.heatmap.cells = cells.clone();
                         }
                         ChartCommand::TapeEntry { ref symbol, price, qty, time, is_buy } => {
-                            cw.watchlist.tape_entries.push(TapeRow {
+                            cw.watchlist.tape.entries.push(TapeRow {
                                 symbol: symbol.clone(), price, qty, time, is_buy,
                             });
-                            if cw.watchlist.tape_entries.len() > 500 {
-                                cw.watchlist.tape_entries.drain(..cw.watchlist.tape_entries.len() - 500);
+                            if cw.watchlist.tape.entries.len() > 500 {
+                                cw.watchlist.tape.entries.drain(..cw.watchlist.tape.entries.len() - 500);
                             }
                         }
                         ChartCommand::ChainData { ref symbol, dte, underlying_price, ref calls, ref puts, placeholder } => {

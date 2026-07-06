@@ -10005,7 +10005,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         // Tape & quote WS subscriptions follow the open panels. Tape panel
         // streams trades for the active pane — for option panes we use the
         // OCC ticker, NOT the display label, so the server actually streams.
-        let tape_syms: Vec<String> = if watchlist.tape_open {
+        let tape_syms: Vec<String> = if watchlist.tape.open {
             let ap = &panes[*active_pane];
             let key = if ap.is_option && !ap.option_contract.is_empty() {
                 ap.option_contract.clone()

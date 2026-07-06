@@ -44,7 +44,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
             .stick_to_bottom(true)
             .show(ui, |ui| {
                 ui.set_min_width(panel_w - 4.0);
-                let entries: Vec<&TapeRow> = watchlist.tape_entries.iter()
+                let entries: Vec<&TapeRow> = watchlist.tape.entries.iter()
                     .filter(|e| e.symbol == active_symbol)
                     .collect();
 
@@ -125,12 +125,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
 /// Rail registration — see [`super::right_rail`].
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "tape",
-    is_open: |w| w.tape_open,
+    is_open: |w| w.tape.open,
     render: |cx, slot| draw(cx.ctx, cx.watchlist, &cx.symbol, cx.t, Some(slot)),
 };
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
-    if !watchlist.tape_open { return; }
+    if !watchlist.tape.open { return; }
 
     let resp = SidePanelShell::new("time_and_sales", "TIME & SALES")
         .width(Width::Narrow)
