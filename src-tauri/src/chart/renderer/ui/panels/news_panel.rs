@@ -4,7 +4,7 @@
 //! `apex_data::live_state::get_or_fetch_news` + `get_news`. On each frame we:
 //!  1. Compute the ticker set = pinned watchlist tickers ∪ {active chart symbol}
 //!  2. Kick a background refresh for each (TTL-gated, no thread storms)
-//!  3. Merge the cached projector readings into `watchlist.news_items` so the
+//!  3. Merge the cached projector readings into `watchlist.news.items` so the
 //!     legacy `NewsItem` shape downstream code knows about keeps working.
 //!  4. Render with a sentiment filter dropdown (All / Bullish / Bearish / Neutral).
 //! Chrome: `Modal + HeaderStyle::Dialog`. Body: `PanelLoading` while items
@@ -20,7 +20,7 @@ use crate::ui_kit::widgets::tokens::Variant;
 use crate::data::feeds::apex_data::live_state as projector;
 use crate::data::feeds::apex_data::types::NewsReading;
 
-/// Sentiment filter selection — `watchlist.news_sentiment_filter` is stored as
+/// Sentiment filter selection — `watchlist.news.sentiment_filter` is stored as
 /// `i8` (-2 = All, -1 = Bearish, 0 = Neutral, 1 = Bullish) to avoid touching
 /// gpu.rs for a new enum.
 const FILTER_ALL: i8 = -2;
@@ -73,7 +73,7 @@ fn format_age(delta_ms: i64) -> String {
 }
 
 /// Pull cached projector news for each ticker, sort newest-first, and
-/// overwrite `watchlist.news_items`. No-op if the cache is empty (UI keeps
+/// overwrite `watchlist.news.items`. No-op if the cache is empty (UI keeps
 /// showing the previous batch — looks better than a flicker).
 fn refresh_from_projector(watchlist: &mut Watchlist, active_symbol: &str, now_ms: i64) {
     let tickers = ticker_union(watchlist, active_symbol);
@@ -89,25 +89,25 @@ fn refresh_from_projector(watchlist: &mut Watchlist, active_symbol: &str, now_ms
     if all.is_empty() { return; }
     all.sort_by(|a, b| b.published_ms.cmp(&a.published_ms));
     all.truncate(50);
-    watchlist.news_items = all.iter().map(|r| reading_to_item(r, now_ms)).collect();
+    watchlist.news.items = all.iter().map(|r| reading_to_item(r, now_ms)).collect();
 }
 use crate::ui_kit::widgets::{PanelEmpty, PanelListRow, PanelLoading};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
-    if !watchlist.news_open { return; }
+    if !watchlist.news.open { return; }
 
     // Trigger projector fetch + populate `news_items`. Cheap when cached.
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
     refresh_from_projector(watchlist, active_symbol, now_ms);
 
-    let filter_active = watchlist.news_filter_symbol;
+    let filter_active = watchlist.news.filter_symbol;
     let filter_label = if filter_active { active_symbol } else { "All" };
     let mut toggle_filter = false;
     let mut cycle_sentiment = false;
 
     // Sentiment chip label.
-    let sent_filter = watchlist.news_sentiment_filter;
+    let sent_filter = watchlist.news.sentiment_filter;
     let sent_label = match sent_filter {
         FILTER_BULL => "Bull",
         FILTER_BEAR => "Bear",
@@ -148,9 +148,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             draw_content(ui, watchlist, active_symbol, t);
         });
 
-    if toggle_filter { watchlist.news_filter_symbol = !watchlist.news_filter_symbol; }
+    if toggle_filter { watchlist.news.filter_symbol = !watchlist.news.filter_symbol; }
     if cycle_sentiment {
-        watchlist.news_sentiment_filter = next_sentiment_filter(watchlist.news_sentiment_filter);
+        watchlist.news.sentiment_filter = next_sentiment_filter(watchlist.news.sentiment_filter);
     }
     if resp.closed { watchlist.update_sidebar_state(|s| s.news_open = false); }
 }
@@ -184,11 +184,11 @@ pub(crate) fn filtered<'a>(items: &'a [NewsItem], filter_symbol: bool, active_sy
 /// Tab body content (no Window wrapper, no header). Used by the floating
 /// modal above and by the feed_panel News tab.
 pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
-    let active_label = if watchlist.news_filter_symbol { active_symbol } else { "All" };
+    let active_label = if watchlist.news.filter_symbol { active_symbol } else { "All" };
     let mut toggle_filter = false;
 
-    let section_title = if watchlist.news_filter_symbol { "HEADLINES" } else { "HEADLINES · ALL" };
-    let filter_tone = if watchlist.news_filter_symbol {
+    let section_title = if watchlist.news.filter_symbol { "HEADLINES" } else { "HEADLINES · ALL" };
+    let filter_tone = if watchlist.news.filter_symbol {
         crate::ui_kit::widgets::PanelTone::Accent
     } else {
         crate::ui_kit::widgets::PanelTone::Default
@@ -198,11 +198,11 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
         .meta(active_label.to_string())
         .action("filter", filter_tone)
         .show(ui, t, |ui, t| {
-            let filtered: Vec<&NewsItem> = watchlist.news_items.iter()
-                .filter(|n| !watchlist.news_filter_symbol || n.symbol == active_symbol)
+            let filtered: Vec<&NewsItem> = watchlist.news.items.iter()
+                .filter(|n| !watchlist.news.filter_symbol || n.symbol == active_symbol)
                 .collect();
 
-            if watchlist.news_items.is_empty() {
+            if watchlist.news.items.is_empty() {
                 PanelLoading::new().reason("Fetching news").show(ui, t);
                 return;
             }
@@ -256,7 +256,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
         });
 
     if resp.action_clicked { toggle_filter = true; }
-    if toggle_filter { watchlist.news_filter_symbol = !watchlist.news_filter_symbol; }
+    if toggle_filter { watchlist.news.filter_symbol = !watchlist.news.filter_symbol; }
 }
 
 #[cfg(test)]

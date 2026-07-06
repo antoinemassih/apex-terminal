@@ -5870,6 +5870,22 @@ impl Default for JournalPanelState {
     }
 }
 
+/// News-feed panel state (WS-E E3, Watchlist-split slice 15). 4 news_* fields.
+/// `open` mirrors the persisted SidebarState flag. Explicit Default
+/// (sentiment_filter -2 = All).
+pub(crate) struct NewsState {
+    pub(crate) open: bool,
+    pub(crate) items: Vec<NewsItem>,
+    pub(crate) filter_symbol: bool,
+    pub(crate) sentiment_filter: i8,
+}
+
+impl Default for NewsState {
+    fn default() -> Self {
+        Self { open: false, items: vec![], filter_symbol: false, sentiment_filter: -2 }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6103,15 +6119,10 @@ pub(crate) struct Watchlist {
     // Time & Sales
     pub(crate) tape_open: bool,
     pub(crate) tape_entries: Vec<TapeRow>,
-    // News feed panel
-    pub(crate) news_open: bool,
+    // News feed panel (WS-E E3 slice 15) — 4 news_* fields grouped into NewsState.
+    pub(crate) news: NewsState,
     // Trade Journal panel
     pub(crate) journal_open: bool,
-    pub(crate) news_items: Vec<NewsItem>,
-    pub(crate) news_filter_symbol: bool, // true = filter to active chart symbol
-    /// Sentiment filter: -2=All, -1=Bearish, 0=Neutral, 1=Bullish. See
-    /// `panels::news_panel::next_sentiment_filter`.
-    pub(crate) news_sentiment_filter: i8,
     // Scanner (WS-E E3 slice 3) — 12 scanner_* fields grouped into ScannerState.
     pub(crate) scanner: ScannerState,
     // Heatmap pane — cold-started from /api/stocks/grouped/:date.
@@ -6332,13 +6343,8 @@ impl Watchlist {
                discord: DiscordState::default(),
                tape_open: false,
                tape_entries: vec![],
-               news_open: false,
+               news: NewsState::default(),
                journal_open: false,
-               // News items now populated from the `news_sentiment` projector
-               // via `panels::news_panel::refresh_from_projector` on each frame.
-               news_items: vec![],
-               news_filter_symbol: false,
-               news_sentiment_filter: -2, // All
                scanner: ScannerState::default(),
                heatmap_cells: vec![],
                heatmap_last_fetch: None,
@@ -6683,7 +6689,7 @@ impl Watchlist {
         let filter_open = self.filter_open;
         let wl_columns_open = self.wl_columns_open;
         let tape_open = self.tape_open;
-        let news_open = self.news_open;
+        let news_open = self.news.open;
         let journal_open = self.journal_open;
         let scanner_open = self.scanner.open;
         let scanner_builder_open = self.scanner.builder_open;
@@ -6767,7 +6773,7 @@ impl Watchlist {
         self.filter_open = snap.filter_open;
         self.wl_columns_open = snap.wl_columns_open;
         self.tape_open = snap.tape_open;
-        self.news_open = snap.news_open;
+        self.news.open = snap.news_open;
         self.journal_open = snap.journal_open;
         self.scanner.open = snap.scanner_open;
         self.scanner.builder_open = snap.scanner_builder_open;
