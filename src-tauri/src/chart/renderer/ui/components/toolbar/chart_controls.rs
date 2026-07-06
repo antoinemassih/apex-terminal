@@ -99,7 +99,7 @@ pub(crate) fn render(
                 let cur_secs = tf_to_secs(&panes[ap].timeframe);
                 let fav_tfs: Vec<&'static str> = ALL_TIMEFRAMES.iter()
                     .map(|t| t.0)
-                    .filter(|tf| watchlist.timeframe_favorites.iter().any(|f| f == tf))
+                    .filter(|tf| watchlist.timeframe.favorites.iter().any(|f| f == tf))
                     .collect();
                 if !fav_tfs.is_empty() {
                     let active_idx = fav_tfs.iter().position(|&tf| tf == panes[ap].timeframe).unwrap_or(0);
@@ -117,11 +117,11 @@ pub(crate) fn render(
                     }
                     ui.add_space(gap_xs());
                 }
-                let tf_dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.timeframe_dropdown_open, t);
+                let tf_dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.timeframe.dropdown_open, t);
                 Tooltip::new("Timeframe picker").show(ui, &tf_dd_btn, t);
                 if tf_dd_btn.clicked() {
-                    watchlist.timeframe_dropdown_open = !watchlist.timeframe_dropdown_open;
-                    watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
+                    watchlist.timeframe.dropdown_open = !watchlist.timeframe.dropdown_open;
+                    watchlist.timeframe.dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
                 }
                 // Dev Inspector — record the active timeframe and its dropdown trigger.
                 #[cfg(debug_assertions)]

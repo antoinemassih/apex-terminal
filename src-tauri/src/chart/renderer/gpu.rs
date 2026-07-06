@@ -5814,6 +5814,25 @@ impl Default for SignalsPanelState {
     }
 }
 
+/// Timeframe favorites/dropdown state (WS-E E3, Watchlist-split slice 12). 3
+/// timeframe_* fields. `favorites` mirrors the persisted SidebarState list
+/// (kept flat there). Explicit Default (8 preset timeframes).
+pub(crate) struct TimeframeState {
+    pub(crate) favorites: Vec<String>,
+    pub(crate) dropdown_open: bool,
+    pub(crate) dropdown_pos: egui::Pos2,
+}
+
+impl Default for TimeframeState {
+    fn default() -> Self {
+        Self {
+            favorites: vec!["1m".into(), "5m".into(), "15m".into(), "30m".into(), "1h".into(), "4h".into(), "1d".into(), "1wk".into()],
+            dropdown_open: false,
+            dropdown_pos: egui::Pos2::ZERO,
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6013,9 +6032,8 @@ pub(crate) struct Watchlist {
     pub(crate) pending_overlay_add: bool,
     pub(crate) layout_dropdown_pos: egui::Pos2,
     // Timeframe favorites (shown as segmented control; full list in dropdown)
-    pub(crate) timeframe_favorites: Vec<String>,
-    pub(crate) timeframe_dropdown_open: bool,
-    pub(crate) timeframe_dropdown_pos: egui::Pos2,
+    /// Timeframe favorites/dropdown state (WS-E E3 slice 12) — was 3 flat timeframe_* fields.
+    pub(crate) timeframe: TimeframeState,
     // Cross-pane tab drag state
     pub(crate) dragging_tab: Option<TabDragState>,
     // Pane templates (save/load indicator + toggle configs)
@@ -6266,8 +6284,7 @@ impl Watchlist {
                cmd_palette: CmdPaletteState::default(),
                layout_favorites: vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()],
                layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO, dragging_tab: None,
-               timeframe_favorites: vec!["1m".into(), "5m".into(), "15m".into(), "30m".into(), "1h".into(), "4h".into(), "1d".into(), "1wk".into()],
-               timeframe_dropdown_open: false, timeframe_dropdown_pos: egui::Pos2::ZERO,
+               timeframe: TimeframeState::default(),
                pending_overlay_add: false,
                pane_templates: vec![], pane_template_name: String::new(),
                portfolio_templates: vec!["Default".into()],
@@ -6765,7 +6782,7 @@ impl Watchlist {
         // P16 fix #1 — persist the PaneGrid tree if present.
         let pane_layout_clone = self.pane_layout.clone();
         let layout_favorites = self.layout_favorites.clone();
-        let timeframe_favorites = self.timeframe_favorites.clone();
+        let timeframe_favorites = self.timeframe.favorites.clone();
         let maximized_pane = self.maximized_pane;
         let pane_template_names: Vec<String> = self.pane_templates.iter().map(|(n, _)| n.clone()).collect();
         let portfolio_templates = self.portfolio_templates.clone();
@@ -6823,7 +6840,7 @@ impl Watchlist {
         // and ensure_pane_layout will materialize from the legacy template.
         self.pane_layout = snap.pane_layout.clone();
         self.layout_favorites = snap.layout_favorites;
-        self.timeframe_favorites = snap.timeframe_favorites;
+        self.timeframe.favorites = snap.timeframe_favorites;
         self.maximized_pane = snap.maximized_pane;
         // pane_template_names → pane_templates: names are restored; payloads
         // are loaded separately by load_templates(). We only restore names that

@@ -1,7 +1,7 @@
 //! Toolbar dropdown popups — extracted from `top_nav.rs`.
 //!
 //! Owns the two floating popup windows that appear below the toolbar:
-//!   - Timeframe picker  (`watchlist.timeframe_dropdown_open`)
+//!   - Timeframe picker  (`watchlist.timeframe.dropdown_open`)
 //!   - Layout picker     (`watchlist.layout_dropdown_open`)
 //!
 //! Both follow the same UX pattern: a borderless `egui::Window` anchored
@@ -27,7 +27,7 @@ use crate::chart_renderer::ui::style::{
 
 /// Render the timeframe-picker dropdown popup.
 ///
-/// No-op when `watchlist.timeframe_dropdown_open` is false.
+/// No-op when `watchlist.timeframe.dropdown_open` is false.
 pub(crate) fn render_timeframe_dropdown(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
@@ -38,11 +38,11 @@ pub(crate) fn render_timeframe_dropdown(
     use super::top_nav::{ALL_TIMEFRAMES, tf_to_secs, row_text_color};
 
     let appear = crate::ui_kit::widgets::motion::ease_bool(
-        ctx, egui::Id::new("timeframe_dd_appear"), watchlist.timeframe_dropdown_open,
+        ctx, egui::Id::new("timeframe_dd_appear"), watchlist.timeframe.dropdown_open,
         crate::ui_kit::widgets::motion::FAST);
-    if !watchlist.timeframe_dropdown_open && appear < 0.01 { return; }
+    if !watchlist.timeframe.dropdown_open && appear < 0.01 { return; }
 
-    let dd_pos = watchlist.timeframe_dropdown_pos;
+    let dd_pos = watchlist.timeframe.dropdown_pos;
     let mut close_dd = false;
     let mut switch_to_tf: Option<&'static str> = None;
     let cur_tf = panes[ap].timeframe.clone();
@@ -80,7 +80,7 @@ pub(crate) fn render_timeframe_dropdown(
                     last_section = section;
                 }
                 let is_cur = cur_tf == tf_label;
-                let is_fav = watchlist.timeframe_favorites.iter().any(|f| f == tf_label);
+                let is_fav = watchlist.timeframe.favorites.iter().any(|f| f == tf_label);
                 let row_min = ui.cursor().min;
                 let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(236.0, 24.0));
                 let hovered = hover_pos.map_or(false, |p| row_rect.contains(p));
@@ -105,8 +105,8 @@ pub(crate) fn render_timeframe_dropdown(
                 ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                 if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                    if is_fav { watchlist.timeframe_favorites.retain(|f| f != tf_label); }
-                    else { watchlist.timeframe_favorites.push(tf_label.to_string()); }
+                    if is_fav { watchlist.timeframe.favorites.retain(|f| f != tf_label); }
+                    else { watchlist.timeframe.favorites.push(tf_label.to_string()); }
                 }
 
                 let rh = hover_pos.map_or(false, |p| row_rect.contains(p)) && !sh;
@@ -140,8 +140,8 @@ pub(crate) fn render_timeframe_dropdown(
             panes[ap].pending_timeframe_change = Some(new_tf.to_string());
         }
     }
-    if close_dd { watchlist.timeframe_dropdown_open = false; }
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) { watchlist.timeframe_dropdown_open = false; }
+    if close_dd { watchlist.timeframe.dropdown_open = false; }
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) { watchlist.timeframe.dropdown_open = false; }
 }
 
 /// Render the layout-picker dropdown popup.
