@@ -35,7 +35,7 @@ pub(crate) enum OrderStatus { Draft, Placed, Executed, Cancelled }
 /// without losing information across the conversion.
 pub(crate) use order_manager::OrderState;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct OrderLevel {
     pub id: u32,
     pub side: OrderSide,
@@ -57,6 +57,106 @@ pub(crate) struct OrderLevel {
     /// Fill ratio for PartialFill rendering (filled_qty / qty in [0.0, 1.0]).
     /// Only meaningful when `state == OrderState::PartialFill`.
     pub filled_ratio: f32,
+}
+
+/// Pure "orders-as-view" reducer (WS-E E5 Phase 1). Given the current per-pane
+/// order list, the OrderManager's order levels for this symbol
+/// (`order_manager::all_order_levels_for`), and the id of the order being dragged
+/// (if any), returns what `chart.orders` should be after the per-frame reconcile
+/// in `render/pane/core.rs`. This is the reconcile logic extracted VERBATIM into a
+/// pure function so it can be unit-tested and shadow-verified before it becomes
+/// the single code path (Phase 2), retiring the stored-copy + per-frame mutation.
+///
+/// Merge rules (identical to the legacy in-place reconcile):
+///  - manager orders take precedence for `status`/`state`/`filled_ratio` ALWAYS,
+///    and for `price`/`qty` UNLESS that order is being dragged (the drag handler
+///    owns price/qty for the gesture's duration — the "snap-back" guard);
+///  - manager orders not present locally are appended;
+///  - local-only orders are kept only while non-cancelled.
+pub(crate) fn orders_view(
+    current: &[OrderLevel],
+    mgr: &[OrderLevel],
+    dragging: Option<u32>,
+) -> Vec<OrderLevel> {
+    let mut out = current.to_vec();
+    for mo in mgr {
+        if let Some(local) = out.iter_mut().find(|o| o.id == mo.id) {
+            local.status = mo.status;
+            local.state = mo.state;
+            local.filled_ratio = mo.filled_ratio;
+            if Some(local.id) != dragging {
+                local.price = mo.price;
+                local.qty = mo.qty;
+            }
+        } else {
+            out.push(mo.clone());
+        }
+    }
+    out.retain(|o| mgr.iter().any(|m| m.id == o.id) || o.status != OrderStatus::Cancelled);
+    out
+}
+
+#[cfg(test)]
+mod orders_view_tests {
+    use super::*;
+
+    fn lvl(id: u32, price: f32, qty: u32, status: OrderStatus, state: OrderState) -> OrderLevel {
+        OrderLevel {
+            id, side: OrderSide::Buy, price, qty, status, state,
+            pair_id: None, option_symbol: None, option_con_id: None,
+            trail_amount: None, trail_percent: None, filled_ratio: 0.0,
+        }
+    }
+
+    #[test]
+    fn appends_new_manager_order() {
+        let view = orders_view(&[], &[lvl(1, 100.0, 5, OrderStatus::Placed, OrderState::Working)], None);
+        assert_eq!(view.len(), 1);
+        assert_eq!(view[0].id, 1);
+        assert_eq!(view[0].price, 100.0);
+    }
+
+    #[test]
+    fn manager_updates_matched_price_qty_state() {
+        let cur = vec![lvl(1, 100.0, 5, OrderStatus::Placed, OrderState::PendingSubmit)];
+        let mgr = vec![lvl(1, 101.5, 7, OrderStatus::Placed, OrderState::Working)];
+        let view = orders_view(&cur, &mgr, None);
+        assert_eq!(view.len(), 1);
+        assert_eq!(view[0].price, 101.5);
+        assert_eq!(view[0].qty, 7);
+        assert_eq!(view[0].state, OrderState::Working);
+    }
+
+    #[test]
+    fn dragged_order_keeps_local_price_qty_but_syncs_state() {
+        // local carries the mid-drag price 100.0; manager still reads stale 99.0.
+        let cur = vec![lvl(1, 100.0, 5, OrderStatus::Placed, OrderState::Working)];
+        let mgr = vec![lvl(1, 99.0, 3, OrderStatus::Placed, OrderState::PendingModify)];
+        let view = orders_view(&cur, &mgr, Some(1));
+        assert_eq!(view[0].price, 100.0, "drag price must NOT be clobbered by stale manager read");
+        assert_eq!(view[0].qty, 5, "drag qty must be preserved");
+        assert_eq!(view[0].state, OrderState::PendingModify, "state is still synced during drag");
+    }
+
+    #[test]
+    fn drops_cancelled_local_only_keeps_active_local_only() {
+        let cur = vec![
+            lvl(1, 100.0, 5, OrderStatus::Cancelled, OrderState::Cancelled), // local-only cancelled -> drop
+            lvl(2, 101.0, 5, OrderStatus::Draft, OrderState::Draft),         // local-only draft -> keep
+        ];
+        let view = orders_view(&cur, &[], None);
+        assert_eq!(view.len(), 1);
+        assert_eq!(view[0].id, 2);
+    }
+
+    #[test]
+    fn keeps_manager_known_order_even_if_cancelled() {
+        // if the manager still reports it (60s retention window), keep it.
+        let cur = vec![lvl(1, 100.0, 5, OrderStatus::Cancelled, OrderState::Cancelled)];
+        let mgr = vec![lvl(1, 100.0, 5, OrderStatus::Cancelled, OrderState::Cancelled)];
+        let view = orders_view(&cur, &mgr, None);
+        assert_eq!(view.len(), 1);
+    }
 }
 
 impl OrderState {

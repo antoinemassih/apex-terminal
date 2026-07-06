@@ -227,6 +227,11 @@ fn render_chart_pane(
     {
         let dragging_order_id = chart.dragging_order;
         let mgr_orders = crate::chart_renderer::trading::order_manager::all_order_levels_for(&chart.symbol);
+        // WS-E E5 Phase 1: shadow-verify the pure `orders_view` reducer against
+        // this legacy in-place reconcile. Debug-only — compiled out of release,
+        // so zero live-money cost. Snapshot the pre-reconcile state here.
+        #[cfg(debug_assertions)]
+        let _e5_before = chart.orders.clone();
         // Update existing local orders with manager state, add new ones.
         // Sync the full lifecycle `state` and `filled_ratio` so the renderer
         // can paint pending-pulse / partial-fill / unknown / ghost-filled.
@@ -251,6 +256,15 @@ fn render_chart_pane(
             if mgr_orders.iter().any(|m| m.id == o.id) { return true; } // manager knows about it
             o.status != OrderStatus::Cancelled // keep non-cancelled local-only orders
         });
+        // WS-E E5 Phase 1 shadow assert: the pure reducer must reproduce this
+        // in-place reconcile EXACTLY. If it ever fires during a corpus/scenario
+        // run, the extraction missed hidden state — stop before the Phase 2 switch.
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(
+            crate::chart_renderer::trading::orders_view(&_e5_before, &mgr_orders, dragging_order_id),
+            chart.orders,
+            "orders_view diverged from the legacy per-frame order reconcile",
+        );
     }
     let is_active = pane_idx == *active_pane;
     let _t_owned = get_theme(chart.theme_idx);
