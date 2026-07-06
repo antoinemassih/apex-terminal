@@ -214,57 +214,18 @@ fn render_chart_pane(
     }
 
     // ── Sync orders from OrderManager (single source of truth) ──
-    // Merge: OrderManager orders take precedence, keep local-only orders too.
-    //
-    // Exception: while an order line is being dragged the user IS the source of
-    // truth for that order's price/qty for the duration of the gesture. The
-    // drag handler updates `chart.orders[i].price` each frame; the broker round
-    // trip is async, so the manager's `mo.price` still reads the pre-drag value
-    // for several frames. Without this guard the sync would clobber the
-    // user's in-flight edits and the line would visually "snap back" each
-    // frame — the symptom was the line not following the cursor and only
-    // showing the final position when the drag stopped.
+    // WS-E E5 Phase 2: the per-frame reconcile is now the single pure reducer
+    // `trading::orders_view` (extracted in Phase 1 and shadow-verified byte-
+    // identical against the old hand-rolled in-place merge across the full 1067
+    // corpus, incl. every order-seeding scenario). All merge rules — manager
+    // precedence for state/price/qty, append-new, drop cancelled-local-only, and
+    // the drag "snap-back" guard (the dragged order keeps the user's in-flight
+    // price/qty while state still syncs) — now live in one tested function.
+    // The submit/modify path (OrderManager) is untouched and stays paper-guarded.
     {
         let dragging_order_id = chart.dragging_order;
         let mgr_orders = crate::chart_renderer::trading::order_manager::all_order_levels_for(&chart.symbol);
-        // WS-E E5 Phase 1: shadow-verify the pure `orders_view` reducer against
-        // this legacy in-place reconcile. Debug-only — compiled out of release,
-        // so zero live-money cost. Snapshot the pre-reconcile state here.
-        #[cfg(debug_assertions)]
-        let _e5_before = chart.orders.clone();
-        // Update existing local orders with manager state, add new ones.
-        // Sync the full lifecycle `state` and `filled_ratio` so the renderer
-        // can paint pending-pulse / partial-fill / unknown / ghost-filled.
-        for mo in &mgr_orders {
-            if let Some(local) = chart.orders.iter_mut().find(|o| o.id == mo.id) {
-                local.status = mo.status;
-                local.state = mo.state;
-                local.filled_ratio = mo.filled_ratio;
-                // Skip price/qty sync for the currently-dragged order so the
-                // drag handler's frame-by-frame updates aren't overwritten by
-                // a stale manager read.
-                if Some(local.id) != dragging_order_id {
-                    local.price = mo.price;
-                    local.qty = mo.qty;
-                }
-            } else {
-                chart.orders.push(mo.clone());
-            }
-        }
-        // Remove local orders that were cancelled/filled in the manager
-        chart.orders.retain(|o| {
-            if mgr_orders.iter().any(|m| m.id == o.id) { return true; } // manager knows about it
-            o.status != OrderStatus::Cancelled // keep non-cancelled local-only orders
-        });
-        // WS-E E5 Phase 1 shadow assert: the pure reducer must reproduce this
-        // in-place reconcile EXACTLY. If it ever fires during a corpus/scenario
-        // run, the extraction missed hidden state — stop before the Phase 2 switch.
-        #[cfg(debug_assertions)]
-        debug_assert_eq!(
-            crate::chart_renderer::trading::orders_view(&_e5_before, &mgr_orders, dragging_order_id),
-            chart.orders,
-            "orders_view diverged from the legacy per-frame order reconcile",
-        );
+        chart.orders = crate::chart_renderer::trading::orders_view(&chart.orders, &mgr_orders, dragging_order_id);
     }
     let is_active = pane_idx == *active_pane;
     let _t_owned = get_theme(chart.theme_idx);
