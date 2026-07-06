@@ -27,7 +27,7 @@ pub(crate) fn draw_content(
     watchlist: &mut Watchlist,
     t: &Theme,
 ) {
-    let entries = &watchlist.journal_entries;
+    let entries = &watchlist.journal_panel.entries;
     if entries.is_empty() {
         PanelEmpty::new("No trades logged")
             .glyph(Icon::NOTEBOOK)
@@ -63,7 +63,7 @@ pub(crate) fn draw_content(
 /// Rail registration — see [`super::right_rail`].
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "journal",
-    is_open: |w| w.journal_panel_open,
+    is_open: |w| w.journal_panel.open,
     render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
 };
 
@@ -73,7 +73,7 @@ pub(crate) fn draw(
     t: &Theme,
     slot: Option<super::side_panel_shell::RailSlot>,
 ) {
-    if !watchlist.journal_panel_open { return; }
+    if !watchlist.journal_panel.open { return; }
 
     let resp = SidePanelShell::new("journal_panel", "TRADE JOURNAL")
         .width(Width::Medium)
@@ -83,7 +83,7 @@ pub(crate) fn draw(
         )
         .rail_slot(slot)
         .show(ctx, t, |ui, t| {
-            if watchlist.journal_entries.is_empty() {
+            if watchlist.journal_panel.entries.is_empty() {
                 ui.add_space(gap_3xl());
                 PanelEmpty::new("No trades logged")
                     .glyph(Icon::NOTEBOOK)
@@ -93,7 +93,7 @@ pub(crate) fn draw(
             }
 
             egui::ScrollArea::vertical().id_salt("journal_main").show(ui, |ui| {
-                let entries = &watchlist.journal_entries;
+                let entries = &watchlist.journal_panel.entries;
 
                 PanelSection::new("SUMMARY")
                     .show(ui, t, |ui, t| draw_summary(ui, entries, t));
@@ -101,10 +101,10 @@ pub(crate) fn draw(
                 PanelSection::new("INSIGHTS")
                     .show(ui, t, |ui, t| draw_insights(ui, entries, t));
 
-                let total = watchlist.journal_entries.len();
+                let total = watchlist.journal_panel.entries.len();
                 PanelSection::new("TRADE LOG").count(total).show(ui, t, |ui, t| {
                     if total <= TRADE_LOG_PAGE_SIZE {
-                        for entry in &watchlist.journal_entries {
+                        for entry in &watchlist.journal_panel.entries {
                             let data = TradeCardData {
                                 symbol:        &entry.symbol,
                                 side:          &entry.side,
@@ -122,13 +122,13 @@ pub(crate) fn draw(
                         }
                     } else {
                         let total_pages = (total + TRADE_LOG_PAGE_SIZE - 1) / TRADE_LOG_PAGE_SIZE;
-                        if watchlist.journal_page >= total_pages {
-                            watchlist.journal_page = total_pages - 1;
+                        if watchlist.journal_panel.page >= total_pages {
+                            watchlist.journal_panel.page = total_pages - 1;
                         }
-                        let page = watchlist.journal_page;
+                        let page = watchlist.journal_panel.page;
                         let start = page * TRADE_LOG_PAGE_SIZE;
                         let end = (start + TRADE_LOG_PAGE_SIZE).min(total);
-                        for entry in &watchlist.journal_entries[start..end] {
+                        for entry in &watchlist.journal_panel.entries[start..end] {
                             let data = TradeCardData {
                                 symbol:        &entry.symbol,
                                 side:          &entry.side,
@@ -147,7 +147,7 @@ pub(crate) fn draw(
                         ui.add_space(gap_xs());
                         ui.horizontal(|ui| {
                             ui.add_space(gap_sm());
-                            let _ = Pagination::new(&mut watchlist.journal_page, total_pages)
+                            let _ = Pagination::new(&mut watchlist.journal_panel.page, total_pages)
                                 .show(ui, t);
                         });
                     }

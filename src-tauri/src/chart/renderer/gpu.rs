@@ -5854,6 +5854,22 @@ impl Default for IndicatorsState {
     }
 }
 
+/// Trade-journal PANEL state (WS-E E3, Watchlist-split slice 14). 3 fields
+/// (journal_panel_open/entries/page). Distinct from `journal_open` (the
+/// Book-tab journal toggle, which stays a flat Watchlist field). `open` mirrors
+/// the persisted SidebarState flag. Default seeds placeholder journal entries.
+pub(crate) struct JournalPanelState {
+    pub(crate) open: bool,
+    pub(crate) entries: Vec<JournalEntry>,
+    pub(crate) page: usize,
+}
+
+impl Default for JournalPanelState {
+    fn default() -> Self {
+        Self { open: false, entries: generate_placeholder_journal(), page: 0 }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6133,10 +6149,8 @@ pub(crate) struct Watchlist {
     pub(crate) feed_panel: FeedPanelState,
     // Playbook sidebar
     pub(crate) playbook_panel_open: bool,
-    // Trade Journal
-    pub(crate) journal_panel_open: bool,
-    pub(crate) journal_entries: Vec<JournalEntry>,
-    pub(crate) journal_page: usize,
+    // Trade Journal panel (WS-E E3 slice 14) — was journal_panel_open/entries/page.
+    pub(crate) journal_panel: JournalPanelState,
     // Book pane tab (Positions/Orders + Journal)
     pub(crate) book_tab: crate::chart_renderer::BookTab,
     // ── SOTA UX (Agent A) — ProvenancePane state ────────────────────────────
@@ -6341,9 +6355,7 @@ impl Watchlist {
                indicators: IndicatorsState::default(),
                feed_panel: FeedPanelState::default(),
                playbook_panel_open: false,
-               journal_panel_open: false,
-               journal_entries: generate_placeholder_journal(),
-               journal_page: 0,
+               journal_panel: JournalPanelState::default(),
                book_tab: crate::chart_renderer::BookTab::Book,
                provenance: ProvenanceState::default(),
                // Wave 12c: queue-backed bus. Publishers push events; the
@@ -6686,7 +6698,7 @@ impl Watchlist {
         let indicators_section_fracs = self.indicators.section_fracs;
         let feed_panel_open = self.feed_panel.open;
         let playbook_panel_open = self.playbook_panel_open;
-        let journal_panel_open = self.journal_panel_open;
+        let journal_panel_open = self.journal_panel.open;
         let provenance_open = self.provenance.open;
         let replay_pane_open = self.replay_pane_open;
         let hotkey_editor_open = self.hotkey_editor_open;
@@ -6770,7 +6782,7 @@ impl Watchlist {
         self.indicators.section_fracs = snap.indicators_section_fracs;
         self.feed_panel.open = snap.feed_panel_open;
         self.playbook_panel_open = snap.playbook_panel_open;
-        self.journal_panel_open = snap.journal_panel_open;
+        self.journal_panel.open = snap.journal_panel_open;
         self.provenance.open = snap.provenance_open;
         self.replay_pane_open = snap.replay_pane_open;
         self.hotkey_editor_open = snap.hotkey_editor_open;
