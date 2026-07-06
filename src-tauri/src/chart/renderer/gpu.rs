@@ -5903,6 +5903,30 @@ pub(crate) struct TapeState {
     pub(crate) entries: Vec<TapeRow>,
 }
 
+/// Pane split-ratio + divider-drag state (WS-E E3, Watchlist-split slice 18).
+/// 8 split ratios (persisted to workspace + global-settings JSON under the
+/// UNCHANGED "pane_split_*" / "splits" keys) + the transient `dragging` flag
+/// (was `pane_divider_dragging`; not persisted/synced). The persisted subset
+/// also mirrors the flat pane_split_* fields on both `SidebarState` and the
+/// `LoadedSettings` apply-step — those stay flat there.
+pub(crate) struct PaneSplitState {
+    pub(crate) h: f32,
+    pub(crate) v: f32,
+    pub(crate) h2: f32,
+    pub(crate) v2: f32,
+    pub(crate) v3: f32,
+    pub(crate) v4: f32,
+    pub(crate) v5: f32,
+    pub(crate) v6: f32,
+    pub(crate) dragging: bool,
+}
+
+impl Default for PaneSplitState {
+    fn default() -> Self {
+        Self { h: 0.5, v: 0.5, h2: 0.5, v2: 0.5, v3: 0.5, v4: 0.5, v5: 0.5, v6: 0.5, dragging: false }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6055,17 +6079,9 @@ pub(crate) struct Watchlist {
     /// `workspace_to_json` can persist it without threading `active_pane`
     /// through every `save_workspace` call site.
     pub(crate) active_pane_idx: usize,
-    // Pane split ratios (for resizable panes)
-    pub(crate) pane_split_h: f32, // primary vertical divider ratio
-    pub(crate) pane_split_v: f32, // primary horizontal divider ratio
-    pub(crate) pane_split_h2: f32, // secondary vertical divider ratio (for 3-column layouts)
-    pub(crate) pane_split_v2: f32, // secondary horizontal divider ratio (for 3-row layouts)
-    // Extra horizontal dividers for multi-pane right/left columns (FiveL, SixL, EightH)
-    pub(crate) pane_split_v3: f32,
-    pub(crate) pane_split_v4: f32,
-    pub(crate) pane_split_v5: f32,
-    pub(crate) pane_split_v6: f32,
-    pub(crate) pane_divider_dragging: bool,
+    // Pane split ratios + divider drag (WS-E E3 slice 18) — was 8 pane_split_*
+    // ratio fields + pane_divider_dragging, grouped into PaneSplitState.
+    pub(crate) pane_split: PaneSplitState,
     /// Phase-1 PaneGrid topology. `None` = legacy 19-template + 8-split path
     /// (older workspaces). `Some` = recursive split tree drives layout.
     /// Watchlist is persisted via a hand-rolled JSON path (not serde-derived);
@@ -6330,9 +6346,7 @@ impl Watchlist {
                workspace_nav_expanded: false, pending_new_blank: false,
                workspace_rename_target: None, workspace_rename_buf: String::new(),
                active_pane_idx: 0,
-               pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5,
-               pane_split_v3: 0.5, pane_split_v4: 0.5, pane_split_v5: 0.5, pane_split_v6: 0.5,
-               pane_divider_dragging: false,
+               pane_split: PaneSplitState::default(),
                // Phase 1 PaneGrid topology — None means "use legacy 8-fraction path".
                // Migration happens on first user action that depends on the tree.
                pane_layout: None,
@@ -6821,14 +6835,14 @@ impl Watchlist {
             crate::state::PersistedLinkGroup { name: g.name.clone(), color_rgba: [r, g2, b, a] }
         }).collect();
         let broadcast_mode = self.broadcast_mode;
-        let pane_split_h = self.pane_split_h;
-        let pane_split_v = self.pane_split_v;
-        let pane_split_h2 = self.pane_split_h2;
-        let pane_split_v2 = self.pane_split_v2;
-        let pane_split_v3 = self.pane_split_v3;
-        let pane_split_v4 = self.pane_split_v4;
-        let pane_split_v5 = self.pane_split_v5;
-        let pane_split_v6 = self.pane_split_v6;
+        let pane_split_h = self.pane_split.h;
+        let pane_split_v = self.pane_split.v;
+        let pane_split_h2 = self.pane_split.h2;
+        let pane_split_v2 = self.pane_split.v2;
+        let pane_split_v3 = self.pane_split.v3;
+        let pane_split_v4 = self.pane_split.v4;
+        let pane_split_v5 = self.pane_split.v5;
+        let pane_split_v6 = self.pane_split.v6;
         // P16 fix #1 — persist the PaneGrid tree if present.
         let pane_layout_clone = self.pane_layout.clone();
         let layout_favorites = self.layout_favorites.clone();
@@ -6877,14 +6891,14 @@ impl Watchlist {
             ),
         }).collect();
         self.broadcast_mode = snap.broadcast_mode;
-        self.pane_split_h = snap.pane_split_h;
-        self.pane_split_v = snap.pane_split_v;
-        self.pane_split_h2 = snap.pane_split_h2;
-        self.pane_split_v2 = snap.pane_split_v2;
-        self.pane_split_v3 = snap.pane_split_v3;
-        self.pane_split_v4 = snap.pane_split_v4;
-        self.pane_split_v5 = snap.pane_split_v5;
-        self.pane_split_v6 = snap.pane_split_v6;
+        self.pane_split.h = snap.pane_split_h;
+        self.pane_split.v = snap.pane_split_v;
+        self.pane_split.h2 = snap.pane_split_h2;
+        self.pane_split.v2 = snap.pane_split_v2;
+        self.pane_split.v3 = snap.pane_split_v3;
+        self.pane_split.v4 = snap.pane_split_v4;
+        self.pane_split.v5 = snap.pane_split_v5;
+        self.pane_split.v6 = snap.pane_split_v6;
         // P16 fix #1 — restore the saved tree if present. Older workspaces
         // omit pane_layout (#[serde(default)]) so loading them yields None,
         // and ensure_pane_layout will materialize from the legacy template.
@@ -8014,14 +8028,14 @@ impl App {
         crate::ui_kit::style::set_corner_scale_override(wl.corner_scale_override);
         crate::ui_kit::style::set_spacing_scale_override(wl.spacing_scale_override);
         crate::ui_kit::style::set_motion_speed_override(wl.motion_speed_override);
-        wl.pane_split_h = loaded_settings.pane_split_h;
-        wl.pane_split_v = loaded_settings.pane_split_v;
-        wl.pane_split_h2 = loaded_settings.pane_split_h2;
-        wl.pane_split_v2 = loaded_settings.pane_split_v2;
-        wl.pane_split_v3 = loaded_settings.pane_split_v3;
-        wl.pane_split_v4 = loaded_settings.pane_split_v4;
-        wl.pane_split_v5 = loaded_settings.pane_split_v5;
-        wl.pane_split_v6 = loaded_settings.pane_split_v6;
+        wl.pane_split.h = loaded_settings.pane_split_h;
+        wl.pane_split.v = loaded_settings.pane_split_v;
+        wl.pane_split.h2 = loaded_settings.pane_split_h2;
+        wl.pane_split.v2 = loaded_settings.pane_split_v2;
+        wl.pane_split.v3 = loaded_settings.pane_split_v3;
+        wl.pane_split.v4 = loaded_settings.pane_split_v4;
+        wl.pane_split.v5 = loaded_settings.pane_split_v5;
+        wl.pane_split.v6 = loaded_settings.pane_split_v6;
         // Wave 14c: overlay the typed UiSettings aggregate if present,
         // overriding the legacy `settings` blob values. Cold-start (no
         // file yet) keeps the legacy-derived values in place.
@@ -8619,14 +8633,14 @@ impl ApplicationHandler for App {
                             // per-pane symbol-load triggered by pending_symbol_change.
                             if let Some(splits) = json.get("splits") {
                                 let gf = |k: &str, def: f32| splits.get(k).and_then(|v| v.as_f64()).map(|f| f as f32).unwrap_or(def);
-                                cw.watchlist.pane_split_h  = gf("h",  0.5);
-                                cw.watchlist.pane_split_v  = gf("v",  0.5);
-                                cw.watchlist.pane_split_h2 = gf("h2", 0.5);
-                                cw.watchlist.pane_split_v2 = gf("v2", 0.5);
-                                cw.watchlist.pane_split_v3 = gf("v3", 0.5);
-                                cw.watchlist.pane_split_v4 = gf("v4", 0.5);
-                                cw.watchlist.pane_split_v5 = gf("v5", 0.5);
-                                cw.watchlist.pane_split_v6 = gf("v6", 0.5);
+                                cw.watchlist.pane_split.h  = gf("h",  0.5);
+                                cw.watchlist.pane_split.v  = gf("v",  0.5);
+                                cw.watchlist.pane_split.h2 = gf("h2", 0.5);
+                                cw.watchlist.pane_split.v2 = gf("v2", 0.5);
+                                cw.watchlist.pane_split.v3 = gf("v3", 0.5);
+                                cw.watchlist.pane_split.v4 = gf("v4", 0.5);
+                                cw.watchlist.pane_split.v5 = gf("v5", 0.5);
+                                cw.watchlist.pane_split.v6 = gf("v6", 0.5);
                             }
                             // Restore the saved pane-geometry tree ONLY if it is
                             // consistent with the restored pane count. A stale tree

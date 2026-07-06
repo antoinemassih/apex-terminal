@@ -8821,11 +8821,11 @@ fn render_chart_pane(
         if let Some(pos) = resp.interact_pointer_pos() {
             let zone = pointer_zone(pos);
             match zone {
-                Zone::XAxis if !watchlist.pane_divider_dragging => {
+                Zone::XAxis if !watchlist.pane_split.dragging => {
                     chart.axis_drag_mode = 1; // x-axis zoom drag
                     event_consumed = true;
                 }
-                Zone::YAxis if !watchlist.pane_divider_dragging => {
+                Zone::YAxis if !watchlist.pane_split.dragging => {
                     chart.axis_drag_mode = 2; // y-axis zoom drag
                     event_consumed = true;
                 }
@@ -10247,13 +10247,13 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     let ratio = dx / full_rect.width();
                     // First vertical divider → split_h, second → split_h2
                     if di == 0 {
-                        watchlist.pane_split_h = (watchlist.pane_split_h + ratio).clamp(0.15, 0.85);
+                        watchlist.pane_split.h = (watchlist.pane_split.h + ratio).clamp(0.15, 0.85);
                     } else {
-                        watchlist.pane_split_h2 = (watchlist.pane_split_h2 + ratio).clamp(0.15, 0.85);
+                        watchlist.pane_split.h2 = (watchlist.pane_split.h2 + ratio).clamp(0.15, 0.85);
                     }
-                    watchlist.pane_divider_dragging = true;
+                    watchlist.pane_split.dragging = true;
                 }
-                if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
+                if div_resp.drag_stopped() { watchlist.pane_split.dragging = false; }
             }
             // Horizontal dividers (drag up/down to adjust row heights)
             let actual_header_h = pane_tabs_header_h(watchlist);
@@ -10313,28 +10313,28 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     let is_eight_h = matches!(layout, crate::chart_renderer::gpu::Layout::EightH);
                     if is_left_col {
                         match col_div_idx {
-                            0 => watchlist.pane_split_v  = (watchlist.pane_split_v  + ratio).clamp(0.15, 0.85),
-                            1 => watchlist.pane_split_v2 = (watchlist.pane_split_v2 + ratio).clamp(0.15, 0.85),
-                            _ => watchlist.pane_split_v3 = (watchlist.pane_split_v3 + ratio).clamp(0.15, 0.85),
+                            0 => watchlist.pane_split.v  = (watchlist.pane_split.v  + ratio).clamp(0.15, 0.85),
+                            1 => watchlist.pane_split.v2 = (watchlist.pane_split.v2 + ratio).clamp(0.15, 0.85),
+                            _ => watchlist.pane_split.v3 = (watchlist.pane_split.v3 + ratio).clamp(0.15, 0.85),
                         }
                     } else if is_eight_h {
                         // EightH right col uses split_v4/v5/v6
                         match col_div_idx {
-                            0 => watchlist.pane_split_v4 = (watchlist.pane_split_v4 + ratio).clamp(0.15, 0.85),
-                            1 => watchlist.pane_split_v5 = (watchlist.pane_split_v5 + ratio).clamp(0.15, 0.85),
-                            _ => watchlist.pane_split_v6 = (watchlist.pane_split_v6 + ratio).clamp(0.15, 0.85),
+                            0 => watchlist.pane_split.v4 = (watchlist.pane_split.v4 + ratio).clamp(0.15, 0.85),
+                            1 => watchlist.pane_split.v5 = (watchlist.pane_split.v5 + ratio).clamp(0.15, 0.85),
+                            _ => watchlist.pane_split.v6 = (watchlist.pane_split.v6 + ratio).clamp(0.15, 0.85),
                         }
                     } else {
                         // FiveL/SixL/FourL right col uses split_v2/v3/v4
                         match col_div_idx {
-                            0 => watchlist.pane_split_v2 = (watchlist.pane_split_v2 + ratio).clamp(0.15, 0.85),
-                            1 => watchlist.pane_split_v3 = (watchlist.pane_split_v3 + ratio).clamp(0.15, 0.85),
-                            _ => watchlist.pane_split_v4 = (watchlist.pane_split_v4 + ratio).clamp(0.15, 0.85),
+                            0 => watchlist.pane_split.v2 = (watchlist.pane_split.v2 + ratio).clamp(0.15, 0.85),
+                            1 => watchlist.pane_split.v3 = (watchlist.pane_split.v3 + ratio).clamp(0.15, 0.85),
+                            _ => watchlist.pane_split.v4 = (watchlist.pane_split.v4 + ratio).clamp(0.15, 0.85),
                         }
                     }
-                    watchlist.pane_divider_dragging = true;
+                    watchlist.pane_split.dragging = true;
                 }
-                if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
+                if div_resp.drag_stopped() { watchlist.pane_split.dragging = false; }
             }
         }
 

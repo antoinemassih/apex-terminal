@@ -115,10 +115,10 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
         // the layout so split positions survive a save/load round-trip.
         "pane_layout": serde_json::to_value(&wl.pane_layout).unwrap_or(serde_json::Value::Null),
         "splits": {
-            "h":  wl.pane_split_h,  "v":  wl.pane_split_v,
-            "h2": wl.pane_split_h2, "v2": wl.pane_split_v2,
-            "v3": wl.pane_split_v3, "v4": wl.pane_split_v4,
-            "v5": wl.pane_split_v5, "v6": wl.pane_split_v6,
+            "h":  wl.pane_split.h,  "v":  wl.pane_split.v,
+            "h2": wl.pane_split.h2, "v2": wl.pane_split.v2,
+            "v3": wl.pane_split.v3, "v4": wl.pane_split.v4,
+            "v5": wl.pane_split.v5, "v6": wl.pane_split.v6,
         },
         // v4: per-workspace UI state — which side panels are open, the focused
         // pane, and the workspace-rail expand state. Restored on load so a
@@ -320,14 +320,14 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
             "show_y_axis": watchlist.show_y_axis,
             "shared_x_axis": watchlist.shared_x_axis,
             "shared_y_axis": watchlist.shared_y_axis,
-            "pane_split_h": watchlist.pane_split_h,
-            "pane_split_v": watchlist.pane_split_v,
-            "pane_split_h2": watchlist.pane_split_h2,
-            "pane_split_v2": watchlist.pane_split_v2,
-            "pane_split_v3": watchlist.pane_split_v3,
-            "pane_split_v4": watchlist.pane_split_v4,
-            "pane_split_v5": watchlist.pane_split_v5,
-            "pane_split_v6": watchlist.pane_split_v6,
+            "pane_split_h": watchlist.pane_split.h,
+            "pane_split_v": watchlist.pane_split.v,
+            "pane_split_h2": watchlist.pane_split.h2,
+            "pane_split_v2": watchlist.pane_split.v2,
+            "pane_split_v3": watchlist.pane_split.v3,
+            "pane_split_v4": watchlist.pane_split.v4,
+            "pane_split_v5": watchlist.pane_split.v5,
+            "pane_split_v6": watchlist.pane_split.v6,
         },
     });
     let _ = crate::state::persistence::atomic_write(

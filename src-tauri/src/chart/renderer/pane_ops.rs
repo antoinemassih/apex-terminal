@@ -199,8 +199,8 @@ pub(crate) fn compute_pane_rects_for_frame(
     } else {
         legacy.pane_rects(
             full_rect, visible_count,
-            wl.pane_split_h, wl.pane_split_v, wl.pane_split_h2, wl.pane_split_v2,
-            wl.pane_split_v3, wl.pane_split_v4, wl.pane_split_v5, wl.pane_split_v6,
+            wl.pane_split.h, wl.pane_split.v, wl.pane_split.h2, wl.pane_split.v2,
+            wl.pane_split.v3, wl.pane_split.v4, wl.pane_split.v5, wl.pane_split.v6,
         )
     }
 }
