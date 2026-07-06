@@ -960,7 +960,7 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 let change_pct = ((f * 1.3) % 12.0) - 6.0;
                 cells.push((format!("HM{i:03}"), change_pct, 1.0e6 + (i as f64) * 5.0e5));
             }
-            watchlist.heatmap_cells = cells;
+            watchlist.heatmap.cells = cells;
         }
 
         #[cfg(debug_assertions)]

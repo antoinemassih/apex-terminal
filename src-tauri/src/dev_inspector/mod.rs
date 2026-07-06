@@ -1166,7 +1166,7 @@ pub fn end_frame(
             "sectors":     rrg_sectors_json,
         },
         "heatmap": {
-            "cell_count": watchlist.heatmap_cells.len(),
+            "cell_count": watchlist.heatmap.cells.len(),
         },
         "playbook": {
             "open":       watchlist.playbook_panel_open,

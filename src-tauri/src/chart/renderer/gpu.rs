@@ -4437,7 +4437,7 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                 }
             }
             ChartCommand::HeatmapBars { cells } => {
-                watchlist.heatmap_cells = cells.clone();
+                watchlist.heatmap.cells = cells.clone();
             }
             ChartCommand::TapeEntry { symbol, price, qty, time, is_buy } => {
                 watchlist.tape_entries.push(TapeRow {
@@ -5886,6 +5886,15 @@ impl Default for NewsState {
     }
 }
 
+/// Heatmap-pane data (WS-E E3, Watchlist-split slice 16). cells + last_fetch,
+/// cold-started from /api/stocks/grouped. `heatmap_templates` stays flat with
+/// the other *_templates lists. Not synced/persisted. All Default.
+#[derive(Default)]
+pub(crate) struct HeatmapState {
+    pub(crate) cells: Vec<(String, f32, f64)>,
+    pub(crate) last_fetch: Option<std::time::Instant>,
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6125,10 +6134,10 @@ pub(crate) struct Watchlist {
     pub(crate) journal_open: bool,
     // Scanner (WS-E E3 slice 3) — 12 scanner_* fields grouped into ScannerState.
     pub(crate) scanner: ScannerState,
-    // Heatmap pane — cold-started from /api/stocks/grouped/:date.
-    // Each cell: (symbol, change_pct, dollar_volume).
-    pub(crate) heatmap_cells: Vec<(String, f32, f64)>,
-    pub(crate) heatmap_last_fetch: Option<std::time::Instant>,
+    // Heatmap pane data (WS-E E3 slice 16) — was heatmap_cells + heatmap_last_fetch.
+    // Each cell: (symbol, change_pct, dollar_volume). Cold-started from
+    // /api/stocks/grouped/:date.
+    pub(crate) heatmap: HeatmapState,
     // Spread Builder panel
     pub(crate) spread_open: bool,
     pub(crate) maximized_pane: Option<usize>, // Some(idx) = pane shown fullscreen
@@ -6346,8 +6355,7 @@ impl Watchlist {
                news: NewsState::default(),
                journal_open: false,
                scanner: ScannerState::default(),
-               heatmap_cells: vec![],
-               heatmap_last_fetch: None,
+               heatmap: HeatmapState::default(),
                spread_open: false, maximized_pane: None,
                spread_state: super::ui::panels::spread_panel::SpreadState::default(),
                script: ScriptState::default(),
@@ -8276,7 +8284,7 @@ impl ApplicationHandler for App {
                             }
                         }
                         ChartCommand::HeatmapBars { ref cells } => {
-                            cw.watchlist.heatmap_cells = cells.clone();
+                            cw.watchlist.heatmap.cells = cells.clone();
                         }
                         ChartCommand::TapeEntry { ref symbol, price, qty, time, is_buy } => {
                             cw.watchlist.tape_entries.push(TapeRow {

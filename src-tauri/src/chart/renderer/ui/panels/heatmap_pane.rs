@@ -55,12 +55,12 @@ pub(crate) fn render(
     }
 
     // ── Cold-start / refresh ───────────────────────────────────────────────
-    let needs_fetch = match watchlist.heatmap_last_fetch {
+    let needs_fetch = match watchlist.heatmap.last_fetch {
         None => true,
         Some(t) => t.elapsed().as_secs() >= HEATMAP_REFRESH_INTERVAL_SECS,
     };
     if needs_fetch {
-        watchlist.heatmap_last_fetch = Some(std::time::Instant::now());
+        watchlist.heatmap.last_fetch = Some(std::time::Instant::now());
         super::super::super::io::fetch::fetch_heatmap_cold_start();
     }
 
@@ -69,7 +69,7 @@ pub(crate) fn render(
     // change_pct with live watchlist data when present.
     const TOP_N: usize = 60;
     let mut cells: Vec<HeatmapCell> = {
-        let mut src: Vec<(String, f32, f64)> = watchlist.heatmap_cells.clone();
+        let mut src: Vec<(String, f32, f64)> = watchlist.heatmap.cells.clone();
         src.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
         src.truncate(TOP_N);
         src.into_iter().map(|(symbol, change_pct, weight)| {
@@ -136,7 +136,7 @@ pub(crate) fn render(
     }
 
     if cells.is_empty() {
-        let msg = if watchlist.heatmap_last_fetch
+        let msg = if watchlist.heatmap.last_fetch
             .map_or(false, |inst| inst.elapsed().as_secs() > 15)
         {
             "Heatmap unavailable — check ApexData connection"
