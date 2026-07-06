@@ -128,7 +128,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
             "rail_expanded":      wl.workspace_nav_expanded,
             "object_tree_open":   wl.object_tree_open,
             "watchlist_open":     wl.open,
-            "signals_panel_open": wl.signals_panel_open,
+            "signals_panel_open": wl.signals_panel.open,
             "account_strip_open": wl.account_strip_open,
         },
     });

@@ -5794,6 +5794,26 @@ impl Default for FeedPanelState {
     }
 }
 
+/// Signals sidebar-panel state (WS-E E3, Watchlist-split slice 11). 3 fields
+/// (signals_panel_open/tab/splits). `open` mirrors both the persisted
+/// SidebarState flag AND the workspace JSON key "signals_panel_open" (string
+/// key unchanged). Explicit Default (tab Alerts).
+pub(crate) struct SignalsPanelState {
+    pub(crate) open: bool,
+    pub(crate) tab: crate::chart_renderer::SignalsTab,
+    pub(crate) splits: Vec<SplitSection<crate::chart_renderer::SignalsTab>>,
+}
+
+impl Default for SignalsPanelState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            tab: crate::chart_renderer::SignalsTab::Alerts,
+            splits: vec![SplitSection::new(crate::chart_renderer::SignalsTab::Alerts, 1.0)],
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6064,9 +6084,8 @@ pub(crate) struct Watchlist {
     pub(crate) analysis: AnalysisState,
     pub(crate) auto_chart_open: bool, // Auto-Charting side panel
     // Signals sidebar — subdivided sections
-    pub(crate) signals_panel_open: bool,
-    pub(crate) signals_tab: crate::chart_renderer::SignalsTab,
-    pub(crate) signals_splits: Vec<SplitSection<crate::chart_renderer::SignalsTab>>,
+    /// Signals sidebar-panel state (WS-E E3 slice 11) — was signals_panel_open/tab/splits.
+    pub(crate) signals_panel: SignalsPanelState,
     // Indicators panel — unified active list / library / tool toggles.
     pub(crate) indicators_panel_open: bool,
     pub(crate) indicators_panel_search: String,
@@ -6282,9 +6301,7 @@ impl Watchlist {
                rrg: RrgState::default(),
                analysis: AnalysisState::default(),
                auto_chart_open: false,
-               signals_panel_open: false,
-               signals_tab: crate::chart_renderer::SignalsTab::Alerts,
-               signals_splits: vec![SplitSection::new(crate::chart_renderer::SignalsTab::Alerts, 1.0)],
+               signals_panel: SignalsPanelState::default(),
                indicators_panel_open: false, indicators_panel_search: String::new(),
                indicators_lib_collapsed: std::collections::HashSet::new(),
                indicators_section_fracs: [0.18, 0.25, 0.57],
@@ -6630,7 +6647,7 @@ impl Watchlist {
         let rrg_open = self.rrg.open;
         let analysis_open = self.analysis.open;
         let auto_chart_open = self.auto_chart_open;
-        let signals_panel_open = self.signals_panel_open;
+        let signals_panel_open = self.signals_panel.open;
         let indicators_panel_open = self.indicators_panel_open;
         let indicators_section_fracs = self.indicators_section_fracs;
         let feed_panel_open = self.feed_panel.open;
@@ -6714,7 +6731,7 @@ impl Watchlist {
         self.rrg.open = snap.rrg_open;
         self.analysis.open = snap.analysis_open;
         self.auto_chart_open = snap.auto_chart_open;
-        self.signals_panel_open = snap.signals_panel_open;
+        self.signals_panel.open = snap.signals_panel_open;
         self.indicators_panel_open = snap.indicators_panel_open;
         self.indicators_section_fracs = snap.indicators_section_fracs;
         self.feed_panel.open = snap.feed_panel_open;
@@ -8565,7 +8582,7 @@ impl ApplicationHandler for App {
                                 cw.watchlist.workspace_nav_expanded = gb("rail_expanded", cw.watchlist.workspace_nav_expanded);
                                 cw.watchlist.object_tree_open   = gb("object_tree_open", false);
                                 cw.watchlist.open               = gb("watchlist_open", false);
-                                cw.watchlist.signals_panel_open = gb("signals_panel_open", false);
+                                cw.watchlist.signals_panel.open = gb("signals_panel_open", false);
                                 cw.watchlist.account_strip_open = gb("account_strip_open", false);
                                 let ap = ui.get("active_pane").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                                 cw.active_pane = ap.min(cw.panes.len().saturating_sub(1));

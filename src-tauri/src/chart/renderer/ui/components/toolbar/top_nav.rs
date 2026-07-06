@@ -1206,9 +1206,9 @@ pub(crate) fn render(
                 {
                     let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
                         + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
-                    let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel_open, t);
+                    let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel.open, t);
                     Tooltip::new("Signals (Alerts + Signals)").show(ui, &signals_resp, t);
-                    paint_nav_col_tint(ui, tb_rect, signals_resp.rect, t, signals_resp.hovered(), watchlist.signals_panel_open, "right_signals");
+                    paint_nav_col_tint(ui, tb_rect, signals_resp.rect, t, signals_resp.hovered(), watchlist.signals_panel.open, "right_signals");
                     sidebar_rect = Some(sidebar_rect.map_or(signals_resp.rect, |r: egui::Rect| r.union(signals_resp.rect)));
                     if active_count > 0 {
                         // Overlay a Badge at the top-right corner of the Signals button.

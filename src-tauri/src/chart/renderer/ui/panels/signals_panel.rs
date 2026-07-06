@@ -22,7 +22,7 @@ use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 /// (same header / colors / split system as the rest), hosted by the rail.
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "signals",
-    is_open: |w| w.signals_panel_open,
+    is_open: |w| w.signals_panel.open,
     render: |cx, slot| { draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot), None); },
 };
 
@@ -44,7 +44,7 @@ pub(crate) fn draw(
 ) -> bool {
     let is_spawn = instance_tab.is_some();
     let mut spawn_close = false;
-    if !is_spawn && !watchlist.signals_panel_open { return false; }
+    if !is_spawn && !watchlist.signals_panel.open { return false; }
 
     let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
     let pane_font = watchlist.pane_header_size.title_font();
@@ -52,7 +52,7 @@ pub(crate) fn draw(
     // Active tab: instance override (duplicate) or the base's first split slot.
     let mut active = match instance_tab.as_deref() {
         Some(v) => signals_tab_from_u8(*v),
-        None => watchlist.signals_splits.first().map(|s| s.tab).unwrap_or(SignalsTab::Alerts),
+        None => watchlist.signals_panel.splits.first().map(|s| s.tab).unwrap_or(SignalsTab::Alerts),
     };
     let tabs = [
         (SignalsTab::Alerts,  "ALERTS",  None),
@@ -85,8 +85,8 @@ pub(crate) fn draw(
 
     // Persist the active tab to its owner (instance store or base panel).
     if let Some(it) = instance_tab { *it = signals_tab_to_u8(active); }
-    else if let Some(s) = watchlist.signals_splits.first_mut() { s.tab = active; }
-    else { watchlist.signals_splits.push(SplitSection { tab: active, frac: 1.0 }); }
+    else if let Some(s) = watchlist.signals_panel.splits.first_mut() { s.tab = active; }
+    else { watchlist.signals_panel.splits.push(SplitSection { tab: active, frac: 1.0 }); }
     if resp.close_clicked {
         if is_spawn { spawn_close = true; }
         else { watchlist.update_sidebar_state(|s| s.signals_panel_open = false); }
