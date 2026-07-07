@@ -85,6 +85,9 @@ pub(crate) static PANELS: &[RailPanelDef] = &[
     super::auto_chart_panel::RAIL,
     super::feed_panel::RAIL,
     super::chart_library_panel::RAIL,
+    super::msg_rrg_panel::RAIL,
+    super::msg_influence_panel::RAIL,
+    super::msg_tension_panel::RAIL,
 ];
 
 // Per-panel height (session-only; persistence is a follow-up). Keyed by id.
