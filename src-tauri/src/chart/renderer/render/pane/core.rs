@@ -8848,6 +8848,45 @@ fn render_chart_pane(
                             event_consumed = true;
                         }
                     }
+                    // WS-E E5 groundwork (shadow, debug-only — compiled OUT of
+                    // release, zero live cost): cross-check the unified
+                    // line_pipeline spec against the live render pick, so the
+                    // spec table + priority resolver are proven byte-identical to
+                    // the hand-wired closures across the whole corpus before any
+                    // switch. Same method as orders-as-view Phase 1.
+                    #[cfg(debug_assertions)]
+                    {
+                        use crate::chart_renderer::line_pipeline::{LineKind, resolve_pick};
+                        // Alert + play are pure (hline ± axis gate) → re-derive
+                        // via the shared HitRule and assert parity. Order (badge
+                        // exclusion + status filter) and drawing (per-kind
+                        // geometry) carry extra logic, so they are checked only
+                        // at the priority-resolution level below.
+                        let alert_shadow = chart.price_alerts.iter()
+                            .filter(|a| !a.triggered && a.symbol == chart.symbol)
+                            .any(|a| LineKind::Alert.hit_rule().hits_vertical(pos.y, py(a.price)));
+                        debug_assert_eq!(alert_shadow, hover_alert.is_some(),
+                            "line_pipeline Alert rule diverged from render closure");
+                        let play_shadow = chart.play_lines.iter().any(|pl| {
+                            let r = LineKind::Play.hit_rule();
+                            r.hits_vertical(pos.y, py(pl.price)) && (!r.left_of_axis || pos.x < yaxis_x_left)
+                        });
+                        debug_assert_eq!(play_shadow, hover_play_line.is_some(),
+                            "line_pipeline Play rule diverged from render closure");
+                        // Priority resolution vs the render if-else chain.
+                        let mut hits = Vec::new();
+                        if hover_alert.is_some()     { hits.push(LineKind::Alert); }
+                        if hover_play_line.is_some() { hits.push(LineKind::Play); }
+                        if hover_order.is_some()     { hits.push(LineKind::Order); }
+                        if hover_hit.is_some()       { hits.push(LineKind::Drawing); }
+                        let render_pick = if hover_alert.is_some() { Some(LineKind::Alert) }
+                            else if hover_play_line.is_some() { Some(LineKind::Play) }
+                            else if hover_order.is_some() { Some(LineKind::Order) }
+                            else if hover_hit.is_some() { Some(LineKind::Drawing) }
+                            else { None };
+                        debug_assert_eq!(resolve_pick(&hits), render_pick,
+                            "line_pipeline::resolve_pick diverged from render drag-pick chain");
+                    }
                     // else: fall through to pan (handled below)
                 }
                 _ => {} // divider dragging — ignore axis zones
