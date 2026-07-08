@@ -36,10 +36,10 @@ pub fn write(tag: &str, msg: &str) {
         .unwrap_or(0);
     // Mirror to the unified tracing pipeline (Wave 1) so log lines flow
     // through the non-blocking file appender + stderr layer alongside the
-    // legacy /tmp file. The eprintln + direct file write are preserved so
-    // existing `tail -f` workflows keep working until Wave 6 retires them.
+    // legacy /tmp file. F2: the redundant `eprintln!` is retired — the tracing
+    // stderr layer already emits these lines; the direct file write is kept so
+    // existing `tail -f` workflows keep working.
     tracing::info!(target: "apex_data", tag = tag, "{}", msg);
-    eprintln!("[apex_data.debug][{tag}] {msg}");
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(log_path()) {
         let _ = writeln!(f, "{ts} [{tag}] {msg}");
     }

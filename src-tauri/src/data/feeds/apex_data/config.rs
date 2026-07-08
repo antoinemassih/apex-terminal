@@ -128,9 +128,14 @@ pub fn apex_redis_url() -> String {
     match std::env::var("APEX_REDIS_URL").ok().filter(|s| !s.is_empty()) {
         Some(url) => url,
         None => {
-            eprintln!(
-                "[config] APEX_REDIS_URL not set — bar cache disabled. \
-                 Set it (e.g. redis://:password@host:6379/) to enable."
+            // F2: route to the unified sink so the misconfig shows as a
+            // persistent in-app indicator (+ Prometheus count), not one-time
+            // stderr. Stable `code` dedups across repeat calls.
+            crate::data::connectivity::errors_sink::report(
+                crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                "config", "redis_url_unset",
+                "APEX_REDIS_URL not set — bar cache disabled. \
+                 Set it (e.g. redis://:password@host:6379/) to enable.",
             );
             "redis://127.0.0.1:6379/".to_string()
         }
@@ -149,9 +154,13 @@ pub fn apex_pg_url() -> String {
     match std::env::var("APEX_PG_URL").ok().filter(|s| !s.is_empty()) {
         Some(url) => url,
         None => {
-            eprintln!(
-                "[config] APEX_PG_URL not set — Postgres persistence disabled \
-                 (local JSON fallback). Set it (e.g. postgresql://user:pw@host:5432/db)."
+            // F2: persistent in-app indicator (+ Prometheus count) instead of
+            // one-time stderr. Stable `code` dedups across repeat calls.
+            crate::data::connectivity::errors_sink::report(
+                crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                "config", "pg_url_unset",
+                "APEX_PG_URL not set — Postgres persistence disabled \
+                 (local JSON fallback). Set it (e.g. postgresql://user:pw@host:5432/db).",
             );
             "postgresql://postgres@127.0.0.1:5432/apex".to_string()
         }
