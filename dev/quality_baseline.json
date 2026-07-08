@@ -1,5 +1,6 @@
 {
   "dead_code_allows": 46,
+  "eprintln_in_data": 0,
   "expect_total": 60,
   "file_loc": {
     "chart/renderer/gpu.rs": 10198,

@@ -89,6 +89,10 @@ def area_of(relpath):
 UNWRAP_RE = re.compile(r"\.unwrap\(\)")
 EXPECT_RE = re.compile(r"\.expect\(")
 DEAD_RE = re.compile(r"#\[allow\([^)]*dead_code")
+# F2: raw stderr in the data/ layer must route through errors_sink/tracing so a
+# misconfig surfaces as a persistent in-app indicator, not a one-time console
+# line. Require an open paren so prose mentions in doc-comments don't count.
+EPRINTLN_RE = re.compile(r"eprintln!\(")
 # Direct field mutation in ui/: `wl.foo = ` / `watchlist.foo = ` / `chart.foo = `
 # (crude but matches the audit's counting method; excludes ==, +=, <=, >=, !=).
 MUT_RE = re.compile(r"\b(watchlist|wl|chart)\.[a-z_][a-z0-9_]*\s*=\s*[^=]")
@@ -100,6 +104,7 @@ def collect():
         "expect_total": 0,
         "dead_code_allows": 0,
         "ui_direct_mutation": 0,
+        "eprintln_in_data": 0,
         "file_loc": {},   # relpath -> loc (only for files over soft ceiling)
     }
     for path in iter_rs_files():
@@ -127,6 +132,8 @@ def collect():
         counts["dead_code_allows"] += len(DEAD_RE.findall(text))
         if r.startswith("chart/renderer/ui/") or r == "chart/renderer/gpu.rs":
             counts["ui_direct_mutation"] += len(MUT_RE.findall(text))
+        if r.startswith("data/"):
+            counts["eprintln_in_data"] += len(EPRINTLN_RE.findall(text))
         loc = len(lines)
         if loc > FILE_LOC_SOFT:
             counts["file_loc"][r] = loc
@@ -157,7 +164,7 @@ def check(cur, base):
             nudges.append(f"unwrap[{area}] {c} < baseline {b} (-{b - c})")
 
     # scalar ratchets
-    for key in ("expect_total", "dead_code_allows", "ui_direct_mutation"):
+    for key in ("expect_total", "dead_code_allows", "ui_direct_mutation", "eprintln_in_data"):
         c, b = cur[key], base[key]
         if c > b:
             failures.append(f"{key} {c} > baseline {b} (+{c - b})")
