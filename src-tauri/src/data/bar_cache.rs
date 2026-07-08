@@ -99,8 +99,17 @@ pub fn is_connected() -> bool {
 /// Get cached bars. Returns None if cache miss or Redis unavailable.
 pub fn get(symbol: &str, timeframe: &str) -> Option<Vec<Bar>> {
     let k = key(symbol, timeframe);
-    let data: String = with_conn(|c| redis::cmd("GET").arg(&k).query(c))?;
-    serde_json::from_str(&data).ok()
+    let result = with_conn(|c| redis::cmd("GET").arg(&k).query::<String>(c))
+        .and_then(|data| serde_json::from_str::<Vec<Bar>>(&data).ok());
+    // F1: cache hit/miss visibility on :9091 (counter-only — this is called per
+    // chart load, so it must not push to the UI error ring). Counted only while
+    // the cache is connected, so the ratio reflects real effectiveness rather
+    // than a disabled cache reading as an endless miss stream.
+    if is_connected() {
+        use crate::data::connectivity::errors_sink::{count, ErrorLevel};
+        count(ErrorLevel::Info, "bar_cache", if result.is_some() { "hit" } else { "miss" });
+    }
+    result
 }
 
 /// Cache bars with appropriate TTL. Silently ignores errors.
