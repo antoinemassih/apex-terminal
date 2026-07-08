@@ -74,6 +74,18 @@ pub fn counts_snapshot() -> Vec<(&'static str, String, String, u64)> {
 ///
 /// Side effects: emits a tracing event and (for level >= Warn) routes a
 /// toast through `apex_data::live_state::push_toast` to preserve current UX.
+/// F1: bump the monotonic per-(level, source, code) Prometheus counter WITHOUT
+/// pushing to the UI error ring. Use for high-frequency metrics (e.g. broker
+/// order submits) that would otherwise flood the 200-entry tail the operator
+/// reads. `report()` funnels its own count through here too, so every reported
+/// event is still counted.
+pub fn count(level: ErrorLevel, source: &str, code: &str) {
+    if let Ok(mut c) = counters().lock() {
+        let key = (level_str(level), source.to_string(), code.to_string());
+        *c.entry(key).or_insert(0) += 1;
+    }
+}
+
 pub fn report(level: ErrorLevel, source: &str, code: &str, message: impl Into<String>) {
     let message = message.into();
     let rec = ReportedError {
@@ -95,12 +107,8 @@ pub fn report(level: ErrorLevel, source: &str, code: &str, message: impl Into<St
 
     // F1: bump the monotonic Prometheus counter for this (level, source, code)
     // BEFORE the Info early-return below, so info-level feed reconnects are
-    // observable too. `source`/`code` are borrowed &str here; only owned on the
-    // first sighting of a new pair.
-    if let Ok(mut c) = counters().lock() {
-        let key = (level_str(level), source.to_string(), code.to_string());
-        *c.entry(key).or_insert(0) += 1;
-    }
+    // observable too.
+    count(level, source, code);
 
     // Mirror to tracing so file/stderr logs capture the same event.
     match level {

@@ -2497,9 +2497,29 @@ impl OrderManager {
 
 // ─── Global API ─────────────────────────────────────────────────────────────
 
+/// F1: record a broker submit outcome for Prometheus. A rejection is surfaced
+/// through the visible errors_sink (the trader should see WHY an order was
+/// refused); every other outcome bumps a counter-only metric so the reject RATE
+/// is computable without flooding the 200-entry UI error ring. Exhaustive match
+/// so a new `OrderResult` variant forces a metrics decision here.
+fn record_submit_outcome(r: &OrderResult) {
+    use crate::data::connectivity::errors_sink::count;
+    match r {
+        OrderResult::Rejected(reason) =>
+            report(ErrorLevel::Warn, "broker", "order_rejected", reason.clone()),
+        OrderResult::Accepted(_) | OrderResult::NeedsConfirmation(_) =>
+            count(ErrorLevel::Info, "broker", "order_submitted"),
+        OrderResult::Duplicate =>
+            count(ErrorLevel::Info, "broker", "order_duplicate"),
+        OrderResult::NeedsApproval { .. } =>
+            count(ErrorLevel::Info, "broker", "order_needs_approval"),
+    }
+}
+
 /// Submit an order intent through the global manager
 pub(crate) fn submit_order(intent: OrderIntent) -> OrderResult {
     let r = with_mgr(|mgr| mgr.submit(intent));
+    record_submit_outcome(&r);
     with_mgr(|mgr| mgr.save_to_disk());
     r
 }
@@ -2669,6 +2689,7 @@ pub(crate) fn submit_and_get_id(intent: OrderIntent) -> Option<u64> {
 /// Submit a bracket order through the global manager
 pub(crate) fn submit_bracket_order(intent: OrderIntent, tp: f32, sl: f32) -> (OrderResult, Option<u64>, Option<u64>) {
     let r = with_mgr(|mgr| mgr.submit_bracket(intent, tp, sl));
+    record_submit_outcome(&r.0);
     with_mgr(|mgr| mgr.save_to_disk());
     r
 }
@@ -2676,6 +2697,7 @@ pub(crate) fn submit_bracket_order(intent: OrderIntent, tp: f32, sl: f32) -> (Or
 /// Submit an OCO order group through the global manager
 pub(crate) fn submit_oco_order(orders: Vec<OrderIntent>) -> Vec<OrderResult> {
     let r = with_mgr(|mgr| mgr.submit_oco(orders));
+    for res in &r { record_submit_outcome(res); }
     with_mgr(|mgr| mgr.save_to_disk());
     r
 }
@@ -2683,6 +2705,7 @@ pub(crate) fn submit_oco_order(orders: Vec<OrderIntent>) -> Vec<OrderResult> {
 /// Submit a conditional order through the global manager
 pub(crate) fn submit_conditional_order(intent: ConditionalOrderIntent) -> OrderResult {
     let r = with_mgr(|mgr| mgr.submit_conditional(intent));
+    record_submit_outcome(&r);
     with_mgr(|mgr| mgr.save_to_disk());
     r
 }
@@ -2699,6 +2722,7 @@ pub(crate) fn submit_options_trigger_order(
         qty, entry_price, entry_direction,
         exit_price, exit_direction,
     ));
+    record_submit_outcome(&r);
     with_mgr(|mgr| mgr.save_to_disk());
     r
 }
@@ -2708,6 +2732,7 @@ pub(crate) fn submit_combo_order(symbol: &str, legs: Vec<ComboLeg>,
     side: &str, qty: u32, order_type: &str, limit_price: Option<f32>,
 ) -> OrderResult {
     let r = with_mgr(|mgr| mgr.submit_combo(symbol, legs, side, qty, order_type, limit_price));
+    record_submit_outcome(&r);
     with_mgr(|mgr| mgr.save_to_disk());
     r
 }
@@ -3667,6 +3692,23 @@ fn start_broker_watchdog() {
 mod tests {
     use super::*;
     use crate::chart::renderer::trading::OrderSide;
+
+    /// F1: record_submit_outcome must bump the broker Prometheus counters —
+    /// `order_rejected` for a rejection, `order_submitted` for an accept — so
+    /// the reject rate is observable on :9091.
+    #[test]
+    fn record_submit_outcome_bumps_broker_counters() {
+        use crate::data::connectivity::errors_sink::counts_snapshot;
+        let get = |code: &str| counts_snapshot().into_iter()
+            .find(|(_, s, c, _)| s == "broker" && c == code)
+            .map(|(_, _, _, n)| n)
+            .unwrap_or(0);
+        let (rej0, sub0) = (get("order_rejected"), get("order_submitted"));
+        record_submit_outcome(&OrderResult::Rejected("unit-test reason".into()));
+        record_submit_outcome(&OrderResult::Accepted(1));
+        assert_eq!(get("order_rejected"), rej0 + 1, "reject must bump order_rejected");
+        assert_eq!(get("order_submitted"), sub0 + 1, "accept must bump order_submitted");
+    }
 
     fn fresh_manager() -> OrderManager {
         let mut m = OrderManager::new();
