@@ -2628,6 +2628,15 @@ pub(crate) fn all_order_levels_for(symbol: &str) -> Vec<OrderLevel> {
         .collect()
 }
 
+/// F4: the daily realized P&L the daily-loss guard evaluates, accumulated
+/// LOCALLY from recorded fills (no fees / broker settlement). This is an
+/// advisory estimate; prefer the broker-reported realized P&L when the account
+/// snapshot provides it. Leaf read — locks only the manager, no nested locks.
+pub(crate) fn realized_pnl_today() -> f32 {
+    let g = manager().lock().unwrap_or_else(|e| e.into_inner());
+    g.realized_pnl_today
+}
+
 /// Submit and return the new order ID (convenience for write sites that need the ID)
 pub(crate) fn submit_and_get_id(intent: OrderIntent) -> Option<u64> {
     let side = intent.side;

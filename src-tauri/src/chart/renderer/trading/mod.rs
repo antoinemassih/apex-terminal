@@ -224,6 +224,13 @@ pub(crate) struct AccountSummary {
     pub unrealized_pnl: f64,
     pub realized_pnl: f64,
     pub gross_position_value: f64,
+    /// F4: true when `daily_pnl` was reported by the broker (IB `dailyPnL`).
+    /// IB frequently omits this field (no reqPnL subscription), in which case
+    /// the daily figure is not broker-confirmed and the UI falls back to the
+    /// local daily-loss estimate labeled "advisory (local estimate)".
+    pub daily_pnl_from_broker: bool,
+    /// F4: true when `realized_pnl` was reported by the broker (IB `realizedPnL`).
+    pub realized_pnl_from_broker: bool,
     pub connected: bool,
     pub last_update: Option<std::time::Instant>,
 }
@@ -464,7 +471,11 @@ pub(crate) fn start_account_poller() {
                             summary.unrealized_pnl = json["unrealizedPnL"].as_f64().unwrap_or(0.0);
                         }
                         if summary.realized_pnl == 0.0 {
-                            summary.realized_pnl = json["realizedPnL"].as_f64().unwrap_or(0.0);
+                            // F4: mark broker-reported only when the field is present.
+                            if let Some(v) = json.get("realizedPnL").and_then(|x| x.as_f64()) {
+                                summary.realized_pnl = v;
+                                summary.realized_pnl_from_broker = true;
+                            }
                         }
                     }
                 }
@@ -474,9 +485,20 @@ pub(crate) fn start_account_poller() {
                     any_ok = true;
                     order_manager::mark_broker_contact();
                     if let Ok(json) = resp.json::<serde_json::Value>() {
-                        summary.daily_pnl = json["dailyPnL"].as_f64().unwrap_or(0.0);
+                        // F4: record provenance. Only treat the daily/realized
+                        // figures as broker-reported when the field is actually
+                        // present — IB omits dailyPnL without a reqPnL sub, in
+                        // which case the value stays at its default (0.0, as
+                        // before) and the UI flags it as a local estimate.
+                        if let Some(v) = json.get("dailyPnL").and_then(|x| x.as_f64()) {
+                            summary.daily_pnl = v;
+                            summary.daily_pnl_from_broker = true;
+                        }
                         summary.unrealized_pnl = json["unrealizedPnL"].as_f64().unwrap_or(0.0);
-                        summary.realized_pnl = json["realizedPnL"].as_f64().unwrap_or(0.0);
+                        if let Some(v) = json.get("realizedPnL").and_then(|x| x.as_f64()) {
+                            summary.realized_pnl = v;
+                            summary.realized_pnl_from_broker = true;
+                        }
                     }
                 }
 

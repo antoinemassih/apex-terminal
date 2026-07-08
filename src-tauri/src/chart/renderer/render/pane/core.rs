@@ -12053,7 +12053,16 @@ fn render_pnl_curve_overlay(
 
         // Value labels (Day / Unrealized) from the latest account snapshot.
         if let Some((ref acct, _, _)) = account_data_cached {
-            let daily = acct.daily_pnl;
+            // F4: prefer the broker's dailyPnL when present; otherwise fall back
+            // to the LOCAL estimate the daily-loss guard evaluates (realized
+            // fills only) and mark it "advisory (local estimate)" below, so a
+            // trader never mistakes it for a settled broker number.
+            let daily_is_broker = acct.daily_pnl_from_broker;
+            let daily = if daily_is_broker {
+                acct.daily_pnl
+            } else {
+                crate::chart_renderer::trading::order_manager::realized_pnl_today() as f64
+            };
             let unr = acct.unrealized_pnl;
             let pnl_color = if daily >= 0.0 { t.bull } else { t.bear };
             let unr_color = if unr >= 0.0 { t.bull } else { t.bear };
@@ -12078,6 +12087,17 @@ fn render_pnl_curve_overlay(
                 mono_xs_plus(),
                 unr_color,
             );
+            // F4: provenance tag — the daily figure is a local estimate until the
+            // broker reports dailyPnL (IB omits it without a reqPnL subscription).
+            if !daily_is_broker {
+                painter.text(
+                    egui::pos2(rect.left() + 8.0, pnl_top + 30.0),
+                    egui::Align2::LEFT_CENTER,
+                    "advisory (local estimate)",
+                    mono_xs(),
+                    t.warn.gamma_multiply(0.7),
+                );
+            }
             // Zero line
             let zero_y = pnl_top + pnl_h / 2.0;
             painter.line_segment(
