@@ -184,34 +184,18 @@ pub(super) fn execute(
             for chart in panes.iter_mut() {
                 chart.orders.retain(|o| o.status == OrderStatus::Executed);
             }
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .post(format!("{}/risk/flatten", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-            });
+            // WS-H #41a: guarded account-wide flatten via OrderManager.
+            crate::chart_renderer::trading::order_manager::flatten_all();
         }
         "cmd:cancel" => {
             for chart in panes.iter_mut() { chart.orders.clear(); }
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .delete(format!("{}/orders", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-            });
+            crate::chart_renderer::trading::order_manager::cancel_all_working();
         }
         "cmd:reverse" => {
-            // Placeholder — signal via API if present
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .post(format!("{}/risk/reverse", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-            });
+            crate::chart_renderer::trading::order_manager::reverse_all();
         }
         "cmd:halfsize" => {
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .post(format!("{}/risk/halve", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-            });
+            crate::chart_renderer::trading::order_manager::halve_all();
         }
         _ => {}
     }

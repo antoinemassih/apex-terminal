@@ -1331,22 +1331,16 @@ pub(crate) fn render(
                         || { do_flatten    = true; });
             });
         if do_cancel_all {
-            crate::chart_renderer::trading::order_manager::cancel_all_orders("");
+            // WS-H #41a: guarded cancel-all via OrderManager (was cancel_all("")
+            // + a raw broker DELETE that bypassed the paper guard/journal).
+            crate::chart_renderer::trading::order_manager::cancel_all_working();
             for chart in panes.iter_mut() { chart.orders.clear(); }
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .delete(format!("{}/orders", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-            });
         }
         if do_flatten {
-            crate::chart_renderer::trading::order_manager::cancel_all_orders("");
+            // WS-H #41a: guarded account-wide flatten via OrderManager (cancels
+            // working orders + market-closes each position through submit()).
+            crate::chart_renderer::trading::order_manager::flatten_all();
             for chart in panes.iter_mut() { chart.orders.retain(|o| o.status == OrderStatus::Executed); }
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .post(format!("{}/risk/flatten", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-            });
         }
     }
 

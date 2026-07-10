@@ -401,17 +401,11 @@ pub(super) fn handle_keyboard_shortcuts(
             crate::chart_renderer::trading::order_manager::cancel_all_orders("");
             chart.orders.retain(|o| o.status == OrderStatus::Executed);
             watchlist.selected_order_ids.clear();
-            // Flatten POST: only fire against a live broker; paper mode has no
-            // real positions to flatten and a raw HTTP call would reach a live
-            // endpoint even in paper mode (dangerous).
-            if !crate::chart_renderer::trading::order_manager::is_paper_mode() {
-                std::thread::spawn(|| {
-                    let _ = reqwest::blocking::Client::new()
-                        .post(format!("{}/risk/flatten", crate::chart_renderer::gpu::APEXIB_URL))
-                        .timeout(std::time::Duration::from_secs(5))
-                        .send();
-                });
-            }
+            // WS-H #41a: guarded account-wide flatten via OrderManager (paper
+            // guard, risk gate, kill/halt, journal). Replaces the raw broker HTTP
+            // — which even with the is_paper_mode() guard bypassed the journal and
+            // the kill/halt interlock.
+            crate::chart_renderer::trading::order_manager::flatten_all();
         }
         // Ctrl+Shift+K: Kill Switch — cancel all orders, flatten positions, and
         // halt new trading. Single handler: Halt Trading was relocated off ⌘⇧H

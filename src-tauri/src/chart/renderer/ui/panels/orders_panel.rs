@@ -165,40 +165,16 @@ fn draw_book(
                                                         .tone_destructive());
                                                     Tooltip::new("Close position").show(ui, &r, t);
                                                     if r.clicked() {
-                                                        let qty = pos.qty;
-                                                        let con_id = pos.con_id;
-                                                        std::thread::spawn(move || {
-                                                            let side = if qty > 0 { "SELL" } else { "BUY" };
-                                                            let _ = reqwest::blocking::Client::new()
-                                                                .post(format!("{}/orders", APEXIB_URL))
-                                                                .json(&serde_json::json!({
-                                                                    "conId": con_id, "side": side,
-                                                                    "quantity": qty.unsigned_abs(),
-                                                                    "orderType": "market"
-                                                                }))
-                                                                .timeout(std::time::Duration::from_secs(5))
-                                                                .send();
-                                                        });
+                                                        // WS-H #41a: route through OrderManager (paper guard,
+                                                        // risk gate, kill/halt, journal) — not raw broker HTTP.
+                                                        crate::chart_renderer::trading::order_manager::flatten_symbol(&pos.symbol, pos.qty);
                                                     }
                                                     if pos.qty.abs() > 1 {
                                                         if ui.add(Button::new("\u{00BD}")
                                                             .variant(Variant::Ghost)
                                                             .size(Size::Xs)).clicked() {
-                                                            let half = (pos.qty.abs() / 2).max(1);
-                                                            let con_id = pos.con_id;
-                                                            let qty = pos.qty;
-                                                            std::thread::spawn(move || {
-                                                                let side = if qty > 0 { "SELL" } else { "BUY" };
-                                                                let _ = reqwest::blocking::Client::new()
-                                                                    .post(format!("{}/orders", APEXIB_URL))
-                                                                    .json(&serde_json::json!({
-                                                                        "conId": con_id, "side": side,
-                                                                        "quantity": half,
-                                                                        "orderType": "market"
-                                                                    }))
-                                                                    .timeout(std::time::Duration::from_secs(5))
-                                                                    .send();
-                                                            });
+                                                            // WS-H #41a: guarded half-close via OrderManager.
+                                                            crate::chart_renderer::trading::order_manager::halve_position(&pos.symbol, pos.qty);
                                                         }
                                                     }
                                                 });
@@ -245,12 +221,8 @@ fn draw_book(
             });
 
         if resp.action_clicked && has_positions {
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .post(format!("{}/risk/flatten", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5))
-                    .send();
-            });
+            // WS-H #41a: guarded account-wide flatten via OrderManager.
+            crate::chart_renderer::trading::order_manager::flatten_all();
         }
     }
 

@@ -2732,6 +2732,79 @@ pub(crate) fn cancel_all_orders(symbol: &str) {
     with_mgr(|mgr| mgr.save_to_disk());
 }
 
+// ── WS-H #41a: position-management free fns ──────────────────────────────────
+// The order-ledger / toolbar / command-palette panels previously fired RAW
+// reqwest POST/DELETE to ApexIB, bypassing OrderManager entirely — no paper
+// guard (a "Close position" click sent a LIVE market order even in paper mode),
+// no kill/halt interlock, no risk gate, no journal. These wrappers route every
+// such action through the guarded submit/cancel path instead.
+
+/// Market OrderIntent used by the panel close/half/reverse actions.
+fn market_order_intent(symbol: &str, side: OrderSide, qty: u32) -> OrderIntent {
+    OrderIntent {
+        symbol: symbol.to_string(), side, order_type: ManagedOrderType::Market,
+        price: 0.0, stop_price: 0.0, qty, source: OrderSource::OrderPanel,
+        pair_with: None, option_symbol: None, option_con_id: None,
+        trail_amount: None, trail_percent: None, last_price: 0.0,
+        tif: 0, outside_rth: false, strategy_id: None, override_warnings: false,
+    }
+}
+
+/// Flatten one symbol's position (cancel working orders + market-close) through
+/// the guarded OrderManager path.
+pub(crate) fn flatten_symbol(symbol: &str, current_qty: i32) {
+    with_mgr(|mgr| mgr.flatten(symbol, current_qty));
+    with_mgr(|mgr| mgr.save_to_disk());
+}
+
+/// Flatten ALL open positions (account-wide). Reads the latest account snapshot
+/// for the position list; each is flattened through the guarded path.
+pub(crate) fn flatten_all() {
+    let positions: Vec<(String, i32)> = super::read_account_data()
+        .map(|(_, ps, _)| ps.iter().filter(|p| p.qty != 0).map(|p| (p.symbol.clone(), p.qty)).collect())
+        .unwrap_or_default();
+    for (sym, qty) in positions { with_mgr(|mgr| mgr.flatten(&sym, qty)); }
+    with_mgr(|mgr| mgr.save_to_disk());
+}
+
+/// Cancel every working order (all symbols) through the guarded path.
+pub(crate) fn cancel_all_working() {
+    let ids: Vec<u64> = with_mgr(|m| m.orders.iter().filter(|o| o.state.is_active()).map(|o| o.id).collect());
+    for id in ids { with_mgr(|m| { m.cancel(id); }); }
+    with_mgr(|m| m.save_to_disk());
+}
+
+/// Reduce a symbol's position by half via a guarded market order.
+pub(crate) fn halve_position(symbol: &str, current_qty: i32) {
+    if current_qty == 0 { return; }
+    let half = (current_qty.unsigned_abs() / 2).max(1);
+    let side = if current_qty > 0 { OrderSide::Sell } else { OrderSide::Buy };
+    let _ = submit_order(market_order_intent(symbol, side, half));
+}
+
+/// Halve every open position (account-wide) through the guarded path.
+pub(crate) fn halve_all() {
+    let positions: Vec<(String, i32)> = super::read_account_data()
+        .map(|(_, ps, _)| ps.iter().filter(|p| p.qty != 0).map(|p| (p.symbol.clone(), p.qty)).collect())
+        .unwrap_or_default();
+    for (sym, qty) in positions { halve_position(&sym, qty); }
+}
+
+/// Reverse every open position: flatten, then open the same size on the opposite
+/// side — all through the guarded path.
+pub(crate) fn reverse_all() {
+    let positions: Vec<(String, i32)> = super::read_account_data()
+        .map(|(_, ps, _)| ps.iter().filter(|p| p.qty != 0).map(|p| (p.symbol.clone(), p.qty)).collect())
+        .unwrap_or_default();
+    for (sym, qty) in positions {
+        with_mgr(|mgr| mgr.flatten(&sym, qty));
+        // Opposite side == the same side flatten used (long → sell to 0 → sell to short).
+        let side = if qty > 0 { OrderSide::Sell } else { OrderSide::Buy };
+        let _ = submit_order(market_order_intent(&sym, side, qty.unsigned_abs()));
+    }
+    with_mgr(|m| m.save_to_disk());
+}
+
 /// Cancel all active orders for a specific (non-empty) symbol and return the
 /// number that were cancelled. Used by the per-symbol bulk-cancel affordance in
 /// the order-ledger panel after the user confirms the confirmation dialog.
