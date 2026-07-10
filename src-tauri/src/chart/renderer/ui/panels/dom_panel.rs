@@ -580,7 +580,26 @@ pub(crate) fn draw(
             .show_in(ui, &lp, rr);
 
         if resp.row_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        if resp.row_clicked { *dom_selected_price = Some(price); *dom_order_type = DomOrderType::Limit; }
+        if resp.row_clicked {
+            // DOM Phase 1: direct bid/ask click-to-trade (ThinkorSwim Active
+            // Trader feel). Left-click the BID cell → BUY limit at that price;
+            // the ASK cell → SELL limit. Requires ARM (one-click trading is
+            // dangerous); disarmed OR a click in the PRICE column falls back to
+            // the safe select-for-BUY/SELL-buttons behavior. Order placement
+            // itself goes through the existing guarded submit_order path
+            // (OrderSource::DomLadder) via `new_order`.
+            let cx = ui.input(|i| i.pointer.interact_pos()).map(|p| p.x).unwrap_or(f32::NAN);
+            let in_bid = cx >= xb && cx < xb + cb;
+            let in_ask = cx >= xa && cx < xa + ca;
+            if *dom_armed && in_bid && price > 0.0 {
+                *new_order = Some((OrderSide::Buy, price, *order_qty));
+            } else if *dom_armed && in_ask && price > 0.0 {
+                *new_order = Some((OrderSide::Sell, price, *order_qty));
+            } else {
+                *dom_selected_price = Some(price);
+                *dom_order_type = DomOrderType::Limit;
+            }
+        }
 
         // Drag-state plumbing.
         if let Some(oid) = resp.order_drag_started {
