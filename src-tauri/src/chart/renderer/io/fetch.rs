@@ -1544,7 +1544,13 @@ pub(crate) fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32)
         if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(5)).send() {
             if let Ok(json) = resp.json::<serde_json::Value>() {
                 if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
-                    crate::bar_cache::set(&sym, &tf, &bars);
+                    // WS-H #42: Yahoo v8 includes the in-progress current candle
+                    // as the last bar (internal Bar carries no `closed` flag), so
+                    // cache all-but-last to avoid serving a stale forming bar
+                    // within its TTL. The chart still uses the full `bars` below.
+                    if bars.len() > 1 {
+                        crate::bar_cache::set(&sym, &tf, &bars[..bars.len() - 1]);
+                    }
                     let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
                     let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
                         open: b.open as f32, high: b.high as f32, low: b.low as f32,

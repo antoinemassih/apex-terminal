@@ -74,8 +74,16 @@ impl MarketDataProvider for CachedProvider {
         }
         let bars = self.inner.bars(symbol, timeframe, start_ms, end_ms, limit).await?;
         if !bars.is_empty() {
-            let internal = to_internal_bars(&bars);
-            crate::data::bar_cache::set(symbol, timeframe, &internal);
+            // WS-H #42: only cache CLOSED bars. The still-forming current bar
+            // (typically bars.last(), closed=false) would otherwise be served
+            // stale from the cache within its TTL to another pane loading the
+            // same symbol/timeframe — a stale price under an order-entry context.
+            // The caller still receives ALL bars (including the live current one).
+            let closed: Vec<BarWire> = bars.iter().filter(|b| b.closed).cloned().collect();
+            if !closed.is_empty() {
+                let internal = to_internal_bars(&closed);
+                crate::data::bar_cache::set(symbol, timeframe, &internal);
+            }
         }
         Ok(bars)
     }
