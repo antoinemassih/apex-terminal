@@ -3079,6 +3079,27 @@ impl Chart {
                 if symbol == self.symbol {
                     self.dom.levels = levels;
                     self.dom.last_live_ms = crate::data::dom_feed::now_ms();
+                    // DOM Phase 1: L2 depth carries NO traded volume, so the
+                    // ladder's volume column was always 0. Fill REAL session
+                    // volume-at-price by aggregating the live tape (executed
+                    // trades) onto the ladder's tick grid. Both trades and
+                    // levels are rounded by the same tick, so they align even
+                    // if tick_size is only approximate. O(trades + levels).
+                    let tick = self.dom.tick_size as f64;
+                    if tick > 0.0 {
+                        let trades = crate::apex_data::live_state::tape_for(&symbol, 4000);
+                        if !trades.is_empty() {
+                            let mut vmap: std::collections::HashMap<i64, u64> = std::collections::HashMap::new();
+                            for tr in &trades {
+                                *vmap.entry((tr.price / tick).round() as i64).or_insert(0) += tr.qty as u64;
+                            }
+                            for lv in &mut self.dom.levels {
+                                if let Some(&v) = vmap.get(&((lv.price as f64 / tick).round() as i64)) {
+                                    lv.volume = v;
+                                }
+                            }
+                        }
+                    }
                 }
             }
             ChartCommand::AlertTriggered { symbol: _, alert_id: _, price, message } => {
