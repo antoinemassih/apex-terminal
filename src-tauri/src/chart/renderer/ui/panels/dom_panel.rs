@@ -77,6 +77,7 @@ pub(crate) fn draw(
     dom_dragging: &mut Option<(u32, f32)>, // (order_id, current_y) while dragging
     dom_position: &mut u8, dom_fullscreen: &mut bool,
     is_live: bool,
+    dom_position_info: Option<(f32, i32)>, // (avg_price, signed qty) of the open position, if any
     t: &Theme,
 ) {
     let painter = ui.painter_at(dom_rect);
@@ -602,6 +603,24 @@ pub(crate) fn draw(
             } else {
                 *dom_selected_price = Some(price);
                 *dom_order_type = DomOrderType::Limit;
+            }
+        }
+
+        // DOM Phase 1: position avg-price marker on the ladder (snapped to the
+        // nearest tick row). Faint side-tinted band + left accent bar + a center
+        // line + a compact L/S-qty tag — so the trader's average entry is
+        // unmistakable on the DOM, matching TOS Active Trader.
+        if let Some((avg_px, pos_qty)) = dom_position_info {
+            if pos_qty != 0 && (price - avg_px).abs() < tick_size * 0.5 {
+                let long = pos_qty > 0;
+                let pc = if long { t.bull } else { t.bear };
+                lp.rect_filled(rr, 0.0, color_alpha(pc, 22));
+                lp.rect_filled(egui::Rect::from_min_size(egui::pos2(rr.left(), ry), egui::vec2(3.0, ROW_H)), 0.0, pc);
+                lp.line_segment(
+                    [egui::pos2(rr.left(), ry + ROW_H * 0.5), egui::pos2(rr.right(), ry + ROW_H * 0.5)],
+                    egui::Stroke::new(1.0, color_alpha(pc, 110)));
+                let tag = format!("{}{}", if long { "L" } else { "S" }, pos_qty.unsigned_abs());
+                lp.text(egui::pos2(rr.left() + 5.0, ry + ROW_H * 0.5), egui::Align2::LEFT_CENTER, &tag, mono_sm(), pc);
             }
         }
 

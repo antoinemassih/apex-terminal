@@ -1494,6 +1494,12 @@ fn render_chart_pane(
         let mut dom_move_order: Option<(u32, f32)> = None;
         {
             use crate::chart_renderer::ui::pane::{Pane as _, PaneContext, DomPaneAdapter};
+            // DOM Phase 1: the open position's (avg_price, signed qty) for the
+            // position line on the ladder — from the account snapshot.
+            let dom_pos_info = crate::chart_renderer::trading::read_account_data()
+                .and_then(|(_, ps, _)| ps.iter()
+                    .find(|p| p.symbol == chart.symbol && p.qty != 0)
+                    .map(|p| (p.avg_price, p.qty)));
             let mut adapter = DomPaneAdapter {
                 dom_rect,
                 current_price,
@@ -1516,6 +1522,7 @@ fn render_chart_pane(
                 dom_position: &mut chart.dom.position,
                 dom_fullscreen: &mut chart.dom.fullscreen,
                 is_live: dom_is_live,
+                dom_position_info: dom_pos_info,
             };
             // DomPaneAdapter does not read PaneContext::panes; we pass an
             // empty slice to avoid a second mutable borrow of `panes` while

@@ -144,6 +144,7 @@ pub struct DomPaneAdapter<'d> {
     pub dom_position: &'d mut u8,
     pub dom_fullscreen: &'d mut bool,
     pub is_live: bool,
+    pub dom_position_info: Option<(f32, i32)>,
 }
 
 impl<'d> Pane for DomPaneAdapter<'d> {
@@ -156,7 +157,8 @@ impl<'d> Pane for DomPaneAdapter<'d> {
             self.dom_flatten,
             self.cancel_order_id, self.move_order, self.dom_armed,
             self.dom_col_mode, self.dom_dragging,
-            self.dom_position, self.dom_fullscreen, self.is_live, cx.theme,
+            self.dom_position, self.dom_fullscreen, self.is_live,
+            self.dom_position_info, cx.theme,
         );
     }
 }
