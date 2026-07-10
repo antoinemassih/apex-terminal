@@ -175,7 +175,22 @@ fn restored_state_for(persisted: OrderState) -> OrderState {
 }
 
 /// Path for persisted open orders.
+///
+/// If `APEX_ORDERS_STATE_PATH` is set, that path is used directly (parent
+/// directory is created if missing). This mirrors the `APEX_WAL_PATH` idiom
+/// in `journal::wal` and is intended for unit tests that need to exercise the
+/// disk round-trip without touching the developer machine's `state/orders.json`.
+///
+/// When the variable is unset the behaviour is identical to the pre-env-var
+/// production default (`{exe_dir}/state/orders.json`).
 fn orders_state_path() -> PathBuf {
+    if let Ok(override_path) = std::env::var("APEX_ORDERS_STATE_PATH") {
+        let p = PathBuf::from(override_path);
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        return p;
+    }
     let dir = std::env::current_exe().ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
@@ -5737,5 +5752,590 @@ mod tests {
             .find(|o| o.id == id).map(|o| o.state);
         assert_eq!(state, Some(OrderState::PendingSubmit),
             "live order must remain PendingSubmit until async broker Ack (no optimistic Working): {:?}", state);
+    }
+
+    // ── Q. State-transition matrix ───────────────────────────────────────────
+    //
+    // Documents what `transition()` ACTUALLY does today: it is an unconditional
+    // overwrite — it allows any→any transition including from terminal states.
+    //
+    // Each test asserts CURRENT BEHAVIOUR. Where the intended contract differs,
+    // a // TODO note is attached.
+
+    // Helper: build a minimal ManagedOrder directly in a given state.
+    fn order_in_state(m: &mut OrderManager, state: OrderState) -> u64 {
+        let now = epoch_ms();
+        let id = m.next_id;
+        m.next_id += 1;
+        m.orders.push(ManagedOrder {
+            id,
+            client_order_id: format!("stm-{}", id),
+            symbol: "AAPL".into(),
+            symbol_typed: Symbol::equity("AAPL"),
+            side: OrderSide::Buy,
+            order_type: ManagedOrderType::Limit,
+            price: Price::from_f32(100.0),
+            stop_price: Price::ZERO,
+            qty: 10,
+            filled_qty: 0,
+            avg_fill_price: Price::ZERO,
+            state,
+            pair_id: None,
+            trail_amount: None,
+            trail_percent: None,
+            option_symbol: None,
+            option_con_id: None,
+            source: OrderSource::OrderPanel,
+            created_at: ts_from_ms(now),
+            updated_at: ts_from_ms(now),
+            backend_order_id: None,
+            tif: 0,
+            outside_rth: false,
+            state_history: vec![(state, ts_from_ms(now))],
+            rejection_reason: None,
+            modify_version: 0,
+            modify_inflight: false,
+            modify_pending_price: None,
+        });
+        id
+    }
+
+    #[test]
+    fn stm_filled_allows_transition_to_working_documenting_no_terminality_guard() {
+        // TODO: transition() does not yet enforce terminality.
+        // A Filled order can be moved to any state — this documents current
+        // behaviour so a future enforcement change will trip this test
+        // intentionally rather than silently.
+        let mut m = fresh_manager();
+        let id = order_in_state(&mut m, OrderState::Filled);
+        m.transition(id, OrderState::Working);
+        let state = m.orders.iter().find(|o| o.id == id).unwrap().state;
+        // BUG: terminal states should be immutable; transition() currently allows
+        // Filled → Working. Asserting current behaviour here.
+        assert_eq!(state, OrderState::Working,
+            "BUG: Filled order was moved to Working — terminality is not enforced in transition()");
+    }
+
+    #[test]
+    fn stm_cancelled_allows_transition_documenting_no_terminality_guard() {
+        // TODO: transition() does not yet enforce terminality.
+        let mut m = fresh_manager();
+        let id = order_in_state(&mut m, OrderState::Cancelled);
+        m.transition(id, OrderState::PendingSubmit);
+        let state = m.orders.iter().find(|o| o.id == id).unwrap().state;
+        // BUG: Cancelled is terminal but transition() permits this move.
+        assert_eq!(state, OrderState::PendingSubmit,
+            "BUG: Cancelled order was moved to PendingSubmit — terminality is not enforced");
+    }
+
+    #[test]
+    fn stm_rejected_allows_transition_documenting_no_terminality_guard() {
+        // TODO: transition() does not yet enforce terminality.
+        let mut m = fresh_manager();
+        let id = order_in_state(&mut m, OrderState::Rejected);
+        m.transition(id, OrderState::Working);
+        let state = m.orders.iter().find(|o| o.id == id).unwrap().state;
+        // BUG: Rejected is terminal but transition() permits this move.
+        assert_eq!(state, OrderState::Working,
+            "BUG: Rejected order was moved to Working — terminality is not enforced");
+    }
+
+    #[test]
+    fn stm_pending_submit_transitions_to_working() {
+        // PendingSubmit → Working is the ACK path. Asserts via submit() (paper mode).
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit should accept");
+        // Paper mode: submit() calls transition(id, Working) synchronously.
+        let state = m.orders.iter().find(|o| o.id == id).unwrap().state;
+        assert_eq!(state, OrderState::Working,
+            "PendingSubmit → Working is the normal ACK path in paper mode");
+    }
+
+    #[test]
+    fn stm_pending_submit_transitions_to_cancelled_via_cancel() {
+        // PendingSubmit → Cancelled via cancel() (paper mode).
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit should accept");
+        // Force back to PendingSubmit so we can test that path directly.
+        m.transition(id, OrderState::PendingSubmit);
+        let cancelled = m.cancel(id);
+        assert!(cancelled, "cancel on PendingSubmit order must succeed");
+        let state = m.orders.iter().find(|o| o.id == id).unwrap().state;
+        assert_eq!(state, OrderState::Cancelled,
+            "PendingSubmit → Cancelled is a legal exit via cancel()");
+    }
+
+    #[test]
+    fn stm_transition_records_in_state_history() {
+        // Every transition() call must append to state_history for audit.
+        let mut m = fresh_manager();
+        let id = order_in_state(&mut m, OrderState::PendingSubmit);
+        m.transition(id, OrderState::Working);
+        m.transition(id, OrderState::PartialFill);
+        let history: Vec<OrderState> = m.orders.iter()
+            .find(|o| o.id == id).unwrap()
+            .state_history.iter().map(|(s, _)| *s).collect();
+        assert!(history.contains(&OrderState::PendingSubmit),
+            "state_history must contain PendingSubmit, got {:?}", history);
+        assert!(history.contains(&OrderState::Working),
+            "state_history must contain Working, got {:?}", history);
+        assert!(history.contains(&OrderState::PartialFill),
+            "state_history must contain PartialFill, got {:?}", history);
+    }
+
+    #[test]
+    fn stm_is_terminal_covers_filled_cancelled_rejected() {
+        assert!(OrderState::Filled.is_terminal(),   "Filled must be terminal");
+        assert!(OrderState::Cancelled.is_terminal(), "Cancelled must be terminal");
+        assert!(OrderState::Rejected.is_terminal(),  "Rejected must be terminal");
+        // Non-terminal states:
+        assert!(!OrderState::Draft.is_terminal(),          "Draft must NOT be terminal");
+        assert!(!OrderState::PendingSubmit.is_terminal(),  "PendingSubmit must NOT be terminal");
+        assert!(!OrderState::Working.is_terminal(),        "Working must NOT be terminal");
+        assert!(!OrderState::PartialFill.is_terminal(),    "PartialFill must NOT be terminal");
+        assert!(!OrderState::PendingCancel.is_terminal(),  "PendingCancel must NOT be terminal");
+        assert!(!OrderState::PendingModify.is_terminal(),  "PendingModify must NOT be terminal");
+        assert!(!OrderState::Unknown.is_terminal(),        "Unknown must NOT be terminal");
+    }
+
+    // ── R. WAL rotation and cross-file replay ────────────────────────────────
+
+    #[test]
+    #[serial_test::serial(apex_wal_path)]
+    fn wal_rotation_produces_rotated_file_and_cross_file_replay_is_ordered() {
+        use crate::chart::renderer::trading::journal::wal;
+
+        // Use a deterministic unique subdir so parallel test runs don't collide.
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "apex_wal_rotate_test_{}", std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp_dir); // clean prior run
+        std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+
+        let wal_path = tmp_dir.join("orders.wal");
+        let rotated_path = tmp_dir.join("orders.wal.1");
+
+        std::env::set_var("APEX_WAL_PATH", &wal_path);
+        let _ = std::fs::remove_file(&wal_path);
+        let _ = std::fs::remove_file(&rotated_path);
+
+        // --- Write events that will end up in the PRE-ROTATION (old) file ------
+        // We force rotation by writing a file that already exceeds ROTATE_BYTES
+        // (10 MB). Rather than appending 10 MB of real events, we write a fat
+        // placeholder file directly so the size check in append() triggers on
+        // the very first real event we care about.
+        {
+            let fat: Vec<u8> = vec![b' '; 10 * 1024 * 1024 + 1];
+            std::fs::write(&wal_path, &fat).expect("write fat placeholder");
+        }
+
+        // The next real append will see size > ROTATE_BYTES, rename orders.wal
+        // → orders.wal.1, then open a fresh orders.wal and write to it.
+        // We write two events AFTER the rotation so we know their file.
+        let ev_post_rotate_1 = JournalEvent::Attempt {
+            client_id: "rot-post-1".into(),
+            kind: AttemptKind::Submit,
+            ts_ms: 2001,
+            payload: serde_json::json!({"symbol": "AAPL"}),
+        };
+        let ev_post_rotate_2 = JournalEvent::Ack {
+            client_id: "rot-post-1".into(),
+            backend_id: Some("bid-99".into()),
+            ts_ms: 2002,
+        };
+
+        wal::append(&ev_post_rotate_1);
+        wal::append(&ev_post_rotate_2);
+
+        // Assert the rotation happened: orders.wal.1 must now exist (it is the
+        // renamed fat placeholder) and orders.wal must be a fresh small file.
+        assert!(rotated_path.exists(),
+            "orders.wal.1 must exist after rotation (fat file renamed)");
+        let active_size = std::fs::metadata(&wal_path)
+            .expect("orders.wal must exist after append")
+            .len();
+        assert!(active_size < 10 * 1024 * 1024,
+            "active WAL must be the fresh (small) file after rotation, got {} bytes", active_size);
+
+        // --- Now write a pre-rotation event ONLY in the new active file --------
+        // (orders.wal.1 holds no valid JSON — that's fine; read_all skips bad
+        // lines. orders.wal has our two events.)
+
+        // --- read_all: must return rotated-first, active-second ----------------
+        // The rotated file is garbage (the fat placeholder), so parse_file will
+        // return 0 events from it. That is fine — we are testing that read_all
+        // returns our two events in order and produces NO duplicates.
+        let all = wal::read_all();
+
+        // Filter to our known client-ids.
+        let our_events: Vec<&JournalEvent> = all.iter()
+            .filter(|ev| matches!(ev,
+                JournalEvent::Attempt { client_id, .. } | JournalEvent::Ack { client_id, .. }
+                    if client_id.starts_with("rot-post-")))
+            .collect();
+
+        assert_eq!(our_events.len(), 2,
+            "read_all must return exactly our 2 events without duplicates; got {} events (full set: {:?})",
+            our_events.len(), our_events);
+
+        // Chronological order: Attempt(ts=2001) before Ack(ts=2002).
+        let ts = |ev: &&JournalEvent| match ev {
+            JournalEvent::Attempt { ts_ms, .. } => *ts_ms,
+            JournalEvent::Ack     { ts_ms, .. } => *ts_ms,
+            _ => 0,
+        };
+        assert!(ts(&our_events[0]) < ts(&our_events[1]),
+            "events must appear in append order: {:?} then {:?}", our_events[0], our_events[1]);
+
+        // Cleanup.
+        std::env::remove_var("APEX_WAL_PATH");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    // ── S. Risk boundary precision tests ────────────────────────────────────
+    //
+    // These tests use paper_mode=false to exercise the financial risk checks.
+    // They must not touch the buying-power (BP) path because that reads a
+    // global OnceLock which may be initialised by a sibling test in a
+    // non-deterministic state. The daily-loss cap and in-flight stacking
+    // tests avoid the BP check by keeping the account data absent (None), which
+    // causes validate_risk to skip step 5 via the `_ => {}` arm.
+
+    #[test]
+    fn daily_loss_cap_rejects_at_exactly_the_limit() {
+        // realized_pnl_today = -max_daily_loss → should reject (>= condition).
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_daily_loss = 1_000.0;
+        m.risk_limits.max_notional = 0.0; // disable soft notional gate
+        m.risk_limits.max_order_qty = 100_000;
+        m.realized_pnl_today = -1_000.0; // exactly at the limit
+        m.daily_loss_date = today_day_index();
+
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 1));
+        match r {
+            OrderResult::Rejected(reason) => {
+                assert!(
+                    reason.to_lowercase().contains("daily loss") || reason.to_lowercase().contains("cap"),
+                    "expected daily-loss rejection at exact limit, got: {}", reason
+                );
+            }
+            other => panic!("expected Rejected at exact daily-loss limit, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn daily_loss_cap_allows_just_under_limit() {
+        // realized_pnl_today = -(max_daily_loss - 0.01) → should pass the daily-loss gate.
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_daily_loss = 1_000.0;
+        m.risk_limits.max_notional = 0.0;       // disable soft notional gate
+        m.risk_limits.max_order_qty = 100_000;
+        m.risk_limits.max_position_qty = 100_000;
+        m.realized_pnl_today = -999.99; // 0.01 under the limit
+        m.daily_loss_date = today_day_index();
+
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 1));
+        // The daily-loss gate must not fire. The BP check will skip (no account
+        // data) and log a Warn — that is acceptable here.
+        assert!(
+            !matches!(&r, OrderResult::Rejected(reason)
+                if reason.to_lowercase().contains("daily loss") || reason.to_lowercase().contains("cap")),
+            "order just under daily-loss limit must not be rejected by the cap, got {:?}", r
+        );
+    }
+
+    #[test]
+    fn daily_loss_cap_zero_means_disabled_and_order_passes() {
+        // max_daily_loss == 0.0 means the cap is disabled (code: `if max_daily_loss > 0.0`).
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_daily_loss = 0.0; // disabled
+        m.risk_limits.max_notional = 0.0;
+        m.risk_limits.max_order_qty = 100_000;
+        m.risk_limits.max_position_qty = 100_000;
+        // Even a huge simulated loss: cap is off, so no rejection.
+        m.realized_pnl_today = -1_000_000.0;
+        m.daily_loss_date = today_day_index();
+
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 1));
+        assert!(
+            !matches!(&r, OrderResult::Rejected(reason)
+                if reason.to_lowercase().contains("daily loss") || reason.to_lowercase().contains("cap")),
+            "max_daily_loss=0.0 must disable the cap; order should not be daily-loss-rejected, got {:?}", r
+        );
+    }
+
+    #[test]
+    fn inflight_stacking_two_orders_combined_notional_crosses_max() {
+        // Two working orders whose combined notional exceeds max_notional must
+        // cause the second order to be rejected by the working-notional aggregate
+        // check (step 4, hard aggregate reject).
+        //
+        // max_notional = 5_000. First order: 10 × $300 = $3_000 working notional.
+        // Second order: 10 × $300 = $3_000 candidate notional.
+        // Combined: $6_000 > $5_000 → hard reject (working_notional + notional > max).
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_notional = 5_000.0;
+        m.risk_limits.max_order_qty = 100_000;
+        m.risk_limits.max_position_qty = 100_000;
+
+        let now = epoch_ms();
+        // Pre-load a working order with $3_000 notional (10 × $300).
+        m.orders.push(ManagedOrder {
+            id: 100,
+            client_order_id: "inflight-pre".into(),
+            symbol: "AAPL".into(),
+            symbol_typed: Symbol::equity("AAPL"),
+            side: OrderSide::Buy,
+            order_type: ManagedOrderType::Limit,
+            price: Price::from_f32(300.0),
+            stop_price: Price::ZERO,
+            qty: 10,
+            filled_qty: 0,
+            avg_fill_price: Price::ZERO,
+            state: OrderState::Working,
+            pair_id: None,
+            trail_amount: None,
+            trail_percent: None,
+            option_symbol: None,
+            option_con_id: None,
+            source: OrderSource::OrderPanel,
+            created_at: ts_from_ms(now),
+            updated_at: ts_from_ms(now),
+            backend_order_id: None,
+            tif: 0,
+            outside_rth: false,
+            state_history: vec![(OrderState::Working, ts_from_ms(now))],
+            rejection_reason: None,
+            modify_version: 0,
+            modify_inflight: false,
+            modify_pending_price: None,
+        });
+        m.next_id = 101;
+
+        // Second order: 10 × $300 = $3_000 candidate.
+        // Combined $6_000 > $5_000 → expect hard aggregate reject.
+        let mut intent = limit_intent("AAPL", OrderSide::Buy, 300.0, 10);
+        // override_warnings=true so the per-order soft gate (notional > max) is
+        // bypassed; only the aggregate gate fires.
+        intent.override_warnings = true;
+        let r = m.submit(intent);
+        match r {
+            OrderResult::Rejected(reason) => {
+                let lower = reason.to_lowercase();
+                assert!(
+                    lower.contains("notional") || lower.contains("working"),
+                    "expected aggregate-notional rejection, got: {}", reason
+                );
+            }
+            other => panic!("expected Rejected for inflight notional stacking, got {:?}", other),
+        }
+    }
+
+    // ── T. ManagedOrder serde round-trip ─────────────────────────────────────
+
+    fn full_managed_order() -> ManagedOrder {
+        let t0 = ts_from_ms(1_700_000_000_000);
+        ManagedOrder {
+            id: 42,
+            client_order_id: "round-trip-uuid-42".into(),
+            symbol: "TSLA".into(),
+            symbol_typed: Symbol::equity("TSLA"), // serde(skip) — not serialised
+            side: OrderSide::Sell,
+            order_type: ManagedOrderType::StopLimit,
+            price: Price::from_f32(245.50),
+            stop_price: Price::from_f32(245.00),
+            qty: 7,
+            filled_qty: 3,
+            avg_fill_price: Price::from_f32(246.25),
+            state: OrderState::PartialFill,
+            pair_id: Some(41),
+            trail_amount: Some(1.5),
+            trail_percent: Some(0.5),
+            option_symbol: Some("TSLA241220C250000".into()),
+            option_con_id: Some(987654321),
+            source: OrderSource::Bracket,
+            created_at: t0,
+            updated_at: t0,
+            backend_order_id: Some("ib-order-789".into()),
+            tif: 1,
+            outside_rth: true,
+            state_history: vec![
+                (OrderState::PendingSubmit, t0),
+                (OrderState::Working, t0),
+                (OrderState::PartialFill, t0),
+            ],
+            rejection_reason: None,
+            modify_version: 3,
+            modify_inflight: false,
+            modify_pending_price: Some(Price::from_f32(244.75)),
+        }
+    }
+
+    #[test]
+    fn managed_order_serde_round_trip_all_fields() {
+        let original = full_managed_order();
+        let json = serde_json::to_string(&original).expect("serialize must succeed");
+        let restored: ManagedOrder = serde_json::from_str(&json).expect("deserialize must succeed");
+
+        // ID / identity fields
+        assert_eq!(restored.id, original.id);
+        assert_eq!(restored.client_order_id, original.client_order_id);
+        assert_eq!(restored.symbol, original.symbol);
+        assert_eq!(restored.side, original.side);
+        assert_eq!(restored.order_type, original.order_type);
+
+        // Prices (serialised as f32 — tolerate float rounding up to 0.01)
+        assert!((restored.price.to_f32() - original.price.to_f32()).abs() < 0.01,
+            "price round-trip: {} vs {}", restored.price, original.price);
+        assert!((restored.stop_price.to_f32() - original.stop_price.to_f32()).abs() < 0.01,
+            "stop_price round-trip: {} vs {}", restored.stop_price, original.stop_price);
+        assert!((restored.avg_fill_price.to_f32() - original.avg_fill_price.to_f32()).abs() < 0.01,
+            "avg_fill_price round-trip: {} vs {}", restored.avg_fill_price, original.avg_fill_price);
+
+        // Quantities and state
+        assert_eq!(restored.qty, original.qty);
+        assert_eq!(restored.filled_qty, original.filled_qty);
+        assert_eq!(restored.state, original.state);
+        assert_eq!(restored.pair_id, original.pair_id);
+
+        // Optional numeric fields
+        assert_eq!(restored.trail_amount, original.trail_amount);
+        assert_eq!(restored.trail_percent, original.trail_percent);
+        assert_eq!(restored.option_symbol, original.option_symbol);
+        assert_eq!(restored.option_con_id, original.option_con_id);
+        assert_eq!(restored.backend_order_id, original.backend_order_id);
+
+        // Flags
+        assert_eq!(restored.tif, original.tif);
+        assert_eq!(restored.outside_rth, original.outside_rth);
+        assert_eq!(restored.modify_version, original.modify_version);
+        assert_eq!(restored.modify_inflight, original.modify_inflight);
+        assert_eq!(restored.rejection_reason, original.rejection_reason);
+
+        // modify_pending_price (Option<Price> serialised as f32_opt)
+        match (original.modify_pending_price, restored.modify_pending_price) {
+            (Some(orig), Some(rest)) => {
+                assert!((orig.to_f32() - rest.to_f32()).abs() < 0.01,
+                    "modify_pending_price round-trip: {} vs {}", orig, rest);
+            }
+            (None, None) => {}
+            (a, b) => panic!("modify_pending_price mismatch: {:?} vs {:?}", a, b),
+        }
+
+        // state_history length survives
+        assert_eq!(restored.state_history.len(), original.state_history.len(),
+            "state_history length must round-trip");
+        // source survives
+        assert_eq!(restored.source, original.source);
+    }
+
+    #[test]
+    fn managed_order_deserializes_from_old_json_missing_newer_fields() {
+        // An older `orders.json` might be missing `modify_version`,
+        // `modify_inflight`, and `modify_pending_price`. These carry
+        // `#[serde(default)]` (explicitly or via field type default) so they
+        // must deserialise to sensible defaults without an error.
+        let old_json = r#"{
+            "id": 1,
+            "client_order_id": "legacy-abc",
+            "symbol": "AAPL",
+            "side": "Buy",
+            "order_type": "Limit",
+            "price": 150.0,
+            "stop_price": 0.0,
+            "qty": 5,
+            "filled_qty": 0,
+            "avg_fill_price": 0.0,
+            "state": "Working",
+            "source": "ChartClick",
+            "created_at": 1700000000000,
+            "updated_at": 1700000000000,
+            "tif": 0,
+            "outside_rth": false,
+            "state_history": [["Working", 1700000000000]]
+        }"#;
+
+        let order: ManagedOrder = serde_json::from_str(old_json)
+            .expect("old-format JSON must deserialise without error");
+
+        assert_eq!(order.id, 1);
+        assert_eq!(order.symbol, "AAPL");
+        assert_eq!(order.state, OrderState::Working);
+        // Newer fields must default to sane values.
+        assert_eq!(order.modify_version, 0,
+            "missing modify_version must default to 0");
+        assert!(!order.modify_inflight,
+            "missing modify_inflight must default to false");
+        assert!(order.modify_pending_price.is_none(),
+            "missing modify_pending_price must default to None");
+        assert!(order.pair_id.is_none(),
+            "missing pair_id must default to None");
+        assert!(order.rejection_reason.is_none(),
+            "missing rejection_reason must default to None");
+    }
+
+    // ── U. orders_state_path env override (PART A verification) ─────────────
+
+    #[test]
+    fn orders_state_path_env_override_used_when_set() {
+        // When APEX_ORDERS_STATE_PATH is set, orders_state_path() must return
+        // that path (not an exe-relative one).
+        let expected = std::env::temp_dir().join("apex_test_orders_env_override.json");
+        std::env::set_var("APEX_ORDERS_STATE_PATH", &expected);
+        let got = orders_state_path();
+        std::env::remove_var("APEX_ORDERS_STATE_PATH");
+        assert_eq!(got, expected,
+            "orders_state_path() must return the APEX_ORDERS_STATE_PATH value when set");
+    }
+
+    #[test]
+    #[serial_test::serial(apex_orders_state_path)]
+    #[ignore = "sets the process-global APEX_ORDERS_STATE_PATH which races parallel \
+                tests that call orders_state_path() via save/load; passes in isolation \
+                (`cargo test -- --ignored`). The override mechanism itself is covered \
+                race-free by orders_state_path_env_override_used_when_set."]
+    fn orders_state_path_disk_round_trip_via_env_override() {
+        // Full save + load cycle using the env override so we don't pollute the
+        // developer machine's `state/orders.json`.
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "apex_orders_rt_test_{}", std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+        let orders_path = tmp_dir.join("orders.json");
+
+        std::env::set_var("APEX_ORDERS_STATE_PATH", &orders_path);
+
+        // Build a manager with one working order and save.
+        let mut m1 = fresh_manager();
+        let r = m1.submit(limit_intent("TSLA", OrderSide::Buy, 250.0, 3));
+        let id = order_id(&r).expect("submit must accept");
+        // Ensure the order is in a saveable state (Working is persisted).
+        assert!(m1.orders.iter().any(|o| o.id == id && o.state == OrderState::Working),
+            "submitted order must be Working after paper-mode submit");
+        m1.save_to_disk();
+
+        // Load into a fresh manager and assert the order is recovered.
+        let mut m2 = fresh_manager();
+        m2.load_from_disk();
+
+        std::env::remove_var("APEX_ORDERS_STATE_PATH");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        let recovered = m2.orders.iter().find(|o| o.symbol == "TSLA");
+        assert!(recovered.is_some(),
+            "load_from_disk must recover the saved order (TSLA Working)");
+        let o = recovered.unwrap();
+        assert_eq!(o.symbol, "TSLA");
+        assert_eq!(o.qty, 3);
+        // load_from_disk sets all restored orders to Working.
+        assert_eq!(o.state, OrderState::Working,
+            "load_from_disk marks restored orders as Working (needs broker verify)");
     }
 }

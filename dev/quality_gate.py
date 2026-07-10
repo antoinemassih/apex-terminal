@@ -46,6 +46,11 @@ FILE_LOC_GRANDFATHER = {
     # path-suffix -> tracked remediation ticket (WS-E)
     "render/pane/core.rs": "WS-E E4 (PANE_RS_SPLIT_PLAN)",
     "gpu.rs": "WS-E E2 (extract domain types)",
+    # WS-H #43 added the money-path test suite (transition matrix, WAL rotation,
+    # risk boundaries, serde round-trips), pushing this over 6k. The growth is
+    # tests, not production code. TODO: extract the #[cfg(test)] mod tests to a
+    # sibling `order_manager/tests.rs` (file→dir) to drop the file back under 6k.
+    "trading/order_manager.rs": "WS-H #43 (extract test module — follow-up)",
 }
 
 # render hot path unwrap HARD cap (audit: must trend to 0; A5 took it 7->4).
