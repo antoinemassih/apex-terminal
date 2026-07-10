@@ -7792,6 +7792,12 @@ impl ApplicationHandler for App {
                 // running headless — a zombie that holds the GPU + :9091 and stacks
                 // up on every relaunch (root cause of the acquire-stall / fps decay).
                 if self.windows.is_empty() {
+                    // WS-H #46: the app is exiting (last window closed). Write the
+                    // clean-shutdown Journal marker explicitly — the ORDER_MANAGER
+                    // static's Drop never runs at process exit, so without this the
+                    // marker was never written and orphan recovery ran on every
+                    // startup. Written AFTER the state flush above.
+                    crate::chart_renderer::trading::order_manager::write_shutdown_marker();
                     if let Some(m) = crate::NATIVE_CHART_TXS.get() {
                         if let Ok(mut v) = m.lock() { v.clear(); }
                     }

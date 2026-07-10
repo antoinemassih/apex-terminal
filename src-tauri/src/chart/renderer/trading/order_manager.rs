@@ -86,10 +86,25 @@ fn manager() -> &'static Mutex<OrderManager> {
 /// Drop impl: emit a Shutdown marker so the next startup can skip orphan
 /// recovery. Best-effort — if the process is killed mid-write we fall back
 /// to the recovery path.
+///
+/// WS-H #46 NOTE: ORDER_MANAGER lives in a `OnceLock` static, and Rust does NOT
+/// run `Drop` for statics at normal process exit — so this Drop effectively
+/// never fires in production, meaning the Shutdown marker was never written and
+/// orphan recovery ran on EVERY startup (clean vs. unclean exit indistinguish-
+/// able). The window-close handler now calls `write_shutdown_marker()` below to
+/// write it explicitly. Drop is kept for test instances (which DO drop).
 impl Drop for OrderManager {
     fn drop(&mut self) {
         journal::append(JournalEvent::Shutdown { ts_ms: epoch_ms() });
     }
+}
+
+/// WS-H #46: explicitly append the clean-shutdown Journal marker. Call from the
+/// window-close path so the next startup's `last_event_was_shutdown()` sees a
+/// clean exit and skips orphan recovery. (The `Drop` impl above cannot do this
+/// for the ORDER_MANAGER static — statics are not dropped at process exit.)
+pub(crate) fn write_shutdown_marker() {
+    journal::append(JournalEvent::Shutdown { ts_ms: epoch_ms() });
 }
 
 // ─── CC2: re-entrant lock guard ─────────────────────────────────────────────
