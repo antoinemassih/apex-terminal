@@ -1,5 +1,6 @@
 //! Watchlist side panel — stocks list, options chain, heatmap.
 
+use std::fmt::Write as FmtWrite;
 use egui;
 use crate::ui_kit::sx::Tone;
 use super::super::style::*;
@@ -1711,6 +1712,8 @@ if is_spawn || watchlist.open {
                         let mut x = rect.left();
                         let y_center = rect.center().y;
                         let painter = ui.painter();
+                        // Reuse one scratch buffer across all per-row format calls (alloc reduction).
+                        let mut s = String::new();
 
                         // Check mark
                         if is_saved {
@@ -1720,27 +1723,31 @@ if is_spawn || watchlist.open {
                         x += col_chk + gap;
 
                         // Strike
+                        s.clear(); let _ = write!(s, "{:.0}", row.strike);
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.0}", row.strike), mono_lg(), t.text);
+                            &s, mono_lg(), t.text);
                         x += col_stk + gap;
 
                         // Bid
+                        s.clear(); let _ = write!(s, "{:.2}", row.bid);
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.2}", row.bid), mono_lg(), color);
+                            &s, mono_lg(), color);
                         x += col_bid + gap;
 
                         // Ask
+                        s.clear(); let _ = write!(s, "{:.2}", row.ask);
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.2}", row.ask), mono_lg(), t.dim);
+                            &s, mono_lg(), t.dim);
                         x += col_ask + gap;
 
                         // OI
-                        let oi_str = if row.oi >= 1_000_000 { format!("{:.1}M", row.oi as f32 / 1_000_000.0) }
-                            else if row.oi >= 1_000 { format!("{},{:03}", row.oi / 1000, row.oi % 1000) }
-                            else { format!("{}", row.oi) };
+                        s.clear();
+                        if row.oi >= 1_000_000 { let _ = write!(s, "{:.1}M", row.oi as f32 / 1_000_000.0); }
+                        else if row.oi >= 1_000 { let _ = write!(s, "{},{:03}", row.oi / 1000, row.oi % 1000); }
+                        else { let _ = write!(s, "{}", row.oi); }
                         let oi_x = x;
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &oi_str, mono_sm(), color_half(t.dim));
+                            &s, mono_sm(), color_half(t.dim));
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {

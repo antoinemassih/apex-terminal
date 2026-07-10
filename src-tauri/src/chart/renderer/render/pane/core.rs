@@ -98,6 +98,15 @@ thread_local! {
         = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
+thread_local! {
+    /// Per-pane cache of computed MA-ribbon EMAs (6 periods: 8,13,21,34,55,89),
+    /// keyed on pane_idx. Value: (bar_count, Vec<Vec<f32>>) — recomputed only
+    /// when bar count changes. Mirrors AUTO_SR_CACHE pattern (Audit PF: alloc
+    /// reduction — was Vec+EMA recomputed every frame).
+    static MA_RIBBON_CACHE: std::cell::RefCell<std::collections::HashMap<usize, (usize, Vec<Vec<f32>>)>>
+        = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 /// US/Eastern UTC offset in MINUTES for the date of `ts_secs` (DST-aware,
 /// per-timestamp — NOT `now()`). Axis labels must use the offset of the bar's
 /// OWN date, else historical/cross-DST charts render an hour off. 240=EDT, 300=EST.
@@ -1953,14 +1962,14 @@ fn render_chart_pane(
 
             // Y-axis price badge (only if axis is visible) — dark text on colored fill
             if watchlist.show_y_axis {
-                let price_text = format!("{:.2}", last_price);
+                chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.2}", last_price);
                 let badge_font = mono_sm();
                 // Dark foreground derived from the price color — high contrast but tinted
                 let fg_col = egui::Color32::from_rgb(
                     (price_col.r() as f32 * 0.15) as u8,
                     (price_col.g() as f32 * 0.15) as u8,
                     (price_col.b() as f32 * 0.15) as u8);
-                let galley = painter.layout_no_wrap(price_text.clone(), badge_font.clone(), fg_col);
+                let galley = painter.layout_no_wrap(chart.fmt_buf.clone(), badge_font.clone(), fg_col);
                 let pad_x = 4.0;
                 let pad_y = 2.0;
                 let badge_w = galley.size().x + pad_x * 2.0;
@@ -1983,11 +1992,11 @@ fn render_chart_pane(
                 painter.text(
                     egui::pos2(badge_rect.left() + pad_x + 0.5, price_y),
                     egui::Align2::LEFT_CENTER,
-                    &price_text, badge_font.clone(), fg_col);
+                    &chart.fmt_buf, badge_font.clone(), fg_col);
                 painter.text(
                     egui::pos2(badge_rect.left() + pad_x, price_y),
                     egui::Align2::LEFT_CENTER,
-                    &price_text, badge_font, fg_col);
+                    &chart.fmt_buf, badge_font, fg_col);
             }
         }
     }
@@ -2186,7 +2195,7 @@ fn render_chart_pane(
     // Volume Profile — cache recompute + rendering (behind candles).
     // MARK_BARS_PROTOCOL: skip when in Mark mode (volume=0 → empty profile).
     if chart.vp.mode != VolumeProfileMode::Off && !chart.bar_source_mark {
-        if chart.vp.data.is_none() || chart.vp.last_vs != chart.vs || chart.vp.last_vc != chart.vc {
+        if chart.vp.data.is_none() || (chart.vs - chart.vp.last_vs).abs() > 2.0 || chart.vp.last_vc != chart.vc {
             // Prefer REAL volume-at-price (ApexData VAP) for the session profile;
             // fall back to the bar-spread approximation over the visible window
             // when VAP isn't backfilled yet for this symbol/date.
@@ -2824,7 +2833,7 @@ fn render_chart_pane(
     span_begin("indicator_paint");
     // ── MA Ribbon (6 EMAs) ───────────────────────────────────────────────
     if chart.show_ma_ribbon && !chart.hide_all_indicators {
-        render_ma_ribbon_overlay(&painter, chart, t, vs, n, &py, &bx);
+        render_ma_ribbon_overlay(&painter, chart, t, vs, n, pane_idx, &py, &bx);
     }
 
     // ── Prev Close / Session Open lines ──────────────────────────────────
@@ -12023,11 +12032,21 @@ fn render_prev_close_overlay(
 /// render_ma_ribbon_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard stays at call site.
 #[allow(clippy::too_many_arguments)]
 fn render_ma_ribbon_overlay(
-    painter: &egui::Painter, chart: &Chart, t: &Theme, vs: f32, n: usize, py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32
+    painter: &egui::Painter, chart: &Chart, t: &Theme, vs: f32, n: usize, pane_idx: usize, py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32
 ) {
         let ribbon_periods = [8_usize, 13, 21, 34, 55, 89];
-        let closes_v: Vec<f32> = chart.bars.iter().map(|b| b.close).collect();
-        let emas: Vec<Vec<f32>> = ribbon_periods.iter().map(|&p| compute_ema(&closes_v, p)).collect();
+        // Cache EMAs by bar count (per pane): recompute only when bars change.
+        // Mirrors AUTO_SR_CACHE pattern (Audit PF: eliminated per-frame Vec+EMA alloc).
+        let emas: Vec<Vec<f32>> = MA_RIBBON_CACHE.with(|c| {
+            let mut cache = c.borrow_mut();
+            let entry = cache.entry(pane_idx).or_insert((usize::MAX, Vec::new()));
+            if entry.0 != n {
+                let closes_v: Vec<f32> = chart.bars.iter().map(|b| b.close).collect();
+                let computed: Vec<Vec<f32>> = ribbon_periods.iter().map(|&p| compute_ema(&closes_v, p)).collect();
+                *entry = (n, computed);
+            }
+            entry.1.clone()
+        });
         let start = vs.floor() as usize;
         let end_idx = (start + chart.vc as usize + 8).min(n);
         for k in 0..emas.len().saturating_sub(1) {
