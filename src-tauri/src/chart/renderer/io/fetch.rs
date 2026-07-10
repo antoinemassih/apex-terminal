@@ -195,6 +195,47 @@ macro_rules! str_keyed_cache {
     };
 }
 
+/// Maximum number of entries kept in each string-keyed REST cache. Once the cap
+/// is reached, the oldest-by-insert-time entries are evicted before the new one
+/// is retained. 256 symbols is well beyond any realistic watchlist while keeping
+/// memory bounded over a full trading day.
+const STR_CACHE_CAP: usize = 256;
+
+/// Evict entries from `map` until `len() <= cap`, removing the ones whose
+/// insert `Instant` (extracted via `age`) is oldest. O(n) per call; only runs
+/// when `len() > cap`, so the common path (already within cap) is a single
+/// comparison.
+fn evict_oldest<V>(
+    map: &mut std::collections::HashMap<String, V>,
+    cap: usize,
+    age: impl Fn(&V) -> std::time::Instant,
+) {
+    while map.len() > cap {
+        // One linear scan to find the key with the oldest Instant.
+        if let Some(oldest_key) = map
+            .iter()
+            .min_by_key(|(_, v)| age(v))
+            .map(|(k, _)| k.clone())
+        {
+            map.remove(&oldest_key);
+        } else {
+            break;
+        }
+    }
+}
+
+/// Evict entries from `map` until `len() <= cap` by removing an arbitrary
+/// entry. Used for caches whose value type carries no `Instant` (ticker_detail).
+fn evict_any<V>(map: &mut std::collections::HashMap<String, V>, cap: usize) {
+    while map.len() > cap {
+        if let Some(key) = map.keys().next().map(|k| k.clone()) {
+            map.remove(&key);
+        } else {
+            break;
+        }
+    }
+}
+
 str_keyed_cache!(gamma_cache, gamma_inflight, (GammaSnapshot, std::time::Instant));
 // Continuation-gauge markers, keyed by "SYMBOL|YYYY-MM-DD" (date currently on the chart).
 str_keyed_cache!(continuation_cache, continuation_inflight, (Vec<crate::chart_renderer::gpu::ContinuationMarker>, std::time::Instant));
@@ -238,6 +279,7 @@ fn spawn_continuation_fetch(symbol: String, date: String) {
         if let Some(markers) = fetch_continuation_from_feed(&symbol, &date) {
             if let Ok(mut c) = continuation_cache().lock() {
                 c.insert(key.clone(), (markers, std::time::Instant::now()));
+                evict_oldest(&mut c, STR_CACHE_CAP, |v| v.1);
             }
             crate::wake_native_ui();
         }
@@ -262,6 +304,7 @@ fn spawn_gamma_fetch(symbol: String) {
         if let Some(bundle) = fetch_gamma_from_feed(&sym) {
             if let Ok(mut c) = gamma_cache().lock() {
                 c.insert(sym.clone(), (bundle, std::time::Instant::now()));
+                evict_oldest(&mut c, STR_CACHE_CAP, |v| v.1);
             }
             crate::wake_native_ui();
         }
@@ -960,6 +1003,7 @@ pub(crate) fn options_analytics_cached(underlying: &str) -> Option<OptionsAnalyt
                 };
                 if let Ok(mut c) = opt_analytics_cache().lock() {
                     c.insert(s2.clone(), (bundle, std::time::Instant::now()));
+                    evict_oldest(&mut c, STR_CACHE_CAP, |v| v.1);
                 }
                 if let Ok(mut inf) = opt_analytics_inflight().lock() { inf.remove(&s2); }
                 crate::wake_native_ui();
@@ -1037,7 +1081,10 @@ pub(crate) fn daily_stats_cached(symbol: &str) -> Option<DailyStats> {
             } else { 0.0 };
             Some(DailyStats { prev_change_pct, avg_volume })
         });
-        if let Ok(mut c) = daily_stats_cache().lock() { c.insert(s2.clone(), (stats, std::time::Instant::now())); }
+        if let Ok(mut c) = daily_stats_cache().lock() {
+            c.insert(s2.clone(), (stats, std::time::Instant::now()));
+            evict_oldest(&mut c, STR_CACHE_CAP, |v| v.1);
+        }
         if let Ok(mut inf) = daily_stats_inflight().lock() { inf.remove(&s2); }
         crate::wake_native_ui();
     });
@@ -1079,7 +1126,10 @@ pub(crate) fn futures_price_cached(symbol: &str) -> Option<f32> {
                 // get_price does NOT strip F: — the price endpoint wants the
                 // F:-tagged symbol so it resolves the future, not the equity.
                 let v = crate::apex_data::rest::get_price(&s2).ok().map(|p| p.price as f32);
-                if let Ok(mut c) = futures_price_cache().lock() { c.insert(s2.clone(), (v, std::time::Instant::now())); }
+                if let Ok(mut c) = futures_price_cache().lock() {
+                    c.insert(s2.clone(), (v, std::time::Instant::now()));
+                    evict_oldest(&mut c, STR_CACHE_CAP, |v| v.1);
+                }
                 if let Ok(mut inf) = futures_price_inflight().lock() { inf.remove(&s2); }
                 crate::wake_native_ui();
             });
@@ -1118,7 +1168,10 @@ pub(crate) fn vap_cached(symbol: &str) -> Option<crate::apex_data::rest::VapResp
                 let date = active_zero_dte_date().format("%Y-%m-%d").to_string();
                 let v = crate::apex_data::rest::stock_vap(&s2, &date, 0.25)
                     .filter(|r| r.total_volume > 0.0 && !r.levels.is_empty());
-                if let Ok(mut c) = vap_cache().lock() { c.insert(s2.clone(), (v, std::time::Instant::now())); }
+                if let Ok(mut c) = vap_cache().lock() {
+                    c.insert(s2.clone(), (v, std::time::Instant::now()));
+                    evict_oldest(&mut c, STR_CACHE_CAP, |v| v.1);
+                }
                 if let Ok(mut inf) = vap_inflight().lock() { inf.remove(&s2); }
                 crate::wake_native_ui();
             });
@@ -1156,7 +1209,10 @@ pub(crate) fn rvol_cached(symbol: &str) -> Option<f32> {
                 let v = crate::apex_data::rest::stock_rvol(&s2)
                     .filter(|r| r.rvol > 0.0)
                     .map(|r| r.rvol as f32);
-                if let Ok(mut c) = rvol_cache().lock() { c.insert(s2.clone(), (v, std::time::Instant::now())); }
+                if let Ok(mut c) = rvol_cache().lock() {
+                    c.insert(s2.clone(), (v, std::time::Instant::now()));
+                    evict_oldest(&mut c, STR_CACHE_CAP, |v| v.1);
+                }
                 if let Ok(mut inf) = rvol_inflight().lock() { inf.remove(&s2); }
                 crate::wake_native_ui();
             });
@@ -1188,7 +1244,10 @@ pub(crate) fn ticker_detail_cached(symbol: &str) -> Option<crate::apex_data::res
     let s2 = sym.clone();
     crate::foundation::guard::spawn_guarded("fetch", move || {
         let d = crate::apex_data::rest::ticker_detail(&s2);
-        if let Ok(mut c) = ticker_detail_cache().lock() { c.insert(s2.clone(), d); }
+        if let Ok(mut c) = ticker_detail_cache().lock() {
+            c.insert(s2.clone(), d);
+            evict_any(&mut c, STR_CACHE_CAP);
+        }
         if let Ok(mut inf) = ticker_detail_inflight().lock() { inf.remove(&s2); }
         crate::wake_native_ui();
     });
@@ -2258,6 +2317,62 @@ mod tests {
         assert!(recognized("losers"));
         assert!(!recognized("most_active"));
         assert!(!recognized("custom"));
+    }
+
+    // ── cache eviction ────────────────────────────────────────────────────
+
+    /// Verify that `evict_oldest` keeps the map at or below `cap` and removes
+    /// the entries with the smallest (oldest) Instant values.
+    ///
+    /// We use a synthetic `HashMap<String, (u32, std::time::Instant)>` so the
+    /// Instants are constructed via `checked_add` on a known base — fully
+    /// deterministic, no wall-clock ordering dependency.
+    #[test]
+    fn cache_evict_oldest_removes_oldest_entries() {
+        use std::collections::HashMap;
+        use std::time::{Duration, Instant};
+
+        // Build a base instant and give each entry a deterministically
+        // increasing age (entry 0 is oldest, entry N-1 is newest).
+        let base = Instant::now();
+        let mut map: HashMap<String, (u32, Instant)> = HashMap::new();
+        let cap = 4_usize;
+        let total = cap + 3; // insert 7 entries into a cap-4 cache
+        for i in 0..total {
+            let at = base + Duration::from_millis(i as u64); // i=0 is oldest
+            map.insert(format!("SYM{i}"), (i as u32, at));
+        }
+        assert_eq!(map.len(), total);
+
+        evict_oldest(&mut map, cap, |v| v.1);
+
+        // Must be at or below cap.
+        assert_eq!(map.len(), cap, "expected {cap} entries after eviction");
+
+        // The 3 oldest (SYM0, SYM1, SYM2) must have been evicted.
+        assert!(!map.contains_key("SYM0"), "oldest entry SYM0 should be evicted");
+        assert!(!map.contains_key("SYM1"), "SYM1 should be evicted");
+        assert!(!map.contains_key("SYM2"), "SYM2 should be evicted");
+
+        // The newest entries must still be present.
+        assert!(map.contains_key(&format!("SYM{}", total - 1)), "newest entry must survive");
+        assert!(map.contains_key(&format!("SYM{}", total - 2)), "second-newest must survive");
+    }
+
+    /// Verify that `evict_any` keeps the map at or below `cap` regardless of
+    /// value type (used by ticker_detail_cache which has no Instant field).
+    #[test]
+    fn cache_evict_any_caps_map_size() {
+        use std::collections::HashMap;
+
+        let mut map: HashMap<String, u32> = HashMap::new();
+        let cap = 3_usize;
+        for i in 0..(cap + 5) {
+            map.insert(format!("K{i}"), i as u32);
+        }
+        assert!(map.len() > cap);
+        evict_any(&mut map, cap);
+        assert!(map.len() <= cap, "map must be capped at {cap}");
     }
 }
 
