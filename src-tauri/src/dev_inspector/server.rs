@@ -15,6 +15,65 @@ use crate::dev_inspector::annotations::{DebugAnnotation, AnnotationOp};
 
 const PORT: u16 = 7892;
 const SCENARIO_DIR: &str = "dev/scenarios";
+/// Maximum request body size accepted (8 MiB). Bodies larger than this are
+/// rejected to prevent memory exhaustion from a locally-crafted request.
+const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
+
+/// Validate a caller-supplied relative filename.
+///
+/// Accepts only plain filenames/paths that stay inside the intended directory:
+/// - no `..` segments (path traversal)
+/// - no leading `/` or `\` (absolute-ish paths)
+/// - no drive letters (`C:`)
+/// - no embedded `\0`
+///
+/// Returns `Some(s.to_owned())` when safe, `None` otherwise.
+fn safe_rel(name: &str) -> Option<String> {
+    if name.is_empty() { return None; }
+    // Reject null bytes
+    if name.contains('\0') { return None; }
+    // Reject leading slash or backslash (absolute path attempts)
+    if name.starts_with('/') || name.starts_with('\\') { return None; }
+    // Reject Windows drive-letter paths (e.g. "C:\..." or "C:/...")
+    let bytes = name.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() { return None; }
+    // Split on both separators and reject any `..` component
+    for component in name.split(['/', '\\']) {
+        if component == ".." { return None; }
+    }
+    Some(name.to_owned())
+}
+
+#[cfg(test)]
+mod safe_rel_tests {
+    use super::safe_rel;
+
+    #[test]
+    fn safe_rel_rejects_traversal() {
+        assert_eq!(safe_rel("../../x"), None);
+        assert_eq!(safe_rel("../etc/passwd"), None);
+        assert_eq!(safe_rel("a/../b"), None);
+    }
+
+    #[test]
+    fn safe_rel_rejects_absolute() {
+        assert_eq!(safe_rel("/etc/x"), None);
+        assert_eq!(safe_rel("/etc/passwd"), None);
+    }
+
+    #[test]
+    fn safe_rel_rejects_windows_paths() {
+        assert_eq!(safe_rel("C:\\x"), None);
+        assert_eq!(safe_rel("C:/x"), None);
+    }
+
+    #[test]
+    fn safe_rel_accepts_simple_names() {
+        assert_eq!(safe_rel("500_foo.json"), Some("500_foo.json".to_owned()));
+        assert_eq!(safe_rel("baseline_clean.json"), Some("baseline_clean.json".to_owned()));
+        assert_eq!(safe_rel("order_seed_001.json"), Some("order_seed_001.json".to_owned()));
+    }
+}
 
 pub fn start(shared: Arc<Mutex<DevSharedState>>, queues: Arc<Mutex<DevQueues>>) {
     std::thread::Builder::new()
@@ -96,6 +155,10 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
             content_len = lower["content-length:".len()..].trim().parse().unwrap_or(0);
         }
     }
+    // Clamp to MAX_BODY_BYTES — reject oversized bodies to prevent memory exhaustion.
+    if content_len > MAX_BODY_BYTES {
+        return None;
+    }
     let body_start = header_end + 4;
     let mut body = buf[body_start..].to_vec();
     while body.len() < content_len {
@@ -128,7 +191,6 @@ fn write_response(stream: &mut TcpStream, status: u16, content_type: &str, body:
         "HTTP/1.1 {status} {status_text}\r\n\
          Content-Type: {content_type}\r\n\
          Content-Length: {}\r\n\
-         Access-Control-Allow-Origin: *\r\n\
          Connection: close\r\n\
          \r\n",
         body.len(),
@@ -160,10 +222,10 @@ fn handle(
     let method = req.method.as_str();
     let path   = req.path.as_str();
 
-    // CORS pre-flight
+    // CORS pre-flight — no wildcard origin; browser CORS is not needed for
+    // localhost-only tool use, and omitting the header prevents web-page CSRF.
     if method == "OPTIONS" {
         let header = "HTTP/1.1 204 No Content\r\n\
-            Access-Control-Allow-Origin: *\r\n\
             Access-Control-Allow-Methods: GET,POST,OPTIONS\r\n\
             Access-Control-Allow-Headers: Content-Type\r\n\
             Connection: close\r\n\r\n";
@@ -233,8 +295,12 @@ fn handle(
         }
         ("POST", "/screenshot") => {
             let body = parse_body(&req.body);
-            let name = body["name"].as_str().or_else(|| body["file"].as_str())
-                .unwrap_or("screenshot").to_string();
+            let name_raw = body["name"].as_str().or_else(|| body["file"].as_str())
+                .unwrap_or("screenshot");
+            let name = match safe_rel(name_raw) {
+                Some(n) => n,
+                None => { err_json(&mut stream, 400, "invalid name"); return; }
+            };
             super::request_screenshot(name.clone());
             for _ in 0..4 { wait_for_next_frame(&shared, 1000); }
             ok_json(&mut stream, &serde_json::json!({
@@ -314,27 +380,38 @@ fn handle(
         // ── Snapshots & checkpoints ────────────────────────────────────────
         ("POST", "/snapshot/save") => {
             let body = parse_body(&req.body);
-            let name = body["name"].as_str().unwrap_or("unnamed");
+            let name_raw = body["name"].as_str().unwrap_or("unnamed");
+            let name = match safe_rel(name_raw) {
+                Some(n) => n,
+                None => { err_json(&mut stream, 400, "invalid name"); return; }
+            };
             let widgets = shared.lock().unwrap().widget_tree.clone();
-            match layout::save_snapshot(name, &widgets) {
+            match layout::save_snapshot(&name, &widgets) {
                 Ok(path) => ok_json(&mut stream, &serde_json::json!({"ok": true, "path": path})),
                 Err(e)   => err_json(&mut stream, 500, &e),
             }
         }
         ("GET", "/layout-diff") => {
-            let baseline = req.query.split('&')
+            let baseline_raw = req.query.split('&')
                 .find_map(|p| p.strip_prefix("baseline="))
-                .unwrap_or("baseline")
-                .to_string();
+                .unwrap_or("baseline");
+            let baseline = match safe_rel(baseline_raw) {
+                Some(b) => b,
+                None => { err_json(&mut stream, 400, "invalid baseline"); return; }
+            };
             let widgets = shared.lock().unwrap().widget_tree.clone();
             let diff = layout::diff_layout(&baseline, &widgets, 2.0, 4.0);
             ok_json(&mut stream, &diff);
         }
         ("POST", "/checkpoint/save") => {
             let body = parse_body(&req.body);
-            let name  = body["name"].as_str().unwrap_or("unnamed");
+            let name_raw = body["name"].as_str().unwrap_or("unnamed");
+            let name = match safe_rel(name_raw) {
+                Some(n) => n,
+                None => { err_json(&mut stream, 400, "invalid name"); return; }
+            };
             let state = shared.lock().unwrap().app_state.clone();
-            match layout::save_checkpoint(name, &state) {
+            match layout::save_checkpoint(&name, &state) {
                 Ok(path) => ok_json(&mut stream, &serde_json::json!({"ok": true, "path": path})),
                 Err(e)   => err_json(&mut stream, 500, &e),
             }
@@ -770,11 +847,15 @@ fn handle_run_scenario(
 ) {
     // Resolve scenario: either an inline body or a `file` reference.
     let body = parse_body(body_bytes);
-    let scenario: ScenarioFile = if let Some(file) = body["file"].as_str() {
+    let scenario: ScenarioFile = if let Some(file_raw) = body["file"].as_str() {
+        let file = match safe_rel(file_raw) {
+            Some(f) => f,
+            None => { err_json(stream, 400, "invalid file path"); return; }
+        };
         let path = format!("{SCENARIO_DIR}/{file}");
         let bytes = match std::fs::read(&path) {
             Ok(b) => b,
-            Err(e) => { err_json(stream, 404, &format!("scenario {file}: {e}")); return; }
+            Err(_) => { err_json(stream, 404, "scenario not found"); return; }
         };
         match serde_json::from_slice(&bytes) {
             Ok(s) => s,
@@ -889,10 +970,13 @@ fn execute_step(
         "screenshot" => {
             // Capture the live window to dev/screenshots/<name>.png. The render
             // thread fulfils it; wait a few frames so the PNG is written.
-            let name = args["name"].as_str()
+            let name_raw = args["name"].as_str()
                 .or_else(|| args["file"].as_str())
-                .unwrap_or("screenshot")
-                .to_string();
+                .unwrap_or("screenshot");
+            let name = match safe_rel(name_raw) {
+                Some(n) => n,
+                None => return (false, "screenshot: invalid name".into()),
+            };
             super::request_screenshot(name.clone());
             for _ in 0..4 { wait_for_next_frame(shared, 1000); }
             (true, format!("dev/screenshots/{name}.png"))
@@ -1159,9 +1243,13 @@ fn execute_step(
         }
 
         "snapshot" => {
-            let name = args["name"].as_str().unwrap_or("unnamed");
+            let name_raw = args["name"].as_str().unwrap_or("unnamed");
+            let name = match safe_rel(name_raw) {
+                Some(n) => n,
+                None => return (false, "snapshot: invalid name".into()),
+            };
             let widgets = shared.lock().unwrap().widget_tree.clone();
-            match layout::save_snapshot(name, &widgets) {
+            match layout::save_snapshot(&name, &widgets) {
                 Ok(path) => (true, format!("snapshot saved to {path}")),
                 Err(e)   => (false, e),
             }
@@ -1296,9 +1384,13 @@ fn execute_step(
 
         // ── Checkpoint save step ──────────────────────────────────────────────
         "save_checkpoint" => {
-            let name = args["name"].as_str().unwrap_or("scenario_checkpoint");
+            let name_raw = args["name"].as_str().unwrap_or("scenario_checkpoint");
+            let name = match safe_rel(name_raw) {
+                Some(n) => n,
+                None => return (false, "save_checkpoint: invalid name".into()),
+            };
             let state = shared.lock().unwrap().app_state.clone();
-            match layout::save_checkpoint(name, &state) {
+            match layout::save_checkpoint(&name, &state) {
                 Ok(path) => (true, format!("checkpoint saved to {path}")),
                 Err(e)   => (false, e),
             }
@@ -1379,17 +1471,21 @@ fn execute_step(
 
         // ── include: inline another scenario file's steps ────────────────────
         "include" => {
-            let file = args["file"].as_str().unwrap_or("");
-            if file.is_empty() {
+            let file_raw = args["file"].as_str().unwrap_or("");
+            if file_raw.is_empty() {
                 return (false, "include: missing 'file' field".into());
             }
+            let file = match safe_rel(file_raw) {
+                Some(f) => f,
+                None => return (false, "include: invalid file path".into()),
+            };
             let path = format!("{SCENARIO_DIR}/{file}");
             let scenario: ScenarioFile = match std::fs::read(&path) {
                 Ok(b) => match serde_json::from_slice(&b) {
                     Ok(s)  => s,
-                    Err(e) => return (false, format!("include '{file}' parse error: {e}")),
+                    Err(e) => return (false, format!("include parse error: {e}")),
                 },
-                Err(e) => return (false, format!("include '{file}' load error: {e}")),
+                Err(_) => return (false, "include: scenario not found".into()),
             };
             let step_count = scenario.steps.len();
             let mut any_fail = false;
@@ -1481,7 +1577,24 @@ fn handle_run_suite(
     let mut bugs: Vec<serde_json::Value> = Vec::new();
 
     for file in &scenario_files {
-        let path = format!("{SCENARIO_DIR}/{file}");
+        // Reject any file name that could escape the scenarios directory.
+        let safe_file = match safe_rel(file) {
+            Some(f) => f,
+            None => {
+                results.push(serde_json::json!({
+                    "scenario": file,
+                    "pass": false,
+                    "error": "invalid file path",
+                }));
+                bugs.push(serde_json::json!({
+                    "scenario": file, "severity": "load_error",
+                    "detail": "invalid file path",
+                }));
+                suite_failed += 1;
+                continue;
+            }
+        };
+        let path = format!("{SCENARIO_DIR}/{safe_file}");
         let scenario: ScenarioFile = match std::fs::read(&path).ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
         {
@@ -1490,11 +1603,11 @@ fn handle_run_suite(
                 results.push(serde_json::json!({
                     "scenario": file,
                     "pass": false,
-                    "error": format!("could not load {file}"),
+                    "error": "could not load scenario",
                 }));
                 bugs.push(serde_json::json!({
                     "scenario": file, "severity": "load_error",
-                    "detail": format!("could not load {file}"),
+                    "detail": "could not load scenario",
                 }));
                 suite_failed += 1;
                 continue;
@@ -1634,11 +1747,17 @@ fn handle_watch_scenario(
             return;
         }
     };
+    let file = match safe_rel(&file) {
+        Some(f) => f,
+        None => {
+            err_json(stream, 400, "invalid file path");
+            return;
+        }
+    };
 
     let header = "HTTP/1.1 200 OK\r\n\
         Content-Type: text/event-stream\r\n\
         Cache-Control: no-cache\r\n\
-        Access-Control-Allow-Origin: *\r\n\
         Connection: keep-alive\r\n\
         \r\n";
     if stream.write_all(header.as_bytes()).is_err() { return; }
@@ -1678,7 +1797,6 @@ fn handle_sse(stream: &mut TcpStream, shared: &Arc<Mutex<DevSharedState>>) {
     let header = "HTTP/1.1 200 OK\r\n\
         Content-Type: text/event-stream\r\n\
         Cache-Control: no-cache\r\n\
-        Access-Control-Allow-Origin: *\r\n\
         Connection: keep-alive\r\n\
         \r\n";
     if stream.write_all(header.as_bytes()).is_err() { return; }
