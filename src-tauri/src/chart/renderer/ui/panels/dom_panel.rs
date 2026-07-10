@@ -356,6 +356,16 @@ pub(crate) fn draw(
     painter.text(plus_rect.center(), egui::Align2::CENTER_CENTER, "+", fm.clone(),
         if plus_resp.hovered() { t.text } else { t.dim });
     if plus_resp.clicked() { *order_qty += 1; }
+    // Scroll-to-size over the stepper — NinjaTrader/Bookmap feel: wheel up
+    // raises the working qty, wheel down lowers it (floor 1). The stepper lives
+    // in the controls area (below `ctrl_top`), so this never fights the ladder's
+    // scroll-to-recenter above. One increment per wheel notch.
+    let step_hover = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| stepper_rect.contains(p));
+    if step_hover {
+        let s = ui.input(|i| i.raw_scroll_delta.y);
+        if s > 0.5 { *order_qty += 1; }
+        else if s < -0.5 && *order_qty > 1 { *order_qty -= 1; }
+    }
     cx = stepper_rect.right() + 4.0;
 
     // ── MKT / LMT combobox (proper Select, not a click-cycle).
@@ -596,9 +606,14 @@ pub(crate) fn draw(
             let cx = ui.input(|i| i.pointer.interact_pos()).map(|p| p.x).unwrap_or(f32::NAN);
             let in_bid = cx >= xb && cx < xb + cb;
             let in_ask = cx >= xa && cx < xa + ca;
-            if *dom_armed && in_bid && price > 0.0 {
+            // DOM Phase 1: stale-book trade guard. Only fire a one-click order
+            // when the depth feed is LIVE — never against a SIMULATED/frozen book
+            // (mock levels), where the price under the cursor is fabricated. When
+            // stale, the click falls through to select-for-buttons (the deliberate
+            // two-step path), and the SIMULATED badge already warns the trader.
+            if *dom_armed && is_live && in_bid && price > 0.0 {
                 *new_order = Some((OrderSide::Buy, price, *order_qty));
-            } else if *dom_armed && in_ask && price > 0.0 {
+            } else if *dom_armed && is_live && in_ask && price > 0.0 {
                 *new_order = Some((OrderSide::Sell, price, *order_qty));
             } else {
                 *dom_selected_price = Some(price);
