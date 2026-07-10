@@ -1320,6 +1320,28 @@ impl OrderManager {
                 let idem_owned = idem_key;
                 let broker = Arc::clone(&self.broker);
                 crate::foundation::guard::spawn_guarded("order_manager", move || {
+                    // WS-H #42: re-check the kill/halt interlock INSIDE the spawned
+                    // thread, immediately before the broker call. The gate was
+                    // checked on the caller thread at intent time; a kill engaged in
+                    // the interim (rapid-fire submits, then Ctrl+Shift+K) would
+                    // otherwise not stop this already-queued submit. If tripped,
+                    // cancel locally and never touch the broker.
+                    if with_mgr(|m| m.kill_engaged || m.halted) {
+                        with_mgr(|mgr| {
+                            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
+                                if !o.state.is_terminal() {
+                                    let now = epoch_ms();
+                                    o.state = OrderState::Cancelled;
+                                    o.updated_at = ts_from_ms(now);
+                                    o.state_history.push((OrderState::Cancelled, ts_from_ms(now)));
+                                }
+                            }
+                            mgr.needs_snapshot = true;
+                        });
+                        report(ErrorLevel::Warn, "control", "submit_aborted_kill",
+                            "kill/halt engaged after intent — broker submit aborted");
+                        return;
+                    }
                     let args = SubmitArgs {
                         symbol: &sym_owned,
                         side: &side_owned,
