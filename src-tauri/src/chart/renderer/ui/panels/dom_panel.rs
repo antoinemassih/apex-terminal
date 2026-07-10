@@ -71,6 +71,7 @@ pub(crate) fn draw(
     orders: &[OrderLevel], dom_selected_price: &mut Option<f32>,
     dom_order_type: &mut DomOrderType, order_qty: &mut u32,
     new_order: &mut Option<(OrderSide, f32, u32)>, cancel_all: &mut bool,
+    dom_flatten: &mut bool,
     cancel_order_id: &mut Option<u32>, move_order: &mut Option<(u32, f32)>,
     dom_armed: &mut bool, dom_col_mode: &mut u8,
     dom_dragging: &mut Option<(u32, f32)>, // (order_id, current_y) while dragging
@@ -451,7 +452,10 @@ pub(crate) fn draw(
             .kbd("Ctrl+Shift+F")
             .min_size(egui::vec2(mid_w, mid_half_h)))
     });
-    if resp.clicked() { *cancel_all = true; }
+    // DOM Phase 1: FLATTEN closes the POSITION (cancel working orders +
+    // market-close) via OrderManager::flatten — distinct from CANCEL, which
+    // only cancels working orders. (They used to do the same thing.)
+    if resp.clicked() { *dom_flatten = true; }
 
     // CANCEL — pastel red fill so it reads as a destructive (but not alarm)
     // action paired with FLATTEN. Centered text, dark fg for readable

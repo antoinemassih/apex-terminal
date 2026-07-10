@@ -1489,6 +1489,7 @@ fn render_chart_pane(
 
         let mut dom_new_order: Option<(OrderSide, f32, u32)> = None;
         let mut dom_cancel_all = false;
+        let mut dom_flatten = false;
         let mut dom_cancel_order_id: Option<u32> = None;
         let mut dom_move_order: Option<(u32, f32)> = None;
         {
@@ -1506,6 +1507,7 @@ fn render_chart_pane(
                 order_qty: &mut chart.order_panel.qty,
                 new_order: &mut dom_new_order,
                 cancel_all: &mut dom_cancel_all,
+                dom_flatten: &mut dom_flatten,
                 cancel_order_id: &mut dom_cancel_order_id,
                 move_order: &mut dom_move_order,
                 dom_armed: &mut chart.dom.armed,
@@ -1569,6 +1571,22 @@ fn render_chart_pane(
         }
         if dom_cancel_all {
             crate::chart_renderer::trading::order_manager::cancel_all_orders(&chart.symbol);
+            for o in &mut chart.orders {
+                if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed {
+                    o.status = OrderStatus::Cancelled;
+                }
+            }
+        }
+        if dom_flatten {
+            // DOM Phase 1: FLATTEN closes the POSITION (cancel working orders +
+            // market-close) via OrderManager::flatten — the guarded path (paper
+            // guard, risk, kill/halt, journal). Uses the account snapshot's
+            // position qty for chart.symbol; 0 = no position, so flatten just
+            // cancels working orders.
+            let pos_qty = crate::chart_renderer::trading::read_account_data()
+                .and_then(|(_, ps, _)| ps.iter().find(|p| p.symbol == chart.symbol).map(|p| p.qty))
+                .unwrap_or(0);
+            crate::chart_renderer::trading::order_manager::flatten_symbol(&chart.symbol, pos_qty);
             for o in &mut chart.orders {
                 if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed {
                     o.status = OrderStatus::Cancelled;
