@@ -8,12 +8,15 @@ pub mod providers;
 pub use crate::foundation::data_types::*;
 
 // Re-export sub-feeds at crate::data level for backward compat
+pub use feeds::alerts_feed;
 pub use feeds::apex_data;
+pub use feeds::brief_feed;
 pub use feeds::crypto_feed;
 pub use feeds::dom_feed;
 pub use feeds::drawings_feed;
 pub use feeds::futures_feed;
 pub use feeds::intercepts_feed;
+pub use feeds::journal_feed;
 pub use feeds::signals_feed;
 pub use feeds::signals_v2_feed;
 pub use feeds::discord;

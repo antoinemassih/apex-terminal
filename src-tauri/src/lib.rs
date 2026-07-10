@@ -25,7 +25,10 @@ pub use data::crypto_feed;
 pub use data::dom_feed;
 pub use data::drawings_feed;
 pub use data::futures_feed;
+pub use data::alerts_feed;
+pub use data::brief_feed;
 pub use data::intercepts_feed;
+pub use data::journal_feed;
 pub use data::signals_feed;
 pub use data::signals_v2_feed;
 pub use data::discord;
@@ -226,6 +229,20 @@ pub fn init_live_feeds() {
             "APEX_ENABLE_LOCAL_IBSERVER set — starting legacy local-ibserver feed");
         let _ = data::ib_ws::spawn();
     }
+
+    // ── Morning-brief toast + trade-idea enrichment cache ────────────────
+    // Fetches GET /admin/digest from ApexSignals once at startup (and daily),
+    // pushes the `brief` field as a toast, and caches `trade_ideas` for badge
+    // enrichment in signals_v2_feed. Degrades silently when ApexSignals is
+    // unreachable. Opt-out: BRIEF_FEED_ENABLED=0.
+    brief_feed::start();
+
+    // ── Journal live-fills poller ─────────────────────────────────────────
+    // Polls ApexIB /executions on a slow cadence (JOURNAL_REFRESH_SECS,
+    // default 300s) and aggregates fills into JournalEntry rows. The journal
+    // panel calls journal_feed::take_fresh_entries() each frame to swap in
+    // real data. Opt-out: JOURNAL_LIVE_FILLS=0 (renders empty, not placeholders).
+    journal_feed::start();
 
     // ── Connection-state push listeners ──────────────────────────────────
     // Bridge each provider's `subscribe_state()` broadcast into the snapshot

@@ -206,6 +206,11 @@ fn main() {
     // Futures live-bar feed — connects to apex-data /ws/futures (IB 5s bars)
     _scaffold_lib::futures_feed::start();
 
+    // Playbook-alert feed (B2) — connects to apex-data /ws/alerts and surfaces
+    // fired playbook alerts in the badge strip and the alerts panel's "PLAYBOOK
+    // ALERTS" section. Opt-out via ALERTS_FEED_ENABLED=0.
+    _scaffold_lib::alerts_feed::start();
+
     // Drawing-interception feed — connects to apex-data /ws/intercepts and
     // surfaces backend-computed break/retest events in the alert-badge feed.
     _scaffold_lib::intercepts_feed::start();

@@ -22,6 +22,7 @@ use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;
 use crate::chart_renderer::commands::{AppCommand, UiCtx};
 use super::kit::{PanelInputRow, PanelDualAction, Tone};
+use crate::data::feeds::alerts_feed;
 
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -193,6 +194,27 @@ fn draw_content_cx(
             }
         }
     }
+
+    // ── PLAYBOOK ALERTS (B2 — additive, server-side fired events) ─────────────
+    // Shows the last N AlertEvents received from ApexData /ws/alerts alongside
+    // the local PriceAlerts above. Severity-coloured dot; newest first.
+    let playbook_alerts = alerts_feed::snapshot();
+    if !playbook_alerts.is_empty() {
+        let t = cx.theme;
+        PanelSection::new("PLAYBOOK ALERTS")
+            .count(playbook_alerts.len())
+            .show(ui, t, |ui, t| {
+                egui::ScrollArea::vertical()
+                    .id_salt("playbook_alerts_scroll")
+                    .max_height(ui.available_height())
+                    .show(ui, |ui| {
+                        // Newest first
+                        for alert in playbook_alerts.iter().rev() {
+                            playbook_alert_row(ui, t, alert);
+                        }
+                    });
+            });
+    }
 }
 
 // ── Row helpers ──────────────────────────────────────────────────────────────
@@ -298,4 +320,51 @@ fn draft_row(
     if place.get() {
         cx.dispatch(AppCommand::PlaceDraftAlert { pane: pi, id: alert.id });
     }
+}
+
+/// Render a single server-side playbook alert row (B2).
+/// Severity dot: critical/warning → t.warn, info → t.accent.
+/// Primary = rule name (+symbol if present); secondary = message + age.
+fn playbook_alert_row(
+    ui: &mut egui::Ui,
+    t: &Theme,
+    alert: &alerts_feed::PlaybookAlert,
+) {
+    let dot_col = match alert.severity.to_lowercase().as_str() {
+        "critical" | "error" => t.bear,
+        "warning"  | "warn"  => t.warn,
+        _                    => t.accent,
+    };
+
+    let primary = if alert.symbol.is_empty() {
+        alert.rule_name.clone()
+    } else {
+        format!("{} — {}", alert.rule_name, alert.symbol)
+    };
+
+    // Human-readable age: "Xs ago" / "Xm ago" / timestamp fallback.
+    let age_secs = (crate::foundation::time::now_ms() - alert.ts_ms).max(0) / 1000;
+    let age_str = if age_secs < 60 {
+        format!("{}s ago", age_secs)
+    } else if age_secs < 3600 {
+        format!("{}m ago", age_secs / 60)
+    } else {
+        format!("{}h ago", age_secs / 3600)
+    };
+    let secondary = format!("{} · {}", alert.message, age_str);
+
+    let id_salt = format!("pb_alert_{}_{}", alert.rule_name, alert.ts_ms);
+
+    PanelListRow::new(&id_salt)
+        .leading(move |ui, _t| {
+            ui.label(
+                egui::RichText::new(Icon::CIRCLE)
+                    .font(egui::FontId::proportional(font_md()))
+                    .color(dot_col),
+            );
+        })
+        .primary(&primary)
+        .secondary(&secondary)
+        .dense(false)
+        .show(ui, t);
 }

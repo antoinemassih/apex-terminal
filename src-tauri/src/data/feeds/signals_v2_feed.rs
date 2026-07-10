@@ -111,7 +111,30 @@ fn on_text(text: &str, surfaced: &[String]) {
         .unwrap_or_default();
 
     let label = pretty_family(&family);
-    let msg = format!("{label}{ctx}{score}");
+    let base_msg = format!("{label}{ctx}{score}");
+
+    // ── 3:45 trade-idea enrichment (additive) ──────────────────────────────
+    // When the signal symbol has a fresh cached trade idea (from brief_feed),
+    // append structure/strike/expiry/breakeven to the badge message so the
+    // 3:45 badge carries enough context for an immediate decision.
+    // Degrades silently: badge shows base_msg when no idea is cached.
+    let msg = if let Some(ti) = crate::data::feeds::brief_feed::get_trade_idea(&symbol, 600) {
+        let expiry_part = if !ti.expiry_label.is_empty() {
+            format!(" exp {}", ti.expiry_label)
+        } else if ti.dte > 0.0 {
+            format!(" {:.0}DTE", ti.dte)
+        } else {
+            String::new()
+        };
+        let detail = format!(
+            " — {} ${:.0}{} BE ${:.2}",
+            ti.structure, ti.long_strike, expiry_part, ti.breakeven
+        );
+        format!("{base_msg}{detail}")
+    } else {
+        base_msg
+    };
+
     alert_feed::push(AlertKind::Signal, Some(symbol), msg);
     crate::wake_native_ui();
 }

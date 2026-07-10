@@ -338,6 +338,17 @@ pub(crate) fn render(
                 description: "Toggle order ledger panel",
                 category: "Panels",
             });
+            // B3 — MSG panel shortcuts (Ctrl+Shift+R/I/T)
+            let cmd_shift = egui::Modifiers { command: true, shift: true, ..egui::Modifiers::NONE };
+            for (key, action, desc) in [
+                (egui::Key::R, "panel.msg_rrg_toggle",      "Toggle MSG Weighted RRG panel"),
+                (egui::Key::I, "panel.msg_influence_toggle","Toggle MSG Influence heatmap panel"),
+                (egui::Key::T, "panel.msg_tension_toggle",  "Toggle MSG Scenario ladder panel"),
+            ] {
+                let _ = crate::foundation::shortcuts::registry()
+                    .write().unwrap()
+                    .register(ShortcutEntry { shortcut: Shortcut { modifiers: cmd_shift, key }, action, description: desc, category: "Panels" });
+            }
             // UX-1 Fix 1: Alt+S focuses the symbol input in the top toolbar.
             if let Err(e) = crate::foundation::shortcuts::registry().write().unwrap().register(ShortcutEntry {
                 shortcut: Shortcut {
@@ -1801,6 +1812,27 @@ pub(crate) fn render(
     // Order Ledger toggle (Ctrl+L) — the panel is rail-hosted.
     if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::L)) {
         watchlist.update_sidebar_state(|s| s.order_ledger_open = !s.order_ledger_open);
+    }
+
+    // ── MSG panel hotkeys (B3) ────────────────────────────────────────────────
+    // Three fully-implemented MSG panels were permanently unreachable (their
+    // toggle() had zero callers anywhere). Wired here per 09-trader-ux §BLOCKER-1.
+    //
+    //  Ctrl+Shift+R  — MSG Weighted RRG  (basket_rrg: sector rotation quadrants)
+    //  Ctrl+Shift+I  — MSG Influence     (basket_influence: flow-share heat)
+    //  Ctrl+Shift+T  — MSG Tension/Scenario ladder (basket_tension payoff ladder)
+    //
+    // Chosen keys: not used by any existing hotkey block. R=Rotation (RRG),
+    // I=Influence, T=Tension/ladder. Shift qualifier avoids Ctrl+R (refresh in
+    // some egui builds) and Ctrl+T (tab-related OS shortcuts).
+    if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::R)) {
+        crate::chart_renderer::ui::panels::msg_rrg_panel::toggle();
+    }
+    if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::I)) {
+        crate::chart_renderer::ui::panels::msg_influence_panel::toggle();
+    }
+    if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::T)) {
+        crate::chart_renderer::ui::panels::msg_tension_panel::toggle();
     }
 
     // ── Object Tree side panel (not rail-hosted)

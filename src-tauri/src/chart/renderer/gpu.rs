@@ -5064,6 +5064,9 @@ fn generate_placeholder_insiders(symbol: &str) -> Vec<InsiderTrade> {
     trades
 }
 
+/// Placeholder journal entries — kept for reference only.
+/// Real fills now come from `journal_feed` (JOURNAL_LIVE_FILLS, default ON).
+#[allow(dead_code)]
 pub(crate) fn generate_placeholder_journal() -> Vec<JournalEntry> {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
     vec![

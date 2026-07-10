@@ -1,10 +1,13 @@
 pub mod apex_data;
 pub mod resilient_ws;
+pub mod alerts_feed;
+pub mod brief_feed;
 pub mod crypto_feed;
 pub mod dom_feed;
 pub mod drawings_feed;
 pub mod futures_feed;
 pub mod intercepts_feed;
+pub mod journal_feed;
 pub mod signals_feed;
 pub mod signals_v2_feed;
 pub mod ib_ws;

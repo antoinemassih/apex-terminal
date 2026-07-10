@@ -27,6 +27,11 @@ pub(crate) fn draw_content(
     watchlist: &mut Watchlist,
     t: &Theme,
 ) {
+    // Pull live fills from the background poller when a fresh batch is ready.
+    if let Some(fresh) = crate::journal_feed::take_fresh_entries() {
+        watchlist.journal_panel.entries = fresh;
+        watchlist.journal_panel.page = 0;
+    }
     let entries = &watchlist.journal_panel.entries;
     if entries.is_empty() {
         PanelEmpty::new("No trades logged")
@@ -74,6 +79,15 @@ pub(crate) fn draw(
     slot: Option<super::side_panel_shell::RailSlot>,
 ) {
     if !watchlist.journal_panel.open { return; }
+
+    // Swap in real ApexIB fills when the background poller has a fresh batch.
+    // If the gate is off (JOURNAL_LIVE_FILLS=0) take_fresh_entries always
+    // returns None so the entries remain whatever was set at initialisation
+    // (JournalPanelState::default now returns empty — see watchlist_state.rs).
+    if let Some(fresh) = crate::journal_feed::take_fresh_entries() {
+        watchlist.journal_panel.entries = fresh;
+        watchlist.journal_panel.page = 0;
+    }
 
     let resp = SidePanelShell::new("journal_panel", "TRADE JOURNAL")
         .width(Width::Medium)

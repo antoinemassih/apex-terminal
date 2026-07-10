@@ -5,7 +5,7 @@
 //! `gpu`); only the gpu-local types below need importing. Re-exported from
 //! `gpu` so `Watchlist`'s field types resolve unchanged.
 
-use super::gpu::{generate_placeholder_journal, OptionChain, StrikeMode, SplitSection, ScannerDef, ScanResult,
+use super::gpu::{OptionChain, StrikeMode, SplitSection, ScannerDef, ScanResult,
                  DiscordMessage, NewsItem, JournalEntry, SavedOption, TapeRow};
 
 /// Play-editor form state (WS-E E3, Watchlist-split strangler slice 1).
@@ -405,7 +405,11 @@ pub(crate) struct JournalPanelState {
 
 impl Default for JournalPanelState {
     fn default() -> Self {
-        Self { open: false, entries: generate_placeholder_journal(), page: 0 }
+        // No placeholder trades — real fills arrive via `journal_feed::start()`
+        // and are swapped in by `journal_panel::draw()` each frame via
+        // `journal_feed::take_fresh_entries()`. The panel renders the "No trades
+        // logged" empty state until the first poller result arrives.
+        Self { open: false, entries: Vec::new(), page: 0 }
     }
 }
 
