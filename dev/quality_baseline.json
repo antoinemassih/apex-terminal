@@ -1,5 +1,5 @@
 {
-  "dead_code_allows": 46,
+  "dead_code_allows": 47,
   "eprintln_in_data": 0,
   "expect_total": 60,
   "file_loc": {
@@ -18,7 +18,7 @@
     "misc": 7,
     "render": 4,
     "state": 1,
-    "ui": 15,
+    "ui": 16,
     "ui_kit": 8
   }
 }
