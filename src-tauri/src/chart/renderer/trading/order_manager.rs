@@ -908,11 +908,49 @@ impl OrderManager {
                 let bp = summary.buying_power;
                 if bp > 0.0 {
                     if intent.order_type == ManagedOrderType::Market || intent.price <= 0.0 {
-                        let qty_floor = intent.qty as f64;
-                        if qty_floor >= 0.95 * bp {
-                            self.orders_rejected += 1;
-                            let err = OrderError::InsufficientBuyingPower { required: qty_floor, available: bp };
-                            return Err(OrderResult::Rejected(err.to_string()));
+                        // FIX 1: market-order notional check. We must compare
+                        // DOLLARS (qty × price) to buying power, not raw share
+                        // count to dollars.  Estimate a reference price using
+                        // the best available source:
+                        //   1. intent.last_price — caller-supplied market price
+                        //      (non-zero whenever the UI has a quote).
+                        //   2. apex_data live snapshot (last, or (bid+ask)/2).
+                        //   3. If no price is available, skip the check with a
+                        //      warning so a legitimate order is never spuriously
+                        //      rejected (erring toward acceptance is safer than
+                        //      blocking a valid trade with a nonsense number).
+                        let est_price: Option<f64> = if intent.last_price > 0.0 {
+                            Some(intent.last_price as f64)
+                        } else {
+                            crate::apex_data::live_state::get_snapshot(&intent.symbol)
+                                .and_then(|snap| {
+                                    let mid = if snap.bid > 0.0 && snap.ask > 0.0 {
+                                        (snap.bid + snap.ask) / 2.0
+                                    } else if snap.last > 0.0 {
+                                        snap.last
+                                    } else {
+                                        0.0
+                                    };
+                                    if mid > 0.0 { Some(mid) } else { None }
+                                })
+                        };
+                        match est_price {
+                            Some(ep) => {
+                                let candidate_notional = (intent.qty as f64) * ep;
+                                let total = candidate_notional + inflight_notional;
+                                if total > bp {
+                                    self.orders_rejected += 1;
+                                    let err = OrderError::InsufficientBuyingPower { required: total, available: bp };
+                                    return Err(OrderResult::Rejected(err.to_string()));
+                                }
+                            }
+                            None => {
+                                // No reference price available — skip the notional
+                                // check rather than comparing shares to dollars.
+                                report(ErrorLevel::Warn, "risk", "bp_market_no_price",
+                                    format!("bp notional check skipped for market order {}: no ref price available (symbol={})",
+                                        intent.qty, intent.symbol));
+                            }
                         }
                     } else {
                         let candidate_notional = (intent.qty as f64) * (intent.price as f64);
@@ -1548,11 +1586,20 @@ impl OrderManager {
             let tp_price = take_profit_price;
             let sl_price = stop_loss_price;
             let eid = entry_id; let tid = tp_id; let sid = sl_id;
+            // FIX 2: capture paper_mode so the spawn closure can branch on it.
+            let paper = self.paper_mode;
 
             // Wave 4: HTTP work moved behind `Broker::submit_bracket`. The
             // spawned thread now calls the trait; local state mutation
             // (backend_order_id wiring on each leg) happens through `with_mgr`
             // as before so the state-machine semantics don't change.
+            //
+            // FIX 2: On the live path the legs must NOT transition to Working
+            // synchronously before we have broker confirmation. Doing so leaves
+            // phantom Working orders with backend_order_id=None if the broker
+            // rejects the bracket (e.g. margin check, connectivity drop). The
+            // paper path is a deterministic local sim that never fails, so
+            // synchronous Working is still correct there.
             let broker = Arc::clone(&self.broker);
             let bargs = BracketSubmitArgs {
                 symbol: sym.clone(),
@@ -1564,6 +1611,13 @@ impl OrderManager {
                 stop_loss_price: sl_price,
                 idempotency_key: idem_key,
             };
+            if paper {
+                // Paper path: legs go Working synchronously (deterministic sim,
+                // no broker Ack needed). Preserve existing paper behavior exactly.
+                self.transition(entry_id, OrderState::Working);
+                self.transition(tp_id, OrderState::Working);
+                self.transition(sl_id, OrderState::Working);
+            }
             crate::foundation::guard::spawn_guarded("order_manager", move || {
                 match broker.submit_bracket(&bargs) {
                     Ok(resp) => {
@@ -1577,14 +1631,52 @@ impl OrderManager {
                             if let Some(oid) = resp.stop_loss_backend_id {
                                 if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == sid) { o.backend_order_id = Some(oid); }
                             }
+                            if !paper {
+                                // Live path: broker Ack received. Transition each leg
+                                // PendingSubmit -> Working ONLY if still pending —
+                                // guarded exactly like submit() (1280) so a
+                                // poller-driven reconcile that already landed a
+                                // fill/cancel in the Ack window isn't clobbered.
+                                let now = epoch_ms();
+                                for id in [eid, tid, sid] {
+                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id) {
+                                        if o.state == OrderState::PendingSubmit {
+                                            o.state = OrderState::Working;
+                                            o.updated_at = ts_from_ms(now);
+                                            o.state_history.push((OrderState::Working, ts_from_ms(now)));
+                                        }
+                                    }
+                                }
+                                mgr.needs_snapshot = true;
+                                mgr.save_to_disk();
+                            }
                         });
                     }
-                    Err(e) => report(ErrorLevel::Error, "bracket", "submit_failed", e.to_string()),
+                    Err(e) => {
+                        report(ErrorLevel::Error, "bracket", "submit_failed", e.to_string());
+                        if !paper {
+                            // Live path: broker rejected the bracket — transition
+                            // all legs to Rejected so they don't remain stuck as
+                            // PendingSubmit with no backend_id forever.
+                            with_mgr(|mgr| {
+                                let now = epoch_ms();
+                                let reason = e.to_string();
+                                for id in [eid, tid, sid] {
+                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id) {
+                                        if !o.state.is_terminal() {
+                                            o.state = OrderState::Rejected;
+                                            o.rejection_reason = Some(reason.clone());
+                                            o.updated_at = ts_from_ms(now);
+                                            o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
+                                        }
+                                    }
+                                }
+                                mgr.needs_snapshot = true;
+                            });
+                        }
+                    }
                 }
             });
-            self.transition(entry_id, OrderState::Working);
-            self.transition(tp_id, OrderState::Working);
-            self.transition(sl_id, OrderState::Working);
             self.pending_toasts.push(format!("BRACKET {} {} x{} entry={:.2} TP={:.2} SL={:.2}",
                 side_str.to_uppercase(), intent.symbol, intent.qty, intent.price, take_profit_price, stop_loss_price));
             (OrderResult::Accepted(entry_id), Some(tp_id), Some(sl_id))
@@ -1655,7 +1747,13 @@ impl OrderManager {
             self.orders_submitted += 1;
 
             if initial_state == OrderState::PendingSubmit {
-                self.transition(id, OrderState::Working);
+                // FIX 2: for paper mode, transition to Working synchronously
+                // (deterministic sim, no broker Ack needed — preserve current
+                // paper behavior exactly). For live mode, leave the leg in
+                // PendingSubmit until broker Ack arrives in the spawn below.
+                if paper {
+                    self.transition(id, OrderState::Working);
+                }
                 results.push(OrderResult::Accepted(id));
             } else {
                 results.push(OrderResult::NeedsConfirmation(id));
@@ -1712,9 +1810,48 @@ impl OrderManager {
                                     }
                                 }
                             }
+                            if !paper {
+                                // Live path: broker Ack received. Guarded
+                                // PendingSubmit -> Working (see submit() 1280) so a
+                                // reconcile that landed first isn't clobbered.
+                                let now = epoch_ms();
+                                for &leg_id in &ids_copy {
+                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == leg_id) {
+                                        if o.state == OrderState::PendingSubmit {
+                                            o.state = OrderState::Working;
+                                            o.updated_at = ts_from_ms(now);
+                                            o.state_history.push((OrderState::Working, ts_from_ms(now)));
+                                        }
+                                    }
+                                }
+                                mgr.needs_snapshot = true;
+                                mgr.save_to_disk();
+                            }
                         });
                     }
-                    Err(e) => report(ErrorLevel::Error, "oco", "submit_failed", e.to_string()),
+                    Err(e) => {
+                        report(ErrorLevel::Error, "oco", "submit_failed", e.to_string());
+                        if !paper {
+                            // Live path: broker rejected the OCO group — transition
+                            // all legs to Rejected so they don't remain stuck as
+                            // PendingSubmit with no backend_id forever.
+                            with_mgr(|mgr| {
+                                let now = epoch_ms();
+                                let reason = e.to_string();
+                                for &leg_id in &ids_copy {
+                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == leg_id) {
+                                        if !o.state.is_terminal() {
+                                            o.state = OrderState::Rejected;
+                                            o.rejection_reason = Some(reason.clone());
+                                            o.updated_at = ts_from_ms(now);
+                                            o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
+                                        }
+                                    }
+                                }
+                                mgr.needs_snapshot = true;
+                            });
+                        }
+                    }
                 }
             });
             self.pending_toasts.push(format!("OCO group {} with {} orders", oca_group, local_ids.len()));
@@ -4967,6 +5104,305 @@ mod tests {
             "no orders should be created when BP gate fires, found {}",
             m.orders.len()
         );
+    }
+
+    // ── FIX 1: market-order buying-power notional check ─────────────────────
+    //
+    // Verify that the market-order branch of the BP pre-check correctly uses
+    // notional (qty × est_price) rather than raw share count.  We drive
+    // est_price through intent.last_price (the simplest injectable source).
+
+    #[test]
+    fn fix1_market_bp_check_uses_notional_and_rejects_correctly() {
+        use std::sync::Arc;
+
+        // Wire a PanicBroker — broker.submit() must NOT be reached if the BP
+        // gate fires (regression guard identical to p1_12).
+        let mut m = OrderManager::with_broker(Arc::new(PanicBroker) as Arc<dyn Broker>);
+        m.paper_mode = false;
+        m.armed = true;
+        m.initial_reconcile_done = true;
+        m.risk_limits.dedup_cooldown_ms = 0;
+        m.risk_limits.max_order_qty = 1_000_000;
+        m.risk_limits.max_position_qty = 1_000_000;
+        m.risk_limits.max_notional = 0.0; // disable soft notional gate
+
+        // Inject a connected account summary with $10_000 buying power.
+        let acct_data = super::super::ACCOUNT_DATA.get_or_init(|| {
+            std::sync::Mutex::new(None)
+        });
+        {
+            let mut guard = acct_data.lock().unwrap();
+            *guard = Some((
+                super::super::AccountSummary {
+                    connected: true,
+                    buying_power: 10_000.0,
+                    nav: 10_000.0,
+                    ..Default::default()
+                },
+                vec![],
+                vec![],
+            ));
+        }
+
+        // Market order: 200 shares × $100 last_price = $20_000 notional > $10_000 BP
+        // OLD code: 200 < 0.95 * 10_000 = 9_500 → wrongly passed the check.
+        // NEW code: 200 * 100.0 = 20_000 > 10_000 → correctly rejected.
+        let mut intent = OrderIntent {
+            symbol: "TSLA".into(),
+            side: OrderSide::Buy,
+            order_type: ManagedOrderType::Market,
+            price: 0.0,       // market order — no limit price
+            stop_price: 0.0,
+            qty: 200,
+            source: OrderSource::OrderPanel,
+            pair_with: None,
+            option_symbol: None,
+            option_con_id: None,
+            trail_amount: None,
+            trail_percent: None,
+            last_price: 100.0, // est_price source
+            tif: 0,
+            outside_rth: false,
+            strategy_id: None,
+            override_warnings: false,
+        };
+
+        let result = m.submit(intent.clone());
+        match result {
+            OrderResult::Rejected(ref reason) => {
+                assert!(
+                    reason.contains("insufficient buying power"),
+                    "expected bp rejection, got: {reason}"
+                );
+            }
+            other => panic!("expected Rejected(bp), got {:?}", other),
+        }
+        assert!(m.orders.is_empty(), "no order created when bp gate fires");
+
+        // Sanity: a small market order (10 × $100 = $1_000 < $10_000 BP) must
+        // NOT be rejected by the bp gate. Use MockBroker for the positive case
+        // so the spawned broker thread doesn't panic.
+        let mock = Arc::new(MockBroker::new());
+        let mut m2 = OrderManager::with_broker(mock.clone() as Arc<dyn Broker>);
+        m2.paper_mode = false;
+        m2.armed = true;
+        m2.initial_reconcile_done = true;
+        m2.risk_limits.max_order_qty = 1_000_000;
+        m2.risk_limits.max_position_qty = 1_000_000;
+        m2.risk_limits.max_notional = 0.0;
+        // Account data is already set via the OnceLock above.
+        let mut intent2 = intent.clone();
+        intent2.symbol = "TSLA2".into();
+        intent2.qty = 10; // 10 × $100 = $1_000 < $10_000 BP
+        let result2 = m2.submit(intent2);
+        assert!(
+            !matches!(&result2, OrderResult::Rejected(r) if r.contains("insufficient buying power")),
+            "small market order must not be rejected by bp gate, got {:?}", result2
+        );
+    }
+
+    #[test]
+    fn fix1_market_bp_check_skips_without_price_and_does_not_reject() {
+        use std::sync::Arc;
+
+        // Same setup but last_price = 0 and no apex_data snapshot.
+        // The check must SKIP (not reject) and emit a Warn, never compare
+        // share-count to buying-power dollars.
+        let mock = Arc::new(MockBroker::new());
+        let mut m = OrderManager::with_broker(mock.clone() as Arc<dyn Broker>);
+        m.paper_mode = false;
+        m.armed = true;
+        m.initial_reconcile_done = true;
+        m.risk_limits.dedup_cooldown_ms = 0;
+        m.risk_limits.max_order_qty = 1_000_000;
+        m.risk_limits.max_position_qty = 1_000_000;
+        m.risk_limits.max_notional = 0.0;
+
+        let acct_data = super::super::ACCOUNT_DATA.get_or_init(|| {
+            std::sync::Mutex::new(None)
+        });
+        {
+            let mut guard = acct_data.lock().unwrap();
+            *guard = Some((
+                super::super::AccountSummary {
+                    connected: true,
+                    buying_power: 10_000.0,
+                    nav: 10_000.0,
+                    ..Default::default()
+                },
+                vec![],
+                vec![],
+            ));
+        }
+
+        // 9_000 shares with no price.  Old code: 9_000 >= 0.95 * 10_000 = 9_500
+        // → passes.  But 8 shares also passes: old code was simply nonsense.
+        // New code: no price → skip with Warn, never reject.
+        let intent = OrderIntent {
+            symbol: "NOPRICE".into(),
+            side: OrderSide::Buy,
+            order_type: ManagedOrderType::Market,
+            price: 0.0,
+            stop_price: 0.0,
+            qty: 9_500, // would fail old check: 9500 >= 0.95 * 10_000 = 9500
+            source: OrderSource::OrderPanel,
+            pair_with: None,
+            option_symbol: None,
+            option_con_id: None,
+            trail_amount: None,
+            trail_percent: None,
+            last_price: 0.0, // no price
+            tif: 0,
+            outside_rth: false,
+            strategy_id: None,
+            override_warnings: false,
+        };
+
+        let result = m.submit(intent);
+        // Must NOT be rejected by the bp gate when no price is available.
+        assert!(
+            !matches!(&result, OrderResult::Rejected(r) if r.contains("insufficient buying power")),
+            "without a price, bp gate must skip (not reject), got {:?}", result
+        );
+    }
+
+    // ── FIX 2: bracket / OCO legs stay PendingSubmit on live path ───────────
+    //
+    // Regression test: a bracket submit whose broker call fails must leave all
+    // three legs Rejected (not Working) on the live path.
+    //
+    // Architecture note: the broker call happens on a spawned thread that calls
+    // `with_mgr` on the GLOBAL singleton. The test manager here is a local
+    // instance (not the global), so the spawned thread's `with_mgr` callback
+    // will target a different instance. We therefore test the synchronous
+    // pre-spawn invariant (legs must be in PendingSubmit, not Working, right
+    // after submit_bracket returns on the live path) and use a separate
+    // FailBracketBroker unit to verify the Err-branch wiring in isolation.
+
+    /// A broker that always fails submit_bracket with a canned error.
+    struct FailBracketBroker;
+    impl Broker for FailBracketBroker {
+        fn submit(&self, _args: &SubmitArgs) -> Result<String, String> { Ok("ok".into()) }
+        fn cancel(&self, _: &str, _: &str) -> Result<(), String> { Ok(()) }
+        fn modify(&self, _args: &ModifyArgs) -> Result<(), String> { Ok(()) }
+        fn lookup_by_client_id(&self, _: &str) -> Result<Option<BrokerOrderState>, crate::data::connectivity::error::ApiError> { Ok(None) }
+        fn cancel_all(&self, _: &str) -> Result<usize, crate::data::connectivity::error::ApiError> { Ok(0) }
+        fn resolve_contract(&self, _: &str) -> Result<super::super::broker::ContractDetails, crate::data::connectivity::error::ApiError> { Ok(Default::default()) }
+        fn submit_bracket(&self, _: &BracketSubmitArgs) -> Result<super::super::broker::BracketSubmitResponse, String> {
+            Err("margin insufficient".into())
+        }
+        fn submit_oco(&self, _args: &OcoSubmitArgs) -> Result<super::super::broker::OcoSubmitResponse, String> {
+            Err("oco rejected".into())
+        }
+        fn submit_conditional(&self, _: &ConditionalSubmitArgs) -> Result<String, String> { Ok("ok".into()) }
+        fn submit_options_trigger(&self, _: &OptionsTriggerArgs) -> Result<super::super::broker::OptionsTriggerResponse, String> { Ok(Default::default()) }
+        fn submit_combo(&self, _: &ComboSubmitArgs) -> Result<String, String> { Ok("ok".into()) }
+    }
+
+    #[test]
+    fn fix2_bracket_live_legs_pending_submit_not_working_before_ack() {
+        // On the LIVE path, all three legs must remain PendingSubmit immediately
+        // after submit_bracket() returns (before the spawn thread resolves).
+        // This is the strongest synchronous assertion we can make without wiring
+        // the test to the global manager.
+        let mut m = OrderManager::with_broker(Arc::new(FailBracketBroker) as Arc<dyn Broker>);
+        m.paper_mode = false; // LIVE path
+        m.armed = true;
+        m.initial_reconcile_done = true;
+        m.risk_limits.max_order_qty = 1_000_000;
+        m.risk_limits.max_notional = 0.0;
+
+        let intent = limit_intent("AAPL", OrderSide::Buy, 100.0, 5);
+        let (entry_result, tp_id, sl_id) = m.submit_bracket(intent, 110.0, 90.0);
+
+        let entry_id = match entry_result {
+            OrderResult::Accepted(id) => id,
+            other => panic!("expected Accepted, got {:?}", other),
+        };
+        let tp_id = tp_id.expect("tp_id must be set");
+        let sl_id = sl_id.expect("sl_id must be set");
+
+        // Before the spawn thread completes, all legs must be PendingSubmit.
+        // (On paper they would be Working; on live they must wait for Ack.)
+        let entry_state = m.orders.iter().find(|o| o.id == entry_id).map(|o| o.state);
+        let tp_state    = m.orders.iter().find(|o| o.id == tp_id).map(|o| o.state);
+        let sl_state    = m.orders.iter().find(|o| o.id == sl_id).map(|o| o.state);
+
+        assert_eq!(entry_state, Some(OrderState::PendingSubmit),
+            "LIVE entry leg must be PendingSubmit before broker Ack, got {:?}", entry_state);
+        assert_eq!(tp_state, Some(OrderState::PendingSubmit),
+            "LIVE TP leg must be PendingSubmit before broker Ack, got {:?}", tp_state);
+        assert_eq!(sl_state, Some(OrderState::PendingSubmit),
+            "LIVE SL leg must be PendingSubmit before broker Ack, got {:?}", sl_state);
+
+        // LIMITATION: the spawn thread calls `with_mgr` on the GLOBAL singleton,
+        // not on `m`. We cannot observe the final Rejected transition on `m`
+        // without refactoring the global path into the test. The synchronous
+        // PendingSubmit assertion above is the strongest unit-test boundary here.
+    }
+
+    #[test]
+    fn fix2_bracket_paper_legs_working_synchronously() {
+        // PAPER path: legs must still be Working immediately after submit_bracket()
+        // (existing behavior preserved).
+        let mut m = OrderManager::with_broker(Arc::new(FailBracketBroker) as Arc<dyn Broker>);
+        m.paper_mode = true; // PAPER path
+        m.armed = true;
+        m.initial_reconcile_done = true;
+
+        let intent = limit_intent("AAPL", OrderSide::Buy, 100.0, 5);
+        let (entry_result, tp_id, sl_id) = m.submit_bracket(intent, 110.0, 90.0);
+
+        let entry_id = match entry_result {
+            OrderResult::Accepted(id) => id,
+            other => panic!("expected Accepted in paper, got {:?}", other),
+        };
+        let tp_id = tp_id.expect("tp_id must be set");
+        let sl_id = sl_id.expect("sl_id must be set");
+
+        // Paper: all three legs go Working synchronously (no broker Ack needed).
+        let entry_state = m.orders.iter().find(|o| o.id == entry_id).map(|o| o.state);
+        let tp_state    = m.orders.iter().find(|o| o.id == tp_id).map(|o| o.state);
+        let sl_state    = m.orders.iter().find(|o| o.id == sl_id).map(|o| o.state);
+
+        assert_eq!(entry_state, Some(OrderState::Working),
+            "PAPER entry leg must be Working immediately, got {:?}", entry_state);
+        assert_eq!(tp_state, Some(OrderState::Working),
+            "PAPER TP leg must be Working immediately, got {:?}", tp_state);
+        assert_eq!(sl_state, Some(OrderState::Working),
+            "PAPER SL leg must be Working immediately, got {:?}", sl_state);
+    }
+
+    #[test]
+    fn fix2_oco_live_legs_pending_submit_not_working_before_ack() {
+        // On the LIVE armed path, OCO legs must stay PendingSubmit before broker Ack.
+        let mut m = OrderManager::with_broker(Arc::new(FailBracketBroker) as Arc<dyn Broker>);
+        m.paper_mode = false; // LIVE
+        m.armed = true;
+        m.initial_reconcile_done = true;
+        m.risk_limits.max_order_qty = 1_000_000;
+        m.risk_limits.max_notional = 0.0;
+
+        let legs = vec![
+            limit_intent("SPY", OrderSide::Buy,  450.0, 10),
+            limit_intent("SPY", OrderSide::Sell, 455.0, 10),
+        ];
+        let results = m.submit_oco(legs);
+        // Both should be Accepted (not rejected by risk gates).
+        assert!(
+            results.iter().all(|r| matches!(r, OrderResult::Accepted(_))),
+            "both OCO legs should be Accepted, got {:?}", results
+        );
+
+        // Before the spawn thread resolves, all legs must be PendingSubmit.
+        for order in &m.orders {
+            assert_eq!(order.state, OrderState::PendingSubmit,
+                "LIVE OCO leg {} must be PendingSubmit before broker Ack, got {:?}",
+                order.id, order.state);
+        }
+        // LIMITATION: same as bracket — the Err→Rejected path fires through
+        // with_mgr on the GLOBAL manager, unobservable from this local instance.
     }
 
     // ── P1.13: TP/SL fast-poll cadence ──────────────────────────────────────
