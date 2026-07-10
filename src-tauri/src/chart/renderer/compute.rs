@@ -134,16 +134,25 @@ pub fn compute_atr(highs: &[f32], lows: &[f32], closes: &[f32], period: usize) -
     atr
 }
 
+/// Bollinger Bands: middle = SMA(period), upper/lower = middle ± num_std × σ.
+/// σ is the **sample** standard deviation (divides by N-1, Bessel's correction),
+/// which matches the convention used by TradingView, Bloomberg, and virtually
+/// every charting platform.  Using population stdev (N) would make the bands
+/// ~2.6% too tight at period 20, producing false breakout signals.
+/// When period ≤ 1 the sample stdev is undefined; those bars emit NaN bands.
 pub fn compute_bollinger(closes: &[f32], period: usize, num_std: f32) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     let sma = compute_sma(closes, period);
     let n = closes.len();
     let mut upper = vec![f32::NAN; n];
     let mut lower = vec![f32::NAN; n];
+    // Sample stdev requires at least 2 data points (period > 1).
+    if period <= 1 { return (sma, upper, lower); }
+    let denom = period as f32 - 1.0; // Bessel's correction: divide by N-1
     for i in (period-1)..n {
         if sma[i].is_nan() { continue; }
         let mut sum_sq = 0.0_f32;
         for j in (i+1-period)..=i { sum_sq += (closes[j] - sma[i]).powi(2); }
-        let std_dev = (sum_sq / period as f32).sqrt();
+        let std_dev = (sum_sq / denom).sqrt();
         upper[i] = sma[i] + num_std * std_dev;
         lower[i] = sma[i] - num_std * std_dev;
     }
@@ -731,6 +740,61 @@ pub fn compute_williams_r(highs: &[f32], lows: &[f32], closes: &[f32], period: u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Bollinger Bands: sample stdev (N-1) ──────────────────────────────────
+    // Reference series: [2, 4, 4, 4, 5, 5, 7, 9]
+    //   mean = 5.0
+    //   sum of squared deviations = (2-5)²+(4-5)²+(4-5)²+(4-5)²+(5-5)²+(5-5)²+(7-5)²+(9-5)²
+    //                             = 9+1+1+1+0+0+4+16 = 32
+    //   sample variance = 32 / (8-1) = 4.571428...
+    //   sample stdev    = sqrt(4.571428...) ≈ 2.138089935
+    //
+    // With num_std = 2:
+    //   upper = 5 + 2 × 2.138089935 ≈ 9.276179870
+    //   lower = 5 - 2 × 2.138089935 ≈ 0.723820130
+    #[test]
+    fn bollinger_uses_sample_stdev_n_minus_1() {
+        let prices = [2.0_f32, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
+        let period = 8;
+        let num_std = 2.0_f32;
+
+        let (sma, upper, lower) = compute_bollinger(&prices, period, num_std);
+
+        let last = prices.len() - 1;
+
+        // Middle band = SMA
+        assert!((sma[last] - 5.0).abs() < 1e-4,
+            "SMA expected 5.0, got {}", sma[last]);
+
+        // Sample stdev ≈ 2.138089935
+        let expected_std: f32 = 2.138_089_9;
+        let expected_upper = 5.0 + num_std * expected_std; // ≈ 9.276179870
+        let expected_lower = 5.0 - num_std * expected_std; // ≈ 0.723820130
+
+        assert!((upper[last] - expected_upper).abs() < 1e-3,
+            "Upper band: expected ~{:.6}, got {:.6} (check N-1 divisor)", expected_upper, upper[last]);
+        assert!((lower[last] - expected_lower).abs() < 1e-3,
+            "Lower band: expected ~{:.6}, got {:.6} (check N-1 divisor)", expected_lower, lower[last]);
+
+        // Sanity: bands must be NaN for earlier bars (warmup)
+        assert!(upper[last - 1].is_nan(),
+            "upper[n-2] should be NaN (period not yet satisfied)");
+    }
+
+    // ── Bollinger Bands: period ≤ 1 guard ────────────────────────────────────
+    // Sample stdev is undefined for a single point; bands must be NaN, not panic.
+    #[test]
+    fn bollinger_period_1_returns_nan_bands() {
+        let prices = [100.0_f32, 101.0, 102.0];
+        let (sma, upper, lower) = compute_bollinger(&prices, 1, 2.0);
+        // SMA with period=1 is defined (each bar = itself), but bands are NaN.
+        for i in 0..prices.len() {
+            assert!(upper[i].is_nan(),
+                "upper[{}] should be NaN for period=1, got {}", i, upper[i]);
+            assert!(lower[i].is_nan(),
+                "lower[{}] should be NaN for period=1, got {}", i, lower[i]);
+        }
+    }
 
     // ── ADX: RMA vs EMA divergence check ─────────────────────────────────────
     // Verify that the ADX output is in [0,100] and that compute_rma and
