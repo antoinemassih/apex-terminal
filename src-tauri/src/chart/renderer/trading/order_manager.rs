@@ -44,11 +44,24 @@ fn manager() -> &'static Mutex<OrderManager> {
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join("state").join("control_flags.json");
         if let Ok(bytes) = std::fs::read(&path) {
-            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                m.kill_engaged = v["kill_engaged"].as_bool().unwrap_or(false);
-                m.halted = v["halted"].as_bool().unwrap_or(false);
-                if m.kill_engaged { report(ErrorLevel::Warn, "control", "kill_restored", "restored kill_engaged=true from disk"); }
-                if m.halted { report(ErrorLevel::Warn, "control", "halt_restored", "restored halted=true from disk"); }
+            match serde_json::from_slice::<serde_json::Value>(&bytes) {
+                Ok(v) => {
+                    m.kill_engaged = v["kill_engaged"].as_bool().unwrap_or(false);
+                    m.halted = v["halted"].as_bool().unwrap_or(false);
+                    if m.kill_engaged { report(ErrorLevel::Warn, "control", "kill_restored", "restored kill_engaged=true from disk"); }
+                    if m.halted { report(ErrorLevel::Warn, "control", "halt_restored", "restored halted=true from disk"); }
+                }
+                Err(e) => {
+                    // WS-H #42: the control-flags file EXISTS but is unreadable
+                    // (truncated/corrupt after a crash). FAIL CLOSED — assume the
+                    // safety interlock was engaged rather than silently disarming
+                    // the kill switch on restart. A MISSING file (first run) never
+                    // reaches here (outer `if let Ok(bytes)`) and correctly stays
+                    // disengaged.
+                    m.kill_engaged = true;
+                    report(ErrorLevel::Critical, "control", "flags_corrupt_fail_closed",
+                        format!("control_flags.json unreadable ({e}) — restoring kill_engaged=true (fail-closed)"));
+                }
             }
         }
         let mgr = Mutex::new(m);
@@ -3454,10 +3467,30 @@ fn epoch_ms() -> u64 {
     crate::foundation::time::now_ms_u64()
 }
 
-/// Return the current calendar day as days-since-Unix-epoch (UTC).
-/// Used to detect date rollovers for the daily-loss accumulator reset.
+/// Trading-day index for the daily-loss accumulator reset.
+///
+/// WS-H #42: rolls at the CME equity-index-futures session boundary (17:00 ET),
+/// NOT UTC midnight. UTC midnight is ~19:00-20:00 ET — the middle of the
+/// overnight futures session — so a UTC-based reset silently re-armed the
+/// daily-loss cap mid-session, letting a losing evening take a second full day's
+/// loss. Shifting +2h lands the roll on the 22:00-UTC (17:00 EST) boundary so an
+/// overnight NQ/ES session counts as ONE trading day.
+///
+/// Fixed offset (no `chrono-tz` dependency): during EDT the roll lands at
+/// 18:00 ET instead of 17:00 ET — still inside the CME 17:00-18:00 ET
+/// maintenance window, so no active-session split. A tz database would perfect
+/// the DST hour; the important property (no reset during the overnight active
+/// session) holds year-round.
 fn today_day_index() -> u32 {
-    (epoch_ms() / 86_400_000) as u32
+    day_index_for(epoch_ms())
+}
+
+/// Pure session-aware day index (see `today_day_index`). Extracted so the
+/// rollover boundary is unit-testable without the wall clock.
+fn day_index_for(ms: u64) -> u32 {
+    // +2h shifts the 17:00-EST (22:00 UTC) session roll onto a UTC-day boundary.
+    const SESSION_ROLL_SHIFT_MS: u64 = 2 * 3_600_000;
+    ((ms + SESSION_ROLL_SHIFT_MS) / 86_400_000) as u32
 }
 
 /// Wave 3: typed wall-clock timestamp for `ManagedOrder.created_at` /
@@ -6002,6 +6035,26 @@ mod tests {
     // non-deterministic state. The daily-loss cap and in-flight stacking
     // tests avoid the BP check by keeping the account data absent (None), which
     // causes validate_risk to skip step 5 via the `_ => {}` arm.
+
+    #[test]
+    fn day_index_rolls_at_session_boundary_not_utc_midnight() {
+        // WS-H #42: the daily-loss day must roll at ~17:00 ET (22:00 UTC), so an
+        // overnight futures session counts as ONE trading day. `base` is a UTC
+        // midnight (base % 86_400_000 == 0).
+        const H: u64 = 3_600_000;
+        let base = 20_000 * 86_400_000u64; // an arbitrary UTC-midnight epoch
+        // 16:00 EST (21:00 UTC) is BEFORE the roll; 18:00 EST (23:00 UTC) is AFTER.
+        assert_eq!(day_index_for(base + 23 * H), day_index_for(base + 21 * H) + 1,
+            "crossing 17:00 ET (22:00 UTC) must advance the trading day");
+        // The overnight session: 18:00 EST (23:00 UTC, day D) and 00:00 EST next
+        // calendar day (05:00 UTC, day D+1) are the SAME trading day.
+        assert_eq!(day_index_for(base + 23 * H), day_index_for(base + 29 * H),
+            "an overnight session (evening → next morning ET) is one trading day");
+        // UTC midnight itself (00:00 UTC = 19:00 ET, mid-session) must NOT roll —
+        // it is the same trading day as the evening that preceded it.
+        assert_eq!(day_index_for(base + 23 * H), day_index_for(base + 24 * H),
+            "UTC midnight (19:00 ET) is mid-session and must not reset the cap");
+    }
 
     #[test]
     fn daily_loss_cap_rejects_at_exactly_the_limit() {
