@@ -91,6 +91,7 @@ pub(crate) fn draw(
     is_live: bool,
     dom_position_info: Option<(f32, i32)>, // (avg_price, signed qty) of the open position, if any
     dom_tape: &[(f32, f32, bool)], // recent prints (price, size, is_buy), newest first — for the T&S strip
+    dom_tape_speed: f32,           // prints/sec over the tape window (0 = unknown/not live)
     t: &Theme,
 ) {
     let painter = ui.painter_at(dom_rect);
@@ -764,6 +765,16 @@ pub(crate) fn draw(
             egui::pos2(inner.left() + 4.0, ts_top + TAPE_ROW_H * 0.5 + 1.0),
             egui::Align2::LEFT_CENTER, "TIME & SALES", tsf.clone(), color_muted(t.dim),
         );
+        // Speed-of-tape (prints/sec) right-aligned in the strip header — a quick
+        // read on how fast the tape is running (urgency / momentum). Hidden when
+        // the rate is unknown (0, e.g. a stalled or clockless feed).
+        if dom_tape_speed > 0.0 {
+            painter.text(
+                egui::pos2(inner.right() - 4.0, ts_top + TAPE_ROW_H * 0.5 + 1.0),
+                egui::Align2::RIGHT_CENTER,
+                &format!("{:.0}/s", dom_tape_speed), tsf.clone(), color_muted(t.accent),
+            );
+        }
         for (i, &(px, sz, is_buy)) in dom_tape.iter().take(tape_rows).enumerate() {
             let ry = ts_top + TAPE_ROW_H * (i as f32 + 1.0) + 1.0;
             let sidc = if is_buy { t.bull } else { t.bear };

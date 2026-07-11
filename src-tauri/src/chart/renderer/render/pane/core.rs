@@ -1502,16 +1502,26 @@ fn render_chart_pane(
                     .find(|p| p.symbol == chart.symbol && p.qty != 0)
                     .map(|p| (p.avg_price, p.qty)));
             // DOM Phase 2: recent prints for the reconstructed Time & Sales strip
-            // — newest first, (price, size, is_buy). Only when the depth feed is
-            // live (the strip stays hidden on the mock/simulated book).
-            let dom_tape: Vec<(f32, f32, bool)> = if dom_is_live {
-                crate::apex_data::live_state::tape_for(&chart.symbol, 16)
-                    .iter().rev()
-                    .map(|tr| (tr.price as f32, tr.qty as f32, tr.side.as_deref() == Some("buy")))
-                    .collect()
+            // + speed-of-tape. Fetch one window; the strip shows the newest 16
+            // (newest first) and the speed is prints/sec across the window. Only
+            // when the depth feed is live (both stay hidden on the mock book).
+            let dom_recent = if dom_is_live {
+                crate::apex_data::live_state::tape_for(&chart.symbol, 64)
             } else {
                 Vec::new()
             };
+            let dom_tape: Vec<(f32, f32, bool)> = dom_recent.iter().rev().take(16)
+                .map(|tr| (tr.price as f32, tr.qty as f32, tr.side.as_deref() == Some("buy")))
+                .collect();
+            // Speed-of-tape = prints/sec over the window. Defensive on the print
+            // timestamps: only trust a sane span (50ms .. 10min), else report 0
+            // so a bad/zero clock never fabricates a rate.
+            let dom_tape_speed: f32 = if dom_recent.len() >= 2 {
+                let span_ms = (dom_recent[dom_recent.len() - 1].time - dom_recent[0].time) as f64;
+                if span_ms > 50.0 && span_ms < 600_000.0 {
+                    ((dom_recent.len() - 1) as f64 / (span_ms / 1000.0)) as f32
+                } else { 0.0 }
+            } else { 0.0 };
             let mut adapter = DomPaneAdapter {
                 dom_rect,
                 current_price,
@@ -1537,6 +1547,7 @@ fn render_chart_pane(
                 is_live: dom_is_live,
                 dom_position_info: dom_pos_info,
                 dom_tape: &dom_tape,
+                dom_tape_speed,
             };
             // DomPaneAdapter does not read PaneContext::panes; we pass an
             // empty slice to avoid a second mutable borrow of `panes` while
