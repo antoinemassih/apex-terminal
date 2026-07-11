@@ -507,6 +507,12 @@ pub(crate) fn draw(
 
     let pil = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| p.x >= dom_rect.left() && p.x <= dom_rect.right() && p.y >= body_top && p.y <= ctrl_top);
     if pil { let s = ui.input(|i| i.raw_scroll_delta.y); if s.abs() > 0.5 { *center_price += if s > 0.0 { tick_size } else { -tick_size }; } }
+    // DOM Phase 1: middle-click the ladder → snap the view back to the live
+    // market, undoing any scroll drift (recenter/freeze). The middle button
+    // avoids the left-click-to-trade and right-click-to-cancel gestures.
+    if pil && current_price > 0.0 && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) {
+        *center_price = current_price;
+    }
     // Clamp scroll so the ladder can't drift more than 200 ticks from current price.
     if current_price > 0.0 {
         let max_drift = tick_size * 200.0;
@@ -676,6 +682,16 @@ pub(crate) fn draw(
             *dom_dragging = None;
         }
         if let Some(oid) = resp.order_cancel { *cancel_order_id = Some(oid); }
+        // DOM Phase 1: right-click a row holding a working order → cancel it
+        // (TOS/NinjaTrader gesture), in addition to the badge's cancel affordance.
+        // Reuses the existing cancel_order_id signal. No arm gate — cancelling is
+        // risk-reducing and must always be available. If several orders stack on
+        // one price the first is cancelled (repeat to clear the rest).
+        if !oap.is_empty() {
+            let rc = ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Secondary)
+                && i.pointer.interact_pos().map_or(false, |p| rr.contains(p)));
+            if rc { *cancel_order_id = Some(oap[0].id); }
+        }
     }
 }
 
