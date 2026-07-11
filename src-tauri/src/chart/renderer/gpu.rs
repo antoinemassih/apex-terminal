@@ -3098,9 +3098,16 @@ impl Chart {
                         if !trades.is_empty() {
                             let mut vmap: std::collections::HashMap<i64, u64> = std::collections::HashMap::new();
                             let mut dmap: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+                            // Max single print per bucket + running total for the
+                            // self-calibrating big-print threshold (computed below).
+                            let mut bmap: std::collections::HashMap<i64, u64> = std::collections::HashMap::new();
+                            let mut tape_total: f64 = 0.0;
                             for tr in &trades {
                                 let bucket = (tr.price / tick).round() as i64;
                                 *vmap.entry(bucket).or_insert(0) += tr.qty as u64;
+                                let bslot = bmap.entry(bucket).or_insert(0);
+                                *bslot = (*bslot).max(tr.qty as u64);
+                                tape_total += tr.qty;
                                 // DOM Phase 2: REAL trade-flow delta from the
                                 // server-side Lee-Ready aggressor side — buys add,
                                 // sells subtract, "unknown" (~11%, midpoint/no
@@ -3113,6 +3120,10 @@ impl Chart {
                                     _ => {}
                                 }
                             }
+                            // Big print = one trade >= 5x the window's average trade
+                            // size (floored at 10 so thin tape doesn't flag noise).
+                            // Self-calibrating, so it adapts to any instrument.
+                            let big_thresh = ((tape_total / trades.len() as f64) * 5.0).max(10.0) as u64;
                             // DOM Phase 2: pull / absorption detection (the Jigsaw
                             // signal). Compare each level against the previous
                             // frame's resting size and cumulative volume:
@@ -3137,6 +3148,7 @@ impl Chart {
                                 // trades printed — a true order-flow delta column.
                                 lv.delta = dmap.get(&bucket).copied().unwrap_or(0);
 
+                                lv.big_print = bmap.get(&bucket).copied().unwrap_or(0) >= big_thresh;
                                 let size_now = lv.bid_size.saturating_add(lv.ask_size);
                                 if let Some(&(prev_size, prev_cvol)) = self.dom.prev_book.get(&bucket) {
                                     let traded_since = cvol_now.saturating_sub(prev_cvol);

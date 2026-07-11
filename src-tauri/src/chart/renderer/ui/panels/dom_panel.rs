@@ -44,6 +44,10 @@ pub struct DomLevel {
     /// vanished without trades to explain it (liquidity yanked — weakness).
     pub absorbed: bool,
     pub pulled: bool,
+    /// DOM Phase 2: a single outlier print (>= a self-calibrating multiple of the
+    /// window's average trade size) executed at this price since the last frame —
+    /// an institutional block / sweep worth flagging on the ladder.
+    pub big_print: bool,
 }
 
 // TODO(real-dom): replace with a live L2/depth-of-market feed.
@@ -66,7 +70,7 @@ pub(crate) fn generate_mock_levels(center_price: f32, tick_size: f32, count: i32
         let bid = base + (h1 % 2000); let ask = base + (h2 % 2000);
         let vol = (bid as u64 + ask as u64) * 3 + (h1 as u64 % 5000);
         let delta = bid as i64 - ask as i64 + ((h1 % 200) as i64 - 100);
-        levels.push(DomLevel { price, bid_size: bid, ask_size: ask, volume: vol, delta, absorbed: false, pulled: false });
+        levels.push(DomLevel { price, bid_size: bid, ask_size: ask, volume: vol, delta, absorbed: false, pulled: false, big_print: false });
     }
     levels
 }
@@ -665,6 +669,16 @@ pub(crate) fn draw(
                 lp.rect_filled(rr, 0.0, color_alpha(t.gold, 30));
             } else if l.pulled {
                 lp.rect_filled(rr, 0.0, color_alpha(t.accent, 22));
+            }
+            // DOM Phase 2: big-print outline — a crisp bright inset border on a
+            // row that saw an outlier block/sweep this frame. A stroke (not a
+            // fill) so it reads distinctly on top of the absorption/pull washes.
+            if l.big_print {
+                lp.rect_stroke(
+                    rr.shrink(0.5), 0.0,
+                    egui::Stroke::new(1.2, color_alpha(t.text, 210)),
+                    egui::StrokeKind::Inside,
+                );
             }
         }
 
