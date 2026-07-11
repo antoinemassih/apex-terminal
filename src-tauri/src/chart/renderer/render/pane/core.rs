@@ -1488,6 +1488,7 @@ fn render_chart_pane(
         }
 
         let mut dom_new_order: Option<(OrderSide, f32, u32)> = None;
+        let mut dom_bracket: Option<(OrderSide, f32, u32)> = None;
         let mut dom_cancel_all = false;
         let mut dom_flatten = false;
         let mut dom_cancel_order_id: Option<u32> = None;
@@ -1512,6 +1513,7 @@ fn render_chart_pane(
                 dom_order_type: &mut chart.dom.order_type,
                 order_qty: &mut chart.order_panel.qty,
                 new_order: &mut dom_new_order,
+                dom_bracket: &mut dom_bracket,
                 cancel_all: &mut dom_cancel_all,
                 dom_flatten: &mut dom_flatten,
                 cancel_order_id: &mut dom_cancel_order_id,
@@ -1573,6 +1575,57 @@ fn render_chart_pane(
                     // explicitly click "Override and submit" to resubmit with
                     // override_warnings=true. See draw_chart tail for renderer.
                     enqueue_approval(reason, intent);
+                }
+            }
+        }
+        // DOM Phase 1: Shift+click bracket. Entry = limit at the clicked price;
+        // OrderManager attaches a protective stop and a profit target at fixed
+        // tick offsets from entry (10t stop / 20t target = 2:1 R:R — a sane
+        // default; per-symbol offsets can be surfaced later). Routed through the
+        // same guarded bracket path the order panel uses (paper guard, risk,
+        // kill/halt, journal) via `submit_bracket_order`.
+        if let Some((side, price, qty)) = dom_bracket {
+            use crate::chart_renderer::trading::order_manager::*;
+            const STOP_TICKS: f32 = 10.0;
+            const TARGET_TICKS: f32 = 20.0;
+            let tick = if chart.dom.tick_size > 0.0 { chart.dom.tick_size } else { 0.01 };
+            // The DOM click only ever yields Buy (bid column) or Sell (ask
+            // column); treat anything else as short-direction for safety.
+            let long = side == OrderSide::Buy;
+            let (sl_price, tp_price) = if long {
+                (price - STOP_TICKS * tick, price + TARGET_TICKS * tick)
+            } else {
+                (price + STOP_TICKS * tick, price - TARGET_TICKS * tick)
+            };
+            let dom_last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+            let intent = OrderIntent {
+                symbol: chart.symbol.clone(), side, order_type: ManagedOrderType::Limit, price, qty,
+                source: OrderSource::DomLadder, pair_with: None,
+                option_symbol: None, option_con_id: None, stop_price: 0.0,
+                trail_amount: None, trail_percent: None, last_price: dom_last_price,
+                tif: chart.order_panel.tif_idx as u8, outside_rth: chart.order_panel.outside_rth,
+                strategy_id: None, override_warnings: false,
+            };
+            let (result, _tp_id, _sl_id) = submit_bracket_order(intent, tp_price, sl_price);
+            match result {
+                // Entry leg pushed for immediate render; the stop/target legs are
+                // surfaced by the per-frame OrderManager reconcile above.
+                OrderResult::Accepted(id) => {
+                    chart.orders.push(OrderLevel { id: id as u32, side, price, qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                }
+                OrderResult::NeedsConfirmation(id) => {
+                    chart.orders.push(OrderLevel { id: id as u32, side, price, qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                }
+                OrderResult::Duplicate => { /* silently blocked */ }
+                OrderResult::Rejected(reason) => {
+                    eprintln!("[order-manager] Bracket rejected: {}", reason);
+                }
+                // Do NOT route a bracket through the plain-order approval modal —
+                // its override path resubmits via submit_order and would drop the
+                // stop/target legs. Surface it and skip; the trader can adjust
+                // size or use the order panel's bracket flow.
+                OrderResult::NeedsApproval { reason, .. } => {
+                    eprintln!("[order-manager] Bracket tripped a soft risk gate, not submitted: {}", reason);
                 }
             }
         }

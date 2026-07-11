@@ -70,7 +70,9 @@ pub(crate) fn draw(
     tick_size: f32, center_price: &mut f32, dom_width: &mut f32,
     orders: &[OrderLevel], dom_selected_price: &mut Option<f32>,
     dom_order_type: &mut DomOrderType, order_qty: &mut u32,
-    new_order: &mut Option<(OrderSide, f32, u32)>, cancel_all: &mut bool,
+    new_order: &mut Option<(OrderSide, f32, u32)>,
+    dom_bracket: &mut Option<(OrderSide, f32, u32)>, // Shift+click → bracket (entry, auto stop/target)
+    cancel_all: &mut bool,
     dom_flatten: &mut bool,
     cancel_order_id: &mut Option<u32>, move_order: &mut Option<(u32, f32)>,
     dom_armed: &mut bool, dom_col_mode: &mut u8,
@@ -611,10 +613,17 @@ pub(crate) fn draw(
             // (mock levels), where the price under the cursor is fabricated. When
             // stale, the click falls through to select-for-buttons (the deliberate
             // two-step path), and the SIMULATED badge already warns the trader.
-            if *dom_armed && is_live && in_bid && price > 0.0 {
-                *new_order = Some((OrderSide::Buy, price, *order_qty));
-            } else if *dom_armed && is_live && in_ask && price > 0.0 {
-                *new_order = Some((OrderSide::Sell, price, *order_qty));
+            if *dom_armed && is_live && (in_bid || in_ask) && price > 0.0 {
+                let side = if in_bid { OrderSide::Buy } else { OrderSide::Sell };
+                // DOM Phase 1: Shift+click → bracket order. The entry is a limit
+                // at the clicked price and OrderManager attaches an auto stop /
+                // target (tick offsets derived in core.rs) — the NinjaTrader ATM
+                // feel. A plain click stays a single limit order.
+                if ui.input(|i| i.modifiers.shift) {
+                    *dom_bracket = Some((side, price, *order_qty));
+                } else {
+                    *new_order = Some((side, price, *order_qty));
+                }
             } else {
                 *dom_selected_price = Some(price);
                 *dom_order_type = DomOrderType::Limit;
