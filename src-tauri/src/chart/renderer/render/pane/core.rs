@@ -1501,6 +1501,17 @@ fn render_chart_pane(
                 .and_then(|(_, ps, _)| ps.iter()
                     .find(|p| p.symbol == chart.symbol && p.qty != 0)
                     .map(|p| (p.avg_price, p.qty)));
+            // DOM Phase 2: recent prints for the reconstructed Time & Sales strip
+            // — newest first, (price, size, is_buy). Only when the depth feed is
+            // live (the strip stays hidden on the mock/simulated book).
+            let dom_tape: Vec<(f32, f32, bool)> = if dom_is_live {
+                crate::apex_data::live_state::tape_for(&chart.symbol, 16)
+                    .iter().rev()
+                    .map(|tr| (tr.price as f32, tr.qty as f32, tr.side.as_deref() == Some("buy")))
+                    .collect()
+            } else {
+                Vec::new()
+            };
             let mut adapter = DomPaneAdapter {
                 dom_rect,
                 current_price,
@@ -1525,6 +1536,7 @@ fn render_chart_pane(
                 dom_fullscreen: &mut chart.dom.fullscreen,
                 is_live: dom_is_live,
                 dom_position_info: dom_pos_info,
+                dom_tape: &dom_tape,
             };
             // DomPaneAdapter does not read PaneContext::panes; we pass an
             // empty slice to avoid a second mutable borrow of `panes` while

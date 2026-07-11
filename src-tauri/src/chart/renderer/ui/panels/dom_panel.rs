@@ -90,6 +90,7 @@ pub(crate) fn draw(
     dom_position: &mut u8, dom_fullscreen: &mut bool,
     is_live: bool,
     dom_position_info: Option<(f32, i32)>, // (avg_price, signed qty) of the open position, if any
+    dom_tape: &[(f32, f32, bool)], // recent prints (price, size, is_buy), newest first — for the T&S strip
     t: &Theme,
 ) {
     let painter = ui.painter_at(dom_rect);
@@ -525,7 +526,15 @@ pub(crate) fn draw(
 
     // ── Price ladder ──
     let body_top = sep_y+1.0;
-    let body_h = (ctrl_top - body_top - 2.0).max(60.0);
+    // DOM Phase 2: reserve a bottom band for the reconstructed time & sales
+    // strip when live prints are available. `TAPE_ROW_H` per print + a header
+    // row; capped so it never starves the ladder on a short pane.
+    const TAPE_ROW_H: f32 = 13.0;
+    let tape_rows = if dom_tape.is_empty() { 0 } else {
+        dom_tape.len().min(8).min(((ctrl_top - body_top - 60.0) / TAPE_ROW_H) as usize)
+    };
+    let tape_h = if tape_rows == 0 { 0.0 } else { TAPE_ROW_H * (tape_rows as f32 + 1.0) + 4.0 };
+    let body_h = (ctrl_top - body_top - 2.0 - tape_h).max(60.0);
     let max_rows = (body_h / ROW_H) as i32;
     let half = max_rows / 2;
 
@@ -737,6 +746,39 @@ pub(crate) fn draw(
             let rc = ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Secondary)
                 && i.pointer.interact_pos().map_or(false, |p| rr.contains(p)));
             if rc { *cancel_order_id = Some(oap[0].id); }
+        }
+    }
+
+    // ── DOM Phase 2: reconstructed Time & Sales strip ──────────────────────────
+    // Newest print at top, price coloured by aggressor side (green=buy/red=sell)
+    // with a faint side-tinted row wash, size right-aligned. Sits in the band
+    // reserved above the controls (`tape_h`), so it never overlaps the ladder.
+    if tape_rows > 0 {
+        let ts_top = ctrl_top - tape_h + 2.0;
+        painter.line_segment(
+            [egui::pos2(inner.left(), ts_top), egui::pos2(inner.right(), ts_top)],
+            egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())),
+        );
+        let tsf = mono_sm();
+        painter.text(
+            egui::pos2(inner.left() + 4.0, ts_top + TAPE_ROW_H * 0.5 + 1.0),
+            egui::Align2::LEFT_CENTER, "TIME & SALES", tsf.clone(), color_muted(t.dim),
+        );
+        for (i, &(px, sz, is_buy)) in dom_tape.iter().take(tape_rows).enumerate() {
+            let ry = ts_top + TAPE_ROW_H * (i as f32 + 1.0) + 1.0;
+            let sidc = if is_buy { t.bull } else { t.bear };
+            painter.rect_filled(
+                egui::Rect::from_min_size(egui::pos2(inner.left(), ry), egui::vec2(aw, TAPE_ROW_H)),
+                0.0, color_alpha(sidc, 14),
+            );
+            painter.text(
+                egui::pos2(inner.left() + 4.0, ry + TAPE_ROW_H * 0.5),
+                egui::Align2::LEFT_CENTER, &format!("{:.2}", px), tsf.clone(), sidc,
+            );
+            painter.text(
+                egui::pos2(inner.right() - 4.0, ry + TAPE_ROW_H * 0.5),
+                egui::Align2::RIGHT_CENTER, &fmt_size(sz as u32), tsf.clone(), color_muted(t.text),
+            );
         }
     }
 }
