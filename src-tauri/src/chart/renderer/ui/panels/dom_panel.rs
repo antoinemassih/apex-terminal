@@ -269,8 +269,21 @@ pub(crate) fn draw(
         };
         let badge_pad_x = gap_xs();
         let badge_pad_y = 2.0_f32;
-        let galley = painter.layout_no_wrap(badge_text.to_string(), badge_font, badge_fg);
-        let bw = galley.size().x + badge_pad_x * 2.0;
+        let galley = painter.layout_no_wrap(badge_text.to_string(), badge_font.clone(), badge_fg);
+        // DOM Phase 2: net order-flow delta appended to the LIVE badge — the sum
+        // of the per-price tape delta across the book (executed buy vs sell
+        // pressure). Green when net-buying, red when net-selling. Only shown on
+        // live tape; the mock generator's delta is meaningless so it's omitted.
+        let flow_delta: i64 = if is_live { levels.iter().map(|l| l.delta).sum() } else { 0 };
+        let delta_galley = if is_live {
+            let dc = if flow_delta > 0 { t.bull } else if flow_delta < 0 { t.bear } else { t.dim };
+            Some((painter.layout_no_wrap(format!("  \u{0394}{:+}", flow_delta), badge_font.clone(), dc), dc))
+        } else {
+            None
+        };
+        let gw = galley.size().x;
+        let dgw = delta_galley.as_ref().map_or(0.0, |(g, _)| g.size().x);
+        let bw = gw + dgw + badge_pad_x * 2.0;
         let bh = galley.size().y + badge_pad_y * 2.0;
         // Centred horizontally in the header, vertically centred in the header strip.
         let bx = inner.left() + (aw - bw) * 0.5;
@@ -279,11 +292,12 @@ pub(crate) fn draw(
             egui::vec2(bw, bh),
         );
         painter.rect_filled(badge_rect, egui::CornerRadius::same(radius_sm() as u8), badge_bg);
-        painter.galley(
-            egui::pos2(badge_rect.left() + badge_pad_x, badge_rect.top() + badge_pad_y),
-            galley,
-            badge_fg,
-        );
+        let tx = badge_rect.left() + badge_pad_x;
+        let ty = badge_rect.top() + badge_pad_y;
+        painter.galley(egui::pos2(tx, ty), galley, badge_fg);
+        if let Some((dg, dc)) = delta_galley {
+            painter.galley(egui::pos2(tx + gw, ty), dg, dc);
+        }
     }
 
     // ── Bottom controls ──
