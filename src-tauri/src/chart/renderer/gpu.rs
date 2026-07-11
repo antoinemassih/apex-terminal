@@ -2071,6 +2071,12 @@ pub(crate) struct DomPanelState {
     /// Epoch ms of the last live `DomLevels` frame. `0` = never. Used by the
     /// renderer to suppress the mock generator while a live feed is flowing.
     pub(crate) last_live_ms:   i64,
+    /// DOM Phase 2: previous `DomLevels` frame's `(resting_size, window_cum_vol)`
+    /// per tick bucket. Diffing the tape's cumulative volume-at-price between
+    /// frames gives "traded since last frame" without any wall-clock assumption,
+    /// and diffing resting size gives liquidity added/removed — together they
+    /// separate absorption (heavy trade, size held) from pull (size gone, no trade).
+    pub(crate) prev_book:      std::collections::HashMap<i64, (u32, u64)>,
 }
 
 impl Default for DomPanelState {
@@ -2083,6 +2089,7 @@ impl Default for DomPanelState {
             order_type: super::ui::panels::dom_panel::DomOrderType::Market,
             armed: false, col_mode: 1, dragging: None, position: 0, fullscreen: false,
             last_live_ms: 0,
+            prev_book: std::collections::HashMap::new(),
         }
     }
 }
@@ -3106,14 +3113,44 @@ impl Chart {
                                     _ => {}
                                 }
                             }
+                            // DOM Phase 2: pull / absorption detection (the Jigsaw
+                            // signal). Compare each level against the previous
+                            // frame's resting size and cumulative volume:
+                            //  - traded_since = tape cum-vol diff at this bucket
+                            //    (window may roll, so saturating_sub floors at 0).
+                            //  - drop = resting size that left the book.
+                            // ABSORPTION = heavy trading yet size largely held
+                            // (>=60% remains) → a level soaking flow (strength).
+                            // PULL = size vanished with little trade to explain it
+                            // → liquidity yanked (weakness / spoof-like).
+                            // Thresholds scale with the prior resting size and are
+                            // deliberately conservative; tune per-symbol later.
+                            const MIN_ACT: u64 = 20;
+                            let mut next_book: std::collections::HashMap<i64, (u32, u64)> =
+                                std::collections::HashMap::with_capacity(self.dom.levels.len());
                             for lv in &mut self.dom.levels {
                                 let bucket = (lv.price as f64 / tick).round() as i64;
-                                if let Some(&v) = vmap.get(&bucket) { lv.volume = v; }
+                                let cvol_now = vmap.get(&bucket).copied().unwrap_or(0);
+                                if cvol_now > 0 { lv.volume = cvol_now; }
                                 // Tape is authoritative here (we have live prints):
                                 // net executed delta at this price, 0 where no
                                 // trades printed — a true order-flow delta column.
                                 lv.delta = dmap.get(&bucket).copied().unwrap_or(0);
+
+                                let size_now = lv.bid_size.saturating_add(lv.ask_size);
+                                if let Some(&(prev_size, prev_cvol)) = self.dom.prev_book.get(&bucket) {
+                                    let traded_since = cvol_now.saturating_sub(prev_cvol);
+                                    let drop = prev_size.saturating_sub(size_now) as u64;
+                                    let thresh = MIN_ACT.max(prev_size as u64 / 2);
+                                    lv.absorbed = traded_since >= thresh
+                                        && (size_now as u64) * 5 >= (prev_size as u64) * 3;
+                                    lv.pulled = !lv.absorbed
+                                        && drop >= thresh
+                                        && traded_since * 4 < drop;
+                                }
+                                next_book.insert(bucket, (size_now, cvol_now));
                             }
+                            self.dom.prev_book = next_book;
                         }
                     }
                 }

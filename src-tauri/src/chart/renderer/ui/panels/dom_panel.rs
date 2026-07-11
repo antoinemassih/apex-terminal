@@ -38,6 +38,12 @@ pub struct DomLevel {
     pub ask_size: u32,
     pub volume: u64,
     pub delta: i64,
+    /// DOM Phase 2 order-flow flags, computed frame-to-frame in the DomLevels
+    /// handler (gpu.rs): `absorbed` = heavy executed volume while the resting
+    /// size held (a level soaking up flow — strength); `pulled` = resting size
+    /// vanished without trades to explain it (liquidity yanked — weakness).
+    pub absorbed: bool,
+    pub pulled: bool,
 }
 
 // TODO(real-dom): replace with a live L2/depth-of-market feed.
@@ -60,7 +66,7 @@ pub(crate) fn generate_mock_levels(center_price: f32, tick_size: f32, count: i32
         let bid = base + (h1 % 2000); let ask = base + (h2 % 2000);
         let vol = (bid as u64 + ask as u64) * 3 + (h1 as u64 % 5000);
         let delta = bid as i64 - ask as i64 + ((h1 % 200) as i64 - 100);
-        levels.push(DomLevel { price, bid_size: bid, ask_size: ask, volume: vol, delta });
+        levels.push(DomLevel { price, bid_size: bid, ask_size: ask, volume: vol, delta, absorbed: false, pulled: false });
     }
     levels
 }
@@ -633,6 +639,18 @@ pub(crate) fn draw(
             } else {
                 *dom_selected_price = Some(price);
                 *dom_order_type = DomOrderType::Limit;
+            }
+        }
+
+        // DOM Phase 2: pull / absorption wash. Absorption = gold tint (a level
+        // soaking up executed flow — likely support/resistance strength). Pull =
+        // accent/blue tint (resting liquidity yanked without trading — weakness).
+        // Low alpha so the row's size/vol/delta numbers still read through it.
+        if let Some(l) = lv {
+            if l.absorbed {
+                lp.rect_filled(rr, 0.0, color_alpha(t.gold, 30));
+            } else if l.pulled {
+                lp.rect_filled(rr, 0.0, color_alpha(t.accent, 22));
             }
         }
 
