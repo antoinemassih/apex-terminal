@@ -3090,13 +3090,29 @@ impl Chart {
                         let trades = crate::apex_data::live_state::tape_for(&symbol, 4000);
                         if !trades.is_empty() {
                             let mut vmap: std::collections::HashMap<i64, u64> = std::collections::HashMap::new();
+                            let mut dmap: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
                             for tr in &trades {
-                                *vmap.entry((tr.price / tick).round() as i64).or_insert(0) += tr.qty as u64;
+                                let bucket = (tr.price / tick).round() as i64;
+                                *vmap.entry(bucket).or_insert(0) += tr.qty as u64;
+                                // DOM Phase 2: REAL trade-flow delta from the
+                                // server-side Lee-Ready aggressor side — buys add,
+                                // sells subtract, "unknown" (~11%, midpoint/no
+                                // prior print) is skipped (never guessed). This
+                                // replaces the L2 bid-minus-ask-size pseudo-delta
+                                // with executed order-flow delta per price.
+                                match tr.side.as_deref() {
+                                    Some("buy") => *dmap.entry(bucket).or_insert(0) += tr.qty as i64,
+                                    Some("sell") => *dmap.entry(bucket).or_insert(0) -= tr.qty as i64,
+                                    _ => {}
+                                }
                             }
                             for lv in &mut self.dom.levels {
-                                if let Some(&v) = vmap.get(&((lv.price as f64 / tick).round() as i64)) {
-                                    lv.volume = v;
-                                }
+                                let bucket = (lv.price as f64 / tick).round() as i64;
+                                if let Some(&v) = vmap.get(&bucket) { lv.volume = v; }
+                                // Tape is authoritative here (we have live prints):
+                                // net executed delta at this price, 0 where no
+                                // trades printed — a true order-flow delta column.
+                                lv.delta = dmap.get(&bucket).copied().unwrap_or(0);
                             }
                         }
                     }
