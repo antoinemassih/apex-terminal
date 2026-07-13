@@ -20,7 +20,14 @@ import sys, json, glob, os, time, subprocess, urllib.request, urllib.error
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:7892").rstrip("/")
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCEN = os.path.join(REPO, "dev", "scenarios")
-EXE  = os.path.join(REPO, "src-tauri", "target", "debug", "apex-native-corpus.exe")
+_EXE_DIR = os.path.join(REPO, "src-tauri", "target", "debug")
+# Prefer a protected-name copy if one exists (`cp apex-native.exe
+# apex-native-corpus.exe` lets a run survive another session's
+# `taskkill /IM apex-native.exe` when the repo is shared on one machine); fall
+# back to the canonical binary so a clean checkout / CI works with no copy step.
+EXE = (os.path.join(_EXE_DIR, "apex-native-corpus.exe")
+       if os.path.exists(os.path.join(_EXE_DIR, "apex-native-corpus.exe"))
+       else os.path.join(_EXE_DIR, "apex-native.exe"))
 GAP          = 0.8    # seconds between scenarios — lets async loads drain
 RESTART_EVERY = 150   # restart the app every N scenarios to avoid accumulation
 
@@ -31,10 +38,9 @@ def health():
         return False
 
 def kill_app():
-    # ISO run (local, uncommitted): kill our protected-name instance (clean
-    # restarts) AND any competing apex-native.exe (claim :7892). Our app runs
-    # under the protected name so other sessions' taskkill /IM apex-native.exe
-    # can't kill it mid-run.
+    # Kill both the protected-name copy and the canonical binary, so a run
+    # cleanly restarts its own app and reclaims :7892 regardless of which name
+    # is in use. Harmless if a name isn't running.
     subprocess.run(["taskkill", "/F", "/IM", "apex-native-corpus.exe"], capture_output=True)
     subprocess.run(["taskkill", "/F", "/IM", "apex-native.exe"], capture_output=True)
     time.sleep(1.0)
