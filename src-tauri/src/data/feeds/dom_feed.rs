@@ -140,7 +140,7 @@ fn parse_dom(v: &serde_json::Value) -> Vec<DomLevel> {
         // those, so read as f64 and round.
         let s = lvl.get("size").and_then(|x| x.as_f64()).unwrap_or(0.0).round() as u32;
         let e = book.entry((p * 1000.0) as i64).or_insert(DomLevel {
-            price: p as f32, bid_size: 0, ask_size: 0, volume: 0, delta: 0, absorbed: false, pulled: false, big_print: false,
+            price: p as f32, bid_size: 0, ask_size: 0, volume: 0, delta: 0, absorbed: false, pulled: false, big_print: false, buy_vol: 0, sell_vol: 0,
         });
         e.bid_size = s;
     }
@@ -148,7 +148,7 @@ fn parse_dom(v: &serde_json::Value) -> Vec<DomLevel> {
         let p = lvl.get("price").and_then(|x| x.as_f64()).unwrap_or(0.0);
         let s = lvl.get("size").and_then(|x| x.as_f64()).unwrap_or(0.0).round() as u32;
         let e = book.entry((p * 1000.0) as i64).or_insert(DomLevel {
-            price: p as f32, bid_size: 0, ask_size: 0, volume: 0, delta: 0, absorbed: false, pulled: false, big_print: false,
+            price: p as f32, bid_size: 0, ask_size: 0, volume: 0, delta: 0, absorbed: false, pulled: false, big_print: false, buy_vol: 0, sell_vol: 0,
         });
         e.ask_size = s;
     }

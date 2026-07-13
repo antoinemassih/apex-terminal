@@ -3101,6 +3101,9 @@ impl Chart {
                             // Max single print per bucket + running total for the
                             // self-calibrating big-print threshold (computed below).
                             let mut bmap: std::collections::HashMap<i64, u64> = std::collections::HashMap::new();
+                            // Aggressive buy/sell volume split per bucket.
+                            let mut buymap: std::collections::HashMap<i64, u64> = std::collections::HashMap::new();
+                            let mut sellmap: std::collections::HashMap<i64, u64> = std::collections::HashMap::new();
                             let mut tape_total: f64 = 0.0;
                             for tr in &trades {
                                 let bucket = (tr.price / tick).round() as i64;
@@ -3113,10 +3116,17 @@ impl Chart {
                                 // sells subtract, "unknown" (~11%, midpoint/no
                                 // prior print) is skipped (never guessed). This
                                 // replaces the L2 bid-minus-ask-size pseudo-delta
-                                // with executed order-flow delta per price.
+                                // with executed order-flow delta per price. The
+                                // same split feeds the per-price buy/sell bar.
                                 match tr.side.as_deref() {
-                                    Some("buy") => *dmap.entry(bucket).or_insert(0) += tr.qty as i64,
-                                    Some("sell") => *dmap.entry(bucket).or_insert(0) -= tr.qty as i64,
+                                    Some("buy") => {
+                                        *dmap.entry(bucket).or_insert(0) += tr.qty as i64;
+                                        *buymap.entry(bucket).or_insert(0) += tr.qty as u64;
+                                    }
+                                    Some("sell") => {
+                                        *dmap.entry(bucket).or_insert(0) -= tr.qty as i64;
+                                        *sellmap.entry(bucket).or_insert(0) += tr.qty as u64;
+                                    }
                                     _ => {}
                                 }
                             }
@@ -3149,6 +3159,8 @@ impl Chart {
                                 lv.delta = dmap.get(&bucket).copied().unwrap_or(0);
 
                                 lv.big_print = bmap.get(&bucket).copied().unwrap_or(0) >= big_thresh;
+                                lv.buy_vol = buymap.get(&bucket).copied().unwrap_or(0);
+                                lv.sell_vol = sellmap.get(&bucket).copied().unwrap_or(0);
                                 let size_now = lv.bid_size.saturating_add(lv.ask_size);
                                 if let Some(&(prev_size, prev_cvol)) = self.dom.prev_book.get(&bucket) {
                                     let traded_since = cvol_now.saturating_sub(prev_cvol);

@@ -48,6 +48,11 @@ pub struct DomLevel {
     /// window's average trade size) executed at this price since the last frame —
     /// an institutional block / sweep worth flagging on the ladder.
     pub big_print: bool,
+    /// DOM Phase 2: aggressive volume split at this price from the tape —
+    /// `buy_vol` = size lifting the offer, `sell_vol` = size hitting the bid
+    /// (Lee-Ready aggressor side). Rendered as a two-tone split bar.
+    pub buy_vol: u64,
+    pub sell_vol: u64,
 }
 
 // TODO(real-dom): replace with a live L2/depth-of-market feed.
@@ -70,7 +75,7 @@ pub(crate) fn generate_mock_levels(center_price: f32, tick_size: f32, count: i32
         let bid = base + (h1 % 2000); let ask = base + (h2 % 2000);
         let vol = (bid as u64 + ask as u64) * 3 + (h1 as u64 % 5000);
         let delta = bid as i64 - ask as i64 + ((h1 % 200) as i64 - 100);
-        levels.push(DomLevel { price, bid_size: bid, ask_size: ask, volume: vol, delta, absorbed: false, pulled: false, big_print: false });
+        levels.push(DomLevel { price, bid_size: bid, ask_size: ask, volume: vol, delta, absorbed: false, pulled: false, big_print: false, buy_vol: 0, sell_vol: 0 });
     }
     levels
 }
@@ -689,6 +694,22 @@ pub(crate) fn draw(
                     rr.shrink(0.5), 0.0,
                     egui::Stroke::new(1.2, color_alpha(t.text, 210)),
                     egui::StrokeKind::Inside,
+                );
+            }
+            // DOM Phase 2: aggressive buy/sell split bar — a 2px band at the row
+            // bottom divided by aggressor volume (green = lifting the offer, red =
+            // hitting the bid). At-a-glance who won the trading at each price.
+            let split_tot = l.buy_vol + l.sell_vol;
+            if split_tot > 0 {
+                let bar_y = rr.bottom() - 2.0;
+                let bwid = aw * (l.buy_vol as f32 / split_tot as f32);
+                lp.rect_filled(
+                    egui::Rect::from_min_size(egui::pos2(rr.left(), bar_y), egui::vec2(bwid, 2.0)),
+                    0.0, color_alpha(t.bull, 200),
+                );
+                lp.rect_filled(
+                    egui::Rect::from_min_size(egui::pos2(rr.left() + bwid, bar_y), egui::vec2(aw - bwid, 2.0)),
+                    0.0, color_alpha(t.bear, 200),
                 );
             }
         }
