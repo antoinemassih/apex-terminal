@@ -504,6 +504,27 @@ pub enum AppCommand {
     /// Set or clear the active sector drill-down filter on the heatmap view.
     /// `None` = clear filter (show all sectors).
     ScreenerSetSectorFilter { sector: Option<String> },
+
+    // ─── Screener S3-TERM commands ─────────────────────────────────────────────
+
+    /// Toggle the provenance popup for a result row (S3-TERM / S3-PROV).
+    ///
+    /// The actual popup open/close state is managed by the module-level
+    /// `PROV_OPEN` set inside `screener_results.rs`. This command is emitted
+    /// for command-bus observability (logging, replay) and any future external
+    /// listener (e.g. dev-inspector assertions on provenance popup state).
+    /// The reducer is a no-op; the UI reacts via the static flag directly.
+    ShowRowProvenance { symbol: String },
+
+    /// Kick off background efficacy fetches for all currently-saved screens.
+    ///
+    /// Emitted once after `UpdateSavedScreenCache` succeeds. The reducer reads
+    /// the current saved-screen ID list and calls
+    /// `screener_panel::fetch_efficacy_batch` for each ID not yet in the cache.
+    /// Gate: `SCREEN_EFFICACY_ENABLED` env (default on; no-op pre-resume-day
+    /// when the endpoint returns 404 — absorbed silently). S3-SCORE wires the
+    /// `/api/data/screens/efficacy/{id}` endpoint on ApexData.
+    FetchScreenEfficacyBatch,
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -1519,6 +1540,29 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::ScreenerSetSectorFilter { sector } => {
             use crate::chart_renderer::ui::panels::screener_panel as sp;
             sp::with_screener_state_mut(|g| { g.screen_heatmap.sector_filter = sector; });
+        }
+
+        // ─── S3-TERM: provenance popup + efficacy fetch ────────────────────────────
+
+        AppCommand::ShowRowProvenance { symbol: _ } => {
+            // No-op in the reducer: provenance popup toggle state lives in the
+            // module-level `PROV_OPEN` set inside `screener_results.rs` and is
+            // managed entirely by the UI layer (toggled on trailing-button click).
+            // This arm exists only for command-bus observability (debug logging
+            // and future replay / dev-inspector assertions).
+        }
+
+        AppCommand::FetchScreenEfficacyBatch => {
+            // Read the current saved-screen IDs from ScreenPanelState and kick
+            // off background efficacy fetches for each ID. Gate is checked
+            // inside `fetch_efficacy_batch` (SCREEN_EFFICACY_ENABLED env).
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            let ids = sp::with_screener_state(|g| {
+                g.saved_screens.iter().map(|s| s.id.clone()).collect::<Vec<_>>()
+            }).unwrap_or_default();
+            if !ids.is_empty() {
+                sp::fetch_efficacy_batch(ids);
+            }
         }
 
         #[cfg(debug_assertions)]

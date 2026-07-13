@@ -203,6 +203,11 @@ fn ensure_scans_fetched() {
                         hotkey_slot: None,
                     }).collect();
                     commands::push(AppCommand::UpdateSavedScreenCache { screens: entries });
+                    // After scans are fetched, fire efficacy fetch for each ID.
+                    // We push the IDs through the command so the reducer can
+                    // trigger the per-id background fetches without access to
+                    // the raw ID list here.
+                    commands::push(AppCommand::FetchScreenEfficacyBatch);
                 }
             }
             Ok(resp) => {
@@ -223,6 +228,130 @@ fn ensure_scans_fetched() {
 struct ApiScanEntry {
     id:   String,
     name: String,
+}
+
+// ─── Screen efficacy cache (S3-SCORE integration) ─────────────────────────────
+//
+// One entry per saved screen ID, populated by background fetches of
+// `GET /api/data/screens/efficacy/{id}` (wired by S3-SCORE).
+// Absent-safe: when an entry is missing the Library tab simply omits badges.
+//
+// Shape mirrors S3-SCORE's `screen:efficacy:{id}` JSON:
+// {
+//   "hit_rate": 0.62, "avg_return": 0.018, "n": 47,
+//   "realized_edge": 0.011, "badge": "Hot" | "Warm" | "Cold",
+//   "decay_alert": true
+// }
+
+/// Efficacy badge tier from S3-SCORE.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+pub enum EfficacyBadge {
+    Hot,
+    Warm,
+    Cold,
+}
+
+impl EfficacyBadge {
+    /// Map to a `TagTone` for `ui_kit::Tag`.
+    fn tag_tone(&self) -> TagTone {
+        match self {
+            EfficacyBadge::Hot  => TagTone::Bull,
+            EfficacyBadge::Warm => TagTone::Warn,
+            EfficacyBadge::Cold => TagTone::Bear,
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            EfficacyBadge::Hot  => "HOT",
+            EfficacyBadge::Warm => "WARM",
+            EfficacyBadge::Cold => "COLD",
+        }
+    }
+}
+
+/// One screen's efficacy data from S3-SCORE.
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct EfficacyEntry {
+    pub hit_rate:       f64,
+    pub avg_return:     f64,
+    pub n:              u32,
+    pub realized_edge:  f64,
+    pub badge:          EfficacyBadge,
+    #[serde(default)]
+    pub decay_alert:    bool,
+}
+
+/// Module-level efficacy cache: screen_id → EfficacyEntry.
+/// Written by background fetch threads, read by the library tab renderer.
+fn efficacy_cache() -> &'static Mutex<std::collections::HashMap<String, EfficacyEntry>> {
+    static CACHE: OnceLock<Mutex<std::collections::HashMap<String, EfficacyEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Tracks which screen IDs are currently in-flight for efficacy fetch.
+fn efficacy_inflight() -> &'static Mutex<HashSet<String>> {
+    static INF: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    INF.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Read the efficacy entry for `id`, if available (absent-safe).
+pub fn get_efficacy(id: &str) -> Option<EfficacyEntry> {
+    efficacy_cache().lock().ok()?.get(id).cloned()
+}
+
+/// Kick off background fetches for all currently-known saved screen IDs.
+/// Called by the `FetchScreenEfficacyBatch` reducer once after the scan list
+/// is loaded. Safe to call multiple times — each ID is fetched at most once
+/// per session (in-flight guard). Gate: `SCREEN_EFFICACY_ENABLED` env; if
+/// the env is unset or "0", we skip silently (matches S3-SCORE's default-off).
+pub fn fetch_efficacy_batch(ids: Vec<String>) {
+    // CALIBRATION PENDING: efficacy data requires real scan history (resume-day).
+    // Until then this silently no-ops when the endpoint returns 404.
+    if std::env::var("SCREEN_EFFICACY_ENABLED").as_deref() == Ok("0") { return; }
+
+    let base_url = crate::data::feeds::apex_data::config::apex_url();
+    for id in ids {
+        {
+            let mut inf = match efficacy_inflight().lock() {
+                Ok(g) => g,
+                Err(_) => continue,
+            };
+            if inf.contains(&id) { continue; }
+            inf.insert(id.clone());
+        }
+        let url = format!("{}/api/data/screens/efficacy/{}", base_url, id);
+        let id_owned = id.clone();
+        std::thread::spawn(move || {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(8))
+                .user_agent("apex-terminal/screener-efficacy")
+                .build()
+                .unwrap_or_else(|_| reqwest::blocking::Client::new());
+
+            match client.get(&url).send() {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(entry) = resp.json::<EfficacyEntry>() {
+                        if let Ok(mut cache) = efficacy_cache().lock() {
+                            cache.insert(id_owned.clone(), entry);
+                        }
+                    }
+                }
+                Ok(_) => {
+                    // 404 = not yet calibrated; normal before resume-day.
+                    #[cfg(debug_assertions)]
+                    eprintln!("[screener_panel] efficacy for {id_owned} not yet available (pre-calibration)");
+                }
+                Err(e) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[screener_panel] efficacy fetch error for {id_owned}: {e}");
+                }
+            }
+            if let Ok(mut inf) = efficacy_inflight().lock() {
+                inf.remove(&id_owned);
+            }
+        });
+    }
 }
 
 // ─── Panel entry point ────────────────────────────────────────────────────────
@@ -421,6 +550,14 @@ fn draw_library_tab(ui: &mut Ui, t: &Theme) {
 
 /// Render a list of screen rows using `PanelListRow::trailing_buttons`.
 /// Writes pending action IDs into the `pending_*` out-params; caller dispatches.
+///
+/// ## S3-TERM additive: efficacy badges
+/// For each screen, we read the session-cached `EfficacyEntry` (populated by
+/// the `FetchScreenEfficacyBatch` command). When present:
+/// - A Hot/Warm/Cold `Tag` is rendered as the row's leading ornament via `.leading(...)`.
+/// - Realized edge is shown as a secondary label.
+/// - A `⚠` warning label is appended when `decay_alert` is `true`.
+/// When absent (pre-calibration or env gate off), the row renders exactly as before.
 fn draw_screen_rows(
     ui: &mut Ui,
     t: &Theme,
@@ -432,6 +569,8 @@ fn draw_screen_rows(
     pending_load_id:   &mut Option<String>,
     pending_slot_set:  &mut Option<(u8, String)>,
 ) {
+    use crate::chart_renderer::ui::style::*;
+
     for screen in screens {
         // Derive the hotkey slot number for this screen (1-indexed), if any.
         let slot_num: Option<u8> = hotkey_slots.iter().enumerate().find_map(|(i, s)| {
@@ -439,11 +578,48 @@ fn draw_screen_rows(
         });
 
         let pin_tone = if screen.pinned { TrailingTone::Accent } else { TrailingTone::Default };
-        let slot_label = slot_num.map(|n| format!("[{}]", n)).unwrap_or_default();
 
-        let resp = PanelListRow::new(&screen.id)
+        // ── Efficacy badge (S3-SCORE, absent-safe) ─────────────────────────
+        let eff = get_efficacy(&screen.id);
+
+        // Build secondary label: slot + efficacy edge + decay warning.
+        let mut secondary_parts: Vec<String> = Vec::new();
+        if let Some(n) = slot_num { secondary_parts.push(format!("[{}]", n)); }
+        if let Some(ref e) = eff {
+            secondary_parts.push(format!("{:+.1}%", e.realized_edge * 100.0));
+            if e.decay_alert { secondary_parts.push("⚠ decay".to_string()); }
+        }
+        let secondary = secondary_parts.join("  ");
+
+        // Row with optional efficacy leading badge via `.leading(...)`.
+        let row = PanelListRow::new(&screen.id)
             .primary(&screen.name)
-            .secondary(&slot_label)
+            .secondary(&secondary);
+
+        // If we have efficacy data, inject the badge via the leading closure.
+        // We use the `trailing_buttons` API for action buttons and
+        // `.leading(...)` for the badge so row width is unchanged when absent.
+        let row = if let Some(ref e) = eff {
+            let badge_label = e.badge.label();
+            let badge_tone  = e.badge.tag_tone();
+            let eff_clone = e.clone();
+            row.leading(move |ui, t: &Theme| {
+                Tag::new(badge_label).tone(badge_tone).show(ui, t);
+                // Decay warning icon — separate from the secondary text so it
+                // keeps its accent color (warn tone) and isn't plain dim text.
+                if eff_clone.decay_alert {
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(crate::ui_kit::icons::Icon::WARNING)
+                            .color(t.warn)
+                            .size(font_xs())
+                    ));
+                }
+            })
+        } else {
+            row
+        };
+
+        let resp = row
             .trailing_buttons(&[
                 TrailingBtn::icon(Icon::PLAY).tone(TrailingTone::Bull).tooltip("Run this screen"),
                 TrailingBtn::icon(Icon::PUSH_PIN).tone(pin_tone).active(screen.pinned).tooltip("Pin / unpin"),
@@ -586,12 +762,17 @@ fn draw_results_tab(
             let mut pending_sym: Option<String> = None;
             let mut pending_watch: Option<String> = None;
             let mut pending_mute: Option<String> = None;
+            // S3-TERM: provenance popup toggle — symbol that was clicked.
+            // The toggle state is self-contained in screener_results::PROV_OPEN;
+            // we dispatch ShowRowProvenance for command-bus observability only.
+            let mut pending_prov_sym: Option<String> = None;
 
             screener_results::draw_results(
                 ui, &rows, &selected_cols,
                 &mut sort_col, &mut sort_asc,
                 &muted, t,
                 &mut pending_sym, &mut pending_watch, &mut pending_mute,
+                &mut pending_prov_sym,
             );
 
             // Write back sort state.
@@ -609,6 +790,9 @@ fn draw_results_tab(
             }
             if let Some(sym) = pending_mute {
                 commands::push(AppCommand::MuteScreenSymbol { symbol: sym });
+            }
+            if let Some(sym) = pending_prov_sym {
+                commands::push(AppCommand::ShowRowProvenance { symbol: sym });
             }
         }
         ScreenViewMode::Race => {

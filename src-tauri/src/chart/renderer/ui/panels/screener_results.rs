@@ -41,6 +41,27 @@ use crate::ui_kit::widgets::{
     TrailingBtn, TrailingTone,
 };
 
+// ── Provenance popup state ────────────────────────────────────────────────────
+// Per-session open state for the provenance popup keyed by symbol string.
+// Stored in a module-level OnceLock<Mutex<...>> so the popup survives one frame's
+// draw_results call (open → render popup on next frame → close on second click).
+
+static PROV_OPEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn prov_open_set() -> &'static Mutex<HashSet<String>> {
+    PROV_OPEN.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn is_prov_open(sym: &str) -> bool {
+    prov_open_set().lock().map(|s| s.contains(sym)).unwrap_or(false)
+}
+
+fn toggle_prov_open(sym: &str) {
+    if let Ok(mut s) = prov_open_set().lock() {
+        if s.contains(sym) { s.remove(sym); } else { s.insert(sym.to_string()); }
+    }
+}
+
 // ── Sparkline cache ──────────────────────────────────────────────────────────
 
 /// A cached sparkline for one symbol: normalised [0..1] close prices +
@@ -145,6 +166,68 @@ fn paint_sparkline(ui: &mut egui::Ui, rect: Rect, points: &[f32], t: &Theme) {
     }
 }
 
+// ── Provenance types (S3-PROV receipt) ───────────────────────────────────────
+
+/// Per-predicate evidence from S3-PROV: what operand key resolved to what value
+/// and whether it satisfied the predicate.
+///
+/// Matches the S3-PROV provenance JSON shape:
+/// ```json
+/// { "operand_key": "rsi14", "value": 28.4, "comparator": "<", "threshold": 30.0, "pass": true }
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProvenancePredicate {
+    /// Operand key string (e.g. `"rsi14"`, `"volume"`, `"combined.score"`).
+    pub operand_key: String,
+    /// Resolved numeric value for this symbol at scan time.
+    pub value: f64,
+    /// Comparator string (e.g. `"<"`, `">="`, `"between"`).
+    pub comparator: String,
+    /// Threshold the value was compared against.
+    pub threshold: f64,
+    /// Whether this predicate passed (all predicates pass for a match row,
+    /// but near-miss rows may carry `pass=false` for educational context).
+    pub pass: bool,
+}
+
+/// Contributing signal family: family name + optional lineage ID.
+///
+/// Matches S3-PROV's `contributing_families` array:
+/// ```json
+/// { "family": "momentum", "lineage_id": "abc123" }
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProvenanceFamily {
+    pub family: String,
+    pub lineage_id: Option<String>,
+}
+
+/// Provenance receipt from S3-PROV for one scan match row.
+///
+/// Added additively to `ScreenResultRow`; `None` when the server did not
+/// return provenance (env `PROV_RECEIPTS_ENABLED=0`) or when the row came
+/// from a pre-S3 API version. The UI degrades gracefully to hiding the "WHY"
+/// button when this is `None`.
+///
+/// JSON shape from ApexData S3-PROV match output:
+/// ```json
+/// {
+///   "predicates": [
+///     { "operand_key": "rsi14", "value": 28.4, "comparator": "<", "threshold": 30.0, "pass": true }
+///   ],
+///   "contributing_families": [
+///     { "family": "momentum", "lineage_id": "abc123" }
+///   ]
+/// }
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub struct RowProvenance {
+    /// Per-predicate breakdown: operand key → resolved value → comparator/threshold → pass.
+    pub predicates: Vec<ProvenancePredicate>,
+    /// Signal families that contributed to this match.
+    pub contributing_families: Vec<ProvenanceFamily>,
+}
+
 // ── Row data type ─────────────────────────────────────────────────────────────
 
 /// One screener result row — canonical type shared by Grid, Race, and Heatmap views.
@@ -156,6 +239,12 @@ fn paint_sparkline(ui: &mut egui::Ui, rect: Rect, points: &[f32], t: &Theme) {
 /// **Canonical**: `screener_heatmap.rs` aliases this as `ScreenerRow` for backward compat.
 /// The `aggregates.rs` `ScreenResultRow` (runtime-only, f32) is a separate type used
 /// for the persisted-state-adjacent race buffer; this one is the live render type.
+///
+/// ## S3-TERM additive field: `provenance`
+/// Added in Wave S3. `None` when the server did not supply a receipt (pre-S3
+/// API or `PROV_RECEIPTS_ENABLED=0`). When `Some`, a "WHY" button appears in
+/// the row trailing area; clicking it opens a popup showing the per-predicate
+/// breakdown from S3-PROV.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScreenResultRow {
     pub symbol: String,
@@ -165,6 +254,10 @@ pub struct ScreenResultRow {
     pub values: HashMap<String, f64>,
     /// Sector label resolved from `ref:sector` (e.g. "Technology"). Empty = "Other".
     pub sector: String,
+    /// S3-PROV provenance receipt — per-predicate breakdown of why this row matched.
+    /// `None` = server did not supply provenance (graceful degradation).
+    /// Populated by the scan result parser when `PROV_RECEIPTS_ENABLED=1` (the default).
+    pub provenance: Option<RowProvenance>,
 }
 
 impl ScreenResultRow {
@@ -191,6 +284,11 @@ fn severity_tint(score: Option<f64>, t: &Theme) -> (Color32, u8) {
 ///
 /// Outputs are written to `pending_*` out-params; the caller (T-SHELL shell)
 /// dispatches the appropriate `AppCommand` after the frame.
+///
+/// ## S3-TERM additive param: `pending_prov_sym`
+/// Set to the symbol whose provenance popup was toggled this frame.
+/// Caller dispatches `AppCommand::ShowRowProvenance { symbol }` (or ignores — the
+/// popup state is self-contained in the module-level `PROV_OPEN` set).
 pub fn draw_results(
     ui: &mut egui::Ui,
     rows: &[ScreenResultRow],
@@ -202,6 +300,7 @@ pub fn draw_results(
     pending_sym_to_chart: &mut Option<String>,
     pending_watch: &mut Option<String>,
     pending_mute: &mut Option<String>,
+    pending_prov_sym: &mut Option<String>,
 ) {
     let panel_w = ui.available_width();
 
@@ -350,22 +449,41 @@ pub fn draw_results(
                     });
                 }
 
+                // Whether this row has provenance data (determines if WHY btn shows).
+                let has_prov = row.provenance.is_some();
+                let prov_active = has_prov && is_prov_open(&row.symbol);
+
+                // Build trailing buttons: chart / watch / alert / mute [/ why].
+                // WHY button only added when provenance is present (absent-safe).
+                // We use owned Vec<TrailingBtn> to avoid lifetime issues with
+                // conditional-branch temporaries.
+                let why_tone = if prov_active { TrailingTone::Accent } else { TrailingTone::Default };
+                let mut trailing_btns: Vec<TrailingBtn> = vec![
+                    TrailingBtn::icon(Icon::CHART_LINE_UP_FILL)
+                        .tone(TrailingTone::Accent)
+                        .tooltip("Load chart"),
+                    TrailingBtn::icon(Icon::EYE)
+                        .tone(TrailingTone::Default)
+                        .tooltip("Add to watchlist"),
+                    TrailingBtn::icon(Icon::BELL)
+                        .tone(TrailingTone::Warn)
+                        .tooltip("Set alert"),
+                    TrailingBtn::icon(Icon::BELL_RINGING)
+                        .tone(TrailingTone::Muted)
+                        .tooltip("Mute from results"),
+                ];
+                if has_prov {
+                    trailing_btns.push(
+                        TrailingBtn::icon(Icon::INFO)
+                            .tone(why_tone)
+                            .active(prov_active)
+                            .tooltip("Why did this match? (provenance)"),
+                    );
+                }
+
                 let resp = PanelListRow::new(&id_salt)
                     .row_tint(tint_color, tint_alpha)
-                    .trailing_buttons(&[
-                        TrailingBtn::icon(Icon::CHART_LINE_UP_FILL)
-                            .tone(TrailingTone::Accent)
-                            .tooltip("Load chart"),
-                        TrailingBtn::icon(Icon::EYE)
-                            .tone(TrailingTone::Default)
-                            .tooltip("Add to watchlist"),
-                        TrailingBtn::icon(Icon::BELL)
-                            .tone(TrailingTone::Warn)
-                            .tooltip("Set alert"),
-                        TrailingBtn::icon(Icon::BELL_RINGING)
-                            .tone(TrailingTone::Muted)
-                            .tooltip("Mute from results"),
-                    ])
+                    .trailing_buttons(&trailing_btns)
                     .columns(&cols)
                     .show_full(ui, t);
 
@@ -380,7 +498,23 @@ pub fn draw_results(
                     Some(1) => { *pending_watch = Some(row.symbol.clone()); }
                     Some(2) => { /* alert — T-SHELL or dedicated AlertCommand */ }
                     Some(3) => { *pending_mute = Some(row.symbol.clone()); }
+                    Some(4) => {
+                        // WHY button — toggle provenance popup for this symbol.
+                        toggle_prov_open(&row.symbol);
+                        *pending_prov_sym = Some(row.symbol.clone());
+                    }
                     _ => {}
+                }
+
+                // ── Provenance popup ──────────────────────────────────────────
+                // Opens as an egui Area anchored below the row when toggled.
+                // Absent-safe: only renders when row.provenance.is_some().
+                if prov_active {
+                    if let Some(prov) = &row.provenance {
+                        if let Some(row_rect) = resp.response.as_ref().map(|r| r.rect) {
+                            draw_provenance_popup(ui, &row.symbol, prov, row_rect, t);
+                        }
+                    }
                 }
 
                 // Overlay sparkline into the reserved cell rect.
@@ -422,13 +556,115 @@ pub fn draw_section(
     pending_sym_to_chart: &mut Option<String>,
     pending_watch: &mut Option<String>,
     pending_mute: &mut Option<String>,
+    pending_prov_sym: &mut Option<String>,
 ) {
     let visible = rows.iter().filter(|r| !muted.contains(&r.symbol)).count();
     let title = format!("RESULTS ({visible})");
     PanelSection::new(&title).show(ui, t, |ui, t| {
         draw_results(
             ui, rows, selected_cols, sort_col, sort_asc, muted, t,
-            pending_sym_to_chart, pending_watch, pending_mute,
+            pending_sym_to_chart, pending_watch, pending_mute, pending_prov_sym,
         );
     });
+}
+
+// ── Provenance popup painter ──────────────────────────────────────────────────
+
+/// Paint the provenance receipt popup for `sym` anchored below `row_rect`.
+///
+/// Shows a concise breakdown of each predicate (operand → value → comparator →
+/// threshold → pass/fail icon) plus the contributing signal families.
+/// Implemented as an egui `Area` so it floats above other rows without
+/// re-flowing the scroll area.
+fn draw_provenance_popup(
+    ui: &mut egui::Ui,
+    sym: &str,
+    prov: &RowProvenance,
+    row_rect: Rect,
+    t: &Theme,
+) {
+    use egui::{Area, Order};
+
+    let popup_id = ui.id().with(format!("prov_popup_{sym}"));
+    let anchor = Pos2::new(row_rect.left() + gap_sm(), row_rect.bottom() + 2.0);
+
+    Area::new(popup_id)
+        .order(Order::Foreground)
+        .fixed_pos(anchor)
+        .show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style())
+                .fill(t.toolbar_bg)
+                .stroke(Stroke::new(stroke_thin(), t.toolbar_border))
+                .corner_radius(egui::CornerRadius::same(radius_sm() as u8))
+                .shadow(shadow_tooltip_themed(t))
+                .inner_margin(gap_sm())
+                .show(ui, |ui| {
+                    ui.set_max_width(280.0);
+
+                    // Header.
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Label::new(
+                            egui::RichText::new(format!("WHY  {sym}"))
+                                .monospace()
+                                .size(font_xs())
+                                .color(t.accent),
+                        ));
+                    });
+                    ui.add_space(gap_2xs());
+
+                    // Per-predicate rows.
+                    if prov.predicates.is_empty() {
+                        ui.add(egui::Label::new(
+                            egui::RichText::new("No predicates")
+                                .monospace().size(font_2xs()).color(color_muted(t.dim))
+                        ));
+                    } else {
+                        for pred in &prov.predicates {
+                            let pass_icon = if pred.pass { "✓" } else { "✗" };
+                            let pass_color = if pred.pass { t.bull } else { t.bear };
+                            // Operand key (truncated for display).
+                            let key_short = pred.operand_key
+                                .rfind(':').map(|p| &pred.operand_key[p+1..])
+                                .unwrap_or(&pred.operand_key);
+                            ui.horizontal(|ui| {
+                                ui.add(egui::Label::new(
+                                    egui::RichText::new(pass_icon)
+                                        .monospace().size(font_2xs()).color(pass_color)
+                                ));
+                                ui.add_space(gap_2xs());
+                                ui.add(egui::Label::new(
+                                    egui::RichText::new(format!(
+                                        "{:<12}  {:>8.3}  {}  {:.3}",
+                                        key_short, pred.value, pred.comparator, pred.threshold
+                                    ))
+                                    .monospace().size(font_2xs()).color(t.text)
+                                ));
+                            });
+                        }
+                    }
+
+                    // Contributing families.
+                    if !prov.contributing_families.is_empty() {
+                        ui.add_space(gap_2xs());
+                        ui.add(egui::Label::new(
+                            egui::RichText::new("FAMILIES")
+                                .monospace().size(font_2xs()).color(color_muted(t.dim))
+                        ));
+                        let fam_str: Vec<&str> = prov.contributing_families.iter()
+                            .map(|f| f.family.as_str())
+                            .collect();
+                        ui.add(egui::Label::new(
+                            egui::RichText::new(fam_str.join("  ·  "))
+                                .monospace().size(font_2xs()).color(t.dim)
+                        ));
+                    }
+
+                    // Close hint.
+                    ui.add_space(gap_2xs());
+                    ui.add(egui::Label::new(
+                        egui::RichText::new("click ⓘ again to close")
+                            .size(font_2xs()).color(color_muted(t.dim))
+                    ));
+                });
+        });
 }
