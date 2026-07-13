@@ -197,3 +197,30 @@ fn severity_to_kind(severity: &str) -> AlertKind {
         _                    => AlertKind::Signal,
     }
 }
+
+// ── Screen-entry alert source (T-HEAT, Wave S2 — additive) ───────────────────
+//
+// `panels/screener_heatmap.rs` calls `push_screen_entry` when a symbol enters
+// an active screen. Events are pushed to the same `PLAYBOOK_ALERTS` ring used
+// by playbook alerts so `alerts_panel.rs` surfaces them under a "SCREEN ENTRIES"
+// section without any refactor of the existing PLAYBOOK ALERTS rendering path.
+//
+// The `rule_name` is prefixed with `"screen:"` so `alerts_panel.rs` can
+// optionally filter/group screen-entry events separately (SCR-6 §5.1 naming
+// convention).
+
+/// Push a screen-entry event into the shared `PLAYBOOK_ALERTS` ring.
+///
+/// Called exclusively from `panels/screener_heatmap.rs::route_screen_entry_alert`.
+/// NOT called from `on_text` — this is an additive second source alongside the
+/// `/ws/alerts` WebSocket path.
+pub fn push_screen_entry(symbol: &str, screen_name: &str, score: f64, severity: &str) {
+    let alert = PlaybookAlert {
+        rule_name: format!("screen:{}", screen_name),
+        symbol:    symbol.to_string(),
+        severity:  severity.to_string(),
+        message:   format!("{} entered screen '{}' (score {:.1})", symbol, screen_name, score),
+        ts_ms:     now_ms(),
+    };
+    push_to_queue(alert);
+}

@@ -505,6 +505,7 @@ impl Persistable for ChatState {
 /// - `Watchlist::provenance_open: bool`         → `provenance_open`
 /// - `Watchlist::replay_pane_open: bool`        → `replay_pane_open`
 /// - `Watchlist::hotkey_editor_open: bool`      → `hotkey_editor_open`
+/// - `Watchlist::screener_panel_open: bool`     → `screener_panel_open`
 ///
 /// Fields NOT included here (with reason):
 /// - `cmd_palette_open`, `cmd_palette_query`, `cmd_palette_results`,
@@ -727,6 +728,14 @@ pub struct SidebarState {
     /// Source: `Watchlist::hotkey_editor_open`.
     #[serde(default)]
     pub hotkey_editor_open: bool,
+
+    // ── Screener panel ─────────────────────────────────────────────────────
+
+    /// Screener panel (symbol screener with builder/results/race/heat tabs).
+    /// Opened via `Ctrl+Shift+S` or the TopNav toolbar button.
+    /// Source: `Watchlist::screener_panel_open`.
+    #[serde(default)]
+    pub screener_panel_open: bool,
 }
 
 impl SidebarState {
@@ -776,6 +785,7 @@ impl Default for SidebarState {
             provenance_open: false,
             replay_pane_open: false,
             hotkey_editor_open: false,
+            screener_panel_open: false,
         }
     }
 }
@@ -1092,6 +1102,366 @@ impl Persistable for CmdPaletteState {
     const VERSION: u32 = 1;
 }
 
+// ─── Screener builder sub-types ──────────────────────────────────────────────
+
+/// A DSL parse error with character span information.
+///
+/// Produced by `POST /api/data/screens/parse`; held in `ScreenBuilderState`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DslParseError {
+    pub span_start: usize,
+    pub span_end:   usize,
+    pub message:    String,
+}
+
+/// State for the screener BUILD tab.
+///
+/// Holds all user-editable fields for building a new screen definition.
+/// Persisted as part of `ScreenPanelState` so the user's work-in-progress
+/// survives a panel close.
+///
+/// `parse_pending` and `parse_errors` are runtime-only (`#[serde(skip)]`).
+/// `condition_json` is the canonical serialized condition from the DSL parser.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScreenBuilderState {
+    /// Human-readable name for this screen definition.
+    #[serde(default)]
+    pub name: String,
+    /// Timeframe for this screen (e.g. "1d", "15m").
+    #[serde(default = "ScreenBuilderState::default_tf")]
+    pub tf: String,
+    /// Asset class: "stocks" | "options".
+    #[serde(default = "ScreenBuilderState::default_class")]
+    pub class: String,
+    /// Universe filter (e.g. "SP500", "QQQ100", "All").
+    #[serde(default = "ScreenBuilderState::default_universe")]
+    pub universe: String,
+    /// `true` = show DSL text editor; `false` = show visual condition builder.
+    #[serde(default)]
+    pub dsl_mode: bool,
+    /// DSL text buffer (only meaningful when `dsl_mode = true`).
+    #[serde(default)]
+    pub dsl_text: String,
+    /// Serialized Condition JSON from the last successful parse.
+    /// `None` until the DSL has been successfully parsed at least once.
+    #[serde(default)]
+    pub condition_json: Option<String>,
+    /// Rank-by operand expression (e.g. "rsi14", "combined.score").
+    #[serde(default)]
+    pub rank_by: String,
+    /// `true` = rank ascending, `false` = rank descending.
+    #[serde(default)]
+    pub rank_asc: bool,
+    /// Maximum number of result rows (1..=1000).
+    #[serde(default = "ScreenBuilderState::default_limit")]
+    pub limit: usize,
+    /// When `true`, new symbols entering the screen fire an alert event.
+    #[serde(default)]
+    pub alert_on_entry: bool,
+    /// `true` while a background DSL parse is in-flight. Not persisted.
+    #[serde(skip)]
+    pub parse_pending: bool,
+    /// Parse errors from the last DSL parse attempt. Not persisted.
+    #[serde(skip)]
+    pub parse_errors: Vec<DslParseError>,
+}
+
+impl ScreenBuilderState {
+    fn default_tf()       -> String { "1d".to_string() }
+    fn default_class()    -> String { "stocks".to_string() }
+    fn default_universe() -> String { "SP500".to_string() }
+    fn default_limit()    -> usize  { 50 }
+}
+
+impl Default for ScreenBuilderState {
+    fn default() -> Self {
+        Self {
+            name:           String::new(),
+            tf:             Self::default_tf(),
+            class:          Self::default_class(),
+            universe:       Self::default_universe(),
+            dsl_mode:       false,
+            dsl_text:       String::new(),
+            condition_json: None,
+            rank_by:        String::new(),
+            rank_asc:       false,
+            limit:          Self::default_limit(),
+            alert_on_entry: false,
+            parse_pending:  false,
+            parse_errors:   Vec::new(),
+        }
+    }
+}
+
+// ─── ScreenPanelState aggregate ──────────────────────────────────────────────
+
+/// Which sub-view is active inside the RESULTS tab of the screener panel.
+///
+/// Grid   — sortable columnar table with sparklines (default)
+/// Race   — live rolling ranked list via SSE (3:45 workflow)
+/// Heat   — Finviz-style treemap grouped by sector/basket
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ScreenViewMode {
+    #[default]
+    Grid,
+    Race,
+    Heat,
+}
+
+/// A minimal persisted descriptor for a saved screen definition.
+///
+/// The full definition (conditions, rank-by, etc.) lives on the ApexData
+/// server in the `scans:defs` Redis hash accessed via `GET /api/data/scans`.
+/// Only the metadata needed to render the LIBRARY tab and map hotkey slots is
+/// persisted locally here.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SavedScreenEntry {
+    /// Stable server-side UUID for this scan.
+    pub id: String,
+    /// Human-readable name (e.g. "RSI Oversold 1D").
+    pub name: String,
+    /// Whether this screen is pinned to the PINNED section in the Library.
+    #[serde(default)]
+    pub pinned: bool,
+    /// Optional hotkey slot [1-9]. `None` = not assigned to a slot.
+    #[serde(default)]
+    pub hotkey_slot: Option<u8>,
+}
+
+/// Screener panel state — persists the UI selections that survive a restart
+/// but does NOT duplicate server-side screen definitions.
+///
+/// ## What is persisted here
+/// - `panel_open` — whether the screener side-panel is visible
+/// - `active_tab` — which tab was last active (Library / Build / Results)
+/// - `hotkey_slots` — which scan IDs are bound to Ctrl+Shift+1..9
+/// - `view_mode` — last active sub-mode in the Results tab (Grid/Race/Heat)
+/// - `active_screen_id` — the scan ID that was last running
+/// - `selected_columns` — user-selected column keys for the results grid
+/// - `sort_col` — key of the column used to sort results
+/// - `sort_asc` — sort direction (true = ascending)
+/// - `library_expanded_pinned` — section expand state
+/// - `library_expanded_recent` — section expand state
+/// - `library_expanded_all` — section expand state
+/// - `library_search` — last search query in the Library tab
+///
+/// ## What is NOT persisted here
+/// - Full screen definitions (conditions, rank-by) → live on ApexData
+/// - Live race rows / results buffer → runtime-only
+/// - Entry-flash / exit-fade timers → Instant, not serializable
+/// - Muted symbols in the results view → session-only by design (SCR-6 §2.7)
+///
+/// ## Mirror invariant
+/// Every field below **must** appear in both
+/// `Watchlist::push_to_screener_store` (Watchlist → aggregate) and
+/// `Watchlist::sync_from_screener_store` (aggregate → Watchlist).
+///
+/// T-BUILD and T-GRID agents: bind to the FIELD NAMES listed here.
+/// Do NOT add new fields to `Watchlist` or `Chart` — add them here and
+/// hand them to T-SHELL via the spec.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScreenPanelState {
+    /// Whether the screener side-panel is open.
+    #[serde(default)]
+    pub panel_open: bool,
+
+    /// Index of the active tab (0=Library, 1=Build, 2=Results).
+    #[serde(default)]
+    pub active_tab: u8,
+
+    /// Hotkey slot assignments: `hotkey_slots[0]` is Ctrl+Shift+1, etc.
+    /// Each entry is `Some(scan_id)` when a screen is assigned to that slot.
+    /// Array length is fixed at 9; slots are 1-indexed in the UI but 0-indexed here.
+    #[serde(default = "ScreenPanelState::default_hotkey_slots")]
+    pub hotkey_slots: [Option<String>; 9],
+
+    /// Sub-view mode within the Results tab.
+    #[serde(default)]
+    pub view_mode: ScreenViewMode,
+
+    /// Scan ID that was last running / is currently active.
+    #[serde(default)]
+    pub active_screen_id: Option<String>,
+
+    /// Ordered list of column keys shown in the Results grid.
+    /// Default columns: `["symbol", "score", "change_pct", "volume"]`
+    #[serde(default = "ScreenPanelState::default_selected_columns")]
+    pub selected_columns: Vec<String>,
+
+    /// Key of the column used for sorting results in the Grid view.
+    #[serde(default = "ScreenPanelState::default_sort_col")]
+    pub sort_col: String,
+
+    /// Sort direction in the Grid view (`true` = ascending, `false` = descending).
+    #[serde(default)]
+    pub sort_asc: bool,
+
+    /// Expand/collapse state of the PINNED sub-section in the Library tab.
+    #[serde(default = "default_true")]
+    pub library_expanded_pinned: bool,
+
+    /// Expand/collapse state of the RECENT sub-section in the Library tab.
+    #[serde(default = "default_true")]
+    pub library_expanded_recent: bool,
+
+    /// Expand/collapse state of the ALL SCREENS sub-section in the Library tab.
+    #[serde(default = "default_true")]
+    pub library_expanded_all: bool,
+
+    /// Current search query text in the Library tab search input.
+    #[serde(default)]
+    pub library_search: String,
+
+    /// Cached list of saved screens fetched from ApexData `GET /api/data/scans`.
+    ///
+    /// This is a LOCAL CACHE of server-side data. Repopulated each time the
+    /// Library tab opens. Persisted so the Library renders without a network
+    /// round-trip on startup; always overwritten on next successful fetch.
+    #[serde(default)]
+    pub saved_screens: Vec<SavedScreenEntry>,
+
+    /// Section-group fraction heights for the Library tab (PINNED / ALL).
+    /// Sum is 1.0. Used by `PanelSectionGroup`.
+    #[serde(default = "ScreenPanelState::default_library_section_fracs")]
+    pub library_section_fracs: [f32; 2],
+
+    /// Pending export screen ID: set by `ExportScreen` command, consumed
+    /// by `screener_panel.rs` (clipboard write) then cleared. Not persisted.
+    #[serde(skip)]
+    pub pending_export_id: Option<String>,
+
+    // ─── BUILD tab state ────────────────────────────────────────────────────
+    // Owned by T-BUILD (screener_build.rs). Persisted so work-in-progress
+    // survives a panel close.
+
+    /// State for the BUILD tab visual/DSL condition builder.
+    #[serde(default)]
+    pub screen_builder: ScreenBuilderState,
+
+    // ─── RESULTS tab runtime state ──────────────────────────────────────────
+    // Runtime-only: rows, muted set, sort state. Not persisted.
+
+    /// Current scan result rows for the Grid view. Session-only.
+    #[serde(skip)]
+    pub results_rows: Vec<crate::chart_renderer::ui::panels::screener_results::ScreenResultRow>,
+
+    /// Column index used for sorting the results grid (0=sym, 1=score, 2+= extra cols).
+    /// Runtime counterpart to the persisted `sort_col: String`.
+    #[serde(skip)]
+    pub result_sort_col: usize,
+
+    /// Sort direction for the results grid. Mirrors `sort_asc` at runtime.
+    #[serde(skip)]
+    pub result_sort_asc: bool,
+
+    /// Symbols muted for this session in the results view. Not persisted.
+    #[serde(skip)]
+    pub result_muted: std::collections::HashSet<String>,
+
+    // ─── HEAT sub-mode state ────────────────────────────────────────────────
+
+    /// UI scratch state for the heatmap sub-mode. Persists color/size key selections.
+    #[serde(default)]
+    pub screen_heatmap: crate::chart_renderer::ui::panels::screener_heatmap::ScreenHeatmapState,
+}
+
+impl ScreenPanelState {
+    fn default_hotkey_slots() -> [Option<String>; 9] {
+        [None, None, None, None, None, None, None, None, None]
+    }
+    fn default_selected_columns() -> Vec<String> {
+        vec!["symbol".into(), "score".into(), "change_pct".into(), "volume".into()]
+    }
+    fn default_sort_col() -> String { "score".into() }
+    fn default_library_section_fracs() -> [f32; 2] { [0.35, 0.65] }
+}
+
+impl Default for ScreenPanelState {
+    fn default() -> Self {
+        Self {
+            panel_open: false,
+            active_tab: 0,
+            hotkey_slots: Self::default_hotkey_slots(),
+            view_mode: ScreenViewMode::default(),
+            active_screen_id: None,
+            selected_columns: Self::default_selected_columns(),
+            sort_col: Self::default_sort_col(),
+            sort_asc: false,
+            library_expanded_pinned: true,
+            library_expanded_recent: true,
+            library_expanded_all: true,
+            library_search: String::new(),
+            saved_screens: Vec::new(),
+            library_section_fracs: Self::default_library_section_fracs(),
+            pending_export_id: None,
+            screen_builder: ScreenBuilderState::default(),
+            results_rows: Vec::new(),
+            result_sort_col: 1, // default sort by score
+            result_sort_asc: false,
+            result_muted: std::collections::HashSet::new(),
+            screen_heatmap: crate::chart_renderer::ui::panels::screener_heatmap::ScreenHeatmapState::default(),
+        }
+    }
+}
+
+impl Persistable for ScreenPanelState {
+    const KEY: &'static str = "screen_panel_state";
+    const VERSION: u32 = 1;
+}
+
+// ─── Runtime screener state (NOT persisted) ──────────────────────────────────
+//
+// These types hold the live race / results data. They are NOT part of
+// `ScreenPanelState` because they cannot be serialized (Instant) and
+// should never persist across restarts.
+
+/// A single row in the live race / results view.
+#[derive(Debug, Clone)]
+pub struct ScreenResultRow {
+    /// Ticker symbol.
+    pub symbol: String,
+    /// Composite score from the scan engine.
+    pub score: f32,
+    /// Map of operand key → numeric value for user-selected columns.
+    pub values: std::collections::HashMap<String, f32>,
+    /// Sector/basket tag for the heatmap grouping.
+    pub sector: Option<String>,
+}
+
+/// Race-mode state: maintained at runtime, NOT persisted.
+///
+/// T-GRID reads `current_rows`, `prev_ranks`, `entry_flash_until`,
+/// `exit_fade_until` to drive the animated race view (SCR-6 §3.4).
+/// T-SHELL provides this type; T-GRID binds to it.
+#[derive(Debug, Default)]
+pub struct RaceState {
+    /// Current ranked rows from the latest SSE frame.
+    pub current_rows: Vec<ScreenResultRow>,
+    /// Symbol → rank in the previous SSE frame (for rank-change arrows).
+    pub prev_ranks: std::collections::HashMap<String, usize>,
+    /// Symbols that entered this frame; value = the Instant at which the
+    /// 800ms entry-flash started.
+    pub entry_flash_until: std::collections::HashMap<String, std::time::Instant>,
+    /// Symbols that left this frame; value = the Instant at which the
+    /// 600ms exit-fade started.
+    pub exit_fade_until: std::collections::HashMap<String, std::time::Instant>,
+}
+
+/// Results buffer: the latest snapshot from a completed (non-race) scan run.
+/// T-GRID reads this for the Grid view. Session-only.
+#[derive(Debug, Default)]
+pub struct ResultsBuffer {
+    /// Flat list of rows, pre-sorted by the active `ScreenPanelState::sort_col`.
+    pub rows: Vec<ScreenResultRow>,
+    /// Symbols muted by the user for this session (`MuteScreenSymbol` command).
+    pub muted_symbols: std::collections::HashSet<String>,
+    /// Sparkline price cache: symbol → last-N close prices for the polyline.
+    pub sparkline_cache: std::collections::HashMap<String, Vec<f32>>,
+    /// Sector filter applied from the Heat view (`Some(sector_name)` = active).
+    pub sector_filter: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1106,6 +1476,7 @@ mod tests {
             SidebarState::KEY,
             LayoutState::KEY,
             CmdPaletteState::KEY,
+            ScreenPanelState::KEY,
         ];
         let mut sorted = keys.to_vec();
         sorted.sort_unstable();

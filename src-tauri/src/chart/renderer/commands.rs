@@ -394,6 +394,116 @@ pub enum AppCommand {
     /// field write and the global style-cache side-effect that settings_panel
     /// used to do inline. See docs/COMMAND_BUS_MIGRATION.md.
     SetDensityOverride(Option<crate::ui_kit::style::DensityMode>),
+
+    // ── Screener (Wave S2) ────────────────────────────────────────────────
+    //
+    // All screener state lives on `ScreenPanelState` in `state/aggregates.rs`.
+    // Do NOT add fields to `Watchlist` or `Chart` for screener work.
+    // These variants are the ONLY way to mutate screener UI/session state.
+
+    /// Open (or close) the screener side-panel. Dispatched by Ctrl+Shift+S
+    /// in `top_nav.rs` and by the toolbar toggle button.
+    OpenScreenerPanel { open: bool },
+
+    /// Run a saved screen, identified by hotkey slot OR by its server-side UUID.
+    ///
+    /// Exactly one of `slot` or `id` must be `Some`. `slot` is 1-indexed (1..=9).
+    /// The reducer validates the slot range and resolves the bound screen ID.
+    /// If both are `None`, this is a no-op with a debug warning.
+    /// If both are `Some`, `id` takes precedence.
+    RunScreen { slot: Option<u8>, id: Option<String> },
+
+    /// Switch the screener panel's active tab OR the Results sub-view.
+    ///
+    /// `Library`, `Build`, `Results` map to the three shell tabs (0/1/2).
+    /// `Race` and `Heat` are sub-modes inside the Results tab — dispatching
+    /// either of these also switches the tab to Results.
+    SetScreenerView(crate::state::aggregates::ScreenViewMode),
+
+    /// Load a saved screen into the builder tab for editing.
+    /// Switches the active tab to `Build`.
+    LoadScreenToBuilder { id: String },
+
+    /// Assign or clear a saved screen's hotkey slot in the Library.
+    /// `screen_id = None` clears the slot. `slot` is 1-indexed (1..=9).
+    SetScreenHotkeySlot { slot: u8, screen_id: Option<String> },
+
+    /// Toggle the pinned flag of a saved screen in the Library.
+    PinScreen { id: String },
+
+    /// Rename a saved screen in the Library (local metadata only;
+    /// does NOT call the server — server rename goes via REST in the build tab).
+    RenameScreen { id: String, name: String },
+
+    /// Remove a saved screen from the local library cache.
+    /// Does NOT delete the screen from ApexData — use the REST API for that.
+    DeleteScreen { id: String },
+
+    /// Export the screen definition (DSL text) to clipboard / file.
+    /// Reducer stages the export; the actual clipboard write happens in
+    /// `screener_panel.rs` which reads `watchlist.screener.pending_export`.
+    ExportScreen { id: String },
+
+    /// Mute / un-mute a symbol in the live Results view (session-only).
+    /// Muted symbols are hidden in grid + race + heatmap for this session.
+    MuteScreenSymbol { symbol: String },
+
+    /// Load the symbol from a screener result row into the active chart pane.
+    /// Maps directly to `SwapPaneSymbol { pane: active_pane, symbol }` —
+    /// the reducer resolves `active_pane` from `watchlist.active_pane`.
+    ScreenRowToChart { symbol: String },
+
+    /// Cache the latest fetched screen list from ApexData into the local
+    /// `ScreenPanelState::saved_screens` field. Called from the background
+    /// fetch thread after a successful GET /api/data/scans.
+    UpdateSavedScreenCache { screens: Vec<crate::state::aggregates::SavedScreenEntry> },
+
+    // ─── Screener Builder commands (T-BUILD) ───────────────────────────────────
+    // Emitted by `screener_build.rs`. Reducers mutate `ScreenPanelState::screen_builder`.
+
+    /// Toggle between visual and DSL text mode in the Build tab.
+    BuilderSetDslMode { dsl: bool },
+
+    /// Update the DSL text buffer (one char per frame from TextEdit).
+    BuilderSetDslText { text: String },
+
+    /// Update the screen name field.
+    BuilderSetName { name: String },
+
+    /// Update the timeframe selection.
+    BuilderSetTf { tf: String },
+
+    /// Update the asset class ("stocks" | "options").
+    BuilderSetClass { class: String },
+
+    /// Update the universe filter (e.g. "SP500", "QQQ100").
+    BuilderSetUniverse { universe: String },
+
+    /// Update the rank-by expression and direction.
+    BuilderSetRankBy { expr: String, asc: bool },
+
+    /// Update the result limit (max rows returned).
+    BuilderSetLimit { n: usize },
+
+    /// Toggle the "alert on new entry" flag.
+    BuilderSetAlertEntry { on: bool },
+
+    /// Freeze the current condition_json into the active screen and switch to
+    /// the RESULTS tab to show the scan output.
+    BuilderCommit,
+
+    /// POST the current screen definition to `/api/data/scans` and persist it
+    /// to the local saved_screens cache.
+    BuilderSave,
+
+    /// Reset all builder state (conditions, metadata, DSL buffer, errors).
+    BuilderReset,
+
+    // ─── Screener Heatmap commands (T-HEAT) ───────────────────────────────────
+
+    /// Set or clear the active sector drill-down filter on the heatmap view.
+    /// `None` = clear filter (show all sectors).
+    ScreenerSetSectorFilter { sector: Option<String> },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -1169,6 +1279,246 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             // Side-effect that used to live inline in settings_panel — now
             // atomic with the field write inside the reducer.
             crate::chart_renderer::ui::style::set_density_override(mode);
+        }
+
+        // ── Screener reducers (Wave S2) ────────────────────────────────────
+        //
+        // `ScreenPanelState` is NOT on `Watchlist` (Watchlist is frozen).
+        // All screener aggregate state lives in the module-level static
+        // `screener_panel::SCREENER_STATE` (an `Arc<RwLock<ScreenPanelState>>`
+        // initialized lazily on first panel open, loaded from disk by the
+        // Store supervisor). The `panel_open` flag is the only screener field
+        // that mirrors into `SidebarState` (so it persists via the existing
+        // sidebar_state_store path). All other mutations go through the global.
+
+        AppCommand::OpenScreenerPanel { open } => {
+            // Route through sidebar_state_store so the flat bool in `Watchlist`
+            // stays in sync with the persisted aggregate (same pattern as
+            // scanner_open, rrg_open, playbook_panel_open, etc.).
+            watchlist.update_sidebar_state(|s| s.screener_panel_open = open);
+        }
+
+        AppCommand::RunScreen { slot, id } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            // Resolve screen ID: explicit id wins over slot lookup.
+            let screen_id = id.or_else(|| {
+                slot.filter(|&s| s >= 1 && s <= 9).and_then(|s| {
+                    sp::with_screener_state(|g| g.hotkey_slots[(s - 1) as usize].clone())
+                        .flatten()
+                })
+            });
+            if let Some(sid) = screen_id {
+                sp::with_screener_state_mut(|g| {
+                    g.active_screen_id = Some(sid);
+                    g.active_tab = 2; // Results tab
+                });
+                watchlist.update_sidebar_state(|s| s.screener_panel_open = true);
+            } else {
+                #[cfg(debug_assertions)]
+                eprintln!("[cmd] RunScreen: no screen bound to slot {:?}", slot);
+            }
+        }
+
+        AppCommand::SetScreenerView(mode) => {
+            use crate::state::aggregates::ScreenViewMode;
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                g.view_mode = mode;
+                if matches!(mode, ScreenViewMode::Race | ScreenViewMode::Heat) {
+                    g.active_tab = 2; // Results tab
+                }
+            });
+            watchlist.update_sidebar_state(|s| s.screener_panel_open = true);
+        }
+
+        AppCommand::LoadScreenToBuilder { id } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                g.active_screen_id = Some(id);
+                g.active_tab = 1; // Build tab
+            });
+            watchlist.update_sidebar_state(|s| s.screener_panel_open = true);
+        }
+
+        AppCommand::SetScreenHotkeySlot { slot, screen_id } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            if !(1..=9).contains(&slot) {
+                #[cfg(debug_assertions)]
+                eprintln!("[cmd] SetScreenHotkeySlot: slot {} out of range 1..=9", slot);
+                return;
+            }
+            sp::with_screener_state_mut(|g| {
+                // Unassign any existing binding for this slot from saved_screens.
+                for screen in g.saved_screens.iter_mut() {
+                    if screen.hotkey_slot == Some(slot) {
+                        if screen_id.as_deref().map_or(true, |sid| sid != screen.id) {
+                            screen.hotkey_slot = None;
+                        }
+                    }
+                }
+                g.hotkey_slots[(slot - 1) as usize] = screen_id.clone();
+                // Assign the slot on the matching saved_screen entry.
+                if let Some(sid) = &screen_id {
+                    if let Some(s) = g.saved_screens.iter_mut().find(|s| &s.id == sid) {
+                        s.hotkey_slot = Some(slot);
+                    }
+                }
+            });
+        }
+
+        AppCommand::PinScreen { id } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                if let Some(s) = g.saved_screens.iter_mut().find(|s| s.id == id) {
+                    s.pinned = !s.pinned;
+                }
+            });
+        }
+
+        AppCommand::RenameScreen { id, name } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            let name = name.trim().to_string();
+            if name.is_empty() { return; }
+            sp::with_screener_state_mut(|g| {
+                if let Some(s) = g.saved_screens.iter_mut().find(|s| s.id == id) {
+                    s.name = name;
+                }
+            });
+        }
+
+        AppCommand::DeleteScreen { id } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                g.saved_screens.retain(|s| s.id != id);
+                for slot in g.hotkey_slots.iter_mut() {
+                    if slot.as_deref() == Some(&id) { *slot = None; }
+                }
+                if g.active_screen_id.as_deref() == Some(&id) {
+                    g.active_screen_id = None;
+                }
+            });
+        }
+
+        AppCommand::ExportScreen { id } => {
+            // Stage the export request; screener_panel.rs reads `pending_export_id`
+            // each frame and performs the clipboard write before clearing it.
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                if g.saved_screens.iter().any(|s| s.id == id) {
+                    g.pending_export_id = Some(id);
+                }
+            });
+        }
+
+        AppCommand::MuteScreenSymbol { symbol } => {
+            // Session-only. Lives in the runtime muted-set inside screener_panel.
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            let sym = symbol.to_uppercase();
+            sp::toggle_muted_symbol(&sym);
+        }
+
+        AppCommand::ScreenRowToChart { symbol } => {
+            // Resolve the active pane index via `watchlist.active_pane_idx`,
+            // clamped to a valid index. Defaults to pane 0 if there are no panes.
+            let ap = watchlist.active_pane_idx.min(panes.len().saturating_sub(1));
+            // Dispatch as SwapPaneSymbol — same reducer path, same semantics.
+            dispatch(panes, watchlist, AppCommand::SwapPaneSymbol { pane: ap, symbol });
+        }
+
+        AppCommand::UpdateSavedScreenCache { screens } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                // Merge server list with local hotkey/pin metadata to avoid
+                // losing user customizations that have not yet been synced to
+                // the server (e.g., local-only pin + slot bindings).
+                let old = std::mem::take(&mut g.saved_screens);
+                g.saved_screens = screens.into_iter().map(|mut s| {
+                    if let Some(existing) = old.iter().find(|e| e.id == s.id) {
+                        s.pinned = existing.pinned;
+                        s.hotkey_slot = existing.hotkey_slot;
+                    }
+                    s
+                }).collect();
+            });
+        }
+
+        // ─── Builder reducers (T-BUILD) ────────────────────────────────────────────
+
+        AppCommand::BuilderSetDslMode { dsl } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_builder.dsl_mode = dsl; });
+        }
+
+        AppCommand::BuilderSetDslText { text } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_builder.dsl_text = text; });
+        }
+
+        AppCommand::BuilderSetName { name } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_builder.name = name; });
+        }
+
+        AppCommand::BuilderSetTf { tf } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_builder.tf = tf; });
+        }
+
+        AppCommand::BuilderSetClass { class } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_builder.class = class; });
+        }
+
+        AppCommand::BuilderSetUniverse { universe } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_builder.universe = universe; });
+        }
+
+        AppCommand::BuilderSetRankBy { expr, asc } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                g.screen_builder.rank_by = expr;
+                g.screen_builder.rank_asc = asc;
+            });
+        }
+
+        AppCommand::BuilderSetLimit { n } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_builder.limit = n; });
+        }
+
+        AppCommand::BuilderSetAlertEntry { on } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_builder.alert_on_entry = on; });
+        }
+
+        AppCommand::BuilderCommit => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                // Freeze condition_json from builder, switch to Results tab.
+                g.active_tab = 2;
+            });
+        }
+
+        AppCommand::BuilderSave => {
+            // POST to /api/data/scans is fire-and-forget from a background thread.
+            // Stub: T-BUILD already has its own local statics; the reducer just logs intent.
+            #[cfg(debug_assertions)]
+            eprintln!("[cmd] BuilderSave — wire REST POST when ApexData endpoint is ready");
+        }
+
+        AppCommand::BuilderReset => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| {
+                g.screen_builder = crate::state::aggregates::ScreenBuilderState::default();
+            });
+        }
+
+        // ─── Heatmap sector filter (T-HEAT) ───────────────────────────────────────
+
+        AppCommand::ScreenerSetSectorFilter { sector } => {
+            use crate::chart_renderer::ui::panels::screener_panel as sp;
+            sp::with_screener_state_mut(|g| { g.screen_heatmap.sector_filter = sector; });
         }
 
         #[cfg(debug_assertions)]

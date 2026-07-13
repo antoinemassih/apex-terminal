@@ -20,7 +20,7 @@ import sys, json, glob, os, time, subprocess, urllib.request, urllib.error
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:7892").rstrip("/")
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCEN = os.path.join(REPO, "dev", "scenarios")
-EXE  = os.path.join(REPO, "src-tauri", "target", "debug", "apex-native.exe")
+EXE  = os.path.join(REPO, "src-tauri", "target", "debug", "apex-native-corpus.exe")
 GAP          = 0.8    # seconds between scenarios — lets async loads drain
 RESTART_EVERY = 150   # restart the app every N scenarios to avoid accumulation
 
@@ -31,8 +31,12 @@ def health():
         return False
 
 def kill_app():
-    subprocess.run(["taskkill", "/F", "/IM", "apex-native.exe"],
-                   capture_output=True)
+    # ISO run (local, uncommitted): kill our protected-name instance (clean
+    # restarts) AND any competing apex-native.exe (claim :7892). Our app runs
+    # under the protected name so other sessions' taskkill /IM apex-native.exe
+    # can't kill it mid-run.
+    subprocess.run(["taskkill", "/F", "/IM", "apex-native-corpus.exe"], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/IM", "apex-native.exe"], capture_output=True)
     time.sleep(1.0)
 
 def start_app():

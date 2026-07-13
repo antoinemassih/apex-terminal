@@ -361,6 +361,13 @@ pub(crate) fn render(
             }) {
                 eprintln!("[shortcuts] {}", e);
             }
+            // Wave S2 — Ctrl+Shift+S opens/closes the screener panel.
+            let _ = crate::foundation::shortcuts::registry().write().unwrap().register(ShortcutEntry {
+                shortcut: Shortcut { modifiers: cmd_shift, key: egui::Key::S },
+                action: "panel.screener_toggle",
+                description: "Toggle Screener panel (symbol scanner + builder + results)",
+                category: "Panels",
+            });
         });
     }
     use crate::monitoring::{span_begin, span_end};
@@ -1181,6 +1188,20 @@ pub(crate) fn render(
                     }};
                 }
 
+                // ── Screener toggle (Wave S2) — Ctrl+Shift+S ─────────────────
+                {
+                    let screener_open = watchlist.sidebar_state_snapshot().screener_panel_open;
+                    let resp = toolbar_btn(ui, &nav_label(Icon::MAGNIFYING_GLASS, "Screener"), screener_open, t);
+                    crate::ui_kit::widgets::Tooltip::new("Screener (Ctrl+Shift+S)").show(ui, &resp, t);
+                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), screener_open, "right_screener");
+                    if resp.clicked() {
+                        crate::chart_renderer::commands::push(
+                            crate::chart_renderer::commands::AppCommand::OpenScreenerPanel { open: !screener_open }
+                        );
+                    }
+                    nav_divider!(ui, resp);
+                }
+
                 panel_toggle!(Icon::NEWSPAPER,      "Feed",       watchlist.feed_panel.open, feed_panel_open, "Feed (News, Discord, Screenshots)",           "right_feed");
                 panel_toggle!(Icon::STAR,            "Playbook",   playbook_panel_open,   "Playbook (Trade Ideas)",                      "right_playbook");
 
@@ -1829,6 +1850,14 @@ pub(crate) fn render(
         crate::chart_renderer::ui::panels::msg_tension_panel::toggle();
     }
 
+    // ── Screener panel hotkey — Ctrl+Shift+S (Wave S2) ────────────────────────
+    if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::S)) {
+        let currently_open = watchlist.sidebar_state_snapshot().screener_panel_open;
+        crate::chart_renderer::commands::push(
+            crate::chart_renderer::commands::AppCommand::OpenScreenerPanel { open: !currently_open }
+        );
+    }
+
     // ── Object Tree side panel (not rail-hosted)
     span_begin("sidebar.object_tree");
     crate::chart_renderer::ui::panels::object_tree::draw(ctx, watchlist, panes, ap, t);
@@ -1841,6 +1870,10 @@ pub(crate) fn render(
     }
     span_begin("sidebar.order_health");
     crate::chart_renderer::ui::panels::order_health_panel::draw(ctx, watchlist, t);
+
+    // ── Screener panel (Wave S2) — Ctrl+Shift+S ───────────────────────────────
+    span_begin("sidebar.screener");
+    crate::chart_renderer::ui::panels::screener_panel::draw(ctx, watchlist, panes, ap, t);
 
     // Analysis + Signals are now standard SidePanelShell::tabs panels hosted by
     // the right rail (see right_rail::PANELS) — no direct draw here.
