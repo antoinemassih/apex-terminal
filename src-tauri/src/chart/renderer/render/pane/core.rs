@@ -1522,6 +1522,14 @@ fn render_chart_pane(
                     ((dom_recent.len() - 1) as f64 / (span_ms / 1000.0)) as f32
                 } else { 0.0 }
             } else { 0.0 };
+            // Session cumulative delta (CVD) — the whole-session order-flow bias,
+            // summed once-per-trade at ingestion (clock-independent), 0 when not
+            // live / no prints yet.
+            let dom_cvd: f32 = if dom_is_live {
+                crate::apex_data::live_state::session_cvd(&chart.symbol).unwrap_or(0.0)
+            } else {
+                0.0
+            };
             let mut adapter = DomPaneAdapter {
                 dom_rect,
                 current_price,
@@ -1548,6 +1556,7 @@ fn render_chart_pane(
                 dom_position_info: dom_pos_info,
                 dom_tape: &dom_tape,
                 dom_tape_speed,
+                dom_cvd,
             };
             // DomPaneAdapter does not read PaneContext::panes; we pass an
             // empty slice to avoid a second mutable borrow of `panes` while

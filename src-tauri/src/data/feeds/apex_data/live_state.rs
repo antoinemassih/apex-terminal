@@ -389,6 +389,18 @@ pub fn realized_delta_in(symbol: &str, from_ms: i64, to_ms: i64) -> Option<f32> 
     if any { Some(sum) } else { None }
 }
 
+/// Session cumulative order-flow delta (CVD) for `symbol` — the sum of every
+/// retained realized-delta minute bucket (~a full session; buy +qty / sell −qty
+/// from the aggressor side, unknown prints skipped). Accrued once per trade at
+/// ingestion, so it is clock-independent and never double-counts a rolling tape
+/// window. `None` until the first live trade is recorded.
+pub fn session_cvd(symbol: &str) -> Option<f32> {
+    let g = state().realized_delta.lock().ok()?;
+    let m = g.get(symbol)?;
+    if m.is_empty() { return None; }
+    Some(m.values().sum())
+}
+
 pub fn set_connected(on: bool) {
     if let Ok(mut g) = state().connected.lock() { *g = on; }
 }

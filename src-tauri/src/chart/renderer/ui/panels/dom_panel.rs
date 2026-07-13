@@ -92,6 +92,7 @@ pub(crate) fn draw(
     dom_position_info: Option<(f32, i32)>, // (avg_price, signed qty) of the open position, if any
     dom_tape: &[(f32, f32, bool)], // recent prints (price, size, is_buy), newest first — for the T&S strip
     dom_tape_speed: f32,           // prints/sec over the tape window (0 = unknown/not live)
+    dom_cvd: f32,                  // session cumulative order-flow delta (0 = not live)
     t: &Theme,
 ) {
     let painter = ui.painter_at(dom_rect);
@@ -761,16 +762,27 @@ pub(crate) fn draw(
             egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())),
         );
         let tsf = mono_sm();
+        let hy_ts = ts_top + TAPE_ROW_H * 0.5 + 1.0;
+        // Three-zone header: label (left) · session CVD (center) · speed (right).
         painter.text(
-            egui::pos2(inner.left() + 4.0, ts_top + TAPE_ROW_H * 0.5 + 1.0),
-            egui::Align2::LEFT_CENTER, "TIME & SALES", tsf.clone(), color_muted(t.dim),
+            egui::pos2(inner.left() + 4.0, hy_ts),
+            egui::Align2::LEFT_CENTER, "T&S", tsf.clone(), color_muted(t.dim),
         );
-        // Speed-of-tape (prints/sec) right-aligned in the strip header — a quick
-        // read on how fast the tape is running (urgency / momentum). Hidden when
-        // the rate is unknown (0, e.g. a stalled or clockless feed).
+        // Session cumulative delta (Σ) — whole-session order-flow bias, green
+        // net-buying / red net-selling. Hidden at exactly 0 (no live prints).
+        if dom_cvd != 0.0 {
+            let cc = if dom_cvd > 0.0 { t.bull } else { t.bear };
+            painter.text(
+                egui::pos2(inner.left() + aw * 0.5, hy_ts),
+                egui::Align2::CENTER_CENTER,
+                &format!("\u{03A3}{:+.0}", dom_cvd), tsf.clone(), cc,
+            );
+        }
+        // Speed-of-tape (prints/sec) — how fast the tape is running (urgency /
+        // momentum). Hidden when the rate is unknown (0, e.g. a clockless feed).
         if dom_tape_speed > 0.0 {
             painter.text(
-                egui::pos2(inner.right() - 4.0, ts_top + TAPE_ROW_H * 0.5 + 1.0),
+                egui::pos2(inner.right() - 4.0, hy_ts),
                 egui::Align2::RIGHT_CENTER,
                 &format!("{:.0}/s", dom_tape_speed), tsf.clone(), color_muted(t.accent),
             );
