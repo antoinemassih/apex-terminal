@@ -94,7 +94,7 @@ pub(crate) fn draw(
     dom_dragging: &mut Option<(u32, f32)>, // (order_id, current_y) while dragging
     dom_position: &mut u8, dom_fullscreen: &mut bool,
     is_live: bool,
-    dom_position_info: Option<(f32, i32)>, // (avg_price, signed qty) of the open position, if any
+    dom_position_info: Option<(f32, i32, f32)>, // (avg_price, signed qty, $/point) of the open position, if any
     dom_tape: &[(f32, f32, bool)], // recent prints (price, size, is_buy), newest first — for the T&S strip
     dom_tape_speed: f32,           // prints/sec over the tape window (0 = unknown/not live)
     dom_cvd: f32,                  // session cumulative order-flow delta (0 = not live)
@@ -718,7 +718,7 @@ pub(crate) fn draw(
         // nearest tick row). Faint side-tinted band + left accent bar + a center
         // line + a compact L/S-qty tag — so the trader's average entry is
         // unmistakable on the DOM, matching TOS Active Trader.
-        if let Some((avg_px, pos_qty)) = dom_position_info {
+        if let Some((avg_px, pos_qty, per_point)) = dom_position_info {
             if pos_qty != 0 && (price - avg_px).abs() < tick_size * 0.5 {
                 let long = pos_qty > 0;
                 let pc = if long { t.bull } else { t.bear };
@@ -729,6 +729,23 @@ pub(crate) fn draw(
                     egui::Stroke::new(1.0, color_alpha(pc, 110)));
                 let tag = format!("{}{}", if long { "L" } else { "S" }, pos_qty.unsigned_abs());
                 lp.text(egui::pos2(rr.left() + 5.0, ry + ROW_H * 0.5), egui::Align2::LEFT_CENTER, &tag, mono_sm(), pc);
+            }
+            // DOM Phase 3: PnL-at-price. With an open position, show the $ this
+            // position would be worth if the market printed at this row's price —
+            // (price − avg) × $/point, exact from the broker's own P&L. Green in
+            // profit / red in loss, right-aligned; only on rows with no working
+            // order (so it never collides with an order badge) and skipping the
+            // near-zero clutter around entry.
+            if per_point != 0.0 && oap.is_empty() && price > 0.0 {
+                let pnl = (price - avg_px) * per_point;
+                if pnl.abs() >= 1.0 {
+                    let pc = if pnl >= 0.0 { t.bull } else { t.bear };
+                    lp.text(
+                        egui::pos2(rr.right() - 4.0, ry + ROW_H * 0.5),
+                        egui::Align2::RIGHT_CENTER,
+                        &format!("{:+.0}", pnl), mono_sm(), color_alpha(pc, 205),
+                    );
+                }
             }
         }
 

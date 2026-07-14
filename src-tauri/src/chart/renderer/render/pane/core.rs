@@ -1497,10 +1497,21 @@ fn render_chart_pane(
             use crate::chart_renderer::ui::pane::{Pane as _, PaneContext, DomPaneAdapter};
             // DOM Phase 1: the open position's (avg_price, signed qty) for the
             // position line on the ladder — from the account snapshot.
+            // DOM Phase 3: (avg_price, signed qty, dollars-per-point) for the
+            // position line AND PnL-at-price. `per_point` is derived from the
+            // broker's own unrealized P&L (pnl / (current − avg)), so it is exact
+            // for any instrument (stocks / futures / options) with no contract
+            // multiplier needed, and matches the reported P&L at the mark.
+            // Guarded: near entry (current ≈ avg) the denominator is ~0, so
+            // per_point falls back to 0 (PnL-at-price simply hides that frame).
             let dom_pos_info = crate::chart_renderer::trading::read_account_data()
                 .and_then(|(_, ps, _)| ps.iter()
                     .find(|p| p.symbol == chart.symbol && p.qty != 0)
-                    .map(|p| (p.avg_price, p.qty)));
+                    .map(|p| {
+                        let dp = (p.current_price - p.avg_price) as f64;
+                        let per_point = if dp.abs() > 1e-6 { (p.unrealized_pnl / dp) as f32 } else { 0.0 };
+                        (p.avg_price, p.qty, per_point)
+                    }));
             // DOM Phase 2: recent prints for the reconstructed Time & Sales strip
             // + speed-of-tape. Fetch one window; the strip shows the newest 16
             // (newest first) and the speed is prints/sec across the window. Only

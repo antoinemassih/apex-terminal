@@ -145,7 +145,7 @@ pub struct DomPaneAdapter<'d> {
     pub dom_position: &'d mut u8,
     pub dom_fullscreen: &'d mut bool,
     pub is_live: bool,
-    pub dom_position_info: Option<(f32, i32)>,
+    pub dom_position_info: Option<(f32, i32, f32)>,
     pub dom_tape: &'d [(f32, f32, bool)],
     pub dom_tape_speed: f32,
     pub dom_cvd: f32,
