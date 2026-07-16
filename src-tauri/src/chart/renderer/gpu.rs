@@ -7864,7 +7864,23 @@ impl ApplicationHandler for App {
             cw.win.request_redraw();
         }
         match ev {
-            WindowEvent::CloseRequested => {
+            // BUGFIX (live-test): handle `Destroyed` with the SAME teardown as
+            // `CloseRequested`. Previously only CloseRequested was handled, so a
+            // window that died WITHOUT a close request (spawn/surface failure,
+            // external destroy) left a stale entry in `self.windows` forever:
+            // `windows.is_empty()` never became true, the shutdown marker + the
+            // NATIVE_CHART_TXS clear below never ran, main never returned, and the
+            // process lived on windowless — the zombie this file's own comment
+            // warns about ("holds the GPU + :9091 and stacks up on every
+            // relaunch"). Those zombies pin the GPU/dev-inspector port and were
+            // corrupting corpus runs and live testing alike.
+            //
+            // Combining the arms is safe and cannot double-run: CloseRequested
+            // retains the window out of `self.windows`, so the Destroyed event
+            // that follows fails the `wid` lookup above and early-returns. Only a
+            // window destroyed WITHOUT a close request is still present here, and
+            // that is exactly the case we need to catch.
+            WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                 // Phase 3 (state): push all legacy fields into their stores
                 // BEFORE save_state and flush_all so both paths see fresh data.
                 // save_state calls push_all_stores internally, but the explicit
