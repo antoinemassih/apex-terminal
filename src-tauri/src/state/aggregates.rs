@@ -2151,6 +2151,7 @@ mod tests {
             order_ledger_view: 2,
             order_ledger_filter: 3,
             order_health_open: true,
+            screener_panel_open: true,
             bottom_dock_tab: 2,
             rail_col_width: 420.0,
             bottom_dock_height: 260.0,
