@@ -617,7 +617,25 @@ fn convert_play_to_orders(play: &Play, chart: &mut Chart) {
     use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus, OrderState};
 
     let entry_side = if play.direction == PlayDirection::Long { OrderSide::Buy } else { OrderSide::Sell };
-    let next_id = chart.orders.iter().map(|o| o.id).max().unwrap_or(0) + 1;
+    // P0 (audit 2026-07-17): play-derived levels MUST NOT share OrderManager's id
+    // namespace. OrderManager allocates from `next_id: u64` starting at 1
+    // (order_manager.rs:744, 1230) and `orders_view` merges chart.orders against
+    // manager orders BY ID (trading/mod.rs:83). This allocator previously returned
+    // `max(id)+1`, i.e. 1/2/3 for an empty chart — exactly OrderManager's first
+    // three ids. A play-derived draft on the DOM ladder could therefore merge with
+    // a REAL broker order of the same id, and dragging or cancelling the phantom
+    // would act on the real order. Allocate from a disjoint high range instead: the
+    // manager would need ~2^31 orders in one session to reach it.
+    //
+    // NOTE: this removes the dangerous collision only. Play drafts are still local
+    // (this fn deliberately never touches OrderManager), so dragging one is a
+    // no-op — now surfaced via errors_sink `modify_dropped_inactive` rather than
+    // failing silently. Routing plays through OrderManager is the real follow-up.
+    const PLAY_ID_BASE: u32 = 0x8000_0000;
+    let next_id = chart.orders.iter().map(|o| o.id)
+        .filter(|id| *id >= PLAY_ID_BASE)
+        .max()
+        .map_or(PLAY_ID_BASE, |m| m.saturating_add(1));
 
     chart.orders.push(OrderLevel {
         id: next_id, side: entry_side, price: play.entry_price,
