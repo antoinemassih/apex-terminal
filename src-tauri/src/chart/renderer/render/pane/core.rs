@@ -232,7 +232,17 @@ fn render_chart_pane(
     // price/qty while state still syncs) — now live in one tested function.
     // The submit/modify path (OrderManager) is untouched and stays paper-guarded.
     {
-        let dragging_order_id = chart.dragging_order;
+        // BUGFIX (live-test): the snap-back guard must cover BOTH drag surfaces.
+        // `chart.dragging_order` is only ever set by the CHART drag path
+        // (core.rs ~8951); a DOM-ladder drag records its in-flight order in
+        // `chart.dom.dragging` instead. Passing only the chart's id left every
+        // DOM drag unguarded, so the per-frame reconcile applied manager
+        // precedence straight over the user's in-flight price — the order
+        // "didn't take" or visibly snapped back. Fall back to the DOM's drag id
+        // so an order being dragged from either surface keeps the user's
+        // in-flight price until the modify lands.
+        let dragging_order_id = chart.dragging_order
+            .or_else(|| chart.dom.dragging.map(|(id, _)| id));
         let mgr_orders = crate::chart_renderer::trading::order_manager::all_order_levels_for(&chart.symbol);
         chart.orders = crate::chart_renderer::trading::orders_view(&chart.orders, &mgr_orders, dragging_order_id);
     }

@@ -2409,12 +2409,35 @@ impl OrderManager {
     #[tracing::instrument(skip(self), level = "debug", fields(order_id, new_price = ?new_price))]
     pub(crate) fn modify_price(&mut self, order_id: u64, new_price: Price) -> bool {
         let paper = self.paper_mode;
+        // Live-test instrumentation: a dragged order that "doesn't take" exits
+        // through one of the two silent early-returns below. Both used to return
+        // with no trace, so an intermittent lost move was undiagnosable. Count
+        // them via errors_sink so a repro shows up as
+        // apex_errors_total{source="order_manager",code="modify_*"} on :9091.
+        let exists = self.orders.iter().any(|o| o.id == order_id);
         let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state.is_active()) else {
+            crate::data::connectivity::errors_sink::report(
+                crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                "order_manager", "modify_dropped_inactive",
+                format!(
+                    "modify_price({order_id}) dropped — order {}; the drag will not take",
+                    if exists { "found but state is not active" } else { "not found" }
+                ),
+            );
             return false;
         };
         // If a PUT is already in flight, queue this price and return.
         if o.modify_inflight {
             o.modify_pending_price = Some(new_price);
+            let cid = o.client_order_id.clone();
+            crate::data::connectivity::errors_sink::report(
+                crate::data::connectivity::errors_sink::ErrorLevel::Info,
+                "order_manager", "modify_coalesced",
+                format!(
+                    "modify_price({order_id}) coalesced behind an in-flight PUT (client_id={cid}) — \
+                     only the last price survives; a fast second drag can appear to be ignored"
+                ),
+            );
             return true;
         }
         let now = epoch_ms();
