@@ -2002,6 +2002,13 @@ impl OrderManager {
             side_str, sym, qty, conditions.len());
 
         // Wave 4: HTTP body construction moves into `LiveBroker::submit_conditional`.
+        //
+        // Live path must NOT go Working before the broker Acks: a failed submit
+        // would otherwise leave a permanent phantom Working order with
+        // backend_order_id=None, which nothing can cancel. Paper is a
+        // deterministic local sim with no round-trip, so it keeps immediate
+        // Working. Same shape as submit_bracket (1686) / submit_oco (1867).
+        let paper = self.paper_mode;
         let broker = Arc::clone(&self.broker);
         let cargs = ConditionalSubmitArgs {
             symbol: sym.clone(),
@@ -2023,14 +2030,42 @@ impl OrderManager {
                     with_mgr(|mgr| {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
                             o.backend_order_id = Some(oid);
+                            if !paper && o.state == OrderState::PendingSubmit {
+                                // Guarded: a poller-driven reconcile may already
+                                // have landed a fill/cancel inside the Ack window.
+                                let now = epoch_ms();
+                                o.state = OrderState::Working;
+                                o.updated_at = ts_from_ms(now);
+                                o.state_history.push((OrderState::Working, ts_from_ms(now)));
+                            }
+                        }
+                        if !paper {
+                            mgr.needs_snapshot = true;
+                            mgr.save_to_disk();
                         }
                     });
                 }
-                Err(e) => report(ErrorLevel::Error, "conditional", "submit_failed", e.to_string()),
+                Err(e) => {
+                    report(ErrorLevel::Error, "conditional", "submit_failed", e.to_string());
+                    if !paper {
+                        with_mgr(|mgr| {
+                            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                                if !o.state.is_terminal() {
+                                    let now = epoch_ms();
+                                    o.state = OrderState::Rejected;
+                                    o.rejection_reason = Some(e.to_string());
+                                    o.updated_at = ts_from_ms(now);
+                                    o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
+                                }
+                            }
+                            mgr.needs_snapshot = true;
+                        });
+                    }
+                }
             }
         });
 
-        self.transition(id, OrderState::Working);
+        if paper { self.transition(id, OrderState::Working); }
         self.pending_toasts.push(toast);
         OrderResult::Accepted(id)
     }
@@ -2120,6 +2155,10 @@ impl OrderManager {
         let id_copy = id;
 
         // Wave 4: HTTP body moves into `LiveBroker::submit_options_trigger`.
+        //
+        // Live path defers Working until the broker Acks — see submit_conditional
+        // for the rationale (phantom uncancelable Working on submit failure).
+        let paper = self.paper_mode;
         let broker = Arc::clone(&self.broker);
         let oargs = OptionsTriggerArgs {
             underlying: und, option_type: ot, strike, expiration: exp,
@@ -2134,14 +2173,40 @@ impl OrderManager {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
                             if let Some(oid) = resp.entry_backend_id { o.backend_order_id = Some(oid); }
                             if let Some(cid) = resp.option_con_id { o.option_con_id = Some(cid); }
+                            if !paper && o.state == OrderState::PendingSubmit {
+                                let now = epoch_ms();
+                                o.state = OrderState::Working;
+                                o.updated_at = ts_from_ms(now);
+                                o.state_history.push((OrderState::Working, ts_from_ms(now)));
+                            }
+                        }
+                        if !paper {
+                            mgr.needs_snapshot = true;
+                            mgr.save_to_disk();
                         }
                     });
                 }
-                Err(e) => report(ErrorLevel::Error, "options_trigger", "submit_failed", e.to_string()),
+                Err(e) => {
+                    report(ErrorLevel::Error, "options_trigger", "submit_failed", e.to_string());
+                    if !paper {
+                        with_mgr(|mgr| {
+                            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                                if !o.state.is_terminal() {
+                                    let now = epoch_ms();
+                                    o.state = OrderState::Rejected;
+                                    o.rejection_reason = Some(e.to_string());
+                                    o.updated_at = ts_from_ms(now);
+                                    o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
+                                }
+                            }
+                            mgr.needs_snapshot = true;
+                        });
+                    }
+                }
             }
         });
 
-        self.transition(id, OrderState::Working);
+        if paper { self.transition(id, OrderState::Working); }
         self.pending_toasts.push(format!("OPT TRIGGER {} {}{}@{} entry={:.2} exit={:.2}",
             underlying, strike, option_type, expiration, entry_price, exit_price));
         OrderResult::Accepted(id)
@@ -2242,6 +2307,10 @@ impl OrderManager {
         // Wave 4: combo HTTP shape (legs in body, params in query) moves into
         // `LiveBroker::submit_combo`. Manager maps its `ComboLeg` into the
         // broker-side equivalent (same fields, different module).
+        //
+        // Live path defers Working until the broker Acks — see submit_conditional
+        // for the rationale (phantom uncancelable Working on submit failure).
+        let paper = self.paper_mode;
         let broker = Arc::clone(&self.broker);
         let cargs = ComboSubmitArgs {
             symbol: sym, side: side_owned, qty,
@@ -2257,14 +2326,40 @@ impl OrderManager {
                     with_mgr(|mgr| {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
                             o.backend_order_id = Some(oid);
+                            if !paper && o.state == OrderState::PendingSubmit {
+                                let now = epoch_ms();
+                                o.state = OrderState::Working;
+                                o.updated_at = ts_from_ms(now);
+                                o.state_history.push((OrderState::Working, ts_from_ms(now)));
+                            }
+                        }
+                        if !paper {
+                            mgr.needs_snapshot = true;
+                            mgr.save_to_disk();
                         }
                     });
                 }
-                Err(e) => report(ErrorLevel::Error, "combo", "submit_failed", e.to_string()),
+                Err(e) => {
+                    report(ErrorLevel::Error, "combo", "submit_failed", e.to_string());
+                    if !paper {
+                        with_mgr(|mgr| {
+                            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                                if !o.state.is_terminal() {
+                                    let now = epoch_ms();
+                                    o.state = OrderState::Rejected;
+                                    o.rejection_reason = Some(e.to_string());
+                                    o.updated_at = ts_from_ms(now);
+                                    o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
+                                }
+                            }
+                            mgr.needs_snapshot = true;
+                        });
+                    }
+                }
             }
         });
 
-        self.transition(id, OrderState::Working);
+        if paper { self.transition(id, OrderState::Working); }
         self.pending_toasts.push(toast);
         OrderResult::Accepted(id)
     }
