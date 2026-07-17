@@ -25,9 +25,32 @@ _EXE_DIR = os.path.join(REPO, "src-tauri", "target", "debug")
 # apex-native-corpus.exe` lets a run survive another session's
 # `taskkill /IM apex-native.exe` when the repo is shared on one machine); fall
 # back to the canonical binary so a clean checkout / CI works with no copy step.
-EXE = (os.path.join(_EXE_DIR, "apex-native-corpus.exe")
-       if os.path.exists(os.path.join(_EXE_DIR, "apex-native-corpus.exe"))
-       else os.path.join(_EXE_DIR, "apex-native.exe"))
+#
+# GOTCHA (2026-07-17, cost a full run): the protected copy was NEVER refreshed,
+# so once it existed every corpus run silently certified a STALE binary — a
+# green 1067/1067 that says nothing about the code you just built. The copy is
+# now refreshed from the canonical exe whenever the canonical one is newer, so
+# "protected from taskkill" no longer means "frozen in time".
+_CANON = os.path.join(_EXE_DIR, "apex-native.exe")
+_PROT  = os.path.join(_EXE_DIR, "apex-native-corpus.exe")
+
+def _refresh_protected_copy():
+    if not os.path.exists(_CANON):
+        return _PROT if os.path.exists(_PROT) else _CANON
+    if (not os.path.exists(_PROT)) or os.path.getmtime(_CANON) > os.path.getmtime(_PROT):
+        import shutil
+        subprocess.run(["taskkill", "/F", "/IM", "apex-native-corpus.exe"], capture_output=True)
+        time.sleep(1.0)
+        try:
+            shutil.copy2(_CANON, _PROT)
+            print(f"corpus: refreshed {os.path.basename(_PROT)} from freshly built exe", flush=True)
+        except OSError as e:
+            print(f"corpus: WARNING could not refresh protected copy ({e}); "
+                  f"falling back to canonical exe", flush=True)
+            return _CANON
+    return _PROT
+
+EXE = _refresh_protected_copy()
 GAP          = 0.8    # seconds between scenarios — lets async loads drain
 RESTART_EVERY = 150   # restart the app every N scenarios to avoid accumulation
 
@@ -48,8 +71,11 @@ def kill_app():
 def start_app():
     kill_app()
     # Launch from REPO root so SCENARIO_DIR ("dev/scenarios") resolves.
+    # DEBUG (2026-07-17): app stdout/stderr used to go to DEVNULL, so an app
+    # crash mid-corpus left NO trace and the run just stalled. Capture it.
+    _applog = open(os.path.join(REPO, "dev", "corpus_app.log"), "ab", buffering=0)
     subprocess.Popen([EXE], cwd=REPO,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     stdout=_applog, stderr=_applog,
                      creationflags=0x00000008)  # DETACHED_PROCESS
     for _ in range(60):
         if health(): return True
@@ -70,10 +96,20 @@ def run_one(file, timeout=90):
         return {"pass": False, "steps": [], "_err": str(e)}
 
 def first_fail_detail(r):
+    # GOTCHA (fixed 2026-07-17): the server emits each step as
+    # {"step": N, "pass": bool, ...} — this read `ok` / `index`, which NEVER
+    # exist, so every real failure fell through to the useless "http None"
+    # instead of the actual assertion text. The bug report has been hiding the
+    # one thing it exists to show. Accept both spellings.
     for s in r.get("steps", []):
-        if s.get("ok") is False:
-            return f"step {s.get('index','?')} ({s.get('action','?')}): {s.get('detail','')[:400]}"
-    return r.get("_err") or f"http {r.get('_http')}" or "unknown failure"
+        if s.get("pass") is False or s.get("ok") is False:
+            idx = s.get("step", s.get("index", "?"))
+            return f"step {idx} ({s.get('action','?')}): {str(s.get('detail',''))[:400]}"
+    if r.get("_err"):
+        return r["_err"]
+    if r.get("_http") is not None:
+        return f"http {r['_http']}"
+    return "unknown failure"
 
 def main():
     files = sorted(
