@@ -187,6 +187,30 @@ fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
     result
 }
 
+/// WS-H #42 / AUDIT_2026-07-17 P0-3: kill/halt interlock re-check for a spawned
+/// submit thread. The gate is checked on the *caller* thread at intent time; a
+/// kill engaged in the interim (rapid-fire submits, then Ctrl+Shift+K) would
+/// otherwise not stop an already-queued submit that runs on the spawned thread.
+///
+/// Call at the TOP of the spawned closure, before the `broker.submit*` call.
+/// Returns `true` when the submit must abort — in which case every still-active
+/// order in `order_ids` has been cancelled locally and one warning reported.
+/// Handles single- and multi-leg (bracket/OCO) paths uniformly.
+///
+/// Originally this re-check lived only in `submit()` (commit 78f9ecf9), leaving
+/// the other six spawned submit paths able to reach the broker after the kill
+/// switch was thrown. This centralizes it so all seven behave identically. The
+/// check + local cancel happen under a single `with_mgr` lock so kill/halt can't
+/// be released between the read and the cancel.
+fn kill_recheck_abort(order_ids: &[u64]) -> bool {
+    let aborted = with_mgr(|m| m.abort_submit_if_kill_engaged(order_ids));
+    if aborted {
+        report(ErrorLevel::Warn, "control", "submit_aborted_kill",
+            "kill/halt engaged after intent — broker submit aborted");
+    }
+    aborted
+}
+
 /// A2 (audit): the state a persisted order is restored AS on cold start.
 ///
 /// A `PendingSubmit` order crashed between being written to disk and the
@@ -1129,6 +1153,30 @@ impl OrderManager {
         Ok(())
     }
 
+    /// P0-3: if the kill switch or halt is engaged, cancel the given (still
+    /// active) orders locally and report that a queued submit must be aborted.
+    /// Returns `true` if aborted. Called from the spawned submit threads via
+    /// `kill_recheck_abort` to close the window between intent-time gating and
+    /// the broker call. Pure w.r.t. the global singleton, so it is unit-tested
+    /// directly on a `fresh_manager`.
+    fn abort_submit_if_kill_engaged(&mut self, order_ids: &[u64]) -> bool {
+        if !(self.kill_engaged || self.halted) {
+            return false;
+        }
+        let now = epoch_ms();
+        for &oid in order_ids {
+            if let Some(o) = self.orders.iter_mut().find(|o| o.id == oid) {
+                if !o.state.is_terminal() {
+                    o.state = OrderState::Cancelled;
+                    o.updated_at = ts_from_ms(now);
+                    o.state_history.push((OrderState::Cancelled, ts_from_ms(now)));
+                }
+            }
+        }
+        self.needs_snapshot = true;
+        true
+    }
+
     // Wave 7D: single-order submit/cancel/modify HTTP moved behind `Broker`.
     // The old static `submit_to_ib` / `resolve_con_id` / `extract_order_id`
     // helpers that lived here are now in `broker::LiveBroker`. Callers build
@@ -1511,6 +1559,8 @@ impl OrderManager {
             let side_owned: String = side_str.to_string();
             let broker = Arc::clone(&self.broker);
             crate::foundation::guard::spawn_guarded("order_manager", move || {
+                // P0-3: kill/halt re-check before the broker call (confirm path).
+                if kill_recheck_abort(&[order_id_copy]) { return; }
                 let args = SubmitArgs {
                     symbol: &sym,
                     side: &side_owned,
@@ -1684,6 +1734,8 @@ impl OrderManager {
                 self.transition(sl_id, OrderState::Working);
             }
             crate::foundation::guard::spawn_guarded("order_manager", move || {
+                // P0-3: kill/halt re-check before the broker call (all 3 legs).
+                if kill_recheck_abort(&[eid, tid, sid]) { return; }
                 match broker.submit_bracket(&bargs) {
                     Ok(resp) => {
                         with_mgr(|mgr| {
@@ -1865,6 +1917,8 @@ impl OrderManager {
             }).collect();
             let oargs = OcoSubmitArgs { legs, oca_group: oca.clone() };
             crate::foundation::guard::spawn_guarded("order_manager", move || {
+                // P0-3: kill/halt re-check before the broker call (all OCO legs).
+                if kill_recheck_abort(&ids_copy) { return; }
                 match broker.submit_oco(&oargs) {
                     Ok(resp) => {
                         with_mgr(|mgr| {
@@ -2025,6 +2079,8 @@ impl OrderManager {
             idempotency_key: idem_key,
         };
         crate::foundation::guard::spawn_guarded("order_manager", move || {
+            // P0-3: kill/halt re-check before the broker call (conditional path).
+            if kill_recheck_abort(&[id_copy]) { return; }
             match broker.submit_conditional(&cargs) {
                 Ok(oid) => {
                     with_mgr(|mgr| {
@@ -2167,6 +2223,8 @@ impl OrderManager {
             idempotency_key: idem_key,
         };
         crate::foundation::guard::spawn_guarded("order_manager", move || {
+            // P0-3: kill/halt re-check before the broker call (options-trigger).
+            if kill_recheck_abort(&[id_copy]) { return; }
             match broker.submit_options_trigger(&oargs) {
                 Ok(resp) => {
                     with_mgr(|mgr| {
@@ -2321,6 +2379,8 @@ impl OrderManager {
             idempotency_key: idem_key,
         };
         crate::foundation::guard::spawn_guarded("order_manager", move || {
+            // P0-3: kill/halt re-check before the broker call (combo path).
+            if kill_recheck_abort(&[id_copy]) { return; }
             match broker.submit_combo(&cargs) {
                 Ok(oid) => {
                     with_mgr(|mgr| {
@@ -4327,6 +4387,54 @@ mod tests {
         let r2 = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
         assert!(matches!(r2, OrderResult::Accepted(_)),
                 "after release_kill, submit should succeed, got {:?}", r2);
+    }
+
+    #[test]
+    fn spawned_submit_aborts_when_kill_engaged_after_intent() {
+        // P0-3: the spawned-submit re-check. `abort_submit_if_kill_engaged` is
+        // the testable core of `kill_recheck_abort` (which just wraps it with
+        // the global lock + a warning). Scenario: the intent passed the
+        // caller-thread gate, THEN the kill switch was thrown before the broker
+        // call runs on the spawned thread.
+        let mut m = fresh_manager();
+        let id = match m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10)) {
+            OrderResult::Accepted(id) => id,
+            other => panic!("expected Accepted, got {:?}", other),
+        };
+        assert!(!m.orders.iter().find(|o| o.id == id).unwrap().state.is_terminal());
+
+        // Not engaged: no-op, returns false, order untouched.
+        assert!(!m.abort_submit_if_kill_engaged(&[id]));
+        assert!(!m.orders.iter().find(|o| o.id == id).unwrap().state.is_terminal());
+
+        // Kill engaged after intent: aborts and cancels the queued order locally.
+        m.kill_engaged = true;
+        assert!(m.abort_submit_if_kill_engaged(&[id]));
+        assert_eq!(m.orders.iter().find(|o| o.id == id).unwrap().state,
+                   OrderState::Cancelled);
+    }
+
+    #[test]
+    fn spawned_submit_abort_covers_halt_multileg_and_terminal_legs() {
+        let mut m = fresh_manager();
+        // Two orders stand in for a multi-leg (bracket/OCO) id set.
+        let a = match m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10)) {
+            OrderResult::Accepted(id) => id, other => panic!("{:?}", other) };
+        let b = match m.submit(limit_intent("MSFT", OrderSide::Buy, 200.0, 5)) {
+            OrderResult::Accepted(id) => id, other => panic!("{:?}", other) };
+
+        // Halt (not just kill) also aborts; both legs cancel in one call.
+        m.halted = true;
+        assert!(m.abort_submit_if_kill_engaged(&[a, b]));
+        assert_eq!(m.orders.iter().find(|o| o.id == a).unwrap().state, OrderState::Cancelled);
+        assert_eq!(m.orders.iter().find(|o| o.id == b).unwrap().state, OrderState::Cancelled);
+
+        // Idempotent on an already-terminal leg: still reports aborted (engaged)
+        // but does not append another state_history entry or re-transition it.
+        let hist_len = m.orders.iter().find(|o| o.id == a).unwrap().state_history.len();
+        assert!(m.abort_submit_if_kill_engaged(&[a]));
+        assert_eq!(m.orders.iter().find(|o| o.id == a).unwrap().state_history.len(), hist_len,
+                   "terminal leg must not get another state_history entry");
     }
 
     // ── E. Halt ──────────────────────────────────────────────────────────────
