@@ -119,7 +119,8 @@ by the verifier). Effort: S=hours, M=days, L=week+, XL=multi-week.
 ### Deception class (UI that lies)
 | # | Finding | Effort | Evidence anchor |
 |---|---|---|---|
-| 7 | **Footprint chart fabricates per-price buy/sell volume from OHLC bar shape**, not tape — generates specific, confident, wrong order-flow reads | M | footprint overlay; ground in live_state tape or badge like the DOM |
+| 7 | **Footprint chart fabricates per-price buy/sell volume from OHLC bar shape**, not tape — renders "ABSORPTION"/"3:1 BUY @ price" tags from a hardcoded Gaussian + `0.3 + 0.5*level_pos` formula, zero disclosure | M | gpu.rs:4330-4379 `bar_micro_profile`; core.rs:12308-12470 |
+| 7b | **Historical CVD is silently backfilled with the same fabricated heuristic** — `realized_delta_in()` only covers trades since process start (~1 session); older bars fall back to the close-position formula, and both segments render as ONE continuous line with no visual break. A multi-day CVD divergence is mostly synthetic and unlabeled | S-M | gpu.rs:4398-4422; core.rs:5837, 12629-12660 *(second-opinion agent)* |
 | 8 | **Welcome-wizard risk limits (daily loss cap, max position %) are captured then silently discarded** — never reach the risk gate | S | wizard Finish handler |
 | 9 | **Hotkey editor is cosmetic for ~26 of 27 bindings** — remapping changes nothing; only the boss key dispatches from state | M | keyboard_shortcuts.rs vs watchlist.hotkeys |
 | 10 | **Price alerts silently die — still shown ACTIVE — when the owning pane switches symbol** | M | alert evaluation is pane-symbol-coupled |
@@ -156,8 +157,18 @@ adding one indicator touches ~140 sites across 6+ files including both god files
 incremental indicator updates silently NaN any indicator not special-cased.
 
 **DOM**: volume/absorption signals computed over last ~100 trades, not the session;
-DOM bracket hardcoded 10t/20t ignoring the existing template system; no depth
-history (the Bookmap heatmap gap).
+DOM bracket hardcoded 10t/20t while a real user-editable `BracketTemplate` system
+(Tight/Normal/Wide/Scalp) already exists and is wired into the chart context menu
+(trading/mod.rs:737-741, pane_context_menu.rs:159-166) — the DOM just never reads
+it, so this fix is S-M not a build; **the DOM cannot place Stop/Stop-Limit orders
+at all** (`enum DomOrderType { Market, Limit }`, dom_panel.rs:32) despite
+OrderManager fully supporting them — a TOS/SuperDOM table-stakes gap; no
+move-to-breakeven or one-click-trail UI anywhere despite `trail_amount`/
+`trail_percent` being first-class OrderManager fields; no depth history (the
+Bookmap heatmap gap — needs a DomHistory ring, currently the book is
+frame-overwritten); iceberg detection is structurally impossible on IBKR's
+aggregated MBP feed — needs Databento/Rithmic/dxFeed as an alternate DOM feed,
+or should be cut from the roadmap rather than left perpetually "flagged".
 
 **UX**: Postgres failure at startup invisible in release builds; palette/wizard
 findings above.
