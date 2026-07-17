@@ -1,23 +1,6 @@
 {
   "done": true,
   "total": 1067,
-  "correct": 1063,
-  "real": [
-    {
-      "file": "963_crossasset_study_es.json",
-      "detail": "http None"
-    },
-    {
-      "file": "964_crossasset_study_nq.json",
-      "detail": "http None"
-    },
-    {
-      "file": "1613_desk_session_iwm.json",
-      "detail": "http None"
-    },
-    {
-      "file": "2601_snap_candidates_gamma.json",
-      "detail": "http None"
-    }
-  ]
+  "correct": 1067,
+  "real": []
 }
