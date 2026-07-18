@@ -63,6 +63,19 @@ Work items in ID order within a wave unless a dependency says otherwise.
 # WAVE 0 — CLOSE THE MONEY EDGES
 *Goal: live trading is trustworthy. Nothing here is architecturally hard.*
 
+> **PROGRESS 2026-07-18 (batch 4)** — each corpus **1067/1067** (0 real, 0 refused):
+> - **W0-12 DONE** `686782b1` — footprint overlay badged "ESTIMATED · shape from
+>   OHLC, not tape" with the fabricated order-flow specifics removed (delta,
+>   buy/sell %, conviction, EXHAUSTION, TRAPPED, imbalance "N:1 BUY @ price");
+>   only OHLC-real reads kept (direction, RVOL, wick geometry). Historical CVD:
+>   per-bar `cvd_synthetic` flag → synthetic spans rendered dimmed + "dim =
+>   estimated (no tape)" legend. Real tape footprint remains W2-06.
+> - **W0-11 DONE** `91b8e968` — paper→LIVE now arms an explicit red "Go LIVE"
+>   confirmation (toggle springs back to Paper until confirmed); disabled while
+>   kill/halt engaged; armed state is a non-persisted static.
+>   NOTE: first gate was self-inflicted-killed at 901/1067 (cleanup Stop-Process
+>   ran before the verdict) — re-ran clean to a true 1067/1067.
+>
 > **PROGRESS 2026-07-18 (batch 3)** — corpus **1067/1067** (0 real, 0 refused):
 > - **W0-01 DONE** `c4455441` — Spread Builder blocked from submitting a live
 >   combo at conId=0 / $0 limit (validate_risk was toothless at $0). Guard in
