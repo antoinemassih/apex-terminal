@@ -355,7 +355,12 @@ the SIMULATED badge otherwise. No synthetic depth without a badge.
 >   those fields have NO write path (chart.fundamentals only ever reset to
 >   default; insider_trades/econ_calendar only ever = Vec::new()). Pure
 >   empty-state text change, corpus-neutral by construction (no gate needed).
-> - **W1-10 SPEC'd, do fresh** — the crossing MATH is complete but orphaned:
+> - **W1-10 DONE** `c6c79281` (corpus 1067/1067, batched w/ W1-12) — alerts-on-
+>   drawings wired: the orphaned compute::evaluate_drawings_against_bar now runs
+>   in the per-pane eval for alert_enabled drawings vs the latest bar, firing
+>   notifications on crossings. drawing_to_alert_params converter + session-global
+>   fired-set dedup. +2 unit tests. (Original spec below, kept for reference.)
+> - **W1-10 (was) SPEC'd** — the crossing MATH is complete but orphaned:
 >   compute::evaluate_drawings_against_bar (compute.rs:606, handles hline/
 >   trendline/ray/fib/channel) has ZERO callers. The bell toggle (properties_bar.rs
 >   :295) only sets Drawing.alert_enabled + fires a curl to :8100. To wire it
