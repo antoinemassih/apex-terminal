@@ -182,7 +182,11 @@ pub(crate) fn draw_content(
         .show(ui, t, |ui, t| {
             let total = (f.analyst_buy + f.analyst_hold + f.analyst_sell) as f32;
             if total <= 0.0 {
-                PanelEmpty::new("No analyst coverage").show(ui, t);
+                // W1-12 (audit): chart.fundamentals is only ever reset to
+                // default — nothing FETCHES analyst data — so "No coverage" read
+                // as "we checked, there's none". Disclose the missing feed
+                // honestly instead, matching the Fundamentals section.
+                PanelEmpty::new("Analyst feed not connected").show(ui, t);
                 return;
             }
             ui.horizontal(|ui| {
@@ -223,7 +227,9 @@ pub(crate) fn draw_content(
     PanelSection::new("EARNINGS HISTORY")
         .show(ui, t, |ui, t| {
             if f.earnings.is_empty() {
-                PanelEmpty::new("No earnings history").show(ui, t);
+                // W1-12: no fetch populates f.earnings — disclose, don't imply
+                // this stock has no earnings history.
+                PanelEmpty::new("Earnings feed not connected").show(ui, t);
                 return;
             }
             for eq in &f.earnings {
@@ -246,7 +252,9 @@ pub(crate) fn draw_content(
     PanelSection::new("INSIDER TRANSACTIONS")
         .show(ui, t, |ui, t| {
             if chart.insider_trades.is_empty() {
-                PanelEmpty::new("No insider activity").show(ui, t);
+                // W1-12: chart.insider_trades is only ever cleared to Vec::new()
+                // (gpu.rs), never populated — disclose the missing feed.
+                PanelEmpty::new("Insider feed not connected").show(ui, t);
                 return;
             }
             for trade in &chart.insider_trades {
@@ -274,7 +282,9 @@ pub(crate) fn draw_content(
     PanelSection::new("ECONOMIC CALENDAR")
         .show(ui, t, |ui, t| {
             if chart.econ_calendar.is_empty() {
-                PanelEmpty::new("No upcoming events").show(ui, t);
+                // W1-12: chart.econ_calendar is only ever cleared to Vec::new()
+                // (gpu.rs), never populated — disclose the missing feed.
+                PanelEmpty::new("Economic calendar feed not connected").show(ui, t);
                 return;
             }
             for event in &chart.econ_calendar {
