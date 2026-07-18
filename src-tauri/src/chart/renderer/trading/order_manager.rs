@@ -2442,57 +2442,111 @@ impl OrderManager {
 
         if !is_active { return false; }
 
-        let paper = self.paper_mode;
         let cid = order_id.to_string();
         // CC1: defer journal append until ORDER_MANAGER guard drops.
         self.deferred_journal.push(JournalEvent::Attempt {
-            client_id: cid.clone(), kind: AttemptKind::Cancel,
+            client_id: cid, kind: AttemptKind::Cancel,
             ts_ms: epoch_ms(), payload: serde_json::json!({"order_id": order_id}),
         });
 
-        self.transition(order_id, OrderState::Cancelled);
+        self.issue_cancel(order_id);
 
-        // Send individual cancel to ApexIB
-        if let Some(backend_id) = self.orders.iter().find(|o| o.id == order_id).and_then(|o| o.backend_order_id.clone()) {
-            if paper {
-                paper::cancel_paper(&backend_id);
-                // CC1: defer Ack journal append.
-                self.deferred_journal.push(JournalEvent::Ack { client_id: cid.clone(), backend_id: Some(backend_id), ts_ms: epoch_ms() });
-            } else {
-                let cid_thread = cid.clone();
-                let bid = backend_id.clone();
-                let broker = Arc::clone(&self.broker);
-                crate::foundation::guard::spawn_guarded("order_manager", move || {
-                    // These journal::append calls are in a spawned thread (ORDER_MANAGER
-                    // not held here) — they call WAL_LOCK directly without nesting.
-                    match broker.cancel(&bid, &cid_thread) {
-                        Ok(()) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms() }),
-                        Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: e, ts_ms: epoch_ms() }),
-                    }
-                });
-            }
-        } else {
-            // CC1: defer Ack journal append.
-            self.deferred_journal.push(JournalEvent::Ack { client_id: cid.clone(), backend_id: None, ts_ms: epoch_ms() });
-        }
-
-        // Also cancel paired order
+        // Also cancel the paired order — same PendingCancel treatment.
         if let Some(pid) = pair_id {
             let pair_active = self.orders.iter().any(|o| o.id == pid && o.state.is_active());
             if pair_active {
-                self.transition(pid, OrderState::Cancelled);
-                // Cancel paired order on backend too
-                if let Some(pair_backend_id) = self.orders.iter().find(|o| o.id == pid).and_then(|o| o.backend_order_id.clone()) {
-                    let pair_cid = self.orders.iter().find(|o| o.id == pid)
-                        .map(|o| o.client_order_id.clone())
-                        .unwrap_or_default();
-                    let broker = Arc::clone(&self.broker);
-                    crate::foundation::guard::spawn_guarded("order_manager", move || {
-                        let _ = broker.cancel(&pair_backend_id, &pair_cid);
-                    });
-                }
+                self.issue_cancel(pid);
             }
         }
+        true
+    }
+
+    /// W0-03 (audit): issue the cancel for a single order.
+    ///
+    /// A LIVE order with a real backend id goes to **PendingCancel**, NOT
+    /// straight to the terminal `Cancelled`. This is the fix: the old code
+    /// optimistically set `Cancelled` before the broker call, so if the order
+    /// actually FILLED in the race window, reconcile's absorbing-terminal rule
+    /// (Rule 7) refused to override `Cancelled` and the real fill was masked
+    /// forever. With PendingCancel, reconcile either confirms the cancel
+    /// (Rule 2b, PendingCancel+Cancelled) or discovers the fill
+    /// (PendingCancel+Filled → Filled, `record_fill_pnl` fires).
+    ///
+    /// The broker DELETE being accepted (Ok) does NOT prove the order wasn't
+    /// filling — so we do NOT jump to Cancelled on Ok either; reconcile is the
+    /// sole authority for the terminal transition. A broker rejection (Err)
+    /// reverts PendingCancel to the prior state.
+    ///
+    /// Paper / no-backend orders have nothing to confirm and go straight to
+    /// Cancelled, exactly as before.
+    fn issue_cancel(&mut self, order_id: u64) {
+        let Some((prior, backend_id)) = self.orders.iter()
+            .find(|o| o.id == order_id)
+            .map(|o| (o.state, o.backend_order_id.clone()))
+        else { return; };
+        let paper = self.paper_mode;
+        let cid = order_id.to_string();
+        match (paper, backend_id) {
+            (false, Some(bid)) => {
+                self.transition(order_id, OrderState::PendingCancel);
+                let cid_thread = cid;
+                let broker = Arc::clone(&self.broker);
+                crate::foundation::guard::spawn_guarded("order_manager", move || {
+                    // Spawned thread — ORDER_MANAGER not held; journal::append safe.
+                    match broker.cancel(&bid, &cid_thread) {
+                        Ok(()) => journal::append(JournalEvent::Ack {
+                            client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms(),
+                        }),
+                        Err(e) => {
+                            journal::append(JournalEvent::Fail {
+                                client_id: cid_thread, reason: e.clone(), ts_ms: epoch_ms(),
+                            });
+                            // W0-03: broker rejected the cancel → restore the
+                            // order to its prior state (guarded on still being
+                            // PendingCancel, so a reconcile that already resolved
+                            // it isn't clobbered).
+                            let reverted = with_mgr(|mgr| mgr.revert_pending_cancel(order_id, prior));
+                            if reverted {
+                                report(ErrorLevel::Warn, "order_manager", "cancel_rejected",
+                                    format!("cancel rejected by broker (id={order_id}): {e} — restored to {prior:?}"));
+                                with_mgr(|mgr| mgr.push_toast_deduped(format!("CANCEL REJECTED: {e}")));
+                            }
+                        }
+                    }
+                });
+            }
+            (true, Some(bid)) => {
+                paper::cancel_paper(&bid);
+                self.transition(order_id, OrderState::Cancelled);
+                self.deferred_journal.push(JournalEvent::Ack {
+                    client_id: cid, backend_id: Some(bid), ts_ms: epoch_ms(),
+                });
+            }
+            (_, None) => {
+                // Purely local order — nothing at the broker to confirm.
+                self.transition(order_id, OrderState::Cancelled);
+                self.deferred_journal.push(JournalEvent::Ack {
+                    client_id: cid, backend_id: None, ts_ms: epoch_ms(),
+                });
+            }
+        }
+    }
+
+    /// W0-03 (audit): revert a PendingCancel order to its prior state after a
+    /// broker cancel REJECTION, so a rejected cancel doesn't leave the order
+    /// stuck non-active (looking cancelled but still live at the broker).
+    /// Guarded: only reverts if still PendingCancel — a reconcile that already
+    /// resolved it to Cancelled or discovered a Filled must not be clobbered.
+    /// Pure w.r.t. the global singleton → unit-testable. Returns true if reverted.
+    fn revert_pending_cancel(&mut self, order_id: u64, prior: OrderState) -> bool {
+        let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id) else { return false; };
+        if o.state != OrderState::PendingCancel {
+            return false;
+        }
+        let now = epoch_ms();
+        o.state = prior;
+        o.updated_at = ts_from_ms(now);
+        o.state_history.push((prior, ts_from_ms(now)));
         true
     }
 
@@ -3521,11 +3575,16 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             mgr.orders[idx].backend_order_id = Some(token);
         }
 
-        // ── Rule 4: local Cancelled but broker still reports Working → re-cancel.
-        if matches!(prev_state, OrderState::Cancelled)
+        // ── Rule 4: local Cancelled/PendingCancel but broker still reports
+        // Working → re-cancel. W0-03: PendingCancel is the new optimistic cancel
+        // state (was Cancelled); a broker still showing the order live means our
+        // cancel hasn't landed yet, so re-fire it. (PendingCancel + Cancelled is
+        // handled below by Rule 2b; PendingCancel + Filled falls through to the
+        // fill adoption, which is the whole point — a raced fill is NOT masked.)
+        if matches!(prev_state, OrderState::Cancelled | OrderState::PendingCancel)
             && matches!(broker_state, OrderState::Working | OrderState::PartialFill)
         {
-            report(ErrorLevel::Warn, "reconcile", "rule4_recancel", format!("local Cancelled but broker Working — re-firing cancel id={}", local_id));
+            report(ErrorLevel::Warn, "reconcile", "rule4_recancel", format!("local {prev_state:?} but broker Working — re-firing cancel id={}", local_id));
             // CC1: defer journal append until ORDER_MANAGER guard drops.
             mgr.deferred_journal.push(JournalEvent::Reconcile {
                 client_id: local_id.to_string(),
@@ -4760,6 +4819,97 @@ mod tests {
             // Rule 4 should NOT flip the local state — it stays Cancelled.
             assert_eq!(o.state, OrderState::Cancelled,
                        "Rule 4 must leave local state Cancelled (broker recancel only)");
+        }
+
+        #[test]
+        fn w0_03_pending_cancel_broker_filled_adopts_fill_not_masked() {
+            // W0-03 CORE: an order cancelled locally now sits in PendingCancel
+            // (not the old terminal Cancelled). If the broker reports it FILLED
+            // — the fill raced the cancel — reconcile must ADOPT the fill, not
+            // keep it cancelled. The old code set terminal Cancelled optimistically
+            // and Rule 7 (terminal is absorbing) masked the fill forever.
+            let mut m = fresh_manager();
+            let now = epoch_ms();
+            m.orders.push(ManagedOrder {
+                id: 1, client_order_id: "k".into(),
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
+                state: OrderState::PendingCancel, pair_id: None,
+                trail_amount: None, trail_percent: None,
+                option_symbol: None, option_con_id: None,
+                source: OrderSource::OrderPanel,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now),
+                backend_order_id: Some("abc".into()),
+                tif: 0, outside_rth: false,
+                state_history: vec![(OrderState::PendingCancel, ts_from_ms(now))],
+                rejection_reason: None,
+                modify_version: 0, modify_inflight: false, modify_pending_price: None,
+            });
+            m.next_id = 2;
+
+            let mut feed = ib("AAPL", "buy", 10, "filled");
+            feed.backend_id = "abc".into();
+            feed.filled_qty = 10;
+            feed.avg_fill_price = 100.0;
+            reconcile_with_ib_inner(&mut m, &[feed]);
+
+            let o = m.orders.iter().find(|o| o.id == 1).expect("order id=1 should exist");
+            assert_eq!(o.state, OrderState::Filled,
+                "a fill that raced the cancel must be adopted, not masked by the optimistic cancel");
+            assert_eq!(o.filled_qty, 10, "the raced fill's qty must be recorded");
+        }
+
+        #[test]
+        fn w0_03_pending_cancel_broker_cancelled_confirms() {
+            // W0-03 contrast: the normal case — broker confirms the cancel →
+            // Rule 2b promotes PendingCancel to terminal Cancelled.
+            let mut m = fresh_manager();
+            let now = epoch_ms();
+            m.orders.push(ManagedOrder {
+                id: 1, client_order_id: "k".into(),
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
+                state: OrderState::PendingCancel, pair_id: None,
+                trail_amount: None, trail_percent: None,
+                option_symbol: None, option_con_id: None,
+                source: OrderSource::OrderPanel,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now),
+                backend_order_id: Some("abc".into()),
+                tif: 0, outside_rth: false,
+                state_history: vec![(OrderState::PendingCancel, ts_from_ms(now))],
+                rejection_reason: None,
+                modify_version: 0, modify_inflight: false, modify_pending_price: None,
+            });
+            m.next_id = 2;
+
+            let mut feed = ib("AAPL", "buy", 10, "cancelled");
+            feed.backend_id = "abc".into();
+            reconcile_with_ib_inner(&mut m, &[feed]);
+
+            let o = m.orders.iter().find(|o| o.id == 1).expect("order id=1 should exist");
+            assert_eq!(o.state, OrderState::Cancelled, "Rule 2b confirms the pending cancel");
+        }
+
+        #[test]
+        fn w0_03_revert_pending_cancel_restores_prior_but_not_terminal() {
+            // W0-03: a broker cancel rejection reverts PendingCancel to prior;
+            // but if a fill already landed (Filled), the revert is a NO-OP —
+            // never resurrect a filled order.
+            let mut m = fresh_manager();
+            let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+            let id = order_id(&r).expect("submit must accept");
+            m.transition(id, OrderState::PendingCancel);
+            assert!(m.revert_pending_cancel(id, OrderState::Working),
+                "PendingCancel must revert to the prior Working state on cancel reject");
+            assert_eq!(m.orders.iter().find(|o| o.id == id).unwrap().state, OrderState::Working);
+
+            // Now simulate a fill landing before a (stale) reject: revert is no-op.
+            m.transition(id, OrderState::Filled);
+            assert!(!m.revert_pending_cancel(id, OrderState::Working),
+                "revert must not touch a non-PendingCancel (already Filled) order");
+            assert_eq!(m.orders.iter().find(|o| o.id == id).unwrap().state, OrderState::Filled);
         }
 
         #[test]
