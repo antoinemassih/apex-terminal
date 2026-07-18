@@ -63,6 +63,17 @@ Work items in ID order within a wave unless a dependency says otherwise.
 # WAVE 0 — CLOSE THE MONEY EDGES
 *Goal: live trading is trustworthy. Nothing here is architecturally hard.*
 
+> **PROGRESS 2026-07-18 (batch 6)** — CI/test only (no corpus needed):
+> - **W0-13a DONE** `0bfa4b30` — full `cargo test --lib` now runs in CI (was
+>   compile-check only; ~800 tests incl. the trading suite never ran). Also fixed
+>   a Windows-only test the full run surfaced (flush_all_returns_failure_for_bad_
+>   path assumed a POSIX-unwritable path). Full suite 818/0.
+> - **W0-13b DEFERRED** — the strict zero-bar oracle (canvas_all_finite /
+>   viewport_sane FAIL when a pane loaded a symbol but has 0 bars). With the
+>   current FLAKY FEED environment, scenarios intermittently load 0 bars for
+>   environmental reasons; enabling the strict oracle now would false-red every
+>   corpus run and destroy the gate. Land when feeds are reliably up.
+>
 > **PROGRESS 2026-07-18 (batch 5)** — corpus **1067/1067** (0 real, 0 refused):
 > - **W0-08 DONE** `c87b1db6` — order-path staleness gate: get_snapshot_with_age
 >   + RiskLimits.max_quote_age_secs (5s default); BP snapshot fallback rejects a
