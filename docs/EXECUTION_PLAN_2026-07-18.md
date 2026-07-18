@@ -63,6 +63,21 @@ Work items in ID order within a wave unless a dependency says otherwise.
 # WAVE 0 — CLOSE THE MONEY EDGES
 *Goal: live trading is trustworthy. Nothing here is architecturally hard.*
 
+> **PROGRESS 2026-07-18** — landed together, corpus **1067/1067** on the fresh
+> binary (0 real failures, 0 connection-refused), 110 trading unit tests pass:
+> - **W0-02 DONE** `6c13590b` — broker submit/cancel/modify check HTTP status.
+> - **W0-03 DONE** `d01f18be` — cancel → PendingCancel (not terminal); a fill
+>   racing the cancel is now adopted by reconcile, not masked. +3 tests incl.
+>   the core `w0_03_pending_cancel_broker_filled_adopts_fill_not_masked`.
+> - **W0-04 DONE** `d72fe80b` — rejected modify reverts optimistic price +
+>   reconcile limit-price self-heal. +4 tests.
+> - **W0-07 DEFERRED (needs product decision)** — market orders already hit the
+>   notional `NeedsApproval` gate (validate_risk:954, uses last_price when
+>   price=0); the price-deviation fat-finger is legitimately N/A for market
+>   orders. A real gap exists only when `max_notional` is disabled (0). Adding a
+>   second notional threshold risks a redundant/confusing gate. Decide the
+>   threshold semantics (notional cap vs qty-baseline anomaly) before building.
+
 ### W0-01 · Spread Builder: block conId=0 / $0-limit live combos  [P0 · M]
 **Evidence:** spread_panel.rs builds combo legs with `conId=0` and submits with
 limit price `$0.00`; `submit_combo` path applies no fat-finger/notional gate to
