@@ -11,6 +11,26 @@ use crate::chart_renderer::gpu::{
     drawing_kind_short, drawing_to_db, drawing_persist_key, shift_drawing_time, new_uuid,
 };
 
+/// W1-06 (audit): does the current input match the user-configured binding for
+/// `action`? `watchlist.hotkeys` is the single source the Settings hotkey editor
+/// writes to — but ONLY the tps_toggle handler read it, so remapping any of the
+/// other ~26 bindings did nothing (the handlers hard-coded their keys). This is
+/// the shared dispatch check that fixes that. Exact modifier match (command ==
+/// ctrl, shift, alt), mirroring the original tps_toggle handler. `default_hotkeys()`
+/// seeds every action with the SAME key the handler used to hard-code, so an
+/// unmodified config reproduces the old behavior exactly.
+fn binding_pressed(hotkeys: &[HotKey], ui: &egui::Ui, action: &str) -> bool {
+    match hotkeys.iter().find(|h| h.action == action) {
+        Some(hk) => ui.input(|i| {
+            i.key_pressed(hk.key)
+                && i.modifiers.command == hk.ctrl
+                && i.modifiers.shift == hk.shift
+                && i.modifiers.alt == hk.alt
+        }),
+        None => false,
+    }
+}
+
 /// Register keyboard shortcuts (once) and handle per-frame key events.
 ///
 /// Parameters mirror every local captured from `render_chart_pane`:
@@ -116,7 +136,10 @@ pub(super) fn handle_keyboard_shortcuts(
     if ui.input(|i| i.key_pressed(egui::Key::F1) && i.modifiers.is_none()) {
         crate::chart_renderer::ui::tools::shortcuts_help::toggle(ctx);
     }
-    if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
+    // W1-06: configurable "delete"; Backspace kept as an always-on alias.
+    if binding_pressed(&watchlist.hotkeys, ui, "delete")
+        || ui.input(|i| i.key_pressed(egui::Key::Backspace))
+    {
         if !chart.selected_ids.is_empty() {
             for id in &chart.selected_ids {
                 if let Some(d) = chart.drawings.iter().find(|d| d.id == *id) {
@@ -140,8 +163,8 @@ pub(super) fn handle_keyboard_shortcuts(
             chart.redo_stack.clear();
         }
     }
-    // Ctrl+Z: Undo
-    if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift) {
+    // Ctrl+Z: Undo (W1-06: configurable)
+    if binding_pressed(&watchlist.hotkeys, ui, "undo") {
         if let Some(action) = chart.undo_stack.pop() {
             let toast_desc = match &action {
                 DrawingAction::Add(d) => format!("Undone: Added {}", drawing_kind_short(&d.kind)),
@@ -180,8 +203,10 @@ pub(super) fn handle_keyboard_shortcuts(
             );
         }
     }
-    // Ctrl+Shift+Z or Ctrl+Y: Redo
-    if ui.input(|i| (i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z)) || (i.modifiers.command && i.key_pressed(egui::Key::Y))) {
+    // Redo (W1-06: configurable, default Ctrl+Y; Ctrl+Shift+Z kept as an alias)
+    if binding_pressed(&watchlist.hotkeys, ui, "redo")
+        || ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z))
+    {
         if let Some(action) = chart.redo_stack.pop() {
             let toast_desc = match &action {
                 DrawingAction::Add(d) => format!("Redone: Added {}", drawing_kind_short(&d.kind)),
@@ -220,8 +245,8 @@ pub(super) fn handle_keyboard_shortcuts(
             );
         }
     }
-    // Ctrl+D: Duplicate selected drawing
-    if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::D)) {
+    // Ctrl+D: Duplicate selected drawing (W1-06: configurable)
+    if binding_pressed(&watchlist.hotkeys, ui, "duplicate") {
         if let Some(ref sel_id) = chart.selected_id.clone() {
             if let Some(src) = chart.drawings.iter().find(|d| d.id == *sel_id).cloned() {
                 let mut dup = src;
@@ -256,8 +281,8 @@ pub(super) fn handle_keyboard_shortcuts(
         }
     }
 
-    // Ctrl+Shift+S: Screenshot — save metadata + open Windows Snip tool
-    if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::S)) {
+    // Screenshot — save metadata + open Windows Snip tool (W1-06: configurable)
+    if binding_pressed(&watchlist.hotkeys, ui, "screenshot") {
         // Save screenshot metadata to library
         let ss_entry = crate::chart_renderer::ui::panels::screenshot_panel::save_screenshot(&chart.symbol, &chart.timeframe, chart.vs, chart.vc);
         watchlist.screenshot_entries.insert(0, ss_entry);
@@ -278,8 +303,8 @@ pub(super) fn handle_keyboard_shortcuts(
         }
     }
 
-    // ── Escape: clear draw tool / selection / text-edit ───────────────────
-    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+    // ── Escape: clear draw tool / selection / text-edit (W1-06: configurable) ─
+    if binding_pressed(&watchlist.hotkeys, ui, "escape") {
         chart.draw_tool.clear(); chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
         chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None;
         if let Some(ref edit_id) = chart.text_edit_id.clone() {
@@ -289,8 +314,8 @@ pub(super) fn handle_keyboard_shortcuts(
         }
     }
 
-    // ── M key: toggle magnet mode ─────────────────────────────────────────
-    if ui.input(|i| i.key_pressed(egui::Key::M)) && !ctx.wants_keyboard_input() {
+    // ── Toggle magnet mode (W1-06: configurable, default M) ───────────────
+    if !ctx.wants_keyboard_input() && binding_pressed(&watchlist.hotkeys, ui, "toggle_magnet") {
         chart.magnet = !chart.magnet;
     }
 
@@ -333,20 +358,23 @@ pub(super) fn handle_keyboard_shortcuts(
     // Single-key activates tools instantly (only when no tool active and no
     // text input).
     if !ctx.wants_keyboard_input() && chart.draw_tool.is_empty() {
-        let new_tool: Option<&str> = ui.input(|i| {
-            if i.key_pressed(egui::Key::T) { Some("trendline") }
-            else if i.key_pressed(egui::Key::H) { Some("hline") }
-            else if i.key_pressed(egui::Key::F) { Some("fibonacci") }
-            else if i.key_pressed(egui::Key::C) && !i.modifiers.command { Some("channel") }
-            else if i.key_pressed(egui::Key::V) && !i.modifiers.command { Some("vline") }
-            else if i.key_pressed(egui::Key::R) { Some("ray") }
-            // Z is now drag-zoom (handled separately), not hzone
-            else if i.key_pressed(egui::Key::P) { Some("pitchfork") }
-            else if i.key_pressed(egui::Key::G) { Some("gannfan") }
-            else if i.key_pressed(egui::Key::X) { Some("fibext") }
-            else if i.key_pressed(egui::Key::N) { Some("textnote") }
-            else { None }
-        });
+        // W1-06: each tool key is configurable (default_hotkeys seeds the same
+        // single-key defaults T/H/F/C/V/R/P/G/X/N). First match wins. binding_pressed
+        // does an exact-modifier match, so Ctrl+C / Ctrl+V no longer trip the
+        // channel/vline tools (was a special !command guard). Z stays drag-zoom.
+        let hk = &watchlist.hotkeys;
+        let new_tool: Option<&str> =
+            if binding_pressed(hk, ui, "tool_trendline") { Some("trendline") }
+            else if binding_pressed(hk, ui, "tool_hline") { Some("hline") }
+            else if binding_pressed(hk, ui, "tool_fibonacci") { Some("fibonacci") }
+            else if binding_pressed(hk, ui, "tool_channel") { Some("channel") }
+            else if binding_pressed(hk, ui, "tool_vline") { Some("vline") }
+            else if binding_pressed(hk, ui, "tool_ray") { Some("ray") }
+            else if binding_pressed(hk, ui, "tool_pitchfork") { Some("pitchfork") }
+            else if binding_pressed(hk, ui, "tool_gannfan") { Some("gannfan") }
+            else if binding_pressed(hk, ui, "tool_fibext") { Some("fibext") }
+            else if binding_pressed(hk, ui, "tool_textnote") { Some("textnote") }
+            else { None };
         if let Some(tool) = new_tool {
             chart.draw_tool = tool.into();
             chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
@@ -356,8 +384,8 @@ pub(super) fn handle_keyboard_shortcuts(
     // ── Trading hotkeys ───────────────────────────────────────────────────
     if !ctx.wants_keyboard_input() {
         use crate::chart_renderer::trading::order_manager::*;
-        // Ctrl+B: Buy market at last price
-        if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::B) && !i.modifiers.shift) {
+        // Buy market at last price (W1-06: configurable, default Ctrl+B)
+        if binding_pressed(&watchlist.hotkeys, ui, "buy_market") {
             // Pass the real last bar close as last_price so fat-finger and
             // buying-power checks engage (previously hardcoded to 0.0).
             let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
@@ -371,8 +399,8 @@ pub(super) fn handle_keyboard_shortcuts(
                 chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price: last_price, qty: chart.order_panel.qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
         }
-        // Ctrl+Shift+B: Sell market at last price
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::B)) {
+        // Sell market at last price (W1-06: configurable, default Ctrl+Shift+B)
+        if binding_pressed(&watchlist.hotkeys, ui, "sell_market") {
             let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
             let result = submit_order(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Sell,
@@ -388,7 +416,8 @@ pub(super) fn handle_keyboard_shortcuts(
         // via cancel_all_orders().  The raw reqwest DELETE that used to fire here
         // in parallel was a double-cancel race: cancel_all_orders already sends a
         // bulk DELETE through the Broker trait.  Removed (T3).
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Q)) {
+        // Cancel all orders (W1-06: configurable, default Ctrl+Shift+Q)
+        if binding_pressed(&watchlist.hotkeys, ui, "cancel_all") {
             crate::chart_renderer::trading::order_manager::cancel_all_orders("");
             chart.orders.clear();
             watchlist.selected_order_ids.clear();
@@ -397,7 +426,8 @@ pub(super) fn handle_keyboard_shortcuts(
         // flatten POST through the broker abstraction (live mode only).
         // The raw reqwest thread is removed (T3); the broker cancel_all path
         // already talks to the real endpoint.
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::F)) {
+        // Flatten all positions (W1-06: configurable, default Ctrl+Shift+F)
+        if binding_pressed(&watchlist.hotkeys, ui, "flatten") {
             crate::chart_renderer::trading::order_manager::cancel_all_orders("");
             chart.orders.retain(|o| o.status == OrderStatus::Executed);
             watchlist.selected_order_ids.clear();
@@ -411,7 +441,9 @@ pub(super) fn handle_keyboard_shortcuts(
         // halt new trading. Single handler: Halt Trading was relocated off ⌘⇧H
         // (now the TPS boss key) onto ⌘⇧K, which already bound Kill Switch —
         // the two are merged so the chord fires exactly one combined action.
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::K)) {
+        // Kill switch — cancel all + flatten + halt (W1-06: configurable, default
+        // Ctrl+Shift+K; kill_switch and halt share this chord in default_hotkeys).
+        if binding_pressed(&watchlist.hotkeys, ui, "kill_switch") {
             crate::chart_renderer::trading::order_manager::kill_switch();
             let _ = crate::chart_renderer::trading::order_manager::halt_trading();
             chart.orders.clear();
@@ -423,8 +455,8 @@ pub(super) fn handle_keyboard_shortcuts(
                 ).with_source("trading")
             );
         }
-        // Ctrl+Shift+R: Resume trading
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::R)) {
+        // Resume trading (W1-06: configurable, default Ctrl+Shift+R)
+        if binding_pressed(&watchlist.hotkeys, ui, "resume_trading") {
             let _ = crate::chart_renderer::trading::order_manager::resume_trading();
             crate::chart_renderer::ui::tools::notification::push_pending(
                 crate::chart_renderer::ui::tools::notification::Notification::new(
@@ -432,6 +464,56 @@ pub(super) fn handle_keyboard_shortcuts(
                     crate::chart_renderer::ui::tools::notification::NotificationSeverity::Success,
                 ).with_source("trading")
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod w1_06_binding_tests {
+    use crate::chart_renderer::gpu::default_hotkeys;
+    use egui::Key;
+
+    /// W1-06: the invariant that makes this fix safe — every action the handlers
+    /// now dispatch through `binding_pressed` must have a default binding whose
+    /// key + modifiers EXACTLY match the key the handler used to hard-code. If a
+    /// default drifts, an unconfigured user silently loses the shortcut; this
+    /// test catches that.
+    #[test]
+    fn defaults_reproduce_the_old_hardcoded_bindings() {
+        // (action, key, ctrl, shift, alt) — mirrors the pre-W1-06 hardcoded sites.
+        let expected: &[(&str, Key, bool, bool, bool)] = &[
+            ("buy_market",     Key::B, true,  false, false),
+            ("sell_market",    Key::B, true,  true,  false),
+            ("cancel_all",     Key::Q, true,  true,  false),
+            ("flatten",        Key::F, true,  true,  false),
+            ("kill_switch",    Key::K, true,  true,  false),
+            ("resume_trading", Key::R, true,  true,  false),
+            ("undo",           Key::Z, true,  false, false),
+            ("redo",           Key::Y, true,  false, false),
+            ("duplicate",      Key::D, true,  false, false),
+            ("screenshot",     Key::S, true,  true,  false),
+            ("delete",         Key::Delete, false, false, false),
+            ("escape",         Key::Escape, false, false, false),
+            ("toggle_magnet",  Key::M, false, false, false),
+            ("tool_trendline", Key::T, false, false, false),
+            ("tool_hline",     Key::H, false, false, false),
+            ("tool_fibonacci", Key::F, false, false, false),
+            ("tool_channel",   Key::C, false, false, false),
+            ("tool_vline",     Key::V, false, false, false),
+            ("tool_ray",       Key::R, false, false, false),
+            ("tool_pitchfork", Key::P, false, false, false),
+            ("tool_gannfan",   Key::G, false, false, false),
+            ("tool_fibext",    Key::X, false, false, false),
+            ("tool_textnote",  Key::N, false, false, false),
+        ];
+        let hk = default_hotkeys();
+        for (action, key, ctrl, shift, alt) in expected {
+            let found = hk.iter().find(|h| h.action == *action)
+                .unwrap_or_else(|| panic!("default_hotkeys missing action '{action}'"));
+            assert_eq!(found.key, *key, "action '{action}' key drifted");
+            assert_eq!(found.ctrl, *ctrl, "action '{action}' ctrl drifted");
+            assert_eq!(found.shift, *shift, "action '{action}' shift drifted");
+            assert_eq!(found.alt, *alt, "action '{action}' alt drifted");
         }
     }
 }
