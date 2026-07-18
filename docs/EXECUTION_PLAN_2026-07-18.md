@@ -350,6 +350,28 @@ the SIMULATED badge otherwise. No synthetic depth without a badge.
 >   read) on a missing/corrupt local cache before defaults — the cross-machine
 >   restore the comment always promised. save_watchlists refuses an EMPTY snapshot
 >   so a delete-all-reinsert can't wipe a populated server. +2 unit tests.
+> - **W1-12 DONE** `97057e54` — research panel discloses "… feed not connected"
+>   for Analyst/Earnings/Insider/Econ-Calendar (was misleading "No X"). Verified:
+>   those fields have NO write path (chart.fundamentals only ever reset to
+>   default; insider_trades/econ_calendar only ever = Vec::new()). Pure
+>   empty-state text change, corpus-neutral by construction (no gate needed).
+> - **W1-10 SPEC'd, do fresh** — the crossing MATH is complete but orphaned:
+>   compute::evaluate_drawings_against_bar (compute.rs:606, handles hline/
+>   trendline/ray/fib/channel) has ZERO callers. The bell toggle (properties_bar.rs
+>   :295) only sets Drawing.alert_enabled + fires a curl to :8100. To wire it
+>   client-side: (1) a Drawing→(id,dtype,params_json) converter (mirror
+>   drawing_to_db's kind match but emit price0/time0/price1/time1/offset/price
+>   json keys); (2) a dedup — Drawing has alert_enabled but NO fired flag, so add
+>   a per-Chart HashSet<String> of fired ids (Drawing isn't serde, but db_to_drawing
+>   constructs it, so a Chart-side set is cleaner than a struct field); (3) call
+>   it in the per-frame eval next to the W1-05 price-alert loop (gpu.rs ~4231)
+>   for alert_enabled drawings vs the latest bar, fire notifications for
+>   crossings. Moderate + trust-sensitive (bug = spurious/missed alerts) → fresh.
+> - **W1-08 do fresh, ENTANGLED with W1-03** — moving the cold-start PG connect
+>   (native_main.rs:92-115 rt.block_on before open_window) to a background thread
+>   would let load_watchlists run BEFORE the watchlist_db worker is ready, which
+>   REGRESSES W1-03's fresh-machine DB restore (worker not up → falls to
+>   defaults). Needs a re-load-after-connect or a wait, not just an async spawn.
 > - **W1-11 DONE** `739745e4` (corpus 1067/1067) — the spike-popup "[view
 >   provenance]" / trade-plan "[🔍 prov]" buttons rendered live but their
 >   on_open_provenance callback was never registered → dead. Now wired at startup
