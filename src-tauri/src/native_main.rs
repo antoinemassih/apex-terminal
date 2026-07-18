@@ -110,7 +110,17 @@ fn main() {
                 use _scaffold_lib::data::connectivity::{register, shutdown::PgPoolShutdown};
                 register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool }));
             }
-            Err(e) => eprintln!("[apex-native] PostgreSQL unavailable ({e}) — drawings won't persist"),
+            Err(e) => {
+                // W1-02 (audit): a PG connect failure used to be a bare eprintln,
+                // so drawings silently went session-only with zero UI signal.
+                // Surface it through errors_sink → toast + diagnostics; the UI can
+                // also poll drawing_db::is_persisting() for a persistent chip.
+                eprintln!("[apex-native] PostgreSQL unavailable ({e}) — drawings won't persist");
+                _scaffold_lib::data::connectivity::errors_sink::report(
+                    _scaffold_lib::data::connectivity::errors_sink::ErrorLevel::Warn,
+                    "drawing_db", "pg_unavailable",
+                    format!("drawings will NOT be saved this session — Postgres unavailable ({e})"));
+            }
         }
     });
 

@@ -80,6 +80,16 @@ pub fn init(pool: PgPool) {
                                 attempts,
                                 "[drawing-db] drawing dropped after max retry attempts"
                             );
+                            // W1-02 (audit): the dead-letter queue was write-only
+                            // (never surfaced, never drained). (1) Report it so the
+                            // trader SEES a drawing failed to save instead of it
+                            // vanishing silently; (2) spill to a local JSONL file
+                            // so nothing is lost past the in-memory cap of 64.
+                            crate::data::connectivity::errors_sink::report(
+                                crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                                "drawing_db", "save_dead_lettered",
+                                format!("drawing {} failed to persist after {} attempts — spilled to disk", drawing.id, attempts));
+                            spill_dead_letter(&drawing);
                             if dead_letters.len() >= DEAD_LETTER_CAP {
                                 dead_letters.pop_front();
                             }
@@ -110,6 +120,37 @@ pub fn init(pool: PgPool) {
 /// Get a reference to the pool (for direct queries from background threads).
 pub fn get_pool() -> Option<&'static PgPool> {
     DB_POOL.get()
+}
+
+/// W1-02 (audit): true when the drawing persistence worker is up (PG connected
+/// at startup). When false, drawings are session-only — the UI should surface a
+/// "drawings not saving" indicator (the caller decides how). This replaces the
+/// old silent-eprintln failure mode.
+pub fn is_persisting() -> bool {
+    DB_TX.get().is_some()
+}
+
+/// W1-02: path of the local dead-letter spill file — drawings that exhausted
+/// retries, appended as JSONL so nothing is lost past the in-memory cap and a
+/// future reconnect (W1-02b) can replay them. Next to the orders state dir.
+fn dead_letter_path() -> std::path::PathBuf {
+    let dir = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let state = dir.join("state");
+    let _ = std::fs::create_dir_all(&state);
+    state.join("drawings_dead_letter.jsonl")
+}
+
+/// W1-02: append a dead-lettered drawing to the JSONL spill (best-effort — a
+/// spill failure must never crash the worker).
+fn spill_dead_letter(d: &DbDrawing) {
+    use std::io::Write;
+    if let Ok(line) = serde_json::to_string(d) {
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dead_letter_path()) {
+            let _ = writeln!(f, "{line}");
+        }
+    }
 }
 
 /// Drawing as the caller (renderer) sees it. Wire-compatible with the prior
