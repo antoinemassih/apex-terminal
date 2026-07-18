@@ -2596,6 +2596,10 @@ impl OrderManager {
             return true;
         }
         let now = epoch_ms();
+        // W0-04 (audit): remember the pre-modify price so a broker rejection can
+        // revert the optimistic write below (the ladder must never display a
+        // rejected price as the real resting price).
+        let prev_price = o.price;
         o.price = new_price;
         o.updated_at = ts_from_ms(now);
         o.state_history.push((OrderState::PendingModify, ts_from_ms(now)));
@@ -2643,24 +2647,33 @@ impl OrderManager {
                             kind,
                             modify_version: version,
                         };
-                        match broker.modify(&args) {
-                            Ok(()) => journal::append(JournalEvent::Ack {
-                                client_id: cid_thread.clone(), backend_id: Some(bid), ts_ms: epoch_ms(),
-                            }),
-                            Err(e) => journal::append(JournalEvent::Fail {
-                                client_id: cid_thread.clone(), reason: e, ts_ms: epoch_ms(),
-                            }),
-                        }
-                        // Spawned thread does not hold the manager lock, so it
-                        // can re-enter via `with_mgr` safely.
-                        let pending: Option<Price> = with_mgr(|mgr| {
-                            let o = mgr.orders.iter_mut().find(|o| o.id == order_id)?;
-                            if o.modify_version != version {
-                                return None; // superseded
+                        let modify_err: Option<String> = match broker.modify(&args) {
+                            Ok(()) => {
+                                journal::append(JournalEvent::Ack {
+                                    client_id: cid_thread.clone(), backend_id: Some(bid), ts_ms: epoch_ms(),
+                                });
+                                None
                             }
-                            o.modify_inflight = false;
-                            o.modify_pending_price.take()
-                        });
+                            Err(e) => {
+                                journal::append(JournalEvent::Fail {
+                                    client_id: cid_thread.clone(), reason: e.clone(), ts_ms: epoch_ms(),
+                                });
+                                Some(e)
+                            }
+                        };
+                        // Spawned thread does not hold the manager lock, so it
+                        // can re-enter via `with_mgr` safely. resolve_modify is
+                        // the pure, unit-testable core (see tests).
+                        let pending: Option<Price> = with_mgr(|mgr|
+                            mgr.resolve_modify(order_id, version, prev_price, modify_err.is_some()));
+                        if let Some(reason) = &modify_err {
+                            if pending.is_none() {
+                                report(ErrorLevel::Warn, "order_manager", "modify_rejected",
+                                    format!("modify rejected by broker (id={order_id}): {reason} — price reverted"));
+                                with_mgr(|mgr| mgr.push_toast_deduped(
+                                    format!("MODIFY REJECTED: {reason}")));
+                            }
+                        }
                         if let Some(p) = pending {
                             with_mgr(|mgr| { mgr.modify_price(order_id, p); });
                         }
@@ -2676,18 +2689,33 @@ impl OrderManager {
         true
     }
 
+    /// W0-04 (audit): resolve a completed modify attempt. Clears `modify_inflight`
+    /// and returns any queued pending price for the caller to re-fire. On broker
+    /// rejection (`rejected`) with no newer drag queued, reverts `price` to
+    /// `prev_price` so the ladder never shows a rejected price as the real
+    /// resting price. Guarded on `modify_version` so a superseding modify (a
+    /// newer drag) is never clobbered. Pure w.r.t. the global singleton →
+    /// unit-testable on a `fresh_manager`. Returns the pending price, if any.
+    fn resolve_modify(&mut self, order_id: u64, version: u32, prev_price: Price, rejected: bool) -> Option<Price> {
+        let o = self.orders.iter_mut().find(|o| o.id == order_id)?;
+        if o.modify_version != version {
+            return None; // superseded — the newer modify owns the state now
+        }
+        o.modify_inflight = false;
+        let pending = o.modify_pending_price.take();
+        if rejected && pending.is_none() {
+            o.price = prev_price;
+            o.updated_at = ts_from_ms(epoch_ms());
+        }
+        pending
+    }
+
     /// Inline (lock-already-held) variant of the modify completion handler.
     /// Used for paper / no-backend paths where `modify_price` hasn't released
-    /// the manager lock yet.
+    /// the manager lock yet. Paper/no-backend never reject, so `prev_price` is
+    /// unused (pass ZERO) and `rejected` is false.
     fn apply_modify_result_inner(&mut self, order_id: u64, version: u32) {
-        let pending: Option<Price> = {
-            let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id) else { return; };
-            if o.modify_version != version {
-                return; // superseded
-            }
-            o.modify_inflight = false;
-            o.modify_pending_price.take()
-        };
+        let pending = self.resolve_modify(order_id, version, Price::ZERO, false);
         if let Some(p) = pending {
             // Reentrant — but on the same &mut self, so safe.
             self.modify_price(order_id, p);
@@ -3564,6 +3592,23 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             mgr.orders[idx].filled_qty = qty_filled_broker as u32;
             mgr.orders[idx].avg_fill_price = Price::from_dollars(ib.avg_fill_price);
             filled_changed = true;
+        }
+
+        // W0-04 (audit): trust the broker's resting limit price when no modify
+        // is in flight — the reconcile already trusts avg_fill_price the same
+        // way. This self-heals a local price that drifted from broker truth
+        // (e.g. a failed modify whose revert was missed, or a price change made
+        // outside this session). Scoped to limit-type orders (where `price` IS
+        // the resting limit and `ib.limit_price` is meaningful and non-zero);
+        // stop orders rest on stop_price, which this endpoint doesn't carry.
+        if !mgr.orders[idx].modify_inflight
+            && matches!(mgr.orders[idx].order_type, ManagedOrderType::Limit | ManagedOrderType::StopLimit)
+        {
+            let broker_price = Price::from_dollars(ib.limit_price);
+            if !broker_price.is_zero() && mgr.orders[idx].price != broker_price {
+                mgr.orders[idx].price = broker_price;
+                mgr.orders[idx].updated_at = ts_from_ms(now);
+            }
         }
 
         // Toasts + journal — only when something actually changed.
@@ -6670,6 +6715,96 @@ mod tests {
     }
 
     // ── U. orders_state_path env override (PART A verification) ─────────────
+
+    #[test]
+    fn modify_reject_reverts_optimistic_price() {
+        // W0-04: a broker-rejected price modify must revert to the pre-modify
+        // price — not leave the rejected price standing as the real resting
+        // price. resolve_modify is the pure core of the spawned live completion.
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit must accept");
+        let prev = Price::from_f32(100.0);
+        // Simulate the optimistic write modify_price does before the broker call.
+        {
+            let o = m.orders.iter_mut().find(|o| o.id == id).unwrap();
+            o.modify_inflight = true;
+            o.modify_version = o.modify_version.wrapping_add(1);
+            o.price = Price::from_f32(105.0); // optimistic, about to be rejected
+        }
+        let version = m.orders.iter().find(|o| o.id == id).unwrap().modify_version;
+        let pending = m.resolve_modify(id, version, prev, /*rejected=*/ true);
+        assert!(pending.is_none(), "no drag was queued");
+        let o = m.orders.iter().find(|o| o.id == id).unwrap();
+        assert_eq!(o.price, prev, "rejected modify must revert to the pre-modify price");
+        assert!(!o.modify_inflight, "inflight must be cleared after resolution");
+    }
+
+    #[test]
+    fn modify_reject_with_queued_drag_keeps_newer_price() {
+        // W0-04: if a newer drag queued behind the failed one, its price wins —
+        // do NOT revert to the stale pre-modify price; return the queued price
+        // for the caller to re-fire.
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit must accept");
+        let prev = Price::from_f32(100.0);
+        let queued = Price::from_f32(107.0);
+        {
+            let o = m.orders.iter_mut().find(|o| o.id == id).unwrap();
+            o.modify_inflight = true;
+            o.modify_version = o.modify_version.wrapping_add(1);
+            o.price = Price::from_f32(105.0);
+            o.modify_pending_price = Some(queued);
+        }
+        let version = m.orders.iter().find(|o| o.id == id).unwrap().modify_version;
+        let pending = m.resolve_modify(id, version, prev, /*rejected=*/ true);
+        assert_eq!(pending, Some(queued), "queued drag price must be returned to re-fire");
+        let o = m.orders.iter().find(|o| o.id == id).unwrap();
+        assert_ne!(o.price, prev, "must NOT revert when a newer drag is queued");
+        assert!(!o.modify_inflight);
+    }
+
+    #[test]
+    fn modify_resolve_superseded_version_is_noop() {
+        // W0-04: a resolution for a stale modify_version (a newer modify already
+        // bumped it) must touch nothing — not revert, not clear inflight.
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit must accept");
+        {
+            let o = m.orders.iter_mut().find(|o| o.id == id).unwrap();
+            o.modify_inflight = true;
+            o.modify_version = 5;
+            o.price = Price::from_f32(105.0);
+        }
+        // Resolve with an OLD version 4 → superseded → no-op.
+        let pending = m.resolve_modify(id, 4, Price::from_f32(100.0), true);
+        assert!(pending.is_none());
+        let o = m.orders.iter().find(|o| o.id == id).unwrap();
+        assert_eq!(o.price, Price::from_f32(105.0), "superseded resolve must not revert price");
+        assert!(o.modify_inflight, "superseded resolve must not clear inflight");
+    }
+
+    #[test]
+    fn modify_success_clears_inflight_without_revert() {
+        // W0-04: on success (rejected=false), inflight clears and price is kept.
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit must accept");
+        {
+            let o = m.orders.iter_mut().find(|o| o.id == id).unwrap();
+            o.modify_inflight = true;
+            o.modify_version = o.modify_version.wrapping_add(1);
+            o.price = Price::from_f32(105.0);
+        }
+        let version = m.orders.iter().find(|o| o.id == id).unwrap().modify_version;
+        let pending = m.resolve_modify(id, version, Price::from_f32(100.0), /*rejected=*/ false);
+        assert!(pending.is_none());
+        let o = m.orders.iter().find(|o| o.id == id).unwrap();
+        assert_eq!(o.price, Price::from_f32(105.0), "accepted modify keeps the new price");
+        assert!(!o.modify_inflight);
+    }
 
     #[test]
     fn orders_state_path_env_override_used_when_set() {
