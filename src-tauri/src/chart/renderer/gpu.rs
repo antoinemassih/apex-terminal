@@ -4226,20 +4226,50 @@ fn tick_simulation(chart: &mut Chart) {
     }
 
     // ── Per-pane price alert checking ──
-    if let Some(last_bar) = chart.bars.last() {
-        let price = last_bar.close;
-        for alert in &mut chart.price_alerts {
-            if alert.triggered || alert.draft || alert.symbol != chart.symbol { continue; }
-            if (alert.above && price >= alert.price) || (!alert.above && price <= alert.price) {
-                alert.triggered = true;
-                let dir = if alert.above { "above" } else { "below" };
-                let msg = format!("{} alert: price {} {:.2}", chart.symbol, dir, alert.price);
-                eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
-                crate::chart_renderer::ui::tools::notification::push_pending(
-                    crate::chart_renderer::ui::tools::notification::Notification::new(msg, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(alert.price).with_source("price_alert")
-                );
-            }
+    // W1-05 (audit): evaluate each alert against ITS OWN symbol's price, NOT the
+    // pane's current chart price. The old guard `alert.symbol != chart.symbol`
+    // silently skipped any alert whose symbol wasn't what the pane currently
+    // showed — so switching a pane's symbol killed its alerts while they still
+    // displayed ACTIVE, and a trader who stepped away got nothing. Each alert
+    // lives on exactly one pane's list (keyed by symbol at load), so evaluating
+    // by the alert's own symbol fires it once. Prefer the pane's fresh last-bar
+    // price when the pane IS showing the alert's symbol; otherwise fall back to
+    // the symbol-keyed live snapshot so an off-pane alert still fires.
+    let pane_price = chart.bars.last().map(|b| b.close);
+    let pane_symbol = chart.symbol.clone();
+    for alert in &mut chart.price_alerts {
+        if alert.triggered || alert.draft { continue; }
+        let price = alert_eval_price(&alert.symbol, &pane_symbol, pane_price, |sym| {
+            crate::apex_data::live_state::get_snapshot(sym).map(|s| s.last as f32)
+        });
+        let Some(price) = price else { continue };
+        if (alert.above && price >= alert.price) || (!alert.above && price <= alert.price) {
+            alert.triggered = true;
+            let dir = if alert.above { "above" } else { "below" };
+            let msg = format!("{} alert: price {} {:.2}", alert.symbol, dir, alert.price);
+            eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
+            crate::chart_renderer::ui::tools::notification::push_pending(
+                crate::chart_renderer::ui::tools::notification::Notification::new(msg, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(alert.price).with_source("price_alert")
+            );
         }
+    }
+}
+
+/// W1-05 (audit): pick the price to evaluate a price alert against. The pane's
+/// fresh price when the pane IS showing the alert's symbol; otherwise the
+/// symbol-keyed snapshot price (positive only). Taking the snapshot lookup as a
+/// closure keeps this pure and unit-testable — it is the fix for alerts silently
+/// dying when a pane's symbol changes.
+pub(crate) fn alert_eval_price(
+    alert_symbol: &str,
+    pane_symbol: &str,
+    pane_price: Option<f32>,
+    snapshot_last: impl Fn(&str) -> Option<f32>,
+) -> Option<f32> {
+    if alert_symbol == pane_symbol {
+        pane_price
+    } else {
+        snapshot_last(alert_symbol).filter(|&p| p > 0.0)
     }
 }
 
@@ -9205,6 +9235,40 @@ pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: Chart
     };
     let _ = el.run_app(&mut app);
     *spawn_tx_lock.lock().unwrap() = None;
+}
+
+#[cfg(test)]
+mod w1_05_alert_eval_price_tests {
+    use super::alert_eval_price;
+
+    #[test]
+    fn same_symbol_uses_pane_price() {
+        // When the pane shows the alert's symbol, use the pane's fresh price.
+        let p = alert_eval_price("SPY", "SPY", Some(450.0), |_| Some(999.0));
+        assert_eq!(p, Some(450.0));
+    }
+
+    #[test]
+    fn different_symbol_falls_back_to_snapshot_not_skipped() {
+        // THE fix: pane shows QQQ, alert is on SPY — the alert must still be
+        // evaluated (against SPY's snapshot), not silently skipped.
+        let p = alert_eval_price("SPY", "QQQ", Some(500.0), |sym| {
+            assert_eq!(sym, "SPY");
+            Some(451.25)
+        });
+        assert_eq!(p, Some(451.25), "off-pane alert must evaluate against its own symbol");
+    }
+
+    #[test]
+    fn different_symbol_no_snapshot_yields_none() {
+        // No live price for the alert's symbol → skip this tick (don't fire on
+        // a bogus 0), but the alert stays active for the next tick.
+        let p = alert_eval_price("SPY", "QQQ", Some(500.0), |_| None);
+        assert_eq!(p, None);
+        // A non-positive snapshot is treated as no-price.
+        let p = alert_eval_price("SPY", "QQQ", Some(500.0), |_| Some(0.0));
+        assert_eq!(p, None);
+    }
 }
 
 #[cfg(test)]
