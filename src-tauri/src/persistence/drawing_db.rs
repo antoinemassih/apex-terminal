@@ -215,6 +215,28 @@ fn kind_to_str(k: DrawingKind) -> &'static str {
     }
 }
 
+/// W1-01: sentinel i16 for a kind the crude DB-layer enum can't represent. The
+/// real kind lives in `extras.drawing_type`; this is just the legacy index
+/// column, and `kind_from_i16` returns None for it (load prefers the string).
+const DRAWING_KIND_OTHER: i16 = 100;
+
+/// W1-01: the i16 to store for a drawing_type string. Best-effort via the crude
+/// enum; an unrepresentable (rich) kind gets the OTHER sentinel instead of being
+/// dropped. Pure → unit-testable.
+fn save_kind_i16(drawing_type: &str) -> i16 {
+    parse_kind(drawing_type).map(kind_to_i16).unwrap_or(DRAWING_KIND_OTHER)
+}
+
+/// W1-01: resolve the drawing_type string on load. Prefers the preserved real
+/// string in `extras`; falls back to the legacy i16→string mapping for old rows;
+/// None only when neither is available. Pure → unit-testable.
+fn resolve_drawing_type(extras_str: Option<&str>, kind_i16: i16) -> Option<String> {
+    match extras_str {
+        Some(s) => Some(s.to_string()),
+        None => kind_from_i16(kind_i16).map(|k| kind_to_str(k).to_string()),
+    }
+}
+
 fn kind_to_i16(k: DrawingKind) -> i16 {
     match k {
         DrawingKind::Trendline => 0,
@@ -443,7 +465,6 @@ async fn do_load_symbol(pool: &PgPool, symbol: &str) -> Vec<DbDrawing> {
     for r in rows {
         let id: Uuid = match r.try_get("id") { Ok(v) => v, Err(_) => continue };
         let kind_i: i16 = r.try_get("kind").unwrap_or(0);
-        let kind = match kind_from_i16(kind_i) { Some(k) => k, None => continue };
         let flags_i: i16 = r.try_get("flags").unwrap_or(0);
         let _flags = DrawingFlags::from_bits_truncate(flags_i as u16);
         let points_bytes: Vec<u8> = r.try_get("points").unwrap_or_default();
@@ -460,11 +481,21 @@ async fn do_load_symbol(pool: &PgPool, symbol: &str) -> Vec<DbDrawing> {
         let timeframe = extras.get("timeframe").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let group_id = extras.get("group_id").and_then(|v| v.as_str()).unwrap_or("default").to_string();
 
+        // W1-01: prefer the preserved real drawing_type string; fall back to the
+        // legacy i16→string mapping for rows saved before the extras field
+        // existed. Only skip the row if we have neither (truly unknown).
+        let drawing_type = match resolve_drawing_type(
+            extras.get("drawing_type").and_then(|v| v.as_str()), kind_i)
+        {
+            Some(dt) => dt,
+            None => continue,
+        };
+
         drawings.push(DbDrawing {
             id: id.to_string(),
             symbol: symbol.to_string(),
             timeframe,
-            drawing_type: kind_to_str(kind).to_string(),
+            drawing_type,
             points: decode_points(&points_bytes),
             color: rgb_to_hex(rgb),
             opacity,
@@ -485,10 +516,14 @@ async fn do_save(pool: &PgPool, d: DbDrawing) -> bool {
         Ok(u) => u,
         Err(_) => { warn!("[drawing-db] invalid UUID (not retrying): {}", d.id); return false; }
     };
-    let kind = match parse_kind(&d.drawing_type) {
-        Some(k) => k,
-        None => { warn!("[drawing-db] unknown kind (not retrying): {}", d.drawing_type); return false; }
-    };
+    // W1-01 (audit): do NOT drop an unknown kind. The DB-layer DrawingKind is a
+    // crude 13-variant enum whose parse_kind recognizes only 6 of the 22 strings
+    // that gpu.rs::drawing_to_db actually emits ("hzone", "channel", "gannfan",
+    // "elliott", "fibext", "avwap", ...), so 16 of 22 drawing kinds were silently
+    // dead-lettered here forever. The drawing_type STRING is the lossless
+    // identity — it is preserved in `extras` below and read back on load, so the
+    // i16 `kind` column is now just a best-effort legacy index. Never reject.
+    let kind_i16 = save_kind_i16(&d.drawing_type);
 
     let chart_id = match find_or_create_chart(pool, &d.symbol).await {
         Ok(c) => c,
@@ -513,6 +548,9 @@ async fn do_save(pool: &PgPool, d: DbDrawing) -> bool {
     if !d.group_id.is_empty() && d.group_id != "default" {
         extras.insert("group_id".into(), serde_json::Value::String(d.group_id.clone()));
     }
+    // W1-01: preserve the real drawing_type string (the lossless kind identity)
+    // so all 22 kinds survive the round-trip regardless of the crude i16 enum.
+    extras.insert("drawing_type".into(), serde_json::Value::String(d.drawing_type.clone()));
     let extras_json = serde_json::Value::Object(extras);
 
     let flags = DrawingFlags::VISIBLE.bits() as i16;
@@ -531,7 +569,7 @@ async fn do_save(pool: &PgPool, d: DbDrawing) -> bool {
     )
     .bind(id)
     .bind(chart_id)
-    .bind(kind_to_i16(kind))
+    .bind(kind_i16)
     .bind(flags)
     .bind(style_id)
     .bind(&points_bytes)
@@ -601,6 +639,57 @@ async fn do_remove_group(pool: &PgPool, id: &str) {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+    use super::{save_kind_i16, resolve_drawing_type, DRAWING_KIND_OTHER};
+
+    // W1-01 (audit): every drawing_type string gpu.rs::drawing_to_db can emit.
+    // 16 of these 22 were silently dead-lettered by do_save's parse_kind reject
+    // (it knows only 6). The fix preserves the string in extras + never rejects.
+    const ALL_DRAWING_TYPES: &[&str] = &[
+        "hline", "trendline", "hzone", "barmarker", "fibonacci", "channel",
+        "fibchannel", "pitchfork", "gannfan", "regression", "xabcd", "elliott",
+        "avwap", "pricerange", "riskreward", "vline", "ray", "fibext",
+        "fibtimezone", "fibarc", "gannbox", "textnote",
+    ];
+
+    #[test]
+    fn w1_01_no_drawing_type_is_dropped_on_save() {
+        // The save path must never reject a kind: save_kind_i16 returns a value
+        // for EVERY emitted string (the crude enum's 6 map to their code, the
+        // other 16 get the OTHER sentinel) — none are dead-lettered.
+        for dt in ALL_DRAWING_TYPES {
+            let i16v = save_kind_i16(dt);
+            // sanity: it produced *some* code (no panic / no reject path).
+            let _ = i16v;
+        }
+        // The exotic kinds specifically get OTHER (the crude enum can't name
+        // them) — proving they'd previously have been dropped.
+        assert_eq!(save_kind_i16("gannfan"), DRAWING_KIND_OTHER);
+        assert_eq!(save_kind_i16("elliott"), DRAWING_KIND_OTHER);
+        assert_eq!(save_kind_i16("hzone"), DRAWING_KIND_OTHER);
+        // A crude-enum kind still maps to its real code, not OTHER.
+        assert_ne!(save_kind_i16("trendline"), DRAWING_KIND_OTHER);
+    }
+
+    #[test]
+    fn w1_01_load_round_trips_every_kind_via_preserved_string() {
+        // On load, the preserved extras string is authoritative — so every one
+        // of the 22 kinds round-trips its exact identity, even the ones the i16
+        // column stores as OTHER.
+        for dt in ALL_DRAWING_TYPES {
+            let i16v = save_kind_i16(dt);
+            let resolved = resolve_drawing_type(Some(dt), i16v);
+            assert_eq!(resolved.as_deref(), Some(*dt),
+                "kind {dt} must round-trip its exact string via extras");
+        }
+    }
+
+    #[test]
+    fn w1_01_load_falls_back_to_legacy_i16_when_no_extras() {
+        // Legacy rows (saved before the extras field) have no string — fall back
+        // to the i16 mapping; a valid crude code resolves, OTHER/unknown → None.
+        assert_eq!(resolve_drawing_type(None, 0).as_deref(), Some("trendline"));
+        assert_eq!(resolve_drawing_type(None, DRAWING_KIND_OTHER), None);
+    }
 
     const BOGUS_PG_URL: &str = "postgres://apex:apex@127.0.0.1:1/apex_test";
     const STARTUP_DEADLINE: Duration = Duration::from_secs(5);
