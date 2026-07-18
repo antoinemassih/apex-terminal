@@ -108,12 +108,20 @@ mod tests {
     #[test]
     fn flush_all_returns_failure_for_bad_path() {
         let registry = StoreRegistry::new();
-        // Path to a directory that cannot be created (empty string is invalid).
-        let bad_path = PathBuf::from("/nonexistent_dir_xyz/apex_test.json");
+        // A path whose PARENT is a regular FILE, not a directory. Writing a
+        // child under it fails on every platform (you can't create a directory
+        // where a file already exists) — unlike the old "/nonexistent_dir_xyz/"
+        // which was unwritable on Linux but writable on Windows (C:\ lets a user
+        // create top-level dirs), so this test used to fail only on Windows.
+        let file_as_parent = std::env::temp_dir()
+            .join(format!("apex_notadir_{}.tmp", std::process::id()));
+        std::fs::write(&file_as_parent, b"x").expect("seed the file-as-parent");
+        let bad_path = file_as_parent.join("child.json");
         let s: Arc<Store<Widget>> = Store::new("bad", Widget { n: 0 }, Some(bad_path));
         registry.register(s as Arc<dyn PersistableStore>);
 
         let failures = registry.flush_all();
+        let _ = std::fs::remove_file(&file_as_parent);
         assert_eq!(failures.len(), 1);
         assert_eq!(failures[0].0, "bad");
     }
