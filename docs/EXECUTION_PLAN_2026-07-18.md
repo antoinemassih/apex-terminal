@@ -329,6 +329,23 @@ the SIMULATED badge otherwise. No synthetic depth without a badge.
 
 # WAVE 1 — STOP THE UI LYING (durability + alerts + dead controls)
 
+> **PROGRESS 2026-07-18 (Wave 1 started)** — corpus-unreachable (PG-persistence
+> layer; corpus runs without a database), verified by unit tests + build:
+> - **W1-01 DONE** `4c2cf077` — drawing persistence no longer drops 16 of 22
+>   kinds. Root cause: two non-isomorphic DrawingKind enums — gpu.rs emits rich
+>   strings ("hzone"/"channel"/"gannfan"/"elliott"/…), drawing_db re-parsed them
+>   through a crude 13-variant enum that knew only 6. Fix: the drawing_type
+>   STRING is now source-of-truth (preserved in extras JSONB, never rejected;
+>   load prefers it). +3 unit tests. No schema migration.
+> - **W1-02a DONE** `ad4e51fe` — drawing-persistence failures surfaced instead of
+>   lost: PG-unavailable at startup → errors_sink warning (was a bare eprintln);
+>   dead-letter queue now reports each drop + spills to state/drawings_dead_
+>   letter.jsonl (lossless past cap 64); is_persisting() accessor added.
+> - **W1-02b DEFERRED** — the async reconnect loop (re-establish the worker when
+>   PG returns, buffer saves-while-down, drain the JSONL spill) + wiring the
+>   is_persisting() status chip into the UI. Needs a fresh session (async
+>   redesign, not a one-liner).
+
 ### W1-01 · Drawing persistence: unify the two DrawingKind enums  [P0 · M]
 **Evidence:** two non-isomorphic DrawingKind enums; converter exists in gpu.rs
 but a silent string-alias mismatch at the DB layer (`drawing_db.rs:488`
