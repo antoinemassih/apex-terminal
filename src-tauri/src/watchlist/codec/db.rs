@@ -50,6 +50,16 @@ pub async fn save_watchlists(
     watchlists: &[SavedWatchlist],
     active_idx: usize,
 ) -> Result<(), DbCodecError> {
+    // W1-03 (audit): NEVER let an empty snapshot wipe the server. This save is a
+    // delete-all-then-reinsert; with 0 watchlists it would delete every row and
+    // insert nothing, silently destroying a populated server copy. The in-memory
+    // set is always >= the built-in defaults, so an empty save is a bug/edge, not
+    // a legitimate "user deleted everything" — refuse it. (The primary fix for
+    // the fresh-machine wipe is the load-side DB fallback, gpu::load_watchlists.)
+    if watchlists.is_empty() {
+        return Ok(());
+    }
+
     let mut tx = pool.begin().await?;
 
     // Delete-and-reinsert. ON DELETE CASCADE handles sections + items.

@@ -9068,18 +9068,20 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
     // path still blocks but only when there's literally no local cache,
     // which is a one-time event per machine.
     let path = watchlists_path();
+    // W1-03: on any unusable local cache (missing / corrupt / no watchlists),
+    // fall back to the DB before defaults — see db_watchlists_or_default.
     let data = match std::fs::read_to_string(&path) {
         Ok(d) => d,
-        Err(_) => return default_watchlists(),
+        Err(_) => return db_watchlists_or_default(),
     };
     let json: serde_json::Value = match serde_json::from_str(&data) {
         Ok(v) => v,
-        Err(_) => return default_watchlists(),
+        Err(_) => return db_watchlists_or_default(),
     };
     let active_idx = json.get("active_idx").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
     let wl_arr = match json.get("watchlists").and_then(|v| v.as_array()) {
         Some(a) => a,
-        None => return default_watchlists(),
+        None => return db_watchlists_or_default(),
     };
     let mut watchlists: Vec<SavedWatchlist> = Vec::new();
     for wl_val in wl_arr {
@@ -9122,9 +9124,32 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
         }
         watchlists.push(SavedWatchlist { name, sections, next_section_id });
     }
-    if watchlists.is_empty() { return default_watchlists(); }
+    if watchlists.is_empty() { return db_watchlists_or_default(); }
     let idx = active_idx.min(watchlists.len() - 1);
     (watchlists, idx)
+}
+
+/// W1-03 (audit): pick the watchlist set to load. Prefer a non-empty DB result
+/// over the built-in defaults. Pure so the choice is unit-testable.
+fn pick_db_or_default(
+    db: (Vec<SavedWatchlist>, usize),
+    default: (Vec<SavedWatchlist>, usize),
+) -> (Vec<SavedWatchlist>, usize) {
+    if db.0.is_empty() { default } else { db }
+}
+
+/// W1-03 (audit): the REAL cross-machine fallback the old `load_watchlists`
+/// comment promised but never had — it returned `default_watchlists()` straight
+/// away when the local JSON was missing/corrupt, so a fresh machine loaded EMPTY
+/// defaults and the destructive delete-and-reinsert save then wiped the server
+/// copy on the first save. Now: when the local cache can't be used, read the DB
+/// first (a one-time blocking load per machine, as the comment intended) and
+/// only fall to defaults if the DB is also empty.
+fn db_watchlists_or_default() -> (Vec<SavedWatchlist>, usize) {
+    pick_db_or_default(
+        crate::persistence::watchlist_db::load_all(),
+        default_watchlists(),
+    )
 }
 
 fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
@@ -9268,6 +9293,30 @@ mod w1_05_alert_eval_price_tests {
         // A non-positive snapshot is treated as no-price.
         let p = alert_eval_price("SPY", "QQQ", Some(500.0), |_| Some(0.0));
         assert_eq!(p, None);
+    }
+}
+
+#[cfg(test)]
+mod w1_03_watchlist_fallback_tests {
+    use super::{pick_db_or_default, default_watchlists};
+
+    #[test]
+    fn empty_db_falls_back_to_defaults() {
+        // A fresh machine whose DB is genuinely empty gets the built-in defaults.
+        let (wls, idx) = pick_db_or_default((vec![], 0), default_watchlists());
+        assert!(!wls.is_empty(), "empty DB → non-empty defaults");
+        let _ = idx;
+    }
+
+    #[test]
+    fn nonempty_db_wins_over_defaults() {
+        // A fresh machine WITH server-side watchlists restores them (not defaults),
+        // so the destructive save can't then wipe the server with empty defaults.
+        let db = default_watchlists(); // stand-in for a non-empty DB result
+        let db_len = db.0.len();
+        let (wls, idx) = pick_db_or_default((db.0.clone(), 2), (vec![], 0));
+        assert_eq!(wls.len(), db_len, "non-empty DB set must be used verbatim");
+        assert_eq!(idx, 2, "the DB active index must be preserved");
     }
 }
 
