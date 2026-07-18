@@ -325,6 +325,27 @@ impl LiveBroker {
         json["orderId"].as_str().map(|s| s.to_string())
             .or_else(|| json["orderId"].as_i64().map(|n| n.to_string()))
     }
+
+    /// W0-02 (audit): turn a non-2xx broker response into an `Err` carrying the
+    /// status and a bounded slice of the broker's error body. Before this,
+    /// `submit`/`cancel`/`modify` ignored the status entirely, so a broker
+    /// rejection was indistinguishable from success. `op` names the operation
+    /// for the message. Consuming `resp` here is intentional — a caller that
+    /// needs the body on success chains `.json()` on the returned `resp`.
+    fn error_for_status(
+        resp: reqwest::blocking::Response,
+        op: &str,
+    ) -> Result<reqwest::blocking::Response, String> {
+        let status = resp.status();
+        if status.is_success() {
+            return Ok(resp);
+        }
+        // Best-effort body for the reason; never let a body-read failure mask
+        // the status.
+        let body = resp.text().unwrap_or_default();
+        let snippet: String = body.chars().take(200).collect();
+        Err(format!("{op} rejected: HTTP {} {}", status.as_u16(), snippet))
+    }
 }
 
 impl Broker for LiveBroker {
@@ -372,18 +393,31 @@ impl Broker for LiveBroker {
         let resp = client.post(format!("{}/orders", APEXIB_URL))
             .json(&body).timeout(std::time::Duration::from_secs(5)).send()
             .map_err(|e| format!("submit http: {e}"))?;
-        let json: serde_json::Value = resp.json()
-            .map_err(|e| format!("submit json: {e}"))?;
-        Self::extract_order_id(&json).ok_or_else(|| "broker returned no orderId".into())
+        // W0-02 (audit): a broker rejection must not read as success. Check the
+        // HTTP status before parsing — a 4xx/5xx used to fall through to
+        // `resp.json()` and surface only as the vague "broker returned no
+        // orderId", losing the broker's own reason.
+        Self::error_for_status(resp, "submit")
+            .and_then(|resp| resp.json::<serde_json::Value>()
+                .map_err(|e| format!("submit json: {e}")))
+            .and_then(|json| Self::extract_order_id(&json)
+                .ok_or_else(|| "broker returned no orderId".into()))
     }
 
     #[tracing::instrument(skip(self), level = "debug", fields(backend_id))]
     fn cancel(&self, backend_id: &str, _client_order_id: &str) -> Result<(), String> {
         let client = crate::foundation::http::blocking_client();
-        client.delete(format!("{}/orders/{}", APEXIB_URL, backend_id))
+        let resp = client.delete(format!("{}/orders/{}", APEXIB_URL, backend_id))
             .timeout(std::time::Duration::from_secs(5)).send()
-            .map(|_| ())
-            .map_err(|e| format!("cancel http: {e}"))
+            .map_err(|e| format!("cancel http: {e}"))?;
+        // W0-02 (audit): non-2xx used to be swallowed by `.map(|_| ())`, so a
+        // broker cancel rejection read as success and the caller left the order
+        // optimistically Cancelled — masking a live (or since-filled) order.
+        // Only 2xx is a real cancel; anything else is an Err the caller reacts
+        // to (see order_manager::cancel PendingCancel revert). A 404 is NOT a
+        // silent success here: the order being absent at the broker can mean it
+        // already filled, so it must go through reconcile, not be assumed dead.
+        Self::error_for_status(resp, "cancel").map(|_| ())
     }
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(backend_id = %args.backend_id, new_price = ?args.new_price, kind = ?args.kind, version = args.modify_version))]
@@ -401,10 +435,14 @@ impl Broker for LiveBroker {
                 "limitPrice": np, "modifyVersion": args.modify_version,
             }),
         };
-        client.put(format!("{}/orders/{}", APEXIB_URL, args.backend_id))
+        let resp = client.put(format!("{}/orders/{}", APEXIB_URL, args.backend_id))
             .json(&body).timeout(std::time::Duration::from_secs(5)).send()
-            .map(|_| ())
-            .map_err(|e| format!("modify http: {e}"))
+            .map_err(|e| format!("modify http: {e}"))?;
+        // W0-02 (audit): non-2xx used to be swallowed by `.map(|_| ())`, so a
+        // rejected price modify read as success and the terminal displayed the
+        // rejected price as the real resting price forever. Return Err so the
+        // caller reverts (see order_manager::modify_price revert-on-Err).
+        Self::error_for_status(resp, "modify").map(|_| ())
     }
 
     fn lookup_by_client_id(
@@ -847,6 +885,12 @@ pub(crate) enum MockResponse {
     Lookup(Result<Option<BrokerOrderState>, ApiError>),
     /// Wave 12b: scripted contract details for `resolve_contract`.
     Contract(Result<ContractDetails, ApiError>),
+    /// W0-02/03/04 (audit): scripted broker rejection for the next cancel or
+    /// modify, so tests can prove the caller reverts optimistic local state
+    /// (PendingCancel → prior; modify price → prior) instead of leaving it
+    /// standing. Without a queued entry, MockBroker cancel/modify default Ok.
+    CancelErr(String),
+    ModifyErr(String),
 }
 
 pub(crate) struct MockBroker {
@@ -879,6 +923,16 @@ impl MockBroker {
 
     fn record(&self, call: MockCall) {
         if let Ok(mut g) = self.calls.lock() { g.push(call); }
+    }
+
+    /// Pop the first response matching `pred`, leaving others in place. Used by
+    /// cancel/modify to find a scripted CancelErr/ModifyErr (W0-02/03/04).
+    fn take_response_of(&self, pred: impl Fn(&MockResponse) -> bool) -> Option<MockResponse> {
+        if let Ok(mut g) = self.responses.lock() {
+            let pos = g.iter().position(|r| pred(r));
+            return pos.map(|i| g.remove(i));
+        }
+        None
     }
 
     /// Pop the first response of the given variant, leaving others in place.
@@ -936,7 +990,10 @@ impl Broker for MockBroker {
             backend_id: backend_id.into(),
             client_order_id: client_order_id.into(),
         });
-        Ok(())
+        match self.take_response_of(|r| matches!(r, MockResponse::CancelErr(_))) {
+            Some(MockResponse::CancelErr(reason)) => Err(reason),
+            _ => Ok(()),
+        }
     }
 
     fn modify(&self, args: &ModifyArgs) -> Result<(), String> {
@@ -946,7 +1003,10 @@ impl Broker for MockBroker {
             new_price: args.new_price, new_qty: args.new_qty,
             kind: args.kind, modify_version: args.modify_version,
         });
-        Ok(())
+        match self.take_response_of(|r| matches!(r, MockResponse::ModifyErr(_))) {
+            Some(MockResponse::ModifyErr(reason)) => Err(reason),
+            _ => Ok(()),
+        }
     }
 
     fn lookup_by_client_id(
