@@ -444,6 +444,16 @@ pub fn get_snapshot(symbol: &str) -> Option<Snapshot> {
     state().snapshots.lock().ok()?.get(symbol).map(|(s, _)| s.clone())
 }
 
+/// W0-08 (audit): like `get_snapshot` but also returns how long ago the quote
+/// was fetched. `get_snapshot` discarded the stored `Instant`, so risk checks
+/// on the order path sized against a last-good price with no way to know a dead
+/// poller was serving it indefinitely. Callers gate on the age.
+pub fn get_snapshot_with_age(symbol: &str) -> Option<(Snapshot, Duration)> {
+    state().snapshots.lock().ok()?
+        .get(symbol)
+        .map(|(s, at)| (s.clone(), at.elapsed()))
+}
+
 pub fn get_health() -> Option<HealthReady> {
     state().health.lock().ok()?.clone()
 }

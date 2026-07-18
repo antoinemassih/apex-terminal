@@ -652,6 +652,11 @@ pub(crate) struct RiskLimits {
     /// open positions, not just realized. An open losing position can otherwise
     /// bleed past the cap without ever tripping it. Default ON.
     pub(crate) daily_loss_includes_unrealized: bool,
+    /// W0-08 (audit): reject an order whose risk check would size against a
+    /// market-data quote older than this many seconds (a dead poller serves the
+    /// last-good price forever). 0 = disabled. Overridable per-order via
+    /// `override_warnings`. Default 5s.
+    pub(crate) max_quote_age_secs: u64,
 }
 
 /// Wave 5: versioned snapshot of the open-orders journal.
@@ -687,8 +692,16 @@ impl Default for RiskLimits {
             fat_finger_pct: 5.0,        // 5% deviation from last price on opening orders
             dedup_cooldown_ms: 500,
             daily_loss_includes_unrealized: true,
+            max_quote_age_secs: 5,
         }
     }
+}
+
+/// W0-08: is a market-data quote of `age_secs` too stale to size risk against,
+/// given the configured threshold? A threshold of 0 disables the gate. Pure so
+/// the rule is unit-testable without the clock or the global snapshot store.
+fn quote_is_stale(age_secs: u64, threshold_secs: u64) -> bool {
+    threshold_secs > 0 && age_secs > threshold_secs
 }
 
 /// W0-06 (audit): has the combined daily loss breached the cap? `realized` and
@@ -1038,8 +1051,21 @@ impl OrderManager {
                         let est_price: Option<f64> = if intent.last_price > 0.0 {
                             Some(intent.last_price as f64)
                         } else {
-                            crate::apex_data::live_state::get_snapshot(&intent.symbol)
-                                .and_then(|snap| {
+                            // Fall back to the live snapshot — but W0-08: refuse a
+                            // STALE snapshot. A dead poller serves the last-good
+                            // price indefinitely; sizing risk against it is unsafe.
+                            // Fail-closed (reject) unless the caller overrode it.
+                            match crate::apex_data::live_state::get_snapshot_with_age(&intent.symbol) {
+                                Some((snap, age)) => {
+                                    if !intent.override_warnings
+                                        && quote_is_stale(age.as_secs(), self.risk_limits.max_quote_age_secs)
+                                    {
+                                        self.orders_rejected += 1;
+                                        return Err(OrderResult::Rejected(format!(
+                                            "market data stale: {}s old (> {}s) — refusing to size risk against a dead quote",
+                                            age.as_secs(), self.risk_limits.max_quote_age_secs
+                                        )));
+                                    }
                                     let mid = if snap.bid > 0.0 && snap.ask > 0.0 {
                                         (snap.bid + snap.ask) / 2.0
                                     } else if snap.last > 0.0 {
@@ -1048,7 +1074,9 @@ impl OrderManager {
                                         0.0
                                     };
                                     if mid > 0.0 { Some(mid) } else { None }
-                                })
+                                }
+                                None => None,
+                            }
                         };
                         match est_price {
                             Some(ep) => {
@@ -7115,6 +7143,15 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.price, Price::from_f32(105.0), "accepted modify keeps the new price");
         assert!(!o.modify_inflight);
+    }
+
+    #[test]
+    fn w0_08_quote_is_stale_pure() {
+        // W0-08: fresh under threshold passes; over threshold is stale; 0 disables.
+        assert!(!quote_is_stale(3, 5), "3s < 5s threshold → fresh");
+        assert!(!quote_is_stale(5, 5), "exactly at threshold → not yet stale");
+        assert!(quote_is_stale(6, 5), "6s > 5s → stale");
+        assert!(!quote_is_stale(9_999, 0), "threshold 0 disables the gate");
     }
 
     #[test]
