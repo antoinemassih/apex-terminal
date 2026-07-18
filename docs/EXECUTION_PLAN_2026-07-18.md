@@ -345,6 +345,16 @@ the SIMULATED badge otherwise. No synthetic depth without a badge.
 >   their OWN symbol (symbol-keyed live snapshot when the pane shows a different
 >   symbol), so they no longer silently die when a pane switches symbol while
 >   still shown ACTIVE. Pure alert_eval_price helper + 3 unit tests.
+> - **W1-11 DONE** `739745e4` (corpus 1067/1067) — the spike-popup "[view
+>   provenance]" / trade-plan "[🔍 prov]" buttons rendered live but their
+>   on_open_provenance callback was never registered → dead. Now wired at startup
+>   (provenance_pane::wire_provenance_buttons → request_open).
+> - **W1-06 NOT STARTED (do fresh)** — hotkey wiring is a 30-site rewiring of
+>   TRADING hotkeys (buy/sell/kill/flatten) where a wrong action-mapping is a
+>   live-trading bug and corpus drives these via DevInput. default_hotkeys()
+>   already defines all 27 actions with keys MATCHING the hardcoded sites, so the
+>   fix is: a binding_pressed(ui, hotkeys, action) helper + replace each
+>   hardcoded ui.input(key_pressed) site with it. Not deep-context work.
 > - **W1-02b DEFERRED** — the async reconnect loop (re-establish the worker when
 >   PG returns, buffer saves-while-down, drain the JSONL spill) + wiring the
 >   is_persisting() status chip into the UI. Needs a fresh session (async
