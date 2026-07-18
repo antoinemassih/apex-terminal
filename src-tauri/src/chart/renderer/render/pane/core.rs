@@ -12403,23 +12403,23 @@ fn render_footprint_overlay(
                             let hdr_med = mono_xs();
                             let hdr_sm = mono_xs_plus();
 
-                            // Row 1: Direction + Delta + Buy/Sell split + Conviction + RVOL
+                            // W0-12 (audit): the footprint's per-price volume and
+                            // buy/sell split come from bar_micro_profile — a
+                            // Gaussian-around-close + `0.3 + 0.5*level_pos` HEURISTIC
+                            // on OHLC shape, NOT real tape. So the delta, buy/sell
+                            // %, conviction, imbalance and EXHAUSTION/TRAPPED tags
+                            // are FABRICATED order-flow a trader would wrongly act
+                            // on. Badge the overlay ESTIMATED and DROP those fake
+                            // specifics; keep only OHLC-real reads (direction, RVOL,
+                            // wick geometry). The real tape-backed footprint is
+                            // W2-06 (reuse live_state tape like the DOM ladder).
+                            // Row 1: Direction (OHLC-real) + ESTIMATED disclosure + RVOL (real)
                             let dir_label = if is_bull { "BULL" } else { "BEAR" };
                             painter.text(egui::pos2(hx, hy + 14.0), egui::Align2::LEFT_CENTER, dir_label, hdr_font.clone(), dir_col);
+                            let est_label = "\u{26A0} ESTIMATED \u{00B7} shape from OHLC, not tape";
                             painter.text(egui::pos2(hx + 50.0, hy + 14.0), egui::Align2::LEFT_CENTER,
-                                &format!("\u{0394} {:+.0}", total_delta), hdr_font.clone(), dir_col);
-                            painter.text(egui::pos2(hx + 150.0, hy + 14.0), egui::Align2::LEFT_CENTER,
-                                &format!("Buy {:.0}%  Sell {:.0}%", buy_pct, 100.0 - buy_pct), hdr_med.clone(), color_alpha(t.text,180));
-                            // Conviction bar (visual)
-                            let conv_x = hx + 320.0;
-                            let conv_w = 80.0;
-                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w, 12.0)),
-                                3.0, color_alpha(t.text,15));
-                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w * conviction / 100.0, 12.0)),
-                                3.0, color_alpha(dir_col, if conviction > 60.0 { 150 } else { 60 }));
-                            painter.text(egui::pos2(conv_x + conv_w + 6.0, hy + 14.0), egui::Align2::LEFT_CENTER,
-                                &format!("{:.0}%", conviction), hdr_sm.clone(),
-                                if conviction > 60.0 { dir_col } else { t.dim });
+                                est_label, hdr_med.clone(), t.warn);
+                            let _ = (total_delta, buy_pct, conviction, max_buy_idx, max_sell_idx); // no longer surfaced as fake specifics
                             if rvol > 1.5 {
                                 painter.text(egui::pos2(hdr_rect.right() - 10.0, hy + 14.0), egui::Align2::RIGHT_CENTER,
                                     &format!("{:.1}x vol", rvol), hdr_med.clone(),
@@ -12455,18 +12455,14 @@ fn render_footprint_overlay(
                                 painter.text(egui::pos2(*x + tw / 2.0, tag_y), egui::Align2::CENTER_CENTER, label, tag_font, col);
                                 *x += tw + 6.0;
                             };
-                            if exhaustion { draw_tag(&painter, &mut tag_x, "EXHAUSTION", COLOR_AMBER); }
-                            if trapped { draw_tag(&painter, &mut tag_x, "TRAPPED", egui::Color32::from_rgb(200, 100, 200)); }
+                            // W0-12: EXHAUSTION/TRAPPED and the per-price "X:1 BUY @
+                            // price" imbalance tags are derived from the FABRICATED
+                            // buy/sell split — they impersonate real tape reads and
+                            // are dropped until W2-06 grounds them in live_state
+                            // tape. Only the wick-geometry insight (REJECTION /
+                            // ABSORPTION / INDECISION) is OHLC-real, so it stays.
+                            let _ = (exhaustion, trapped); // OHLC-shape-derived, no longer surfaced
                             if let Some((label, _, col)) = wick_insight { draw_tag(&painter, &mut tag_x, label, col); }
-                            // Imbalance tags
-                            for l in &fp_levels {
-                                if l.imbalance > 2.5 {
-                                    let side = if l.buy > l.sell { "BUY" } else { "SELL" };
-                                    draw_tag(&painter, &mut tag_x, &format!("{:.0}:1 {} @ {:.2}", l.imbalance, side, l.price),
-                                        if l.buy > l.sell { t.bull } else { t.bear });
-                                    break; // only show strongest imbalance
-                                }
-                            }
 
                             // Highlight the candle itself
                             let candle_w = (bs * 0.8).max(4.0);
@@ -12648,20 +12644,31 @@ fn render_cvd_overlay(
                 painter.line_segment([egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
                     egui::Stroke::new(style::stroke_thin(), color_alpha(t.text,30)));
             }
+            let mut any_synth = false;
             for i in start_c..end_c.saturating_sub(1) {
                 let y0 = cvd_py(chart.cvd_data[i]);
                 let y1 = cvd_py(chart.cvd_data[i+1]);
                 let rising = chart.cvd_data[i+1] > chart.cvd_data[i];
-                let color = if rising {
-                    color_alpha(t.bull, 200)
-                } else {
-                    color_alpha(t.bear, 200)
-                };
+                // W0-12 (audit): a segment is synthetic when either endpoint bar's
+                // delta came from the OHLC close-position HEURISTIC rather than the
+                // real live tape (bars outside the ~1-session tape window). Draw
+                // those dimmed + thinner so a multi-day CVD divergence isn't read
+                // as real order flow. The real (tape) segment stays bright.
+                let synth = *chart.cvd_synthetic.get(i).unwrap_or(&true)
+                    || *chart.cvd_synthetic.get(i + 1).unwrap_or(&true);
+                if synth { any_synth = true; }
+                let base = if rising { t.bull } else { t.bear };
+                let (alpha, width) = if synth { (60, 1.0) } else { (200, 1.5) };
                 painter.line_segment([egui::pos2(bx(i as f32), y0), egui::pos2(bx((i+1) as f32), y1)],
-                    egui::Stroke::new(1.5, color));
+                    egui::Stroke::new(width, color_alpha(base, alpha)));
             }
             painter.text(egui::pos2(rect.left() + 4.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
                 "CVD", mono_2xs(), color_alpha(t.text,120));
+            // W0-12: disclose when part of the line is synthetic (dimmed above).
+            if any_synth {
+                painter.text(egui::pos2(rect.left() + 30.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
+                    "\u{00B7} dim = estimated (no tape)", mono_2xs(), color_alpha(t.warn, 160));
+            }
 }
 
 /// Order lines overlay: draggable order price lines + badges + pulse (WS-E E4:

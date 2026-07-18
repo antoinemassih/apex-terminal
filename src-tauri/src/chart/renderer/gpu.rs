@@ -2450,6 +2450,13 @@ pub(crate) struct Chart {
     pub(crate) vwap_lower2: Vec<f32>,
     pub(crate) cvd_data: Vec<f32>,
     pub(crate) delta_data: Vec<f32>,
+    /// W0-12 (audit): per-bar, true when this bar's delta (and thus its CVD
+    /// contribution) came from the OHLC close-position HEURISTIC rather than the
+    /// real live tape (`realized_delta_in`). Real tape only covers the recently
+    /// streamed session (~1 session of minute buckets); older bars are synthetic.
+    /// The CVD renderer draws synthetic spans dimmed so a multi-day divergence
+    /// isn't read as real order flow.
+    pub(crate) cvd_synthetic: Vec<bool>,
     pub(crate) rvol_data: Vec<f32>,
     pub(crate) vol_analytics_computed: usize,
     pub(crate) replay_mode: bool,
@@ -2718,7 +2725,7 @@ impl Chart {
             show_vol_cone: false, show_price_memory: false, show_liquidity_voids: false, show_corr_ribbon: false,
             show_darkpool: false, darkpool_prints: vec![],
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
-            cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
+            cvd_data: vec![], delta_data: vec![], cvd_synthetic: vec![], rvol_data: vec![], vol_analytics_computed: 0,
             replay_mode: false, replay_bar_count: 0, replay_playing: false, replay_speed: 1.0, replay_last_step: None,
             replay_overlay: None,
             bracket_templates: vec![
@@ -4389,6 +4396,8 @@ pub(crate) fn compute_volume_analytics(chart: &mut Chart) {
     chart.vwap_lower2.resize(n, f32::NAN);
     chart.cvd_data.resize(n, 0.0);
     chart.delta_data.resize(n, 0.0);
+    chart.cvd_synthetic.clear();
+    chart.cvd_synthetic.resize(n, true); // default synthetic; set false where real tape exists
     chart.rvol_data.resize(n, 1.0);
 
     // Per-bar delta. Prefer REAL order-flow delta from the live trade stream
@@ -4403,7 +4412,11 @@ pub(crate) fn compute_volume_analytics(chart: &mut Chart) {
             crate::apex_data::live_state::realized_delta_in(&chart.symbol, bar_from, bar_to)
         } else { None };
         chart.delta_data[i] = match real {
-            Some(d) => d,
+            Some(d) => {
+                // W0-12: this bar's delta is from the real live tape.
+                chart.cvd_synthetic[i] = false;
+                d
+            }
             None => {
                 let range = b.high - b.low;
                 if range > 0.0 {
