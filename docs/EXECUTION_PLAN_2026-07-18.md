@@ -77,6 +77,14 @@ Work items in ID order within a wave unless a dependency says otherwise.
 >   orders. A real gap exists only when `max_notional` is disabled (0). Adding a
 >   second notional threshold risks a redundant/confusing gate. Decide the
 >   threshold semantics (notional cap vs qty-baseline anomaly) before building.
+>
+> **PROGRESS 2026-07-18 (cont.)** — daily-loss hardening, corpus **1067/1067**
+> (0 real, 0 refused), 114 trading unit tests:
+> - **W0-05 DONE** `4aa1f40f` — daily-loss accumulator persisted via atomic
+>   sidecar (daily_loss.json), restored on restart, rollover-reset. +2 tests.
+> - **W0-06 DONE** `4aa1f40f` — cap counts unrealized P&L (flag, default ON) +
+>   auto-halt on breach from the reconcile poll (paper-guarded). +3 tests.
+>   Open positions are NOT auto-flattened by design (halt new risk only).
 
 ### W0-01 · Spread Builder: block conId=0 / $0-limit live combos  [P0 · M]
 **Evidence:** spread_panel.rs builds combo legs with `conId=0` and submits with
