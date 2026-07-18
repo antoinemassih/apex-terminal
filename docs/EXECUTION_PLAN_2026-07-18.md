@@ -63,8 +63,17 @@ Work items in ID order within a wave unless a dependency says otherwise.
 # WAVE 0 — CLOSE THE MONEY EDGES
 *Goal: live trading is trustworthy. Nothing here is architecturally hard.*
 
-> **PROGRESS 2026-07-18** — landed together, corpus **1067/1067** on the fresh
-> binary (0 real failures, 0 connection-refused), 110 trading unit tests pass:
+> **PROGRESS 2026-07-18 (batch 3)** — corpus **1067/1067** (0 real, 0 refused):
+> - **W0-01 DONE** `c4455441` — Spread Builder blocked from submitting a live
+>   combo at conId=0 / $0 limit (validate_risk was toothless at $0). Guard in
+>   submit_combo + honest UI note. +1 test (115 total).
+> - **W0-09 DONE** `8867df39` — welcome-wizard daily-loss cap now applied to
+>   RiskLimits.max_daily_loss on Finish (was captured then discarded); enforced
+>   by the W0-05/06 breaker. Position-% honestly disclosed as Settings-configured
+>   (no account-aware conversion at first run).
+>
+> **PROGRESS 2026-07-18 (batch 1)** — landed together, corpus **1067/1067** on the
+> fresh binary (0 real failures, 0 connection-refused), 110 trading unit tests:
 > - **W0-02 DONE** `6c13590b` — broker submit/cancel/modify check HTTP status.
 > - **W0-03 DONE** `d01f18be` — cancel → PendingCancel (not terminal); a fill
 >   racing the cancel is now adopted by reconcile, not masked. +3 tests incl.
