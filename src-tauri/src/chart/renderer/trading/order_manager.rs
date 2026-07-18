@@ -251,6 +251,38 @@ fn orders_state_path() -> PathBuf {
     state.join("orders.json")
 }
 
+/// W0-05 (audit): sidecar path for the daily-loss accumulator, next to the
+/// orders file so it inherits the `APEX_ORDERS_STATE_PATH` override for tests.
+fn daily_loss_state_path() -> PathBuf {
+    orders_state_path()
+        .parent()
+        .map(|p| p.join("daily_loss.json"))
+        .unwrap_or_else(|| PathBuf::from("daily_loss.json"))
+}
+
+/// W0-05 (audit): the persisted daily-loss state. The realized-P&L accumulator
+/// and its date must survive a restart — otherwise the daily-loss circuit
+/// breaker resets to $0 on every process start and silently re-arms trading
+/// past a loss cap the trader already blew through today.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DailyLossState {
+    realized_pnl_today: f32,
+    daily_loss_date: u32,
+}
+
+/// W0-05: decide the restored (realized_pnl_today, daily_loss_date) from a
+/// persisted state and today's date. Same calendar day → carry the loss;
+/// an older day → reset to $0 for today (never carry yesterday's loss forward).
+/// Pure so the rollover rule is unit-testable without touching the filesystem
+/// or the process-global env.
+fn restored_daily_loss(dl: &DailyLossState, today: u32) -> (f32, u32) {
+    if dl.daily_loss_date == today {
+        (dl.realized_pnl_today, dl.daily_loss_date)
+    } else {
+        (0.0, today)
+    }
+}
+
 /// Path for the Wave 5 versioned envelope snapshot. Written alongside
 /// `orders.json` for forward-compatibility experiments. The legacy
 /// reader (`load_from_disk`) still reads `orders.json` directly; this
@@ -616,6 +648,10 @@ pub(crate) struct RiskLimits {
     pub(crate) max_notional: f64,          // max $ value per order (0=disabled)
     pub(crate) fat_finger_pct: f32,        // max % deviation from last price (0=disabled), only on OPENING orders
     pub(crate) dedup_cooldown_ms: u64,
+    /// W0-06 (audit): when true, the daily-loss cap counts UNREALIZED P&L on
+    /// open positions, not just realized. An open losing position can otherwise
+    /// bleed past the cap without ever tripping it. Default ON.
+    pub(crate) daily_loss_includes_unrealized: bool,
 }
 
 /// Wave 5: versioned snapshot of the open-orders journal.
@@ -650,8 +686,21 @@ impl Default for RiskLimits {
             max_notional: 50_000.0,     // was 500_000.0
             fat_finger_pct: 5.0,        // 5% deviation from last price on opening orders
             dedup_cooldown_ms: 500,
+            daily_loss_includes_unrealized: true,
         }
     }
+}
+
+/// W0-06 (audit): has the combined daily loss breached the cap? `realized` and
+/// `unrealized` are signed P&L (negative = loss). When `include_unrealized` is
+/// false only realized counts. A cap of 0 means disabled. Pure so the rule is
+/// unit-testable without the global account data or the halt side effects.
+fn daily_loss_breached(realized: f32, unrealized: f64, include_unrealized: bool, cap: f64) -> bool {
+    if cap <= 0.0 {
+        return false;
+    }
+    let combined = realized as f64 + if include_unrealized { unrealized } else { 0.0 };
+    -combined >= cap
 }
 
 // ─── Order Manager ──────────────────────────────────────────────────────────
@@ -1037,18 +1086,65 @@ impl OrderManager {
 
         // 6. T1: daily-loss cap
         // `realized_pnl_today` is negative when a net loss has occurred.
-        // Reject if we've already hit or exceeded the configured limit.
-        if self.risk_limits.max_daily_loss > 0.0
-            && (-self.realized_pnl_today as f64) >= self.risk_limits.max_daily_loss
+        // W0-06: the cap now counts UNREALIZED P&L on open positions too (unless
+        // disabled), so an open losing position that has already breached the cap
+        // blocks new risk instead of only realized losses doing so.
+        let unrealized = if self.risk_limits.daily_loss_includes_unrealized {
+            super::read_account_data().map(|(s, _, _)| s.unrealized_pnl).unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        if daily_loss_breached(self.realized_pnl_today, unrealized,
+            self.risk_limits.daily_loss_includes_unrealized, self.risk_limits.max_daily_loss)
         {
             self.orders_rejected += 1;
             return Err(OrderResult::Rejected(format!(
-                "daily loss cap reached: realized loss ${:.2} >= max_daily_loss ${:.2}",
-                -self.realized_pnl_today, self.risk_limits.max_daily_loss
+                "daily loss cap reached: loss ${:.2} (realized ${:.2} + unrealized ${:.2}) >= max ${:.2}",
+                -(self.realized_pnl_today as f64 + unrealized), self.realized_pnl_today, unrealized,
+                self.risk_limits.max_daily_loss
             )));
         }
 
         Ok(())
+    }
+
+    /// W0-06 (audit): auto-engage the halt when the combined daily loss (realized
+    /// + unrealized when enabled) has breached the cap. Fires WITHOUT a new
+    /// submit — an open position can bleed unrealized loss while the trader is
+    /// idle, and the submit-time gate above only stops ADDING risk. No-op if
+    /// already halted/killed, if the cap is disabled, or in paper mode (paper
+    /// has no real positions yet; revisit with the paper-fill engine, W2-01).
+    /// Called from the reconcile poll.
+    fn check_daily_loss_and_halt(&mut self) {
+        if self.paper_mode || self.halted || self.kill_engaged {
+            return;
+        }
+        if self.risk_limits.max_daily_loss <= 0.0 {
+            return;
+        }
+        // Roll the accumulator over first so a stale date doesn't false-trip.
+        let today = today_day_index();
+        if today != self.daily_loss_date {
+            self.realized_pnl_today = 0.0;
+            self.daily_loss_date = today;
+        }
+        let unrealized = if self.risk_limits.daily_loss_includes_unrealized {
+            super::read_account_data().map(|(s, _, _)| s.unrealized_pnl).unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        if daily_loss_breached(self.realized_pnl_today, unrealized,
+            self.risk_limits.daily_loss_includes_unrealized, self.risk_limits.max_daily_loss)
+        {
+            let combined = self.realized_pnl_today as f64 + unrealized;
+            report(ErrorLevel::Critical, "daily_loss", "auto_halt", format!(
+                "daily loss ${:.2} (realized ${:.2} + unrealized ${:.2}) >= cap ${:.2} — auto-halting new risk",
+                -combined, self.realized_pnl_today, unrealized, self.risk_limits.max_daily_loss));
+            let _ = self.halt_inner();
+            self.pending_toasts.push(format!(
+                "AUTO-HALT: daily loss ${:.0} hit cap ${:.0} — new risk blocked (open positions NOT auto-flattened)",
+                -combined, self.risk_limits.max_daily_loss));
+        }
     }
 
     /// T1: accumulate realized P&L from a confirmed fill.
@@ -1112,7 +1208,40 @@ impl OrderManager {
             self.realized_pnl_today += pnl;
             report(ErrorLevel::Info, "daily_loss", "fill_pnl_recorded",
                 format!("pnl={pnl:.2} running_total={:.2}", self.realized_pnl_today));
+            // W0-05: persist the accumulator the moment it changes so a restart
+            // (clean or crash) restores today's realized P&L instead of $0.
+            self.persist_daily_loss();
         }
+    }
+
+    /// W0-05 (audit): write the daily-loss accumulator to its sidecar. Called
+    /// from record_fill_pnl (the moment it changes) and save_to_disk. Atomic
+    /// tmp+fsync+rename, like the orders file — a crash mid-write can't corrupt
+    /// it. Small synchronous write; takes no secondary locks.
+    fn persist_daily_loss(&self) {
+        let dl = DailyLossState {
+            realized_pnl_today: self.realized_pnl_today,
+            daily_loss_date: self.daily_loss_date,
+        };
+        match serde_json::to_vec_pretty(&dl) {
+            Ok(bytes) => {
+                if let Err(e) = crate::state::persistence::atomic_write(&daily_loss_state_path(), &bytes) {
+                    report(ErrorLevel::Error, "order_manager", "save_daily_loss_failed", e.to_string());
+                }
+            }
+            Err(e) => report(ErrorLevel::Error, "order_manager", "save_daily_loss_serialize_failed", e.to_string()),
+        }
+    }
+
+    /// W0-05 (audit): restore the daily-loss accumulator from its sidecar,
+    /// resetting on date rollover (a stale date means the cap starts fresh
+    /// today). No file / parse error is fatal — a missing sidecar is first-run.
+    fn load_daily_loss(&mut self) {
+        let Ok(bytes) = std::fs::read(daily_loss_state_path()) else { return; };
+        let Ok(dl) = serde_json::from_slice::<DailyLossState>(&bytes) else { return; };
+        let (pnl, date) = restored_daily_loss(&dl, today_day_index());
+        self.realized_pnl_today = pnl;
+        self.daily_loss_date = date;
     }
 
     /// Engage the kill switch: cancel all locally + flip gate + fire broker /risk/kill.
@@ -2865,6 +2994,9 @@ impl OrderManager {
         if let Err(e) = crate::state::save(&orders_envelope_path(), &snapshot) {
             report(ErrorLevel::Error, "order_manager", "save_envelope_failed", e.to_string());
         }
+        // W0-05: checkpoint the daily-loss accumulator alongside orders (also
+        // captures a rollover-reset that happened without a fill).
+        self.persist_daily_loss();
     }
 
     /// Load persisted orders from disk and repopulate.
@@ -2879,6 +3011,11 @@ impl OrderManager {
     /// journal-driven `replay_and_recover` then queries the broker by
     /// client_order_id and resolves it to Working / Rejected / absent.
     pub(crate) fn load_from_disk(&mut self) {
+        // W0-05: restore the daily-loss accumulator first, independent of the
+        // orders file — the early-returns below must not skip it (a first-run
+        // with no orders file still has no sidecar; a parse failure on orders
+        // must not lose today's realized P&L).
+        self.load_daily_loss();
         let path = orders_state_path();
         let bytes = match std::fs::read(&path) {
             Ok(b) => b,
@@ -3846,6 +3983,12 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             });
         }
     }
+
+    // W0-06: after reconciling fills (which update realized P&L) and with fresh
+    // account data (unrealized P&L) available, check the daily-loss cap and
+    // auto-halt if breached. Runs every poll so an idle open position bleeding
+    // unrealized loss trips the breaker without needing a new order submit.
+    mgr.check_daily_loss_and_halt();
 
     // CC1: defer snapshot publish until ORDER_MANAGER guard drops. The deferred
     // snapshot captures the final reconciled state including all rule applications.
@@ -6954,6 +7097,108 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.price, Price::from_f32(105.0), "accepted modify keeps the new price");
         assert!(!o.modify_inflight);
+    }
+
+    #[test]
+    fn w0_06_daily_loss_breached_pure() {
+        // W0-06: the combined-loss rule. Realized-only breach:
+        assert!(daily_loss_breached(-2000.0, 0.0, true, 2000.0));
+        assert!(!daily_loss_breached(-1999.0, 0.0, true, 2000.0));
+        // Unrealized loss pushes a sub-cap realized loss over:
+        assert!(daily_loss_breached(-1500.0, -600.0, true, 2000.0));
+        // include_unrealized=false ignores the unrealized loss:
+        assert!(!daily_loss_breached(-1500.0, -600.0, false, 2000.0));
+        // cap=0 disables the check:
+        assert!(!daily_loss_breached(-9999.0, -9999.0, true, 0.0));
+        // a net gain never trips:
+        assert!(!daily_loss_breached(500.0, 200.0, true, 2000.0));
+    }
+
+    #[test]
+    fn w0_06_auto_halt_on_realized_breach() {
+        // W0-06: a breached daily loss auto-engages the halt WITHOUT a new
+        // submit. Realized alone breaches the cap so global unrealized (account
+        // data) can't affect the outcome. MockBroker.halt() is a no-op.
+        let mock = Arc::new(MockBroker::new());
+        let mut m = OrderManager::with_broker(mock as Arc<dyn Broker>);
+        m.paper_mode = false; // live path arms the auto-halt
+        m.armed = true;
+        m.initial_reconcile_done = true;
+        m.risk_limits.max_daily_loss = 1000.0;
+        m.daily_loss_date = today_day_index();
+        m.realized_pnl_today = -1200.0; // already past the cap
+        assert!(!m.halted);
+        m.check_daily_loss_and_halt();
+        assert!(m.halted, "a breached daily loss must auto-halt new risk");
+    }
+
+    #[test]
+    fn w0_06_no_auto_halt_in_paper_or_under_cap() {
+        let mock = Arc::new(MockBroker::new());
+        let mut m = OrderManager::with_broker(mock as Arc<dyn Broker>);
+        m.armed = true;
+        m.initial_reconcile_done = true;
+        m.risk_limits.max_daily_loss = 1000.0;
+        m.risk_limits.daily_loss_includes_unrealized = false; // isolate from global account data
+        m.daily_loss_date = today_day_index();
+
+        // Paper mode: never auto-halt (no real positions yet).
+        m.paper_mode = true;
+        m.realized_pnl_today = -1200.0;
+        m.check_daily_loss_and_halt();
+        assert!(!m.halted, "paper mode must not auto-halt");
+
+        // Live but under the cap: no halt.
+        m.paper_mode = false;
+        m.realized_pnl_today = -500.0;
+        m.check_daily_loss_and_halt();
+        assert!(!m.halted, "a loss under the cap must not halt");
+    }
+
+    #[test]
+    fn w0_05_restored_daily_loss_carries_same_day_resets_old() {
+        // W0-05: the rollover rule — same day carries the loss, an older day
+        // resets to $0 for today. Race-free (no fs, no env).
+        let today = 20_000u32;
+        let same = DailyLossState { realized_pnl_today: -350.0, daily_loss_date: today };
+        assert_eq!(restored_daily_loss(&same, today), (-350.0, today),
+            "same-day realized loss must be carried across a restart");
+        let old = DailyLossState { realized_pnl_today: -900.0, daily_loss_date: today - 3 };
+        assert_eq!(restored_daily_loss(&old, today), (0.0, today),
+            "a loss from an older day must reset to $0 for today");
+    }
+
+    #[test]
+    #[serial_test::serial(apex_orders_state_path)]
+    #[ignore = "sets the process-global APEX_ORDERS_STATE_PATH which races parallel \
+                tests; passes in isolation (`cargo test -- --ignored`). The rollover \
+                rule itself is covered race-free by \
+                w0_05_restored_daily_loss_carries_same_day_resets_old."]
+    fn w0_05_daily_loss_survives_restart_via_sidecar() {
+        // W0-05: the core bug — a restart must NOT zero today's realized loss.
+        let tmp = std::env::temp_dir().join(format!("apex_dl_rt_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("create tmp dir");
+        let orders_path = tmp.join("orders.json");
+        std::env::set_var("APEX_ORDERS_STATE_PATH", &orders_path);
+
+        // Manager 1: blow a loss today and persist.
+        let mut m1 = fresh_manager();
+        m1.realized_pnl_today = -420.0;
+        m1.daily_loss_date = today_day_index();
+        m1.persist_daily_loss();
+
+        // Manager 2 (simulated restart): starts at $0, load must restore.
+        let mut m2 = fresh_manager();
+        m2.realized_pnl_today = 0.0;
+        m2.load_daily_loss();
+
+        std::env::remove_var("APEX_ORDERS_STATE_PATH");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_eq!(m2.realized_pnl_today, -420.0,
+            "a restart must restore today's realized loss, not reset the daily-loss breaker to $0");
+        assert_eq!(m2.daily_loss_date, today_day_index());
     }
 
     #[test]
