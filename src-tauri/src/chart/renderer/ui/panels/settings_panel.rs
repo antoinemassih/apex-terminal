@@ -692,26 +692,74 @@ fn draw_notifications(ui: &mut egui::Ui, t: &Theme) {
 // ═══════════════════════════════════════════════════════════════
 // TRADING TAB
 // ═══════════════════════════════════════════════════════════════
+
+/// W0-11 (audit): transient "the trader clicked toward LIVE and must confirm"
+/// flag. A module static (not a persisted Watchlist field) because it is pure
+/// per-session UI state on the single UI thread — it must never survive a
+/// restart as an armed live switch.
+static GO_LIVE_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     // ── MODE (Paper / Live) ──
     PanelSection::new("MODE").show(ui, t, |ui, t| {
-        let was_paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
+        use crate::chart_renderer::trading::order_manager as om;
+        let was_paper = om::is_paper_mode();
         let mut paper = was_paper;
         setting_toggle_described(ui, "Paper Trading",
             Some("Route orders to the simulated account instead of the live broker."),
             t, &mut paper);
         if paper != was_paper {
-            if let Err(reason) = crate::chart_renderer::trading::order_manager::set_paper_mode(paper) {
-                // Blocked (live orders active) — revert the toggle so the UI
-                // stays consistent with the manager's actual state.
-                let _ = paper; // suppress unused; the toggle will re-read is_paper_mode() below.
-                crate::data::connectivity::errors_sink::report(
-                    crate::data::connectivity::errors_sink::ErrorLevel::Warn,
-                    "trading", "paper_mode_toggle_blocked", reason,
-                );
+            if paper {
+                // W0-11: live → paper is risk-REDUCING — apply immediately.
+                if let Err(reason) = om::set_paper_mode(true) {
+                    crate::data::connectivity::errors_sink::report(
+                        crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                        "trading", "paper_mode_toggle_blocked", reason);
+                }
+                GO_LIVE_ARMED.store(false, std::sync::atomic::Ordering::Relaxed);
+            } else {
+                // W0-11 (audit): paper → LIVE was a single unconfirmed click.
+                // Do NOT apply here — arm a confirmation instead. The toggle
+                // re-reads the actual mode below, so it springs back to Paper
+                // until the trader explicitly confirms.
+                GO_LIVE_ARMED.store(true, std::sync::atomic::Ordering::Relaxed);
             }
         }
-        let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
+
+        // W0-11: explicit confirmation gate for going LIVE.
+        if GO_LIVE_ARMED.load(std::sync::atomic::Ordering::Relaxed) && om::is_paper_mode() {
+            ui.add_space(gap_xs());
+            ui.add(SectionLabel::new(
+                "\u{26A0} Switch to LIVE? Real orders will hit your broker.")
+                .tiny().color(t.bear));
+            let blocked = om::is_trading_blocked();
+            if blocked {
+                ui.add(SectionLabel::new(
+                    "Kill switch / halt is engaged — release it before going live.")
+                    .tiny().color(t.warn));
+            }
+            ui.horizontal(|ui| {
+                // Confirm is disabled while trading is blocked.
+                let confirm = Button::new("Go LIVE")
+                    .variant(Variant::Primary).tint(t.bear).size(Size::Sm);
+                let confirm = if blocked { confirm.enabled(false) } else { confirm };
+                if confirm.show(ui, t).clicked() && !blocked {
+                    if let Err(reason) = om::set_paper_mode(false) {
+                        crate::data::connectivity::errors_sink::report(
+                            crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                            "trading", "go_live_blocked", reason);
+                    }
+                    GO_LIVE_ARMED.store(false, std::sync::atomic::Ordering::Relaxed);
+                }
+                if Button::new("Cancel").variant(Variant::Ghost).size(Size::Sm)
+                    .show(ui, t).clicked()
+                {
+                    GO_LIVE_ARMED.store(false, std::sync::atomic::Ordering::Relaxed);
+                }
+            });
+        }
+
+        let paper = om::is_paper_mode();
         let (label, color) = if paper {
             ("Paper mode — orders go to simulated account", t.bull)
         } else {
