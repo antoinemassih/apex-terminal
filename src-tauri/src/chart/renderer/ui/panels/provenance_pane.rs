@@ -73,6 +73,20 @@ pub fn request_open(lineage_id: impl Into<LineageId>) {
     }
 }
 
+/// W1-11 (audit): register the provenance-open callbacks that spike_popup and
+/// trade_plan_panel expose but that were NEVER wired — so the "[view
+/// provenance]" / "[🔍 prov]" buttons rendered as live controls yet did nothing
+/// on click (their `on_open_provenance` callback stayed None). Both now forward
+/// to `request_open`, which this pane drains. Call once at startup; last-wins.
+pub fn wire_provenance_buttons() {
+    super::spike_popup::set_provenance_callback(Box::new(|id: &str| {
+        request_open(id.to_string());
+    }));
+    super::trade_plan_panel::set_provenance_callback(Box::new(|ev| {
+        request_open(ev.lineage_id);
+    }));
+}
+
 /// Drain pending open-requests. Returns the most-recent only (older
 /// requests are dropped — only one pane to show).
 #[cfg(test)]

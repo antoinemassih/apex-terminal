@@ -258,6 +258,11 @@ fn main() {
     // live receiver.
     _scaffold_lib::init_live_feeds();
 
+    // W1-11 (audit): register the provenance-open callbacks so the spike-popup /
+    // trade-plan "[view provenance]" buttons actually open the provenance pane
+    // (they were rendered live but wired to nothing).
+    _scaffold_lib::chart_renderer::ui::panels::provenance_pane::wire_provenance_buttons();
+
     // Fetch initial data in background
     _scaffold_lib::chart_renderer::gpu::fetch_bars_background_pub("SPY".into(), "5m".into());
 
