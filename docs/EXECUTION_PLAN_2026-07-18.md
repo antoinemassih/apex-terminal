@@ -63,6 +63,18 @@ Work items in ID order within a wave unless a dependency says otherwise.
 # WAVE 0 — CLOSE THE MONEY EDGES
 *Goal: live trading is trustworthy. Nothing here is architecturally hard.*
 
+> **PROGRESS 2026-07-18 (batch 5)** — corpus **1067/1067** (0 real, 0 refused):
+> - **W0-08 DONE** `c87b1db6` — order-path staleness gate: get_snapshot_with_age
+>   + RiskLimits.max_quote_age_secs (5s default); BP snapshot fallback rejects a
+>   stale quote (fail-closed, overridable). +1 test (116 total).
+> - **W0-10 DONE** `16b1a638` — command palette destructive actions (flatten/
+>   cancel-all/reverse/half-size) need a two-step confirm (arm → red banner →
+>   second Enter); Esc cancels; chains never auto-run them.
+> - **W0-14 DEFERRED** — the finding's "compact DOM ladder fabricates depth" code
+>   is NOT in orders_panel (which renders positions, not a synthetic ladder).
+>   Needs the exact file:line from the data-pipeline appendix before acting —
+>   not guessing at a fabricated-depth fix.
+>
 > **PROGRESS 2026-07-18 (batch 4)** — each corpus **1067/1067** (0 real, 0 refused):
 > - **W0-12 DONE** `686782b1` — footprint overlay badged "ESTIMATED · shape from
 >   OHLC, not tape" with the fabricated order-flow specifics removed (delta,
