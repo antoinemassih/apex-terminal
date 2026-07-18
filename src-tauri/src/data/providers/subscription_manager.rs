@@ -130,6 +130,24 @@ pub struct SubscriptionManager {
     chain: Mutex<HashMap<String, Arc<ChainSub>>>,
 }
 
+/// W1-07 (audit): convert a replayed BarWire into the `AppendBar` ChartCommand
+/// the chart delivery path expects — the same mapping the live frame listener
+/// does (lib.rs). AppendBar (not LoadBars) because gap-fill bars are incremental
+/// fills; the live AppendBar handler orders/dedupes by timestamp, so no
+/// request-gen guard is needed. Pure → unit-testable without the global bus.
+fn bar_wire_to_append_cmd(b: &BarWire, is_mark: bool) -> crate::chart_renderer::ChartCommand {
+    crate::chart_renderer::ChartCommand::AppendBar {
+        symbol: b.symbol.clone(),
+        timeframe: b.timeframe.clone(),
+        bar: crate::chart_renderer::Bar {
+            open: b.open as f32, high: b.high as f32, low: b.low as f32,
+            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+        },
+        timestamp: b.time / 1000, // BarWire.time is ms; AppendBar wants seconds
+        mark: is_mark,
+    }
+}
+
 impl SubscriptionManager {
     pub fn new(provider: Arc<dyn MarketDataProvider>) -> Self {
         Self {
@@ -538,6 +556,9 @@ impl SubscriptionManager {
         timeframe: &str,
         source: BarSource,
     ) -> Result<usize, ApiError> {
+        // W1-07: mark-vs-last for the chart delivery below (matches! borrows so
+        // `source` can still move into `key`).
+        let is_mark = matches!(source, BarSource::Mark);
         let key = (symbol.to_string(), timeframe.to_string(), source);
         let (last_ts, fanout) = {
             let map = self.bars.lock();
@@ -569,9 +590,17 @@ impl SubscriptionManager {
         tracing::info!(
             target: "providers.sub_mgr",
             symbol, timeframe, last_ts, now_ms, replayed = n,
-            "gap_fill_on_reconnect: replayed bars through fanout"
+            "gap_fill_on_reconnect: replayed bars to NATIVE_CHART_TXS + fanout"
         );
         for b in bars {
+            // W1-07 (audit): DELIVER the replayed bars through the real chart
+            // path — the same NATIVE_CHART_TXS route live bars take (lib.rs frame
+            // listener). Before this the bars were only pushed into `fanout`,
+            // whose receivers are intentionally dropped by design
+            // (providers/mod.rs), so gap-fill replay went NOWHERE.
+            crate::send_to_native_chart(bar_wire_to_append_cmd(&b, is_mark));
+            // Keep the subscription fanout push too (no live receivers today, but
+            // preserves the documented subscription mechanism / any future use).
             let _ = fanout.send(b);
         }
         Ok(n)
@@ -1000,6 +1029,33 @@ mod tests {
             time: seq,
             open: 0.0, high: 0.0, low: 0.0, close: 0.0, volume: 0.0,
             vwap: 0.0, trades: 0, closed: true,
+        }
+    }
+
+    #[test]
+    fn w1_07_gap_fill_bar_maps_to_append_cmd() {
+        // W1-07: the gap-fill delivery now routes replayed bars into the chart's
+        // AppendBar path. Verify the field mapping (the risky part) matches the
+        // live frame listener: ms→sec timestamp, OHLCV as f32, symbol/tf/mark.
+        use super::bar_wire_to_append_cmd;
+        let mut b = super::tests::test_bar("SPY", "5m", 1_700_000_000_000); // ms
+        b.open = 450.5; b.high = 452.0; b.low = 449.0; b.close = 451.25; b.volume = 12345.0;
+        match bar_wire_to_append_cmd(&b, false) {
+            crate::chart_renderer::ChartCommand::AppendBar { symbol, timeframe, bar, timestamp, mark } => {
+                assert_eq!(symbol, "SPY");
+                assert_eq!(timeframe, "5m");
+                assert_eq!(timestamp, 1_700_000_000, "ms must be converted to seconds");
+                assert!(!mark, "Last source → not a mark bar");
+                assert_eq!(bar.close, 451.25_f32);
+                assert_eq!(bar.open, 450.5_f32);
+                assert_eq!(bar.volume, 12345.0_f32);
+            }
+            other => panic!("expected AppendBar, got {other:?}"),
+        }
+        // Mark source flag is threaded through.
+        match bar_wire_to_append_cmd(&b, true) {
+            crate::chart_renderer::ChartCommand::AppendBar { mark, .. } => assert!(mark),
+            other => panic!("expected AppendBar, got {other:?}"),
         }
     }
 
