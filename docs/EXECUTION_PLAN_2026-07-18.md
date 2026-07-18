@@ -345,6 +345,15 @@ the SIMULATED badge otherwise. No synthetic depth without a badge.
 >   their OWN symbol (symbol-keyed live snapshot when the pane shows a different
 >   symbol), so they no longer silently die when a pane switches symbol while
 >   still shown ACTIVE. Pure alert_eval_price helper + 3 unit tests.
+> - **W1-07 DONE** `a88d1982` (corpus 1067/1067) — gap-fill-on-reconnect now
+>   DELIVERS. Replayed bars (REST fetch from last_seen_ts) were only pushed into
+>   the receiver-less subscription fanout (providers/mod.rs drops those by
+>   design), so the whole built+tested gap-fill mechanism went nowhere. Now each
+>   replayed bar routes through crate::send_to_native_chart as a
+>   ChartCommand::AppendBar — the exact live-bar path (lib.rs). Pure
+>   bar_wire_to_append_cmd mapping helper + 1 unit test. (The 3rd
+>   built-but-orphaned delivery fixed this session — cf. load_all, provenance,
+>   evaluate_drawings_against_bar.)
 > - **W1-03 DONE** `b68a0950` (corpus 1067/1067) — fresh-machine watchlist wipe.
 >   load_watchlists now falls back to watchlist_db::load_all() (the orphaned DB
 >   read) on a missing/corrupt local cache before defaults — the cross-machine
