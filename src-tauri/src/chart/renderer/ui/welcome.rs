@@ -32,10 +32,18 @@ pub struct WelcomeWizard {
     pub step: u8,
     /// True if the user clicked "Skip for now" on the broker step.
     pub broker_skipped: bool,
-    /// Daily loss cap (USD) — populated in step 3, written to TradingDefaults on Finish.
+    /// Daily loss cap (USD) — populated in step 3, applied to
+    /// `RiskLimits.max_daily_loss` on Finish (W0-09).
     pub daily_loss_cap: f32,
-    /// Max position size as % of account — populated in step 3, written to TradingDefaults on Finish.
+    /// Max position size as % of account — informational only. There is no
+    /// account-size-aware conversion to `max_position_qty` at wizard time (the
+    /// account may not be connected yet), so this is NOT enforced from here;
+    /// position sizing is configured in Settings once connected (disclosed in
+    /// the risk step). W0-09.
     pub max_position_pct: f32,
+    /// W0-09: true only when the user reached and clicked "Get Started" at the
+    /// final step — distinguishes Finish (apply risk limits) from Skip (don't).
+    pub finished: bool,
 }
 
 impl WelcomeWizard {
@@ -47,6 +55,7 @@ impl WelcomeWizard {
             broker_skipped: false,
             daily_loss_cap: 500.0,
             max_position_pct: 5.0,
+            finished: false,
         }
     }
 
@@ -177,6 +186,10 @@ impl WelcomeWizard {
                         {
                             if self.step >= 3 {
                                 dismiss = true;
+                                // W0-09: reached the final step and confirmed →
+                                // this is Finish, not Skip. The caller applies
+                                // the captured risk limits only when finished.
+                                self.finished = true;
                             } else {
                                 advance = true;
                             }
@@ -419,7 +432,7 @@ fn draw_step_risk(
     ui.horizontal(|ui| {
         ui.add_space(220.0 + st::gap_md());
         ui.label(
-            RichText::new("Apex will warn you when this amount is reached in a single day.")
+            RichText::new("Apex halts new trades when your loss (realized + unrealized) reaches this in a day.")
                 .font(FontId::proportional(st::font_sm()))
                 .color(theme.dim),
         );
@@ -451,7 +464,10 @@ fn draw_step_risk(
     ui.horizontal(|ui| {
         ui.add_space(220.0 + st::gap_md());
         ui.label(
-            RichText::new("Restricts a single position to this percentage of your account equity.")
+            // W0-09: honest disclosure — this % is not enforced from here (no
+            // account-size-aware conversion at first run). Position sizing lives
+            // in Settings → Trading once an account is connected.
+            RichText::new("Set your position-size limit in Settings → Trading once your account is connected.")
                 .font(FontId::proportional(st::font_sm()))
                 .color(theme.dim),
         );

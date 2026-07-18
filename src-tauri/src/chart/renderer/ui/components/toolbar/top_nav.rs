@@ -1476,6 +1476,20 @@ pub(crate) fn render(
             wiz.show(ctx, t, conn_panel_open)
         };
         if !still_open {
+            // W0-09 (audit): the wizard captured a daily-loss cap and then
+            // DISCARDED it — never reaching the enforced risk gate. Apply it now,
+            // but only on Finish (not Skip). daily_loss_cap → RiskLimits.
+            // max_daily_loss, which the W0-05/06 daily-loss breaker enforces.
+            // (max_position_pct has no account-size-aware home yet — disclosed in
+            // the wizard's risk step, configured in Settings once connected.)
+            if let Some(wiz) = watchlist.welcome_wizard.as_ref() {
+                if wiz.finished {
+                    let cap = wiz.daily_loss_cap as f64;
+                    let mut limits = crate::chart_renderer::trading::order_manager::get_risk_limits();
+                    limits.max_daily_loss = cap.max(0.0);
+                    crate::chart_renderer::trading::order_manager::update_risk_limits(limits);
+                }
+            }
             watchlist.update_ui_settings(|s| {
                 s.has_seen_welcome = true;
                 s.welcome_step_resume = 0;
