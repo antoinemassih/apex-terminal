@@ -341,6 +341,10 @@ the SIMULATED badge otherwise. No synthetic depth without a badge.
 >   lost: PG-unavailable at startup → errors_sink warning (was a bare eprintln);
 >   dead-letter queue now reports each drop + spills to state/drawings_dead_
 >   letter.jsonl (lossless past cap 64); is_persisting() accessor added.
+> - **W1-05 DONE** `bb529a3c` (corpus 1067/1067) — price alerts evaluate against
+>   their OWN symbol (symbol-keyed live snapshot when the pane shows a different
+>   symbol), so they no longer silently die when a pane switches symbol while
+>   still shown ACTIVE. Pure alert_eval_price helper + 3 unit tests.
 > - **W1-02b DEFERRED** — the async reconnect loop (re-establish the worker when
 >   PG returns, buffer saves-while-down, drain the JSONL spill) + wiring the
 >   is_persisting() status chip into the UI. Needs a fresh session (async
