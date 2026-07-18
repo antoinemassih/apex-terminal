@@ -4253,6 +4253,74 @@ fn tick_simulation(chart: &mut Chart) {
             );
         }
     }
+
+    // ── W1-10 (audit): drawing-anchored alerts ──
+    // The crossing math (compute::evaluate_drawings_against_bar) was COMPLETE but
+    // had ZERO callers — the bell toggle (properties_bar.rs) only set
+    // Drawing.alert_enabled and POSTed a backend. Evaluate alert_enabled drawings
+    // against the latest bar CLIENT-SIDE and fire once per drawing (deduped by id
+    // in a session-global set, mirroring price_alert.triggered).
+    if let (Some(last_bar), Some(&bar_time)) = (chart.bars.last(), chart.timestamps.last()) {
+        let candidates: Vec<(String, String, serde_json::Value)> = chart.drawings.iter()
+            .filter(|d| d.alert_enabled && !drawing_alert_already_fired(&d.id))
+            .filter_map(|d| drawing_to_alert_params(d).map(|(dt, p)| (d.id.clone(), dt.to_string(), p)))
+            .collect();
+        if !candidates.is_empty() {
+            let (bo, bh, bl, bc) = (
+                last_bar.open as f64, last_bar.high as f64, last_bar.low as f64, last_bar.close as f64,
+            );
+            let fired = crate::chart_renderer::compute::evaluate_drawings_against_bar(
+                &candidates, bar_time, bo, bh, bl, bc, &chart.timestamps);
+            for (id, _atype, msg) in fired {
+                mark_drawing_alert_fired(&id);
+                let full = format!("{}: {}", chart.symbol, msg);
+                eprintln!("[DRAWING ALERT] {} -- sound notification placeholder", full);
+                crate::chart_renderer::ui::tools::notification::push_pending(
+                    crate::chart_renderer::ui::tools::notification::Notification::new(
+                        full, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning)
+                        .with_source("drawing_alert"));
+            }
+        }
+    }
+}
+
+/// W1-10 (audit): map a drawing to the (drawing_type, params_json) shape
+/// `compute::evaluate_drawings_against_bar` expects. Only the kinds that function
+/// evaluates (hline / trendline / ray / fibonacci / channel / fibchannel) are
+/// mapped; every other kind returns None (no alert semantics). Mirrors the field
+/// extraction in `drawing_to_db`.
+fn drawing_to_alert_params(d: &Drawing) -> Option<(&'static str, serde_json::Value)> {
+    use serde_json::json;
+    match &d.kind {
+        DrawingKind::HLine { price } =>
+            Some(("hline", json!({ "price": *price }))),
+        DrawingKind::TrendLine { price0, time0, price1, time1 } =>
+            Some(("trendline", json!({ "price0": *price0, "time0": *time0, "price1": *price1, "time1": *time1 }))),
+        DrawingKind::Ray { price0, time0, price1, time1 } =>
+            Some(("ray", json!({ "price0": *price0, "time0": *time0, "price1": *price1, "time1": *time1 }))),
+        DrawingKind::Fibonacci { price0, price1, .. } =>
+            Some(("fibonacci", json!({ "price0": *price0, "price1": *price1 }))),
+        DrawingKind::Channel { price0, time0, price1, time1, offset } =>
+            Some(("channel", json!({ "price0": *price0, "time0": *time0, "price1": *price1, "time1": *time1, "offset": *offset }))),
+        DrawingKind::FibChannel { price0, time0, price1, time1, offset } =>
+            Some(("fibchannel", json!({ "price0": *price0, "time0": *time0, "price1": *price1, "time1": *time1, "offset": *offset }))),
+        _ => None,
+    }
+}
+
+/// W1-10: session-global set of drawing ids whose alert has already fired, so a
+/// crossing notifies ONCE (not every frame). Drawing has `alert_enabled` but no
+/// fired flag, and ids are globally-unique UUIDs, so a static set is simplest and
+/// needs no change to the Chart/Drawing structs.
+fn drawing_alerts_fired_set() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static S: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    S.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+fn drawing_alert_already_fired(id: &str) -> bool {
+    drawing_alerts_fired_set().lock().map(|s| s.contains(id)).unwrap_or(false)
+}
+fn mark_drawing_alert_fired(id: &str) {
+    if let Ok(mut s) = drawing_alerts_fired_set().lock() { s.insert(id.to_string()); }
 }
 
 /// W1-05 (audit): pick the price to evaluate a price alert against. The pane's
@@ -9293,6 +9361,50 @@ mod w1_05_alert_eval_price_tests {
         // A non-positive snapshot is treated as no-price.
         let p = alert_eval_price("SPY", "QQQ", Some(500.0), |_| Some(0.0));
         assert_eq!(p, None);
+    }
+}
+
+#[cfg(test)]
+mod w1_10_drawing_alert_tests {
+    use super::{drawing_to_alert_params, Drawing, DrawingKind};
+
+    #[test]
+    fn maps_supported_kinds_and_ignores_others() {
+        let hl = Drawing::new("d".into(), DrawingKind::HLine { price: 100.0 });
+        let (dt, p) = drawing_to_alert_params(&hl).expect("hline maps");
+        assert_eq!(dt, "hline");
+        assert_eq!(p.get("price").and_then(|v| v.as_f64()), Some(100.0));
+
+        let tl = Drawing::new("d".into(), DrawingKind::TrendLine {
+            price0: 10.0, time0: 1, price1: 20.0, time1: 2 });
+        let (dt, p) = drawing_to_alert_params(&tl).expect("trendline maps");
+        assert_eq!(dt, "trendline");
+        assert_eq!(p.get("time1").and_then(|v| v.as_i64()), Some(2));
+        assert_eq!(p.get("price1").and_then(|v| v.as_f64()), Some(20.0));
+
+        // A kind with no alert semantics maps to None (not evaluated).
+        let hz = Drawing::new("d".into(), DrawingKind::HZone { price0: 1.0, price1: 2.0 });
+        assert!(drawing_to_alert_params(&hz).is_none(), "hzone has no alert semantics");
+    }
+
+    #[test]
+    fn hline_fires_on_cross_not_otherwise() {
+        // W1-10 end-to-end: converter output feeds the (previously orphaned)
+        // crossing math and fires exactly when the bar straddles the line.
+        let d = Drawing::new("hl1".into(), DrawingKind::HLine { price: 100.0 });
+        let (dt, params) = drawing_to_alert_params(&d).unwrap();
+        let candidates = vec![("hl1".to_string(), dt.to_string(), params)];
+
+        // Bar low 99 / high 101 contains the line → crosses.
+        let fired = crate::chart_renderer::compute::evaluate_drawings_against_bar(
+            &candidates, 1000, 99.5, 101.0, 99.0, 100.5, &[1000]);
+        assert_eq!(fired.len(), 1, "line inside the bar range must fire");
+        assert_eq!(fired[0].0, "hl1");
+
+        // Bar entirely below the line → no cross.
+        let none = crate::chart_renderer::compute::evaluate_drawings_against_bar(
+            &candidates, 1000, 92.0, 95.0, 90.0, 93.0, &[1000]);
+        assert!(none.is_empty(), "a bar that never reaches the line must not fire");
     }
 }
 
