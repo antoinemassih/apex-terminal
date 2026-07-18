@@ -345,6 +345,11 @@ the SIMULATED badge otherwise. No synthetic depth without a badge.
 >   their OWN symbol (symbol-keyed live snapshot when the pane shows a different
 >   symbol), so they no longer silently die when a pane switches symbol while
 >   still shown ACTIVE. Pure alert_eval_price helper + 3 unit tests.
+> - **W1-03 DONE** `b68a0950` (corpus 1067/1067) — fresh-machine watchlist wipe.
+>   load_watchlists now falls back to watchlist_db::load_all() (the orphaned DB
+>   read) on a missing/corrupt local cache before defaults — the cross-machine
+>   restore the comment always promised. save_watchlists refuses an EMPTY snapshot
+>   so a delete-all-reinsert can't wipe a populated server. +2 unit tests.
 > - **W1-11 DONE** `739745e4` (corpus 1067/1067) — the spike-popup "[view
 >   provenance]" / trade-plan "[🔍 prov]" buttons rendered live but their
 >   on_open_provenance callback was never registered → dead. Now wired at startup
