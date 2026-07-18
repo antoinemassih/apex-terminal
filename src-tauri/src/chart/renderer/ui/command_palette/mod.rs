@@ -131,9 +131,14 @@ pub(crate) fn draw(
                         watchlist.cmd_palette.sel = 0;
                         watchlist.cmd_palette.ai_mode = false;
                     }
+                    clear_pending_destructive(); // W0-10: never carry an armed confirm across open/close
                 }
                 "modal.dismiss" if watchlist.cmd_palette.open => {
-                    if watchlist.cmd_palette.ai_mode { watchlist.cmd_palette.ai_mode = false; }
+                    // W0-10: Esc cancels an armed destructive confirm first; a
+                    // second Esc closes the palette.
+                    if PENDING_DESTRUCTIVE.lock().ok().and_then(|g| g.clone()).is_some() {
+                        clear_pending_destructive();
+                    } else if watchlist.cmd_palette.ai_mode { watchlist.cmd_palette.ai_mode = false; }
                     else { watchlist.cmd_palette.open = false; }
                 }
                 _ => {}
@@ -196,6 +201,30 @@ pub(crate) fn draw(
 // ────────────────────────────────────────────────────────────────────────────
 // Normal mode
 // ────────────────────────────────────────────────────────────────────────────
+
+/// W0-10 (audit): account-wide destructive palette commands (flatten/cancel-all/
+/// reverse/half-size) used to run on a single Enter with zero confirmation.
+/// These require a second, explicit confirmation. The pending id is a module
+/// static (transient per-session UI state on the single UI thread).
+static PENDING_DESTRUCTIVE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn is_destructive_cmd(id: &str) -> bool {
+    matches!(id, "cmd:flatten" | "cmd:cancel" | "cmd:reverse" | "cmd:halfsize")
+}
+
+fn destructive_confirm_label(id: &str) -> &'static str {
+    match id {
+        "cmd:flatten" => "Flatten ALL open positions?",
+        "cmd:cancel" => "Cancel ALL working orders?",
+        "cmd:reverse" => "REVERSE every open position?",
+        "cmd:halfsize" => "Halve every open position?",
+        _ => "Run this account-wide action?",
+    }
+}
+
+fn clear_pending_destructive() {
+    if let Ok(mut g) = PENDING_DESTRUCTIVE.lock() { *g = None; }
+}
 
 fn draw_normal_mode(
     ui: &mut egui::Ui,
@@ -511,28 +540,52 @@ fn draw_normal_mode(
         });
     });
 
+    // W0-10: confirmation banner for an armed destructive command.
+    let pending_destructive = PENDING_DESTRUCTIVE.lock().ok().and_then(|g| g.clone());
+    if let Some(ref pid) = pending_destructive {
+        ui.add_space(gap_sm());
+        ui.horizontal(|ui| {
+            ui.add(BodyLabel::new(&format!("\u{26A0} {}", destructive_confirm_label(pid)))
+                .color(t.bear));
+            ui.add_space(gap_md());
+            ui.add(BodyLabel::new("Enter to confirm · Esc to cancel").size(font_sm()).color(t.dim));
+        });
+    }
+
     // Execute
     if let Some(idx) = execute_idx {
         let entry = watchlist.cmd_palette.results.get(idx).cloned();
         if let Some((id, _label, _cat)) = entry {
-            execute(&id, watchlist, panes, layout, active_pane);
-            watchlist.cmd_palette.recent.retain(|r| r != &id);
-            watchlist.cmd_palette.recent.insert(0, id.clone());
-            watchlist.cmd_palette.recent.truncate(50);
-            *watchlist.cmd_palette.freq.entry(id.clone()).or_insert(0) += 1;
+            // W0-10: a destructive account-wide command must be confirmed. On the
+            // first Enter, arm it and render the banner (above); it runs only on
+            // the second Enter, when it is the already-armed id.
+            let already_armed = pending_destructive.as_deref() == Some(id.as_str());
+            if is_destructive_cmd(&id) && !already_armed {
+                if let Ok(mut g) = PENDING_DESTRUCTIVE.lock() { *g = Some(id.clone()); }
+                // Keep the palette open, do NOT execute yet.
+            } else {
+                clear_pending_destructive();
+                execute(&id, watchlist, panes, layout, active_pane);
+                watchlist.cmd_palette.recent.retain(|r| r != &id);
+                watchlist.cmd_palette.recent.insert(0, id.clone());
+                watchlist.cmd_palette.recent.truncate(50);
+                *watchlist.cmd_palette.freq.entry(id.clone()).or_insert(0) += 1;
 
-            // Chain: run remaining steps
-            if is_chain {
-                for step in chain.iter().skip(1) {
-                    let step = step.trim();
-                    if let Some(chain_id) = resolve_chain_step(step, watchlist) {
-                        execute(&chain_id, watchlist, panes, layout, active_pane);
+                // Chain: run remaining steps. W0-10: never auto-run a destructive
+                // command as a silent chain step — it would bypass the confirm.
+                if is_chain {
+                    for step in chain.iter().skip(1) {
+                        let step = step.trim();
+                        if let Some(chain_id) = resolve_chain_step(step, watchlist) {
+                            if is_destructive_cmd(&chain_id) { continue; }
+                            execute(&chain_id, watchlist, panes, layout, active_pane);
+                        }
                     }
                 }
-            }
 
-            if !watchlist.cmd_palette.ai_mode {
-                watchlist.cmd_palette.open = false;
+                if !watchlist.cmd_palette.ai_mode {
+                    watchlist.cmd_palette.open = false;
+                }
             }
         }
     }
