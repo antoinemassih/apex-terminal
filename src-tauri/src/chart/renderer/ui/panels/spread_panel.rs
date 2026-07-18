@@ -465,6 +465,16 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         do_submit = true;
                     }
                 });
+                // W0-01 (audit): the options chain isn't wired yet, so legs carry
+                // no live contract ids or price — a LIVE submit is blocked at the
+                // order manager (conId=0 / $0 limit). Disclose it so the panel
+                // doesn't look silently broken. Remove once W2-02 lands.
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.add(MonospaceCode::new(
+                        "\u{26A0} Needs options chain (W2-02): legs have no live contract/price — live submit is blocked.")
+                        .size_px(8.5).color(t.warn));
+                });
                 ui.add_space(gap_sm());
 
                 // ── Submit result message ──

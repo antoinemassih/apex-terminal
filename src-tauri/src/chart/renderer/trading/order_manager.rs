@@ -2428,6 +2428,24 @@ impl OrderManager {
             return OrderResult::Rejected("Combo requires at least one leg".into());
         }
 
+        // W0-01 (audit): a combo must never reach the LIVE broker with unresolved
+        // contract ids (conId=0) or a $0 limit price. The Spread Builder currently
+        // hardcodes both (no options chain wired), and validate_risk below is
+        // TOOTHLESS against a $0 order — the fat-finger check skips when price<=0
+        // and the notional check computes qty*$0=$0, so both pass. Reject
+        // explicitly. The $0-limit guard applies always (a limit order at $0 is
+        // never valid); the conId guard is live-only (paper conIds are inherently
+        // mock and paper is a harmless local sim). Removed once W2-02 wires real
+        // contract ids + prices from the options chain.
+        if order_type == "limit" && limit_price.map_or(true, |p| p <= 0.0) {
+            return OrderResult::Rejected(
+                "combo limit price must be > 0 — refusing a $0 limit order".into());
+        }
+        if !self.paper_mode && legs.iter().any(|l| l.con_id == 0) {
+            return OrderResult::Rejected(
+                "combo has unresolved contract ids (conId=0) — options chain not wired; cannot submit live".into());
+        }
+
         // Shared financial risk validation — combo path was previously unchecked.
         {
             let paper = self.paper_mode;
@@ -7097,6 +7115,36 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.price, Price::from_f32(105.0), "accepted modify keeps the new price");
         assert!(!o.modify_inflight);
+    }
+
+    #[test]
+    fn w0_01_combo_rejects_zero_limit_and_zero_conid() {
+        // W0-01: a $0 limit combo is rejected (paper and live); a conId=0 combo
+        // is rejected on the LIVE path; a real combo passes the guard.
+        let mock = Arc::new(MockBroker::new());
+        let mut m = OrderManager::with_broker(mock as Arc<dyn Broker>);
+        m.armed = true;
+        m.initial_reconcile_done = true;
+
+        let legs0 = vec![ComboLeg { con_id: 0, ratio: 1, side: "buy".into() }];
+
+        // $0 limit rejected even in paper.
+        m.paper_mode = true;
+        let r = m.submit_combo("SPY", legs0.clone(), "buy", 1, "limit", Some(0.0));
+        assert!(matches!(&r, OrderResult::Rejected(s) if s.contains("limit price")),
+            "$0 limit combo must be rejected, got {:?}", r);
+
+        // conId=0 rejected on the live path even with a real price.
+        m.paper_mode = false;
+        let r = m.submit_combo("SPY", legs0, "buy", 1, "limit", Some(1.25));
+        assert!(matches!(&r, OrderResult::Rejected(s) if s.contains("conId")),
+            "live combo with conId=0 must be rejected, got {:?}", r);
+
+        // A real combo (resolved conId + real price) passes the guard.
+        let legs_ok = vec![ComboLeg { con_id: 12345, ratio: 1, side: "buy".into() }];
+        let r = m.submit_combo("SPY", legs_ok, "buy", 1, "limit", Some(1.25));
+        assert!(matches!(&r, OrderResult::Accepted(_)),
+            "valid combo must pass the W0-01 guard, got {:?}", r);
     }
 
     #[test]
