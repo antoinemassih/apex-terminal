@@ -4247,7 +4247,11 @@ fn tick_simulation(chart: &mut Chart) {
             alert.triggered = true;
             let dir = if alert.above { "above" } else { "below" };
             let msg = format!("{} alert: price {} {:.2}", alert.symbol, dir, alert.price);
-            eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
+            // W1-04 (audit): real out-of-app delivery (audible + webhook) —
+            // replaces the "sound notification placeholder" eprintln that meant
+            // a trader who stepped away was never actually notified.
+            crate::chart_renderer::ui::tools::alert_delivery::deliver(
+                &alert.symbol, &msg, Some(alert.price));
             crate::chart_renderer::ui::tools::notification::push_pending(
                 crate::chart_renderer::ui::tools::notification::Notification::new(msg, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(alert.price).with_source("price_alert")
             );
@@ -4274,7 +4278,11 @@ fn tick_simulation(chart: &mut Chart) {
             for (id, _atype, msg) in fired {
                 mark_drawing_alert_fired(&id);
                 let full = format!("{}: {}", chart.symbol, msg);
-                eprintln!("[DRAWING ALERT] {} -- sound notification placeholder", full);
+                // W1-04: same out-of-app delivery for drawing-crossing alerts.
+                // No single "alert price" here, so price is None (never fabricate
+                // a 0.0 — the payload omits the field).
+                crate::chart_renderer::ui::tools::alert_delivery::deliver(
+                    &chart.symbol, &full, None);
                 crate::chart_renderer::ui::tools::notification::push_pending(
                     crate::chart_renderer::ui::tools::notification::Notification::new(
                         full, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning)
