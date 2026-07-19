@@ -462,6 +462,30 @@ push, nothing reaches a trader who stepped away.
 **Accept:** manual fire in paper mode; unit test the dispatch fan-out (mock
 sinks). Corpus-neutral.
 
+**STATUS: DONE** (`267aa4d2`, `8596faa7`) — corpus 1067/1067, 0 real failures.
+Shipped items 1 and 3 with **zero new crates**:
+- Sound: Win32 `MessageBeep(MB_ICONEXCLAMATION)` via a `windows-sys` feature
+  already on an existing dep. On by default (`APEX_ALERT_MUTE=1` silences) —
+  an alert that makes no noise is the bug being fixed.
+- Webhook: `reqwest` POST to `APEX_ALERT_WEBHOOK`. Payload is deliberately
+  universal — `title`/`message` for ntfy/Pushover, `content` for Discord — so
+  a phone push needs no push infra, just a relay URL. `price` is **omitted**
+  when absent (drawing-crossing alerts have no single alert price) rather than
+  fabricated as 0.0.
+- Both wired into BOTH fire paths in `gpu.rs` (price alerts + W1-10 drawing
+  alerts), replacing the `eprintln!` placeholder. Failures surface through
+  `errors_sink`, so a misconfigured webhook is visible instead of silently
+  eating the trader's alerts.
+
+Item 2 (OS toast) deferred to **W1-04b** — it needs a new crate, which is a
+separate decision.
+
+**Hard-won note:** the beep MUST NOT run inline. `deliver()` is called from the
+alert-eval path inside the render loop, and `MessageBeep` only behaves
+asynchronously once the audio device is open; otherwise it can block. Blocking
+the render thread mid-frame is unacceptable here. It now dispatches to a guarded
+thread (`8596faa7`).
+
 ### W1-05 · Alerts: decouple evaluation from pane symbol  [P0 · M]
 **Evidence:** a price alert silently stops evaluating — while still listed
 ACTIVE — when the pane it was created on switches symbol.
