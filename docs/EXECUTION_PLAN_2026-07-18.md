@@ -864,6 +864,33 @@ state: adding an indicator = one file implementing the trait + registration.
 as today (computed on data change, cached) — PANE_RS_SPLIT_PLAN.md rules
 apply; benchmark before/after per stage.
 
+**STAGE 1: DONE** (`54d9e255`) — corpus 1067/1067. Measured cost of the status
+quo before starting: **210 references across 8 files** (indicators_panel 47,
+gpu 38, pane/core 31, indicator_editor 26, dev_inspector 20, chart_controls 10,
+workspace_persist 1, pane_context_menu 1).
+
+Shipped: `chart/indicators/` (outside gpu.rs, per the W4-01 direction) with
+`trait Indicator`, `Ohlcv` (borrowed slices), `Params` (existing period/param2..4
+layout incl. the `0.0 == unset` convention), multi-lane `IndicatorOutput`
+matching the current struct so Stage 2 is a direct assignment, and all 19
+built-ins **wrapping** the existing `renderer::compute` fns — no math
+reimplemented, every default transcribed from `recompute_indicators`.
+
+**The registry is load-bearing from day one.** `IndicatorType::label()`,
+`default_period()` and `category()` DELEGATE to it; only `registry_id()` remains
+a match. A registry sitting orphaned beside the enum would have been the seventh
+instance of this codebase's zero-callers defect class. A guard test pins all 19
+(label, period, category) to the exact values the deleted match arms returned.
+
+**Remaining stages** (each its own corpus-gated commit):
+- **Stage 2** — route `recompute_indicators` through `compute()` per indicator.
+  This also kills the "silently NaN" P1: the enum's own `compute()` returns
+  all-NaN for every OHLCV indicator, with the real work special-cased elsewhere.
+- **Stage 3** — persist by string id + params (migrate from enum ordinal).
+  `registry_id()` strings are the persistence key and must not change once
+  shipped.
+- **Stage 4** — enum-match-site ratchet in quality_gate.py; drive 210 down.
+
 ### W3-02 · Embed Rhai: custom indicators  [P1 · L]
 **Depends:** W3-01.
 **Do:**
