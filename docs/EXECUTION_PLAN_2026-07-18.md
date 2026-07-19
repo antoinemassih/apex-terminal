@@ -612,6 +612,29 @@ drive overlay updates; exiting replay clears overlay state.
 **Accept:** corpus scenario: enable replay overlay, step N ticks, assert
 overlay bar count grows; disable, assert cleared.
 
+**STATUS: DONE** (`6ca63318`) — corpus 1067/1067. **This completes Wave 1.**
+
+The feature was built TWICE and never joined — overlay type + Chart API + paint
+pass on `replay-overlay-hook`, the panel on `sota-terminal-replay`. A complete
+render pipeline behind a dead toggle.
+
+The blocker was the DATA path, not rendering. Full OHLCV was sitting unused in
+the WS envelope at `env.data["bar"]`; `ReplayEvent` drops it on purpose to keep
+the events log cheap, and it STAYS minimal — the overlay bar travels its own
+`ChartCommand` path rather than widening a type every replay frame pays for.
+
+**The rule that must not be relaxed:** `ws.rs::replay_overlay_bar()` returns
+`None` if any of open/high/low/close/time is missing — no bar is drawn. A candle
+rebuilt from the close alone is fabricated order data rendered as real, i.e. the
+W0-12 footprint defect. Four of the five unit tests exist solely to pin this.
+Volume defaults to 0.0 (a missing volume understates a bar; a missing price leg
+misstates it).
+
+Install is sent only when the user ticks the box, and the bar handler appends
+only where an overlay already exists — `append_replay_bar` auto-creates one, so
+an ungated handler would make every pane sprout an overlay nobody asked for.
+Toggle works mid-run; Stop clears unconditionally.
+
 ### W1-10 · Alerts-on-drawings: wire the math  [P1 · M]
 **Evidence:** the UI toggle is a fire-and-forget curl with discarded result;
 the trigger math (price crossing a trendline's y-at-time) is unwired.
