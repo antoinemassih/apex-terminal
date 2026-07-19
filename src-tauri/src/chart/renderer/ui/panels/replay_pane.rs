@@ -393,12 +393,33 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
             .fg(col).min_size(egui::vec2(28.0, 18.0)).show(ui, t).clicked()
         {
             s.overlay_on_chart = !s.overlay_on_chart;
+            // W1-09: honour the toggle mid-session. Turning it OFF must remove
+            // the overlay immediately — the alternative is replay candles
+            // painted over live price after the user asked for them to stop.
+            // Turning it ON installs one for the symbols currently replaying,
+            // so the box works during a run, not only before Start.
+            if s.overlay_on_chart {
+                let symbols: Vec<String> = s.symbols_str.split(',')
+                    .map(|x| x.trim().to_uppercase())
+                    .filter(|x| !x.is_empty())
+                    .collect();
+                if !symbols.is_empty() {
+                    crate::send_to_native_chart(
+                        crate::chart_renderer::ChartCommand::InstallReplayOverlay {
+                            symbols,
+                            label: format!("Replay: {}", s.from_str),
+                        },
+                    );
+                }
+            } else {
+                crate::send_to_native_chart(
+                    crate::chart_renderer::ChartCommand::ClearReplayOverlay,
+                );
+            }
         }
         ui.add(MonospaceCode::new("overlay replay on live chart")
             .color(if s.overlay_on_chart { t.text } else { t.dim }));
     });
-    ui.add(MonospaceCode::new("  (UI wiring stub — chart pane integration is a follow-up)")
-        .color(color_half(t.dim)));
 }
 
 fn draw_progress(ui: &mut egui::Ui, s: &ReplayPaneState, t: &Theme) {
@@ -633,29 +654,34 @@ fn handle_start() {
                 s.rx_status = Some(srx);
                 s.last_status_poll = Some(Instant::now());
 
-                // TODO(overlay) — W1-09 (audit) CORRECTION: this comment used to
-                // say "the chart exposes no hook". That is STALE and wrong: the
-                // chart overlay API is complete and rendered —
-                // Chart::set_replay_overlay / append_replay_bar /
-                // clear_replay_overlay (gpu.rs) and the paint pass at
-                // render/pane/core.rs:2771.
+                // W1-09 (audit) DONE — the overlay is wired.
                 //
-                // The REAL blocker is the event payload: `ReplayEvent` carries
-                // only (kind, symbol, t_ms, price) — ws.rs::dispatch_replay
-                // deliberately drops OHLV to keep the events log cheap. Building
-                // an overlay bar from just the close would FABRICATE OHLC (the
-                // same class of defect as the synthesized footprint, W0-12), so
-                // it must not be done.
+                // History worth keeping: the chart overlay API
+                // (set_replay_overlay / append_replay_bar / clear_replay_overlay
+                // in gpu.rs) and its paint pass (render/pane/core.rs:2771) were
+                // built on branch `replay-overlay-hook`, this panel on
+                // `sota-terminal-replay`, and the two were never joined — so a
+                // complete render pipeline sat behind a checkbox that did
+                // nothing.
                 //
-                // To finish: route the FULL bar (already present in the WS
-                // envelope at `env.data["bar"]`) to the chart on a separate path
-                // from the events log — a ChartCommand::{InstallReplayOverlay,
-                // ReplayOverlayBar, ClearReplayOverlay} trio whose handler calls
-                // the existing Chart API, with install/clear driven by this
-                // toggle so bars only render when the user asked for them
-                // (append_replay_bar auto-creates an overlay, so the handler must
-                // append only when one is already installed).
-                let _ = want_overlay;
+                // The join is a ChartCommand trio. Install is sent ONLY when the
+                // user ticked the box, because the bar handler appends only
+                // where an overlay already exists — that's what stops overlay
+                // bars appearing on panes nobody asked about.
+                //
+                // The full OHLCV comes from the WS envelope (ws.rs
+                // replay_overlay_bar), NOT from ReplayEvent, which stays minimal
+                // by design. A bar rebuilt from the close alone would be
+                // fabricated OHLC — the W0-12 defect class — so ws.rs drops any
+                // bar missing a price leg rather than inventing one.
+                if want_overlay {
+                    crate::send_to_native_chart(
+                        crate::chart_renderer::ChartCommand::InstallReplayOverlay {
+                            symbols: cfg.symbols.clone(),
+                            label: format!("Replay: {}", s.from_str),
+                        },
+                    );
+                }
             }
             None => {
                 s.fsm_state = ReplayState::Failed;
@@ -706,6 +732,11 @@ fn handle_stop() {
         s.fsm_state = ReplayState::Stopped;
         if let Some(st) = s.status.as_mut() { st.state = ReplayState::Stopped; }
     }
+    // W1-09: replay is over — take the overlay off the live chart. Leaving
+    // stale replay candles painted over live price would be actively
+    // misleading, so this clears unconditionally (a no-op when none installed)
+    // rather than depending on the toggle's current value.
+    crate::send_to_native_chart(crate::chart_renderer::ChartCommand::ClearReplayOverlay);
     std::thread::Builder::new().name("replay-stop".into()).spawn(move || {
         let _ = crate::apex_data::rest::replay_stop(&id);
         crate::wake_native_ui();

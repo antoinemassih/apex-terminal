@@ -808,6 +808,34 @@ where F: Fn(super::types::ReplayEvent) + Send + Sync + 'static {
 /// hand it to the user callback. We deliberately keep the event shape
 /// minimal — the chart pane already owns the heavy bar/trade structs — so
 /// the events log stays cheap to retain.
+/// W1-09: build a REAL overlay bar from a replay `bar` payload.
+///
+/// Returns `None` unless every one of open/high/low/close is present. This is
+/// the load-bearing rule of the whole item: an overlay bar reconstructed from
+/// the close alone (or with zeros standing in for missing legs) would be
+/// FABRICATED order data rendered as if it were real — the exact defect class
+/// W0-12 removed from the footprint chart. Volume is optional and defaults to
+/// 0.0 because a missing volume understates a bar; a missing PRICE leg would
+/// misstate it.
+///
+/// Pure → unit-testable with no socket, chart, or replay session.
+fn replay_overlay_bar(bar: &serde_json::Value) -> Option<(crate::chart_renderer::Bar, i64)> {
+    let f = |k: &str| bar.get(k).and_then(|v| v.as_f64());
+    let (o, h, l, c) = (f("open")?, f("high")?, f("low")?, f("close")?);
+    let t_ms = bar.get("time").and_then(|v| v.as_i64())?;
+    Some((
+        crate::chart_renderer::Bar {
+            open: o as f32,
+            high: h as f32,
+            low: l as f32,
+            close: c as f32,
+            volume: f("volume").unwrap_or(0.0) as f32,
+            _pad: 0.0,
+        },
+        t_ms,
+    ))
+}
+
 fn dispatch_replay<F>(env: InEnvelope, on_frame: &Arc<F>)
 where F: Fn(super::types::ReplayEvent) + Send + Sync + 'static {
     use super::types::ReplayEvent;
@@ -818,6 +846,20 @@ where F: Fn(super::types::ReplayEvent) + Send + Sync + 'static {
             let symbol = bar.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let t_ms   = bar.get("time").and_then(|v| v.as_i64()).unwrap_or(0);
             let close  = bar.get("close").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            // W1-09: the full OHLCV is right here in the envelope and used to be
+            // discarded. Route it to the chart overlay on its own path — the
+            // events log keeps the minimal ReplayEvent it was designed for.
+            // Panes with no overlay installed drop these, so this costs nothing
+            // when the user hasn't asked for the overlay.
+            if let Some((ovl_bar, ovl_t)) = replay_overlay_bar(bar) {
+                crate::send_to_native_chart(
+                    crate::chart_renderer::ChartCommand::ReplayOverlayBar {
+                        symbol: symbol.clone(),
+                        bar: ovl_bar,
+                        t_ms: ovl_t,
+                    },
+                );
+            }
             ReplayEvent::new_bar(symbol, t_ms, close)
         }
         "trade" => {
@@ -947,4 +989,72 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
         other => { report(ErrorLevel::Warn, "apex_data.ws", "unknown_frame", other.to_string()); return; }
     };
     broadcast(mgr, &frame);
+}
+
+#[cfg(test)]
+mod w1_09_replay_overlay_tests {
+    use super::replay_overlay_bar;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_the_real_ohlcv_the_envelope_already_carries() {
+        let bar = json!({
+            "symbol": "SPY", "time": 1_700_000_000_000i64,
+            "open": 400.0, "high": 405.5, "low": 399.25, "close": 404.0,
+            "volume": 12345.0
+        });
+        let (b, t) = replay_overlay_bar(&bar).expect("complete bar → overlay bar");
+        assert_eq!(t, 1_700_000_000_000i64);
+        assert_eq!(b.open, 400.0);
+        assert_eq!(b.high, 405.5);
+        assert_eq!(b.low, 399.25);
+        assert_eq!(b.close, 404.0);
+        assert_eq!(b.volume, 12345.0);
+    }
+
+    // THE load-bearing rule of W1-09. A bar rebuilt from the close alone is
+    // fabricated order data rendered as if it were real — the W0-12 footprint
+    // defect. Refusing to emit is the only correct answer.
+    #[test]
+    fn refuses_to_fabricate_when_a_price_leg_is_missing() {
+        for missing in ["open", "high", "low", "close"] {
+            let mut bar = json!({
+                "symbol": "SPY", "time": 1i64,
+                "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5
+            });
+            bar.as_object_mut().unwrap().remove(missing);
+            assert!(
+                replay_overlay_bar(&bar).is_none(),
+                "missing {missing} must yield NO overlay bar, never a synthesized one"
+            );
+        }
+    }
+
+    #[test]
+    fn a_close_only_payload_yields_nothing() {
+        // Exactly what ReplayEvent carries. If this ever returns Some, the
+        // overlay has started inventing OHLC from a single price.
+        let bar = json!({ "symbol": "SPY", "time": 1i64, "close": 404.0 });
+        assert!(replay_overlay_bar(&bar).is_none());
+    }
+
+    #[test]
+    fn missing_time_yields_nothing() {
+        // Without a timestamp the bar cannot be aligned to the time axis, so
+        // it would render at an arbitrary x position.
+        let bar = json!({ "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5 });
+        assert!(replay_overlay_bar(&bar).is_none());
+    }
+
+    #[test]
+    fn absent_volume_defaults_to_zero_but_prices_are_never_defaulted() {
+        // Asymmetry is deliberate: a missing volume understates a bar, a
+        // missing price leg misstates it.
+        let bar = json!({
+            "symbol": "SPY", "time": 7i64,
+            "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5
+        });
+        let (b, _) = replay_overlay_bar(&bar).expect("prices complete → bar");
+        assert_eq!(b.volume, 0.0);
+    }
 }

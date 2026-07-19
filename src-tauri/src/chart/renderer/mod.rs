@@ -1155,6 +1155,19 @@ pub struct PatternLabel {
 /// Commands sent from Tauri/WebView to the native chart renderer
 #[derive(Debug, Clone)]
 pub enum ChartCommand {
+    /// W1-09: install a replay overlay on panes showing one of `symbols`.
+    /// Sent only when the user ticked "overlay replay on live chart", which is
+    /// what keeps overlay bars from appearing unrequested — the bar handler
+    /// appends only where an overlay is already installed.
+    InstallReplayOverlay { symbols: Vec<String>, label: String },
+    /// W1-09: one REAL replay bar (full OHLCV from the WS envelope) for the
+    /// overlay. Carried outside `ReplayEvent` on purpose: that type is
+    /// deliberately minimal so the events log stays cheap, and widening it to
+    /// carry OHLCV would tax every replay frame for a feature most sessions
+    /// don't use.
+    ReplayOverlayBar { symbol: String, bar: Bar, t_ms: i64 },
+    /// W1-09: remove the overlay (replay stopped, or the toggle was cleared).
+    ClearReplayOverlay,
     /// W1-08: Postgres attached after startup — re-read watchlists and adopt
     /// them IF the in-memory set is only the built-in defaults and the user
     /// hasn't edited since (see `should_adopt_db_watchlists`). Exists because

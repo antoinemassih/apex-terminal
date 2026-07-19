@@ -2791,6 +2791,28 @@ impl Chart {
 
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
+            // ── W1-09: replay overlay ────────────────────────────────────────
+            // The overlay render pipeline and this Chart API both already
+            // existed; they were built on separate branches and never joined,
+            // so the panel's checkbox did nothing. These three arms are the
+            // join.
+            ChartCommand::InstallReplayOverlay { ref symbols, ref label } => {
+                // Only panes showing a replayed symbol get an overlay.
+                if symbols.iter().any(|s| s == &self.symbol) {
+                    self.set_replay_overlay(ReplayOverlay::new(label.clone()));
+                }
+            }
+            ChartCommand::ReplayOverlayBar { ref symbol, bar, t_ms } => {
+                // Append ONLY where an overlay is installed. append_replay_bar
+                // auto-creates one, which would make every pane sprout an
+                // overlay the user never asked for — so gate on is_some().
+                if symbol == &self.symbol && self.replay_overlay.is_some() {
+                    self.append_replay_bar(bar, t_ms);
+                }
+            }
+            ChartCommand::ClearReplayOverlay => {
+                self.clear_replay_overlay();
+            }
             ChartCommand::LoadBars { bars, timestamps, symbol, timeframe, gen, .. } => {
                 // Skip if this pane is an option chart and the LoadBars is for the underlying
                 if self.is_option && symbol != self.symbol { return; }
