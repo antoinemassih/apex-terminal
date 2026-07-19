@@ -633,9 +633,28 @@ fn handle_start() {
                 s.rx_status = Some(srx);
                 s.last_status_poll = Some(Instant::now());
 
-                // TODO(overlay): when `want_overlay` is true and the chart
-                // exposes a hook, install a frame forwarder here. The hook
-                // doesn't exist yet — see panel header comment.
+                // TODO(overlay) — W1-09 (audit) CORRECTION: this comment used to
+                // say "the chart exposes no hook". That is STALE and wrong: the
+                // chart overlay API is complete and rendered —
+                // Chart::set_replay_overlay / append_replay_bar /
+                // clear_replay_overlay (gpu.rs) and the paint pass at
+                // render/pane/core.rs:2771.
+                //
+                // The REAL blocker is the event payload: `ReplayEvent` carries
+                // only (kind, symbol, t_ms, price) — ws.rs::dispatch_replay
+                // deliberately drops OHLV to keep the events log cheap. Building
+                // an overlay bar from just the close would FABRICATE OHLC (the
+                // same class of defect as the synthesized footprint, W0-12), so
+                // it must not be done.
+                //
+                // To finish: route the FULL bar (already present in the WS
+                // envelope at `env.data["bar"]`) to the chart on a separate path
+                // from the events log — a ChartCommand::{InstallReplayOverlay,
+                // ReplayOverlayBar, ClearReplayOverlay} trio whose handler calls
+                // the existing Chart API, with install/clear driven by this
+                // toggle so bars only render when the user asked for them
+                // (append_replay_bar auto-creates an overlay, so the handler must
+                // append only when one is already installed).
                 let _ = want_overlay;
             }
             None => {
