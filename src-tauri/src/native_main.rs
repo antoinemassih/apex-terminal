@@ -88,58 +88,42 @@ fn main() {
     // (defaults to the homelab dev Redis).
     _scaffold_lib::bar_cache::init(&_scaffold_lib::data::apex_data::config::apex_redis_url());
 
-    // Initialize PostgreSQL drawing persistence
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-    rt.block_on(async {
-        let pg_url = _scaffold_lib::data::apex_data::config::apex_pg_url();
-        match sqlx::postgres::PgPoolOptions::new()
-            .max_connections(3)
-            .acquire_timeout(std::time::Duration::from_secs(5))
-            .connect(&pg_url)
-            .await
-        {
-            Ok(pool) => {
-                eprintln!("[apex-native] PostgreSQL connected");
-                // Schema is managed by `migrations/001_chart_state.sql`,
-                // applied out-of-band. Just start the drawing worker.
-                _scaffold_lib::drawing_db::init(pool.clone());
-                _scaffold_lib::watchlist_db::init(pool.clone());
-                // Wave 7A fix (Bug 2): register the pool for shutdown so
-                // drain_all closes it cleanly on exit.
-                use std::sync::Arc;
-                use _scaffold_lib::data::connectivity::{register, shutdown::PgPoolShutdown};
-                register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool }));
-            }
-            Err(e) => {
-                // W1-02 (audit): a PG connect failure used to be a bare eprintln,
-                // so drawings silently went session-only with zero UI signal.
-                // Surface it through errors_sink → toast + diagnostics; the UI can
-                // also poll drawing_db::is_persisting() for a persistent chip.
-                //
-                // W1-02b: and it is no longer terminal for the session. The
-                // worker starts anyway so saves are buffered (memory + JSONL
-                // spill) instead of discarded at the call site, and a background
-                // loop retries PG with backoff. On reconnect the buffer and the
-                // spill are replayed, so a trader who drew during the outage
-                // keeps their work. Postgres being slow to boot no longer costs
-                // you every drawing made before it came up.
-                eprintln!("[apex-native] PostgreSQL unavailable ({e}) — buffering drawings, retrying in background");
-                _scaffold_lib::data::connectivity::errors_sink::report(
-                    _scaffold_lib::data::connectivity::errors_sink::ErrorLevel::Warn,
-                    "drawing_db", "pg_unavailable",
-                    format!("Postgres unavailable ({e}) — drawings are being buffered and will be saved when it returns"));
-                let url = pg_url.clone();
-                _scaffold_lib::drawing_db::spawn_reconnect(url, |pool| {
-                    // Wiring the caller owns: share the pool with the watchlist
-                    // worker and register it for clean shutdown, mirroring the
-                    // Ok(..) arm above.
-                    _scaffold_lib::watchlist_db::init(pool.clone());
-                    use std::sync::Arc;
-                    use _scaffold_lib::data::connectivity::{register, shutdown::PgPoolShutdown};
-                    register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool }));
-                });
-            }
-        }
+    // Initialize PostgreSQL persistence — W1-08: OFF the startup path.
+    //
+    // This used to be `rt.block_on(connect())` with a 5s acquire_timeout, so a
+    // down or slow Postgres delayed the first frame by up to five seconds
+    // before the window ever appeared. The connect now runs on its own thread
+    // and the window comes up immediately; W1-02b's worker buffers any saves
+    // made before the pool attaches, so nothing is lost in the gap.
+    //
+    // Failure is visible rather than swallowed: errors_sink + the "⚠ drawings
+    // not saving" toolbar chip, which clears itself when the pool attaches.
+    let pg_url = _scaffold_lib::data::apex_data::config::apex_pg_url();
+    _scaffold_lib::drawing_db::spawn_reconnect(pg_url, |pool| {
+        eprintln!("[apex-native] PostgreSQL connected");
+        // Schema is managed by `migrations/001_chart_state.sql`, applied
+        // out-of-band. drawing_db has already attached the pool by this point.
+        _scaffold_lib::watchlist_db::init(pool.clone());
+
+        // W1-08 × W1-03 ENTANGLEMENT — do not remove.
+        //
+        // An async connect re-opens the regression W1-03 closed. On a fresh
+        // machine with no local JSON cache, `load_watchlists` used to BLOCK on
+        // the DB and get the user's real watchlists; now it can run before this
+        // worker exists, find nothing, and silently seat the built-in defaults.
+        // So once PG is up we ask the render loop to re-read and adopt — but
+        // only if it's still on defaults and the user hasn't edited since (see
+        // should_adopt_db_watchlists). A naive spawn without this is a silent
+        // data-loss bug, not a latency win.
+        _scaffold_lib::send_to_native_chart(
+            _scaffold_lib::chart_renderer::ChartCommand::ReloadWatchlistsFromDb,
+        );
+
+        // Wave 7A fix (Bug 2): register the pool for shutdown so drain_all
+        // closes it cleanly on exit.
+        use std::sync::Arc;
+        use _scaffold_lib::data::connectivity::{register, shutdown::PgPoolShutdown};
+        register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool }));
     });
 
     // Initialize global chart channel (for tick broadcasting)

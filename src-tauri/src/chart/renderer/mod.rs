@@ -1155,6 +1155,12 @@ pub struct PatternLabel {
 /// Commands sent from Tauri/WebView to the native chart renderer
 #[derive(Debug, Clone)]
 pub enum ChartCommand {
+    /// W1-08: Postgres attached after startup — re-read watchlists and adopt
+    /// them IF the in-memory set is only the built-in defaults and the user
+    /// hasn't edited since (see `should_adopt_db_watchlists`). Exists because
+    /// moving the PG connect off the startup path would otherwise leave a fresh
+    /// machine on defaults forever, re-opening the W1-03 regression.
+    ReloadWatchlistsFromDb,
     /// Load OHLCV bar data for a symbol
     LoadBars {
         symbol: String,

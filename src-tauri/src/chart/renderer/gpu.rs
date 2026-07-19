@@ -8059,6 +8059,29 @@ impl ApplicationHandler for App {
                 let mut cmds_to_requeue = Vec::new();
                 while let Ok(cmd) = cw.rx.try_recv() {
                     match cmd {
+                        // W1-08: Postgres came up after startup. Adopt the DB's
+                        // watchlists ONLY if we're still on built-in defaults and
+                        // the user hasn't edited — otherwise a late read would
+                        // clobber a real local cache or live in-session edits.
+                        ChartCommand::ReloadWatchlistsFromDb => {
+                            let (db_wls, db_idx) = crate::persistence::watchlist_db::load_all();
+                            let dirty = WATCHLISTS_DIRTY.load(std::sync::atomic::Ordering::Relaxed);
+                            let src = WATCHLIST_SOURCE.load(std::sync::atomic::Ordering::Relaxed);
+                            if should_adopt_db_watchlists(src, db_wls.len(), dirty) {
+                                let idx = db_idx.min(db_wls.len() - 1);
+                                cw.watchlist.saved_watchlists = db_wls;
+                                // switch_to() is the same path the UI uses to
+                                // activate a watchlist; it returns the symbols
+                                // needing a price fetch.
+                                let syms = cw.watchlist.switch_to(idx);
+                                if !syms.is_empty() { fetch_watchlist_prices(syms); }
+                                WATCHLIST_SOURCE.store(WL_SRC_DB, std::sync::atomic::Ordering::Relaxed);
+                                crate::data::connectivity::errors_sink::report(
+                                    crate::data::connectivity::errors_sink::ErrorLevel::Info,
+                                    "watchlist_db", "restored_after_connect",
+                                    "watchlists restored from Postgres after late connect".to_string());
+                            }
+                        }
                         ChartCommand::WatchlistPrice { ref symbol, price, prev_close, day_close, change_perc, stale } => {
                             cw.watchlist.set_price(symbol, price);
                             cw.watchlist.set_prev_close(symbol, prev_close);
@@ -9093,6 +9116,11 @@ fn watchlists_path() -> std::path::PathBuf {
 }
 
 fn save_watchlists(watchlist: &Watchlist) {
+    // W1-08: the user has touched their watchlists this session, so a late
+    // Postgres connect must not overwrite them with a DB read. This is the one
+    // choke point every mutation funnels through.
+    WATCHLISTS_DIRTY.store(true, std::sync::atomic::Ordering::Relaxed);
+
     // DB-first: fire-and-forget through the watchlist_db worker. The worker
     // is a no-op until init() has been called, so this is safe in tests too.
     crate::persistence::watchlist_db::save_all(
@@ -9201,6 +9229,9 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
         watchlists.push(SavedWatchlist { name, sections, next_section_id });
     }
     if watchlists.is_empty() { return db_watchlists_or_default(); }
+    // W1-08: a usable local cache is authoritative — a late PG connect must not
+    // overwrite it.
+    WATCHLIST_SOURCE.store(WL_SRC_LOCAL_JSON, std::sync::atomic::Ordering::Relaxed);
     let idx = active_idx.min(watchlists.len() - 1);
     (watchlists, idx)
 }
@@ -9214,6 +9245,41 @@ fn pick_db_or_default(
     if db.0.is_empty() { default } else { db }
 }
 
+/// W1-08: where the watchlists currently in memory came from.
+/// 0 = local JSON, 1 = Postgres, 2 = built-in defaults (nothing else available).
+pub(crate) static WATCHLIST_SOURCE: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(WL_SRC_DEFAULT);
+pub(crate) const WL_SRC_LOCAL_JSON: u8 = 0;
+pub(crate) const WL_SRC_DB: u8 = 1;
+pub(crate) const WL_SRC_DEFAULT: u8 = 2;
+
+/// W1-08: set once the user mutates watchlists in this session. Guards the
+/// post-connect re-load from overwriting live edits.
+pub(crate) static WATCHLISTS_DIRTY: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// W1-08 (entangled with W1-03): should a late Postgres connect replace the
+/// watchlists already in memory?
+///
+/// Moving the PG connect off the startup path (W1-08) creates a race W1-03 had
+/// closed: on a fresh machine with no local JSON cache, `load_watchlists` used
+/// to BLOCK on the DB and get the user's real watchlists. Async connect means
+/// that read now finds no worker, returns empty, and the user silently gets
+/// built-in defaults — the exact fresh-machine regression W1-03 fixed. So when
+/// PG finally attaches we must re-read and adopt.
+///
+/// Adopt ONLY when all three hold:
+/// - the in-memory set came from the built-in defaults (never override real
+///   local JSON, and never re-fetch what already came from the DB),
+/// - the DB actually returned something (never replace defaults with nothing),
+/// - the user hasn't edited watchlists since startup (their live edits win over
+///   a late DB read — silently discarding them would be its own data loss).
+///
+/// Pure → unit-testable without a database, a chart, or a render loop.
+fn should_adopt_db_watchlists(source: u8, db_len: usize, dirty: bool) -> bool {
+    source == WL_SRC_DEFAULT && db_len > 0 && !dirty
+}
+
 /// W1-03 (audit): the REAL cross-machine fallback the old `load_watchlists`
 /// comment promised but never had — it returned `default_watchlists()` straight
 /// away when the local JSON was missing/corrupt, so a fresh machine loaded EMPTY
@@ -9222,10 +9288,13 @@ fn pick_db_or_default(
 /// first (a one-time blocking load per machine, as the comment intended) and
 /// only fall to defaults if the DB is also empty.
 fn db_watchlists_or_default() -> (Vec<SavedWatchlist>, usize) {
-    pick_db_or_default(
-        crate::persistence::watchlist_db::load_all(),
-        default_watchlists(),
-    )
+    let db = crate::persistence::watchlist_db::load_all();
+    // W1-08: record provenance so a late PG connect knows whether it is allowed
+    // to replace what's in memory. Falling back to defaults is the ONLY case a
+    // post-connect re-load may override.
+    let src = if db.0.is_empty() { WL_SRC_DEFAULT } else { WL_SRC_DB };
+    WATCHLIST_SOURCE.store(src, std::sync::atomic::Ordering::Relaxed);
+    pick_db_or_default(db, default_watchlists())
 }
 
 fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
@@ -9413,6 +9482,43 @@ mod w1_10_drawing_alert_tests {
         let none = crate::chart_renderer::compute::evaluate_drawings_against_bar(
             &candidates, 1000, 92.0, 95.0, 90.0, 93.0, &[1000]);
         assert!(none.is_empty(), "a bar that never reaches the line must not fire");
+    }
+}
+
+#[cfg(test)]
+mod w1_08_late_connect_adoption_tests {
+    use super::{should_adopt_db_watchlists, WL_SRC_DB, WL_SRC_DEFAULT, WL_SRC_LOCAL_JSON};
+
+    // The case W1-08 exists to fix: fresh machine, no local JSON, PG connected
+    // after startup so load_watchlists saw no worker and seated defaults.
+    #[test]
+    fn adopts_db_when_sitting_on_defaults_and_untouched() {
+        assert!(should_adopt_db_watchlists(WL_SRC_DEFAULT, 3, false));
+    }
+
+    #[test]
+    fn never_overrides_a_real_local_cache() {
+        // Local JSON is authoritative — it is this machine's saved state.
+        assert!(!should_adopt_db_watchlists(WL_SRC_LOCAL_JSON, 3, false));
+    }
+
+    #[test]
+    fn never_re_adopts_when_already_from_db() {
+        assert!(!should_adopt_db_watchlists(WL_SRC_DB, 3, false));
+    }
+
+    #[test]
+    fn never_replaces_defaults_with_an_empty_db() {
+        // Adopting nothing would blank the user's watchlist panel.
+        assert!(!should_adopt_db_watchlists(WL_SRC_DEFAULT, 0, false));
+    }
+
+    #[test]
+    fn live_user_edits_beat_a_late_db_read() {
+        // If the user edited watchlists during the connect window, adopting the
+        // DB copy would silently discard their work — the same data-loss class
+        // this audit is removing, just pointed the other way.
+        assert!(!should_adopt_db_watchlists(WL_SRC_DEFAULT, 3, true));
     }
 }
 

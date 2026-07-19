@@ -375,12 +375,12 @@ where
             Err(_) => return,
         };
         rt.block_on(async {
+            // W1-08: attempt IMMEDIATELY, then back off on failure. The first
+            // try must not be delayed — this is also the normal cold-start path
+            // now that the connect no longer blocks startup, and sleeping first
+            // would add latency to every healthy launch.
             let mut attempt: u32 = 0;
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(
-                    reconnect_backoff_secs(attempt),
-                )).await;
-                attempt = attempt.saturating_add(1);
                 match sqlx::postgres::PgPoolOptions::new()
                     .max_connections(3)
                     .acquire_timeout(std::time::Duration::from_secs(5))
@@ -393,7 +393,11 @@ where
                         return;
                     }
                     Err(e) => {
-                        debug!("[drawing-db] reconnect attempt {attempt} failed: {e}");
+                        debug!("[drawing-db] connect attempt {attempt} failed: {e}");
+                        tokio::time::sleep(std::time::Duration::from_secs(
+                            reconnect_backoff_secs(attempt),
+                        )).await;
+                        attempt = attempt.saturating_add(1);
                     }
                 }
             }
