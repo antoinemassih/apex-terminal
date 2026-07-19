@@ -510,6 +510,30 @@ chip + errors_sink.
 **Accept:** manual cold start with PG down: window appears fast, chip shows.
 Corpus (startup scenarios).
 
+> **W1-09 INVESTIGATED 2026-07-18 — the audit's framing is WRONG in a way that
+> matters.** The verifier said "a complete overlay render pipeline already
+> exists… so it's wiring, not building." Half true, and the missing half is the
+> work:
+> - **What DOES exist:** `ReplayOverlay` struct + `Chart.replay_overlay` +
+>   `set_replay_overlay()` / `push_replay_bar()` (gpu.rs:38-2782) AND the full
+>   paint pass (core.rs:2771, semi-transparent candles + REPLAY MODE badge).
+>   replay_pane.rs:636-639 literally has `// TODO(overlay)` + `let _ =
+>   want_overlay;`. gpu.rs:23 explains why: the `replay-overlay-hook` branch and
+>   `sota-terminal-replay` branch were built INDEPENDENTLY and never joined.
+> - **What does NOT exist (the real work):** (1) `ReplayEvent` (types.rs:652)
+>   carries only `{kind, symbol, t_ms, price}` — ws.rs `dispatch_replay` (:815-821)
+>   DELIBERATELY drops OHLC ("keep the event shape minimal… so the events log
+>   stays cheap"). The full OHLC IS present in the raw frame `env.data["bar"]`,
+>   just discarded. (2) `replay_pane::draw(ctx, watchlist, t)` gets NO panes, so
+>   the panel cannot reach the Chart at all.
+> - **Therefore the slice is:** extract full OHLC in dispatch_replay's "bar" arm
+>   (data is there) → new `ChartCommand::ReplayOverlayBar` + handler calling
+>   `chart.push_replay_bar` → deliver via send_to_native_chart (ws.rs can, the
+>   panel can't) → a cross-module "overlay enabled" flag the dispatch checks →
+>   clear the overlay on stop. Keep ReplayEvent lightweight (respect its design).
+> - **DO NOT** synthesize OHLC from `price`/close to make the overlay "work" —
+>   that is exactly the W0-12 footprint fabrication this audit exists to kill.
+>
 ### W1-09 · Replay: wire the on-chart overlay  [P0 · M]
 **Evidence:** the replay pane's "overlay replay on live chart" checkbox is
 non-functional (replay_pane.rs never calls the overlay hooks), BUT a complete
