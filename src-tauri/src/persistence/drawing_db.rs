@@ -23,9 +23,20 @@ use crate::chart::state::drawings::{DrawingFlags, DrawingKind, Point};
 
 static DB_POOL: OnceLock<PgPool> = OnceLock::new();
 
+/// W1-02b: whether a live pool is currently attached. This — not the existence
+/// of the worker channel — is what "drawings are being saved" means, because
+/// the worker now runs even while Postgres is down (so saves can be buffered
+/// instead of dropped on the floor at the call site).
+static PG_CONNECTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// How many times a failed save is re-queued before it is moved to the
 /// bounded dead-letter list.
 const SAVE_MAX_ATTEMPTS: u32 = 3;
+
+/// W1-02b: how many un-persisted saves are held in memory while PG is down.
+/// Every buffered save is ALSO spilled to JSONL, so this cap bounds memory
+/// without losing data — the spill is the durable copy.
+const PENDING_CAP: usize = 512;
 
 /// Messages for the DB worker thread.
 enum DbOp {
@@ -36,17 +47,67 @@ enum DbOp {
     LoadGroups { reply: std::sync::mpsc::Sender<Vec<(String, String, Option<String>)>> },
     SaveGroup { id: String, name: String, color: Option<String> },
     RemoveGroup(String),
+    /// W1-02b: Postgres became available — attach it and drain what we buffered.
+    AttachPool(PgPool),
 }
 
 static DB_TX: OnceLock<std::sync::mpsc::Sender<DbOp>> = OnceLock::new();
 
-/// Initialize the global pool and start the DB worker thread.
-pub fn init(pool: PgPool) {
-    let _ = DB_POOL.set(pool.clone());
+/// W1-02b: push a save into the bounded pending buffer, dropping the OLDEST on
+/// overflow. Pure so the cap behaviour is unit-testable without a worker or a
+/// database. Returns the id evicted, if any — the caller reports it, because a
+/// silent eviction is the failure mode this whole item exists to kill.
+fn push_pending(
+    pending: &mut std::collections::VecDeque<DbDrawing>,
+    d: DbDrawing,
+    cap: usize,
+) -> Option<String> {
+    let evicted = if pending.len() >= cap {
+        pending.pop_front().map(|e| e.id)
+    } else {
+        None
+    };
+    pending.push_back(d);
+    evicted
+}
 
+/// W1-02b: start the worker WITHOUT a pool. Idempotent — safe to call before we
+/// know whether Postgres is reachable.
+///
+/// This is the structural fix. Previously the channel was created only inside
+/// `init(pool)`, so a PG-down startup left `DB_TX` unset and every call site did
+/// `let Some(tx) = DB_TX.get() else { return; }` — i.e. drawings were discarded
+/// at the source, with nothing to replay when PG came back. The worker now
+/// always exists; only the *pool* is optional.
+pub fn start_worker() {
+    if DB_TX.get().is_some() {
+        return;
+    }
     let (tx, rx) = std::sync::mpsc::channel::<DbOp>();
-    let _ = DB_TX.set(tx);
+    if DB_TX.set(tx).is_err() {
+        return; // raced with another caller; theirs won
+    }
+    spawn_worker(rx);
+}
 
+/// Initialize with an already-connected pool and start the worker.
+/// Preserved for callers that connect eagerly at startup.
+pub fn init(pool: PgPool) {
+    start_worker();
+    attach_pool(pool);
+}
+
+/// W1-02b: hand a freshly connected pool to the running worker. Triggers a
+/// drain of both the in-memory pending buffer and the on-disk JSONL spill.
+pub fn attach_pool(pool: PgPool) {
+    let _ = DB_POOL.set(pool.clone());
+    start_worker();
+    if let Some(tx) = DB_TX.get() {
+        let _ = tx.send(DbOp::AttachPool(pool));
+    }
+}
+
+fn spawn_worker(rx: std::sync::mpsc::Receiver<DbOp>) {
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
@@ -56,8 +117,56 @@ pub fn init(pool: PgPool) {
                 std::collections::VecDeque::new();
             const DEAD_LETTER_CAP: usize = 64;
 
+            // W1-02b: the pool is optional and may arrive mid-session.
+            let mut pool_opt: Option<PgPool> = None;
+            // Saves accepted while PG was down, awaiting a pool.
+            let mut pending: std::collections::VecDeque<DbDrawing> =
+                std::collections::VecDeque::new();
+
             while let Ok(op) = rx.recv() {
+                // W1-02b: with no pool, buffer writes (durably, via the spill)
+                // and answer reads as empty rather than dropping everything.
+                let Some(pool) = pool_opt.clone() else {
+                    match op {
+                        DbOp::AttachPool(p) => {
+                            PG_CONNECTED.store(true, std::sync::atomic::Ordering::Relaxed);
+                            crate::data::connectivity::errors_sink::report(
+                                crate::data::connectivity::errors_sink::ErrorLevel::Info,
+                                "drawing_db", "pg_connected",
+                                "Postgres connected — replaying drawings saved while it was down".to_string());
+                            drain_pending(&p, &mut pending).await;
+                            drain_spill(&p).await;
+                            pool_opt = Some(p);
+                        }
+                        DbOp::Save { drawing, .. } => {
+                            // Durable first: the spill is what survives a crash.
+                            spill_dead_letter(&drawing);
+                            if let Some(evicted) = push_pending(&mut pending, drawing, PENDING_CAP) {
+                                crate::data::connectivity::errors_sink::report(
+                                    crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                                    "drawing_db", "pending_overflow",
+                                    format!("in-memory pending-save buffer full — drawing {evicted} is on disk only until Postgres returns"));
+                            }
+                        }
+                        DbOp::LoadSymbol { reply, .. } => { let _ = reply.send(vec![]); }
+                        DbOp::LoadGroups { reply } => { let _ = reply.send(vec![]); }
+                        // Removes/group-writes while down are not replayed: a
+                        // remove of a row that was never written is a no-op, and
+                        // replaying one against a row the user later re-created
+                        // would destroy data. Dropping is the safe direction.
+                        DbOp::Remove(_) | DbOp::SaveGroup { .. } | DbOp::RemoveGroup(_) => {}
+                    }
+                    continue;
+                };
+
                 match op {
+                    DbOp::AttachPool(p) => {
+                        // Reconnect with a fresh pool (e.g. after PG bounced).
+                        PG_CONNECTED.store(true, std::sync::atomic::Ordering::Relaxed);
+                        drain_pending(&p, &mut pending).await;
+                        drain_spill(&p).await;
+                        pool_opt = Some(p);
+                    }
                     DbOp::Save { drawing, attempts } => {
                         if do_save(&pool, drawing.clone()).await {
                             // success — nothing more to do
@@ -122,12 +231,19 @@ pub fn get_pool() -> Option<&'static PgPool> {
     DB_POOL.get()
 }
 
-/// W1-02 (audit): true when the drawing persistence worker is up (PG connected
-/// at startup). When false, drawings are session-only — the UI should surface a
-/// "drawings not saving" indicator (the caller decides how). This replaces the
-/// old silent-eprintln failure mode.
+/// W1-02 (audit): true when drawings are actually reaching Postgres.
+///
+/// W1-02b correction: this used to be `DB_TX.get().is_some()`, which was right
+/// only while the worker existed *only* when PG connected. The worker now runs
+/// unconditionally so saves can be buffered during an outage, so channel
+/// existence no longer implies persistence — it must track the pool. Reporting
+/// "saving" while rows sit in a buffer would be precisely the kind of
+/// comfortable lie this audit item exists to remove.
+///
+/// When false, drawings are buffered (in memory + JSONL spill) and replayed on
+/// reconnect; the UI should still surface a "drawings not saving" indicator.
 pub fn is_persisting() -> bool {
-    DB_TX.get().is_some()
+    PG_CONNECTED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// W1-02: path of the local dead-letter spill file — drawings that exhausted
@@ -151,6 +267,138 @@ fn spill_dead_letter(d: &DbDrawing) {
             let _ = writeln!(f, "{line}");
         }
     }
+}
+
+/// W1-02b: parse a JSONL spill into drawings, skipping blank and corrupt lines.
+///
+/// Pure → unit-testable without a database. A truncated last line (power loss
+/// mid-append) must NOT discard the whole file: every parseable drawing is
+/// recovered and the bad line is skipped, because the alternative is losing a
+/// trader's chart work over one partial write.
+fn parse_spill_lines(contents: &str) -> Vec<DbDrawing> {
+    contents
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .filter_map(|l| serde_json::from_str::<DbDrawing>(l).ok())
+        .collect()
+}
+
+/// W1-02b: replay saves buffered in memory while PG was down.
+async fn drain_pending(pool: &PgPool, pending: &mut std::collections::VecDeque<DbDrawing>) {
+    if pending.is_empty() {
+        return;
+    }
+    let total = pending.len();
+    let mut ok = 0usize;
+    while let Some(d) = pending.pop_front() {
+        if do_save(pool, d).await {
+            ok += 1;
+        }
+    }
+    crate::data::connectivity::errors_sink::report(
+        if ok == total {
+            crate::data::connectivity::errors_sink::ErrorLevel::Info
+        } else {
+            crate::data::connectivity::errors_sink::ErrorLevel::Warn
+        },
+        "drawing_db", "pending_drained",
+        format!("replayed {ok}/{total} drawing(s) buffered while Postgres was down"),
+    );
+}
+
+/// W1-02b: replay the on-disk JSONL spill, then clear it.
+///
+/// The file is only removed once every row it holds has been accepted by
+/// Postgres. A partial drain leaves it intact so the next reconnect retries —
+/// deleting on partial success would silently lose exactly the drawings that
+/// were hardest to save. Saves are upserts keyed on id (`ON CONFLICT (id) DO
+/// UPDATE`), so replaying a row that also came through the in-memory buffer is
+/// harmless.
+async fn drain_spill(pool: &PgPool) {
+    let path = dead_letter_path();
+    let Ok(contents) = std::fs::read_to_string(&path) else { return };
+    let drawings = parse_spill_lines(&contents);
+    if drawings.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return;
+    }
+    let total = drawings.len();
+    let mut ok = 0usize;
+    for d in drawings {
+        if do_save(pool, d).await {
+            ok += 1;
+        }
+    }
+    if ok == total {
+        let _ = std::fs::remove_file(&path);
+    }
+    crate::data::connectivity::errors_sink::report(
+        if ok == total {
+            crate::data::connectivity::errors_sink::ErrorLevel::Info
+        } else {
+            crate::data::connectivity::errors_sink::ErrorLevel::Warn
+        },
+        "drawing_db", "spill_drained",
+        format!("recovered {ok}/{total} drawing(s) from the on-disk spill{}",
+                if ok == total { "" } else { " — file kept for the next retry" }),
+    );
+}
+
+/// W1-02b: backoff schedule for the reconnect loop, in seconds. Pure →
+/// testable. Ramps to a 60s ceiling so a long outage costs a trickle of
+/// connection attempts rather than a tight retry storm against a downed DB.
+fn reconnect_backoff_secs(attempt: u32) -> u64 {
+    match attempt {
+        0..=2 => 2,
+        3..=5 => 5,
+        6..=10 => 15,
+        _ => 60,
+    }
+}
+
+/// W1-02b: retry Postgres in the background until it comes up, then attach the
+/// pool (which drains the buffer and the spill) and run `on_connect` for any
+/// extra wiring the caller owns (pool registration, watchlist worker, …).
+///
+/// Runs on its own thread: a downed database must never block startup or the
+/// render loop. Safe to call when PG was merely slow to boot — the first
+/// successful connect ends the loop.
+pub fn spawn_reconnect<F>(pg_url: String, on_connect: F)
+where
+    F: FnOnce(PgPool) + Send + 'static,
+{
+    start_worker();
+    crate::foundation::guard::spawn_guarded("drawing_db_reconnect", move || {
+        let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+        rt.block_on(async {
+            let mut attempt: u32 = 0;
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(
+                    reconnect_backoff_secs(attempt),
+                )).await;
+                attempt = attempt.saturating_add(1);
+                match sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(3)
+                    .acquire_timeout(std::time::Duration::from_secs(5))
+                    .connect(&pg_url)
+                    .await
+                {
+                    Ok(pool) => {
+                        attach_pool(pool.clone());
+                        on_connect(pool);
+                        return;
+                    }
+                    Err(e) => {
+                        debug!("[drawing-db] reconnect attempt {attempt} failed: {e}");
+                    }
+                }
+            }
+        });
+    });
 }
 
 /// Drawing as the caller (renderer) sees it. Wire-compatible with the prior
@@ -681,6 +929,86 @@ async fn do_remove_group(pool: &PgPool, id: &str) {
 mod tests {
     use std::time::Duration;
     use super::{save_kind_i16, resolve_drawing_type, DRAWING_KIND_OTHER};
+    use super::{parse_spill_lines, push_pending, reconnect_backoff_secs, DbDrawing, PENDING_CAP};
+
+    fn drawing(id: &str) -> DbDrawing {
+        DbDrawing {
+            id: id.into(),
+            symbol: "SPY".into(),
+            timeframe: "5m".into(),
+            drawing_type: "trendline".into(),
+            points: vec![(1.0, 400.0), (2.0, 410.0)],
+            color: "#FF0000".into(),
+            opacity: 1.0,
+            line_style: "solid".into(),
+            thickness: 1.5,
+            group_id: String::new(),
+        }
+    }
+
+    // ─── W1-02b: reconnect / drain ───────────────────────────────────────────
+
+    #[test]
+    fn spill_round_trips_through_jsonl() {
+        let a = drawing("a");
+        let b = drawing("b");
+        let jsonl = format!(
+            "{}\n{}\n",
+            serde_json::to_string(&a).unwrap(),
+            serde_json::to_string(&b).unwrap()
+        );
+        let got = parse_spill_lines(&jsonl);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].id, "a");
+        assert_eq!(got[1].points, b.points, "geometry must survive the spill");
+    }
+
+    #[test]
+    fn a_truncated_last_line_does_not_discard_the_whole_spill() {
+        // Power loss mid-append leaves a partial JSON object. Losing every
+        // recovered drawing over one bad line is not an acceptable trade.
+        let good = serde_json::to_string(&drawing("good")).unwrap();
+        let jsonl = format!("{good}\n{{\"id\":\"trunca");
+        let got = parse_spill_lines(&jsonl);
+        assert_eq!(got.len(), 1, "the intact drawing is still recovered");
+        assert_eq!(got[0].id, "good");
+    }
+
+    #[test]
+    fn blank_lines_are_ignored() {
+        let good = serde_json::to_string(&drawing("x")).unwrap();
+        assert_eq!(parse_spill_lines(&format!("\n\n{good}\n\n  \n")).len(), 1);
+        assert!(parse_spill_lines("").is_empty());
+    }
+
+    #[test]
+    fn pending_buffer_evicts_oldest_and_reports_it() {
+        let mut q = std::collections::VecDeque::new();
+        assert!(push_pending(&mut q, drawing("1"), 2).is_none());
+        assert!(push_pending(&mut q, drawing("2"), 2).is_none());
+        // Third push at cap 2 evicts the oldest, and says which one — a silent
+        // eviction is the exact failure mode W1-02 exists to remove.
+        assert_eq!(push_pending(&mut q, drawing("3"), 2).as_deref(), Some("1"));
+        assert_eq!(q.len(), 2);
+        assert_eq!(q.front().unwrap().id, "2");
+        assert_eq!(q.back().unwrap().id, "3");
+    }
+
+    #[test]
+    fn pending_cap_is_generous_enough_for_a_real_outage() {
+        // A trader marking up charts through a PG restart should not hit this.
+        assert!(PENDING_CAP >= 256, "cap {PENDING_CAP} is too small to ride out an outage");
+    }
+
+    #[test]
+    fn reconnect_backoff_ramps_then_ceilings() {
+        assert_eq!(reconnect_backoff_secs(0), 2, "retry quickly at first");
+        assert_eq!(reconnect_backoff_secs(4), 5);
+        assert_eq!(reconnect_backoff_secs(8), 15);
+        // A long outage must not become a retry storm against a downed DB.
+        assert_eq!(reconnect_backoff_secs(50), 60);
+        assert_eq!(reconnect_backoff_secs(u32::MAX), 60, "no overflow at the ceiling");
+    }
 
     // W1-01 (audit): every drawing_type string gpu.rs::drawing_to_db can emit.
     // 16 of these 22 were silently dead-lettered by do_save's parse_kind reject

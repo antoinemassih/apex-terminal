@@ -998,6 +998,40 @@ pub(crate) fn render(
                     );
                 }
 
+                // W1-02/W1-02b (audit): "drawings not saving" chip.
+                //
+                // Postgres going down used to be a bare eprintln — the trader
+                // kept drawing, everything looked normal, and the work was gone
+                // at restart. Drawings are now buffered and replayed on
+                // reconnect, but the trader still has to KNOW the chart isn't
+                // durable yet, so this chip is visible for the whole outage and
+                // clears itself the moment the pool attaches.
+                //
+                // Shown only on the failure path: zero cost and zero clutter in
+                // the normal case, which is what keeps it credible when it does
+                // appear.
+                if !crate::drawing_db::is_persisting() {
+                    let chip = ui.label(
+                        egui::RichText::new("⚠ drawings not saving")
+                            .size(font_xs())
+                            .color(t.warn),
+                    );
+                    Tooltip::rich(move |ui, theme| {
+                        ui.label(egui::RichText::new("Postgres is unavailable")
+                            .size(font_xs()).color(theme.text()));
+                        ui.label(egui::RichText::new(
+                            "Drawings are being buffered to disk and will be saved \
+                             automatically when the database returns.")
+                            .size(font_xs()).color(theme.dim()));
+                    }).show(ui, &chip, t);
+                    #[cfg(debug_assertions)]
+                    crate::dev_inspector::record(
+                        crate::dev_inspector::WidgetRecord::from_response(
+                            "toolbar.drawings_not_saving", "label", "⚠ drawings not saving", &chip, ui,
+                        ).with_style("toolbar"),
+                    );
+                }
+
                 // Style-aware label helper for nav buttons that have a text label.
                 // Meridien hides icons and uppercases labels; other styles keep "{ICON} Label".
                 // Icon-only buttons (Settings, etc.) are NOT affected — they keep their icon

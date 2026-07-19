@@ -115,11 +115,29 @@ fn main() {
                 // so drawings silently went session-only with zero UI signal.
                 // Surface it through errors_sink → toast + diagnostics; the UI can
                 // also poll drawing_db::is_persisting() for a persistent chip.
-                eprintln!("[apex-native] PostgreSQL unavailable ({e}) — drawings won't persist");
+                //
+                // W1-02b: and it is no longer terminal for the session. The
+                // worker starts anyway so saves are buffered (memory + JSONL
+                // spill) instead of discarded at the call site, and a background
+                // loop retries PG with backoff. On reconnect the buffer and the
+                // spill are replayed, so a trader who drew during the outage
+                // keeps their work. Postgres being slow to boot no longer costs
+                // you every drawing made before it came up.
+                eprintln!("[apex-native] PostgreSQL unavailable ({e}) — buffering drawings, retrying in background");
                 _scaffold_lib::data::connectivity::errors_sink::report(
                     _scaffold_lib::data::connectivity::errors_sink::ErrorLevel::Warn,
                     "drawing_db", "pg_unavailable",
-                    format!("drawings will NOT be saved this session — Postgres unavailable ({e})"));
+                    format!("Postgres unavailable ({e}) — drawings are being buffered and will be saved when it returns"));
+                let url = pg_url.clone();
+                _scaffold_lib::drawing_db::spawn_reconnect(url, |pool| {
+                    // Wiring the caller owns: share the pool with the watchlist
+                    // worker and register it for clean shutdown, mirroring the
+                    // Ok(..) arm above.
+                    _scaffold_lib::watchlist_db::init(pool.clone());
+                    use std::sync::Arc;
+                    use _scaffold_lib::data::connectivity::{register, shutdown::PgPoolShutdown};
+                    register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool }));
+                });
             }
         }
     });
