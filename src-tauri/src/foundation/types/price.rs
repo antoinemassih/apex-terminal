@@ -233,9 +233,26 @@ mod proptests {
         fn from_f64_to_f64_lossless_in_printable_range(d in -1_000_000.0f64..=1_000_000.0) {
             let p = Price::from_dollars(d);
             let back = p.to_dollars();
+            // Bound = quantisation + f64 representation error.
+            //
+            // Price stores micro-units, so round-to-nearest costs at most HALF
+            // a unit (5e-7). The old bound was a strict `< 5e-7`, which is
+            // wrong twice over: the half-unit worst case is reachable, and
+            // neither `d` nor `back` is exactly representable in f64, so the
+            // measured difference carries representation noise on top.
+            //
+            // proptest eventually generated 839066.8318735 — sitting exactly on
+            // a tie (…873.5 → …874) — and measured 5.00003807e-7, over the old
+            // bound by ~3.8e-12. That is f64 noise at $839k, not a rounding
+            // defect: `from_dollars` already rounds correctly.
+            //
+            // |d| * EPSILON covers the representation term (~1.9e-10 here).
+            // Verified against 400k tie-biased samples across the full ±$1M
+            // range: the bound is never exceeded.
+            let bound = 0.0000005 + d.abs() * f64::EPSILON;
             prop_assert!(
-                (back - d).abs() < 0.0000005,
-                "drift exceeded: {} → {} → {}", d, p.0, back
+                (back - d).abs() <= bound,
+                "drift exceeded: {} → {} → {} (bound {})", d, p.0, back, bound
             );
         }
 
