@@ -67,24 +67,35 @@ pub fn webhook_payload(symbol: &str, message: &str, price: Option<f32>) -> serde
     v
 }
 
-/// Play the system alert sound (Windows). Replaces the old
-/// `eprintln!("sound notification placeholder")`.
+/// Play the system alert sound (Windows), **off the calling thread**.
+/// Replaces the old `eprintln!("sound notification placeholder")`.
+///
+/// MUST NOT run inline: `deliver()` is called from the alert-eval path inside
+/// the render loop, and `MessageBeep` is only documented as asynchronous once
+/// the audio device is already open — the first call (or a call while the
+/// audio subsystem is initialising / no device is present) can block for tens
+/// of milliseconds. Blocking the render thread mid-frame is unacceptable in a
+/// charting terminal: it stalls the frame with pane geometry half-updated. So
+/// the beep is dispatched to a short-lived guarded thread and the render
+/// thread never waits on the audio stack.
 fn play_alert_sound() {
     if is_muted() {
         return;
     }
-    #[cfg(target_os = "windows")]
-    {
-        // MB_ICONEXCLAMATION — the system "warning" sound. Non-blocking.
-        // NOTE: windows-sys puts MessageBeep under System::Diagnostics::Debug
-        // (not UI::WindowsAndMessaging, where the MB_* constants live), hence
-        // the split paths and the added Win32_System_Diagnostics_Debug feature.
-        unsafe {
-            let _ = windows_sys::Win32::System::Diagnostics::Debug::MessageBeep(
-                windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONEXCLAMATION,
-            );
+    crate::foundation::guard::spawn_guarded("alert_sound", || {
+        #[cfg(target_os = "windows")]
+        {
+            // MB_ICONEXCLAMATION — the system "warning" sound.
+            // NOTE: windows-sys puts MessageBeep under System::Diagnostics::Debug
+            // (not UI::WindowsAndMessaging, where the MB_* constants live), hence
+            // the split paths and the added Win32_System_Diagnostics_Debug feature.
+            unsafe {
+                let _ = windows_sys::Win32::System::Diagnostics::Debug::MessageBeep(
+                    windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONEXCLAMATION,
+                );
+            }
         }
-    }
+    });
 }
 
 /// Deliver a fired alert out-of-app: audible + webhook (both best-effort).
