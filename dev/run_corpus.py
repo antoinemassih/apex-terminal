@@ -111,7 +111,61 @@ def first_fail_detail(r):
         return f"http {r['_http']}"
     return "unknown failure"
 
+def competing_load():
+    """Processes that make this machine untrustworthy for a corpus run.
+
+    WHY THIS EXISTS (2026-07-19, cost most of an afternoon): this repo is shared
+    with other Claude sessions on ONE machine. A concurrent `cargo build
+    --release` (LTO, codegen-units=1) saturates the CPU, the app can no longer
+    drain an async bar-load inside the `GAP` window, and the NEXT scenario
+    renders with the PREVIOUS scenario's price range still applied — bars land
+    ~30x outside a sane viewport and the run reports dozens of
+    "N out-of-bounds bar(s)" failures that look exactly like a rendering
+    regression in whatever you just committed.
+
+    It is not a regression, and the tell is that it is not reproducible: the
+    same binary over the same scenario order passed 1..401 with zero failures on
+    one run and failed ~77 of those same scenarios on the next. Hours went into
+    bisecting code that was never broken.
+
+    A corpus run is a certification. Certifying under contention produces a
+    verdict that means nothing in EITHER direction — a red that indicts innocent
+    code, or a green that was luck. So refuse up front instead.
+    """
+    hits = []
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=20
+        ).stdout
+    except Exception:
+        return hits  # never let the guard itself break a run
+    for line in out.splitlines():
+        name = line.split('","')[0].lstrip('"').lower()
+        if name in ("cargo.exe", "rustc.exe", "link.exe"):
+            hits.append(name)
+    return hits
+
+
+def preflight():
+    """Refuse to certify on a contended machine unless explicitly overridden."""
+    hits = competing_load()
+    if not hits:
+        return
+    from collections import Counter
+    summary = ", ".join(f"{n}x{c}" for n, c in Counter(hits).items())
+    print(f"corpus: REFUSING TO RUN — competing build detected ({summary}).", flush=True)
+    print("corpus: a concurrent cargo build starves the app and produces "
+          "out-of-bounds-bar failures that are NOT code regressions.", flush=True)
+    print("corpus: wait for the build to finish, or set APEX_CORPUS_ALLOW_CONTENTION=1 "
+          "to run anyway (verdict will be untrustworthy).", flush=True)
+    if os.environ.get("APEX_CORPUS_ALLOW_CONTENTION") not in ("1", "true", "True"):
+        sys.exit(2)
+    print("corpus: WARNING — running under contention by explicit override; "
+          "a red verdict here does NOT indict your code.", flush=True)
+
+
 def main():
+    preflight()
     files = sorted(
         (os.path.basename(f) for f in glob.glob(os.path.join(SCEN, "*.json"))
          if os.path.basename(f).split("_")[0].isdigit()
