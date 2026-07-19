@@ -555,6 +555,27 @@ chip + errors_sink.
 **Accept:** manual cold start with PG down: window appears fast, chip shows.
 Corpus (startup scenarios).
 
+**STATUS: DONE** (`df0c86f6`) — corpus 1067/1067. The blocking
+`rt.block_on(connect())` (5s acquire_timeout) is gone; connect runs on its own
+thread and W1-02b's worker buffers saves made before the pool attaches. Failure
+is visible via errors_sink + the W1-02b "⚠ drawings not saving" chip.
+
+**THE W1-03 ENTANGLEMENT — resolved, do not undo.** A naive spawn here is a
+silent data-loss bug, not a latency win. On a fresh machine with no local JSON,
+`load_watchlists` BLOCKED on the DB to get the user's real watchlists; made
+async it finds no worker, returns empty, and seats built-in defaults — then the
+next save writes those defaults over the server copy. Fixed with
+`ChartCommand::ReloadWatchlistsFromDb` sent from `on_connect`, adopted through
+the same `switch_to()` path the UI uses, and gated by the pure
+`should_adopt_db_watchlists(source, db_len, dirty)`:
+- source must be the built-in DEFAULTS (never override real local JSON, never
+  re-fetch what already came from the DB),
+- the DB must return something (never replace defaults with nothing),
+- the user must not have edited since startup (live edits beat a late DB read).
+
+Provenance tracked in `WATCHLIST_SOURCE` at every load exit; `WATCHLISTS_DIRTY`
+set in `save_watchlists`, the one choke point all mutations funnel through.
+
 > **W1-09 INVESTIGATED 2026-07-18 — the audit's framing is WRONG in a way that
 > matters.** The verifier said "a complete overlay render pipeline already
 > exists… so it's wiring, not building." Half true, and the missing half is the
