@@ -1015,31 +1015,51 @@ pub(crate) enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands,
 pub(crate) enum IndicatorCategory { Overlay, Oscillator }
 
 impl IndicatorType {
-    pub(crate) fn label(self) -> &'static str {
+    /// W3-01: this variant's stable registry id. The ONE match that has to
+    /// exist while the enum and the registry coexist — every other piece of
+    /// indicator metadata is now derived from it rather than duplicated.
+    /// Stage 3 persists this string instead of the enum ordinal, so these must
+    /// not change once shipped.
+    pub(crate) fn registry_id(self) -> &'static str {
         match self {
-            Self::SMA => "SMA", Self::EMA => "EMA", Self::WMA => "WMA",
-            Self::DEMA => "DEMA", Self::TEMA => "TEMA", Self::VWAP => "VWAP",
-            Self::BollingerBands => "BB", Self::Ichimoku => "ICHI",
-            Self::ParabolicSAR => "PSAR", Self::Supertrend => "ST",
-            Self::KeltnerChannels => "KC",
-            Self::RSI => "RSI", Self::MACD => "MACD", Self::Stochastic => "STOCH",
-            Self::ADX => "ADX", Self::CCI => "CCI", Self::WilliamsR => "%R",
-            Self::ATR => "ATR", Self::OBV => "OBV",
+            Self::SMA => "sma", Self::EMA => "ema", Self::WMA => "wma",
+            Self::DEMA => "dema", Self::TEMA => "tema", Self::VWAP => "vwap",
+            Self::BollingerBands => "bbands", Self::Ichimoku => "ichimoku",
+            Self::ParabolicSAR => "psar", Self::Supertrend => "supertrend",
+            Self::KeltnerChannels => "keltner",
+            Self::RSI => "rsi", Self::MACD => "macd", Self::Stochastic => "stochastic",
+            Self::ADX => "adx", Self::CCI => "cci", Self::WilliamsR => "williams_r",
+            Self::ATR => "atr", Self::OBV => "obv",
         }
     }
+
+    /// The registry entry backing this variant.
+    ///
+    /// Infallible by construction — `registry_id` returns ids the registry
+    /// defines, and a unit test asserts every variant resolves. The
+    /// `expect` therefore fires only if someone adds a variant without
+    /// registering it, which is exactly when a loud failure beats a silent
+    /// fallback to SMA values on a chart the trader is reading.
+    #[allow(clippy::expect_used)] // see above — unregistered variant is a bug, not a runtime condition
+    fn spec(self) -> &'static dyn crate::chart::indicators::Indicator {
+        crate::chart::indicators::get(self.registry_id())
+            .expect("every IndicatorType variant must be registered in chart::indicators")
+    }
+
+    // W3-01: label/default_period/category now DELEGATE to the registry
+    // instead of carrying their own match arms. The registry is the single
+    // source of truth for indicator metadata from Stage 1, so it is
+    // load-bearing rather than sitting orphaned beside the enum — this
+    // codebase's dominant defect class is complete logic with zero callers,
+    // and a registry nothing called would have been the seventh instance.
+    pub(crate) fn label(self) -> &'static str { self.spec().label() }
     pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR, Self::OBV] }
-    pub(crate) fn default_period(self) -> usize {
-        match self {
-            Self::SMA | Self::EMA | Self::WMA | Self::DEMA | Self::TEMA => 20,
-            Self::RSI | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => 14,
-            Self::MACD => 12, Self::VWAP => 1,
-            Self::BollingerBands | Self::KeltnerChannels => 20,
-            Self::Ichimoku => 9, Self::ParabolicSAR => 1, Self::Supertrend => 10,
-            Self::OBV => 1, // cumulative — no period
-        }
-    }
+    pub(crate) fn default_period(self) -> usize { self.spec().default_period() }
     pub(crate) fn category(self) -> IndicatorCategory {
-        match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR | Self::OBV => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
+        match self.spec().category() {
+            crate::chart::indicators::Category::Oscillator => IndicatorCategory::Oscillator,
+            crate::chart::indicators::Category::Overlay => IndicatorCategory::Overlay,
+        }
     }
 
     fn compute(self, closes: &[f32], period: usize) -> Vec<f32> {
@@ -9504,6 +9524,64 @@ mod w1_10_drawing_alert_tests {
         let none = crate::chart_renderer::compute::evaluate_drawings_against_bar(
             &candidates, 1000, 92.0, 95.0, 90.0, 93.0, &[1000]);
         assert!(none.is_empty(), "a bar that never reaches the line must not fire");
+    }
+}
+
+#[cfg(test)]
+mod w3_01_registry_delegation_tests {
+    use super::{IndicatorType, IndicatorCategory};
+
+    /// W3-01 guard: label/default_period/category now come from the registry
+    /// instead of hardcoded match arms. These are the EXACT values those arms
+    /// returned before the change — every one transcribed from the pre-W3-01
+    /// source. If the registry drifts, a trader's SMA(20) silently becomes
+    /// something else, so this table is the contract.
+    const EXPECTED: &[(IndicatorType, &str, usize, IndicatorCategory)] = &[
+        (IndicatorType::SMA,             "SMA",   20, IndicatorCategory::Overlay),
+        (IndicatorType::EMA,             "EMA",   20, IndicatorCategory::Overlay),
+        (IndicatorType::WMA,             "WMA",   20, IndicatorCategory::Overlay),
+        (IndicatorType::DEMA,            "DEMA",  20, IndicatorCategory::Overlay),
+        (IndicatorType::TEMA,            "TEMA",  20, IndicatorCategory::Overlay),
+        (IndicatorType::VWAP,            "VWAP",   1, IndicatorCategory::Overlay),
+        (IndicatorType::BollingerBands,  "BB",    20, IndicatorCategory::Overlay),
+        (IndicatorType::Ichimoku,        "ICHI",   9, IndicatorCategory::Overlay),
+        (IndicatorType::ParabolicSAR,    "PSAR",   1, IndicatorCategory::Overlay),
+        (IndicatorType::Supertrend,      "ST",    10, IndicatorCategory::Overlay),
+        (IndicatorType::KeltnerChannels, "KC",    20, IndicatorCategory::Overlay),
+        (IndicatorType::RSI,             "RSI",   14, IndicatorCategory::Oscillator),
+        (IndicatorType::MACD,            "MACD",  12, IndicatorCategory::Oscillator),
+        (IndicatorType::Stochastic,      "STOCH", 14, IndicatorCategory::Oscillator),
+        (IndicatorType::ADX,             "ADX",   14, IndicatorCategory::Oscillator),
+        (IndicatorType::CCI,             "CCI",   14, IndicatorCategory::Oscillator),
+        (IndicatorType::WilliamsR,       "%R",    14, IndicatorCategory::Oscillator),
+        (IndicatorType::ATR,             "ATR",   14, IndicatorCategory::Oscillator),
+        (IndicatorType::OBV,             "OBV",    1, IndicatorCategory::Oscillator),
+    ];
+
+    #[test]
+    fn delegation_preserves_every_hardcoded_value() {
+        for (kind, label, period, cat) in EXPECTED {
+            assert_eq!(kind.label(), *label, "{kind:?} label changed");
+            assert_eq!(kind.default_period(), *period, "{kind:?} default period changed");
+            assert_eq!(kind.category(), *cat, "{kind:?} category changed");
+        }
+    }
+
+    #[test]
+    fn every_variant_resolves_to_a_registry_entry() {
+        // spec() expects registration; this proves no variant can panic there.
+        for kind in IndicatorType::all() {
+            assert!(
+                crate::chart::indicators::get(kind.registry_id()).is_some(),
+                "{kind:?} has no registry entry — spec() would panic",
+            );
+        }
+    }
+
+    #[test]
+    fn the_guard_table_covers_the_whole_enum() {
+        // Otherwise a new variant could skip the contract above unnoticed.
+        assert_eq!(EXPECTED.len(), IndicatorType::all().len());
     }
 }
 
