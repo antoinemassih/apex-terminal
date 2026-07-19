@@ -432,6 +432,27 @@ write-only — never drained, never surfaced.
 bring PG up → drawings flush, chip clears.
 **Depends:** W1-01 (no point flushing rows that can't parse).
 
+**STATUS: DONE** — W1-02a `(earlier)`, W1-02b `d75400fa`. Corpus 1067/1067.
+All four items shipped:
+1. Connect failure + every dead-letter event → `errors_sink::report()`.
+2. "⚠ drawings not saving" chip beside the connection dot. NOTE: `is_persisting()`
+   had **zero callers** before this — the orphaned-logic class again. Item 2 was
+   written but never reached a surface.
+3. `spawn_reconnect()` — 2s→5s→15s→60s ceiling; drains buffer + spill on attach.
+4. JSONL spill drained on reconnect; deleted only when every row is accepted.
+
+**Structural note (the actual fix):** the worker channel used to be created only
+inside `init(pool)`, so a PG-down startup left `DB_TX` unset and saves were
+dropped at the CALL SITE — there was never anything to drain. The worker now runs
+unconditionally; only the pool is optional.
+
+**Two deliberate non-obvious calls:**
+- Removes and group-writes are NOT replayed after an outage. Replaying a remove
+  against a row the user re-created in the meantime destroys data; a remove of a
+  row that was never written is a no-op. Dropping is the safe direction.
+- `is_persisting()` now tracks the pool, not the channel — otherwise it would
+  report "saving" while rows sit in a buffer.
+
 ### W1-03 · Watchlist persistence: fix destructive save + phantom fallback  [P0 · M]
 **Evidence:** `load_watchlists()`'s comment promises a Postgres cross-machine
 fallback that does not exist (`load_all()` is orphaned, zero callers); save is
