@@ -882,18 +882,19 @@ a match. A registry sitting orphaned beside the enum would have been the seventh
 instance of this codebase's zero-callers defect class. A guard test pins all 19
 (label, period, category) to the exact values the deleted match arms returned.
 
-**STAGE 2: CODE-COMPLETE, CORPUS PENDING** (`2c41d04c`, pushed). The ~105-line
+**STAGE 2: DONE** (`2c41d04c`) — corpus 1067/1067, 0 real. The ~105-line
 per-kind match in `recompute_indicators` is replaced by one registry dispatch;
 the all-NaN `IndicatorType::compute()` — the "silently NaN" P1 source — is
 deleted (zero callers after the reroute). Source-selection, OBV's chart-close
 quirk, and the Supertrend/divergence side-channels are preserved explicitly.
-- Verified: `cargo check` clean; full unit suite 859/0; a bit-for-bit
-  `registry_lanes_match_the_original_compute_tuples` guard compares each lane to
-  the exact `compute::` tuple element the deleted arm assigned; binary builds.
-- **NOT yet corpus-gated** — 2026-07-23 the machine was under sustained build
-  contention from a co-tenant session (squidink down, couldn't coordinate) and
-  the guard correctly refused every launch. Run `python dev/run_corpus.py` from
-  the repo root on a quiet machine and confirm 1067/1067 before marking DONE.
+Verified by `cargo check`, full unit suite 859/0, the bit-for-bit
+`registry_lanes_match_the_original_compute_tuples` guard, and the corpus.
+
+Gate cost the 2026-07-23/24 session dearly: sustained co-tenant build contention
+(squidink down) meant the guard refused launch repeatedly, and one run that DID
+start got a build overlapping scenarios 2-51 → 50 "out-of-bounds bar" failures.
+Re-run on a genuinely quiet window: 1067/1067 clean. Confirms once more that
+out-of-bounds-bar bursts are contention, never indicator code.
 
 **Remaining stages** (each its own corpus-gated commit):
 - **Stage 3** — persist by string id + params (migrate from enum ordinal).
