@@ -469,6 +469,57 @@ mod tests {
         assert!(same_output(&psar_implicit, &psar_explicit), "PSAR defaults must be 0.02/0.02/0.2");
     }
 
+    /// W3-01 Stage 2 guard: the registry's lane assignment must match, element
+    /// for element, what the deleted `recompute_indicators` arms wrote. The
+    /// direct `compute::` tuple is the oracle — if a lane is swapped (upper vs
+    /// lower, +DI vs -DI, signal vs histogram) this catches it, and a swap
+    /// would silently mislabel a trader's bands.
+    #[test]
+    fn registry_lanes_match_the_original_compute_tuples() {
+        let (high, low, close, volume, ts) = bars(200);
+        let d = Ohlcv { high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
+        let eq = |a: &[f32], b: &[f32]| {
+            a.len() == b.len()
+                && a.iter().zip(b).all(|(p, q)| (p.is_nan() && q.is_nan()) || p == q)
+        };
+
+        // Bollinger: (mid, upper, lower) → values/values2/values3.
+        let bb = BollingerBands.compute(&d, &Params::with_period(20));
+        let (mid, upper, lower) = c::compute_bollinger(&close, 20, 2.0);
+        assert!(eq(&bb.values, &mid) && eq(&bb.values2, &upper) && eq(&bb.values3, &lower));
+
+        // Keltner: same lane shape, but H/L/C inputs.
+        let kc = KeltnerChannels.compute(&d, &Params::with_period(20));
+        let (kmid, kup, klo) = c::compute_keltner(&high, &low, &close, 20, 2.0);
+        assert!(eq(&kc.values, &kmid) && eq(&kc.values2, &kup) && eq(&kc.values3, &klo));
+
+        // MACD: (macd, signal, hist) → values/values2/histogram.
+        let macd = Macd.compute(&d, &Params::with_period(12));
+        let (m, s, h) = c::compute_macd(&close, 12, 26, 9);
+        assert!(eq(&macd.values, &m) && eq(&macd.values2, &s) && eq(&macd.histogram, &h));
+
+        // ADX: (adx, +DI, -DI) → values/values2/values3 — order matters.
+        let adx = Adx.compute(&d, &Params::with_period(14));
+        let (a, pdi, mdi) = c::compute_adx(&high, &low, &close, 14);
+        assert!(eq(&adx.values, &a) && eq(&adx.values2, &pdi) && eq(&adx.values3, &mdi));
+
+        // Ichimoku: (tenkan, kijun, sa, sb, chikou) across all five lanes.
+        let ichi = Ichimoku.compute(&d, &Params::with_period(9));
+        let (t, k, sa, sb, ch) = c::compute_ichimoku(&high, &low, &close, 9, 26, 52);
+        assert!(eq(&ichi.values, &t) && eq(&ichi.values2, &k) && eq(&ichi.values3, &sa)
+            && eq(&ichi.values4, &sb) && eq(&ichi.values5, &ch));
+
+        // Stochastic: period.max(2) is load-bearing — a period-1 %K is degenerate.
+        let st = Stochastic.compute(&d, &Params::with_period(14));
+        let (kk, dd) = c::compute_stochastic(&high, &low, &close, 14, 3);
+        assert!(eq(&st.values, &kk) && eq(&st.values2, &dd));
+
+        // Supertrend direction flags land in `flags`, not a value lane.
+        let str = Supertrend.compute(&d, &Params::with_period(10));
+        let (sv, sdir) = c::compute_supertrend(&high, &low, &close, 10, 3.0);
+        assert!(eq(&str.values, &sv) && str.flags == sdir);
+    }
+
     #[test]
     fn categories_match_the_enum_split() {
         // Oscillators render in a sub-pane; overlays on price. Getting this

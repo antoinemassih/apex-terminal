@@ -1062,21 +1062,12 @@ impl IndicatorType {
         }
     }
 
-    fn compute(self, closes: &[f32], period: usize) -> Vec<f32> {
-        match self {
-            Self::SMA => compute_sma(closes, period),
-            Self::EMA => compute_ema(closes, period),
-            Self::WMA => super::compute::compute_wma(closes, period),
-            Self::DEMA => super::compute::compute_dema(closes, period),
-            Self::TEMA => super::compute::compute_tema(closes, period),
-            Self::VWAP | Self::BollingerBands | Self::Ichimoku | Self::ParabolicSAR
-            | Self::Supertrend | Self::KeltnerChannels => vec![f32::NAN; closes.len()], // computed separately
-            Self::RSI => compute_rsi(closes, period),
-            Self::MACD => compute_ema(closes, period),
-            Self::Stochastic => vec![f32::NAN; closes.len()],
-            Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR | Self::OBV => vec![f32::NAN; closes.len()], // need OHLCV — computed in recompute_indicators
-        }
-    }
+    // W3-01 Stage 2: the enum's own `compute()` is gone. It returned
+    // `vec![NAN; n]` for ~13 of the 19 kinds ("computed separately" /
+    // "need OHLCV"), which is precisely the "silently NaN" P1 — any caller that
+    // trusted it got NaN for those indicators. recompute_indicators now routes
+    // EVERY kind through chart::indicators::compute, so this all-NaN method has
+    // no callers and is deleted rather than left as a trap.
 }
 
 #[derive(Debug, Clone)]
@@ -3562,110 +3553,55 @@ impl Chart {
                 _ => base_source,
             };
 
+            // W3-01 Stage 2: the ~105-line per-kind match is gone — every
+            // indicator now computes through the registry (chart::indicators).
+            // The three things the registry output does NOT carry are handled
+            // explicitly below, because they are real behaviour that must be
+            // preserved bit-for-bit:
+            //   1. source selection — `close` is the source-selected series
+            //      (Close/Open/High/Low/HL2/OHLC4); high/low/volume are always
+            //      the chart bars, exactly as the old arms wired them.
+            //   2. OBV's quirk — it aligns close+volume from the CHART bars
+            //      regardless of `source` (cross-TF volume isn't materialised),
+            //      so OBV alone overrides `close` back to chart_closes.
+            //   3. side-channels — Supertrend direction flags and the
+            //      RSI/MACD/Stochastic divergence overlay live in dedicated
+            //      Indicator fields, not the value lanes.
+            use crate::chart::indicators as reg;
+            let close_series: &[f32] =
+                if ind.kind == IndicatorType::OBV { &chart_closes } else { closes };
+            let data = reg::Ohlcv {
+                high: &chart_highs,
+                low: &chart_lows,
+                close: close_series,
+                volume: &chart_volumes,
+                timestamps: &self.timestamps,
+            };
+            let params = reg::Params {
+                period: ind.period,
+                param2: ind.param2,
+                param3: ind.param3,
+                param4: ind.param4,
+            };
+            let out = ind.kind.spec().compute(&data, &params);
+            ind.values = out.values;
+            ind.values2 = out.values2;
+            ind.values3 = out.values3;
+            ind.values4 = out.values4;
+            ind.values5 = out.values5;
+            ind.histogram = out.histogram;
+
+            // (3) side-channels — only for the kinds that populate them; others
+            // must be left untouched exactly as before (the old arms only ever
+            // wrote these fields for these kinds).
+            if ind.kind == IndicatorType::Supertrend {
+                ind.supertrend_dir = out.flags;
+            }
             match ind.kind {
-                IndicatorType::VWAP => {
-                    ind.values = compute_vwap(closes, &chart_volumes, &chart_highs, &chart_lows, &self.timestamps);
-                }
-                IndicatorType::RSI => {
-                    ind.values = compute_rsi(closes, ind.period);
+                IndicatorType::RSI | IndicatorType::MACD | IndicatorType::Stochastic => {
                     ind.divergences = detect_divergences(closes, &ind.values, 5);
                 }
-                IndicatorType::MACD => {
-                    let fast = ind.period;
-                    let slow = if ind.param2 > 0.0 { ind.param2 as usize } else { 26 };
-                    let signal = if ind.param3 > 0.0 { ind.param3 as usize } else { 9 };
-                    let (macd, sig, hist) = compute_macd(closes, fast, slow, signal);
-                    ind.values = macd;
-                    ind.values2 = sig;
-                    ind.histogram = hist;
-                    ind.divergences = detect_divergences(closes, &ind.values, 5);
-                }
-                IndicatorType::Stochastic => {
-                    let d_period = if ind.param2 > 0.0 { ind.param2 as usize } else { 3 };
-                    let (k, d) = compute_stochastic(&chart_highs, &chart_lows, closes, ind.period.max(2), d_period);
-                    ind.values = k;
-                    ind.values2 = d;
-                    ind.divergences = detect_divergences(closes, &ind.values, 5);
-                }
-                IndicatorType::ADX => {
-                    let (adx, plus_di, minus_di) = compute_adx(&chart_highs, &chart_lows, &closes, ind.period);
-                    ind.values = adx;
-                    ind.values2 = plus_di;   // +DI line
-                    ind.values3 = minus_di;  // -DI line
-                    ind.histogram = vec![];
-                }
-                IndicatorType::CCI => {
-                    ind.values = compute_cci(&chart_highs, &chart_lows, &closes, ind.period);
-                    ind.values2 = vec![]; ind.histogram = vec![];
-                }
-                IndicatorType::WilliamsR => {
-                    ind.values = compute_williams_r(&chart_highs, &chart_lows, &closes, ind.period);
-                    ind.values2 = vec![]; ind.histogram = vec![];
-                }
-                IndicatorType::BollingerBands => {
-                    let std_dev = if ind.param2 > 0.0 { ind.param2 } else { 2.0 };
-                    let (mid, upper, lower) = compute_bollinger(closes, ind.period, std_dev);
-                    ind.values = mid;
-                    ind.values2 = upper;
-                    ind.values3 = lower;
-                    ind.values4 = vec![]; ind.values5 = vec![];
-                    ind.histogram = vec![];
-                }
-                IndicatorType::Ichimoku => {
-                    let tenkan = ind.period;
-                    let kijun = if ind.param2 > 0.0 { ind.param2 as usize } else { 26 };
-                    let senkou_b = if ind.param3 > 0.0 { ind.param3 as usize } else { 52 };
-                    let (tenkan_v, kijun_v, sa, sb, chikou) = compute_ichimoku(&chart_highs, &chart_lows, closes, tenkan, kijun, senkou_b);
-                    ind.values = tenkan_v;
-                    ind.values2 = kijun_v;
-                    ind.values3 = sa;
-                    ind.values4 = sb;
-                    ind.values5 = chikou;
-                    ind.histogram = vec![];
-                }
-                IndicatorType::ParabolicSAR => {
-                    let af_start = if ind.param4 > 0.0 { ind.param4 } else { 0.02 };
-                    let af_step = if ind.param2 > 0.0 { ind.param2 } else { 0.02 };
-                    let af_max = if ind.param3 > 0.0 { ind.param3 } else { 0.2 };
-                    ind.values = compute_psar(&chart_highs, &chart_lows, af_start, af_step, af_max);
-                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
-                    ind.histogram = vec![];
-                }
-                IndicatorType::Supertrend => {
-                    let mult = if ind.param2 > 0.0 { ind.param2 } else { 3.0 };
-                    let (st, dir) = compute_supertrend(&chart_highs, &chart_lows, closes, ind.period, mult);
-                    ind.values = st;
-                    ind.supertrend_dir = dir;
-                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
-                    ind.histogram = vec![];
-                }
-                IndicatorType::KeltnerChannels => {
-                    let mult = if ind.param2 > 0.0 { ind.param2 } else { 2.0 };
-                    let (mid, upper, lower) = compute_keltner(&chart_highs, &chart_lows, closes, ind.period, mult);
-                    ind.values = mid;
-                    ind.values2 = upper;
-                    ind.values3 = lower;
-                    ind.values4 = vec![]; ind.values5 = vec![];
-                    ind.histogram = vec![];
-                }
-                IndicatorType::ATR => {
-                    ind.values = compute_atr(&chart_highs, &chart_lows, closes, ind.period);
-                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
-                    ind.histogram = vec![];
-                }
-                IndicatorType::OBV => {
-                    // OBV needs aligned close+volume — always from the chart bars
-                    // (cross-TF volume isn't materialised here), so use chart_closes.
-                    ind.values = compute_obv(&chart_closes, &chart_volumes);
-                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
-                    ind.histogram = vec![];
-                }
-                _ => {
-                    ind.values = ind.kind.compute(closes, ind.period);
-                    ind.values2 = vec![];
-                    ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
-                    ind.histogram = vec![];
-                }
+                _ => {}
             }
         }
         self.indicator_bar_count = self.bars.len();
