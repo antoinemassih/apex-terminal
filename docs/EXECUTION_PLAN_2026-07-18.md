@@ -116,12 +116,16 @@ Work items in ID order within a wave unless a dependency says otherwise.
 >   the core `w0_03_pending_cancel_broker_filled_adopts_fill_not_masked`.
 > - **W0-04 DONE** `d72fe80b` — rejected modify reverts optimistic price +
 >   reconcile limit-price self-heal. +4 tests.
-> - **W0-07 DEFERRED (needs product decision)** — market orders already hit the
->   notional `NeedsApproval` gate (validate_risk:954, uses last_price when
->   price=0); the price-deviation fat-finger is legitimately N/A for market
->   orders. A real gap exists only when `max_notional` is disabled (0). Adding a
->   second notional threshold risks a redundant/confusing gate. Decide the
->   threshold semantics (notional cap vs qty-baseline anomaly) before building.
+> - **W0-07 CODE-COMPLETE, CORPUS PENDING** (`78becfc6`) — decision made: option
+>   (a), a notional cap. The market-order fat-finger backstop
+>   (`RiskLimits.market_fat_finger_notional`, default $50k = the `max_notional`
+>   default) is a soft NeedsApproval gate that activates ONLY when `max_notional`
+>   is disabled (0) — the exact hole where a market order had zero fat-finger
+>   protection. No double gate when `max_notional` is on (step 4 already covers
+>   market orders there). Pure `market_notional_needs_review` +2 tests. Non-market
+>   orders untouched (they get price-deviation instead). Verified: cargo check,
+>   full suite 861/0, binary builds. Corpus gate blocked 2026-07-25 — see the
+>   machine-reboot note below.
 >
 > **PROGRESS 2026-07-18 (cont.)** — daily-loss hardening, corpus **1067/1067**
 > (0 real, 0 refused), 114 trading unit tests:
@@ -498,8 +502,32 @@ Shipped items 1 and 3 with **zero new crates**:
   `errors_sink`, so a misconfigured webhook is visible instead of silently
   eating the trader's alerts.
 
-Item 2 (OS toast) deferred to **W1-04b** — it needs a new crate, which is a
-separate decision.
+Item 2 (OS toast) was **W1-04b** — CODE-COMPLETE, CORPUS PENDING (`3317ce98`).
+Decision made: new crate approved. `tauri-winrt-notification` v0.8.1 (the crate
+Tauri itself uses), Windows-gated so it adds nothing on other targets.
+`show_toast()` fires from `deliver()` BEFORE the webhook early-return (so it
+works with no webhook configured), off the render thread via `spawn_guarded`,
+SILENT (`Sound::None`) because `play_alert_sound()` already owns the audio — no
+double-beep. Uses the POWERSHELL_APP_ID AUMID fallback until the installer
+registers a real one (W4-07); without a valid AUMID Windows drops toasts
+silently, so that attribution is deliberate. Opt-out via `APEX_ALERT_NO_TOAST`.
+Failures → errors_sink. Verified: cargo check, full suite 861/0, binary builds
+and LINKS the new dep. Corpus gate blocked 2026-07-25 — see below.
+
+> **CORPUS GATE BLOCKED 2026-07-25 (W0-07 + W1-04b) — machine reboot needed.**
+> Both items are verified by cargo check, the full unit suite (861/0, incl. the
+> 2 new W0-07 tests), and a clean binary build that links the new toast crate.
+> The corpus gate could not run: the mainmachine's GPU-app processes had entered
+> the known unkillable driver-hang state (`HasExited=True` yet not reaped;
+> `taskkill`/`Stop-Process`/WMI-Terminate all no-op), two of them accumulated,
+> and eventually even the corpus DRIVER hung at `_refresh_protected_copy`'s file
+> ops because the stuck handles lock the binary. A partial run before that
+> showed the ONLY failures were low-fps stalls (0.6/4.8 fps < 5) on scenarios
+> 502/570 — which submit no orders and fire no alerts, so they cannot exercise
+> either change; 100+ later scenarios passed clean. This is the 0x129-microcode
+> instability, not the code. **To gate: reboot, then `python dev/run_corpus.py`
+> from repo root; expect 1067/1067.** Same honesty posture as W3-01 Stage 2's
+> pending note.
 
 **Hard-won note:** the beep MUST NOT run inline. `deliver()` is called from the
 alert-eval path inside the render loop, and `MessageBeep` only behaves
