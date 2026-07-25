@@ -657,6 +657,18 @@ pub(crate) struct RiskLimits {
     /// last-good price forever). 0 = disabled. Overridable per-order via
     /// `override_warnings`. Default 5s.
     pub(crate) max_quote_age_secs: u64,
+    /// W0-07 (audit): market-order fat-finger backstop, in dollars notional.
+    ///
+    /// Market orders can't be price-deviation-checked (they carry no limit
+    /// price), and the per-order `max_notional` gate already covers them when it
+    /// is enabled. The hole is when an operator DISABLES `max_notional` (sets it
+    /// to 0): a market order then has ZERO fat-finger protection — "meant 10,
+    /// typed 1000" goes straight to the broker. This cap is a soft
+    /// (NeedsApproval) backstop that activates ONLY in that case, so there is
+    /// never a redundant double gate when `max_notional` is on. 0 = disabled.
+    /// Default matches the `max_notional` default so turning that off still
+    /// leaves a market backstop unless this is also cleared.
+    pub(crate) market_fat_finger_notional: f64,
 }
 
 /// Wave 5: versioned snapshot of the open-orders journal.
@@ -693,8 +705,34 @@ impl Default for RiskLimits {
             dedup_cooldown_ms: 500,
             daily_loss_includes_unrealized: true,
             max_quote_age_secs: 5,
+            market_fat_finger_notional: 50_000.0, // matches max_notional default
         }
     }
+}
+
+/// W0-07 (audit): should a MARKET order be soft-gated for review on notional?
+///
+/// Returns `Some(notional)` when the order needs `NeedsApproval`, `None`
+/// otherwise. The gate deliberately activates ONLY when `max_notional` is
+/// disabled (0) — when it is enabled, the general per-order notional check
+/// already covers market orders, and firing here too would be a confusing
+/// double gate. Non-market orders are never gated here (they get the
+/// price-deviation fat-finger check instead). Pure so the rule is unit-testable
+/// without a manager, an account, or the clock.
+fn market_notional_needs_review(
+    is_market: bool,
+    max_notional: f64,
+    market_cap: f64,
+    last_price: f32,
+    qty: u32,
+) -> Option<f64> {
+    // Only market orders, only when the general notional gate is OFF, only when
+    // this backstop is configured, and only with a usable price to size against.
+    if !is_market || max_notional > 0.0 || market_cap <= 0.0 || last_price <= 0.0 {
+        return None;
+    }
+    let notional = last_price as f64 * qty as f64;
+    (notional > market_cap).then_some(notional)
 }
 
 /// W0-08: is a market-data quote of `age_secs` too stale to size risk against,
@@ -1027,6 +1065,29 @@ impl OrderManager {
                     "Working+new notional ${:.0} exceeds max ${:.0}",
                     working_notional + notional, self.risk_limits.max_notional
                 )));
+            }
+        }
+
+        // 4b. W0-07: market-order fat-finger backstop. Only bites when
+        // `max_notional` is disabled (else step 4 already covered this market
+        // order) — no double gate. Soft gate → NeedsApproval, overridable.
+        if !intent.override_warnings {
+            let is_market = intent.order_type == ManagedOrderType::Market;
+            if let Some(notional) = market_notional_needs_review(
+                is_market,
+                self.risk_limits.max_notional,
+                self.risk_limits.market_fat_finger_notional,
+                intent.last_price,
+                intent.qty,
+            ) {
+                self.orders_rejected += 1;
+                return Err(OrderResult::NeedsApproval {
+                    reason: format!(
+                        "market order notional ${:.0} exceeds fat-finger backstop ${:.0}",
+                        notional, self.risk_limits.market_fat_finger_notional
+                    ),
+                    intent_id: 0,
+                });
             }
         }
 
@@ -7152,6 +7213,58 @@ mod tests {
         assert!(!quote_is_stale(5, 5), "exactly at threshold → not yet stale");
         assert!(quote_is_stale(6, 5), "6s > 5s → stale");
         assert!(!quote_is_stale(9_999, 0), "threshold 0 disables the gate");
+    }
+
+    #[test]
+    fn w0_07_market_backstop_only_bites_when_max_notional_disabled() {
+        // The whole point: NO double gate. When max_notional is enabled, step 4
+        // already covers market orders, so the backstop must stay silent.
+        assert_eq!(
+            market_notional_needs_review(true, 50_000.0, 50_000.0, 100.0, 1000),
+            None,
+            "max_notional on → step 4 owns it, backstop silent even at $100k"
+        );
+
+        // max_notional OFF (0) is the hole. A $100k market order (1000 @ $100)
+        // over a $50k backstop must be gated.
+        assert_eq!(
+            market_notional_needs_review(true, 0.0, 50_000.0, 100.0, 1000),
+            Some(100_000.0),
+            "max_notional off → backstop catches the oversized market order"
+        );
+
+        // Under the cap → allowed. 100 @ $100 = $10k < $50k.
+        assert_eq!(
+            market_notional_needs_review(true, 0.0, 50_000.0, 100.0, 100),
+            None,
+            "under the backstop → no review"
+        );
+    }
+
+    #[test]
+    fn w0_07_market_backstop_scope_and_disable() {
+        // Non-market orders are never gated here — they get price-deviation
+        // fat-finger instead. (Passing is_market=false must always be None.)
+        assert_eq!(
+            market_notional_needs_review(false, 0.0, 50_000.0, 100.0, 100_000),
+            None,
+            "limit/stop orders are out of scope for this gate"
+        );
+        // Backstop itself disabled (0) → no gate even with max_notional off.
+        assert_eq!(
+            market_notional_needs_review(true, 0.0, 0.0, 100.0, 100_000),
+            None,
+            "backstop 0 disables it"
+        );
+        // No usable price to size against → can't gate (don't reject blindly).
+        assert_eq!(
+            market_notional_needs_review(true, 0.0, 50_000.0, 0.0, 100_000),
+            None,
+            "no last_price → nothing to size against"
+        );
+        // Exactly at the cap is allowed; strictly over trips it.
+        assert_eq!(market_notional_needs_review(true, 0.0, 50_000.0, 50_000.0, 1), None, "== cap → ok");
+        assert_eq!(market_notional_needs_review(true, 0.0, 50_000.0, 50_001.0, 1), Some(50_001.0), "> cap → review");
     }
 
     #[test]
