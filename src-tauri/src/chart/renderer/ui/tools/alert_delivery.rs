@@ -98,14 +98,76 @@ fn play_alert_sound() {
     });
 }
 
-/// Deliver a fired alert out-of-app: audible + webhook (both best-effort).
+/// W1-04b: env to suppress the native OS toast (`1`/`true`). Toasts are ON by
+/// default — a desktop trader who stepped away expects the alert in the corner
+/// of their screen, which is the one thing the audible + webhook channels don't
+/// give a glance-able signal for.
+const NO_TOAST_ENV: &str = "APEX_ALERT_NO_TOAST";
+
+fn toast_suppressed() -> bool {
+    std::env::var(NO_TOAST_ENV)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// W1-04b: show a native Windows toast for a fired alert.
 ///
-/// Never blocks the caller — the webhook POST runs on a spawned thread with a
-/// short timeout, because this is called from the render/eval path. Failures are
-/// reported through `errors_sink` rather than swallowed, so a misconfigured
-/// webhook is visible instead of silently dropping the trader's alerts.
+/// Spawned off the caller (render/eval) thread — WinRT toast construction and
+/// the XML pipeline are not something to run mid-frame. Best-effort: a failure
+/// is reported through `errors_sink`, never panicked or swallowed. The toast is
+/// SILENT (`Sound::None`) on purpose — `play_alert_sound()` already owns the
+/// audio, and a toast with its own sound would double-beep.
+///
+/// No-op on non-Windows until a portable toast backend is chosen (tracked with
+/// the same cfg as the `MessageBeep` path above).
+fn show_toast(symbol: &str, message: &str) {
+    if toast_suppressed() {
+        return;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let title = format!("APEX alert — {symbol}");
+        let body = message.to_string();
+        crate::foundation::guard::spawn_guarded("alert_toast", move || {
+            use tauri_winrt_notification::{Duration, Sound, Toast};
+            // POWERSHELL_APP_ID is the standard AppUserModelID fallback for an
+            // app that hasn't registered its own AUMID (that comes with the
+            // installer, W4-07). Without a valid AUMID Windows silently drops
+            // the toast, so this attribution is deliberate, not a placeholder.
+            let result = Toast::new(Toast::POWERSHELL_APP_ID)
+                .title(&title)
+                .text1(&body)
+                .sound(None) // audio is play_alert_sound()'s job — see doc above
+                .duration(Duration::Short)
+                .show();
+            if let Err(e) = result {
+                crate::data::connectivity::errors_sink::report(
+                    crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                    "alert_delivery",
+                    "toast_failed",
+                    format!("native toast failed: {e}"),
+                );
+            }
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (symbol, message);
+    }
+}
+
+/// Deliver a fired alert out-of-app: audible + native toast + webhook (all
+/// best-effort).
+///
+/// Never blocks the caller — the toast and webhook run on spawned threads,
+/// because this is called from the render/eval path. Failures are reported
+/// through `errors_sink` rather than swallowed, so a misconfigured webhook or a
+/// dropped toast is visible instead of silently losing the trader's alerts.
 pub fn deliver(symbol: &str, message: &str, price: Option<f32>) {
     play_alert_sound();
+    // Toast BEFORE the webhook early-return — it must fire whether or not a
+    // webhook URL is configured.
+    show_toast(symbol, message);
 
     let Some(url) = webhook_url() else { return };
     let payload = webhook_payload(symbol, message, price);
