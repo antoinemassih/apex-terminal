@@ -36,9 +36,15 @@
 
 use super::renderer::compute as c;
 
+/// W3-02: embedded-Rhai custom-indicator engine (sandboxed eval over OHLCV).
+pub mod script;
+
 /// Borrowed OHLCV series an indicator computes over. Slices, not owned Vecs —
 /// indicators must not copy the bar arrays.
 pub struct Ohlcv<'a> {
+    /// W3-02: `open` added for script indicators (candle-body scripts want it);
+    /// the native built-ins don't read it.
+    pub open: &'a [f32],
     pub high: &'a [f32],
     pub low: &'a [f32],
     pub close: &'a [f32],
@@ -384,7 +390,7 @@ mod tests {
         // silently yields nothing (the enum's compute() returns all-NaN for
         // every OHLCV indicator, which is exactly the "silently NaN" P1).
         let (high, low, close, volume, ts) = bars(120);
-        let d = Ohlcv { high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
+        let d = Ohlcv { open: &close, high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
         for ind in all() {
             let out = ind.compute(&d, &Params::with_period(ind.default_period()));
             assert!(!out.values.is_empty(), "{} produced no values", ind.id());
@@ -396,7 +402,7 @@ mod tests {
     #[test]
     fn multi_lane_indicators_fill_their_documented_lanes() {
         let (high, low, close, volume, ts) = bars(200);
-        let d = Ohlcv { high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
+        let d = Ohlcv { open: &close, high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
         let p = |n| Params::with_period(n);
 
         let bb = BollingerBands.compute(&d, &p(20));
@@ -441,7 +447,7 @@ mod tests {
         // `0.0 == unset` is the existing convention. A default that drifts here
         // silently changes values on every chart that never set the param.
         let (high, low, close, volume, ts) = bars(200);
-        let d = Ohlcv { high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
+        let d = Ohlcv { open: &close, high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
 
         let implicit = Macd.compute(&d, &Params::with_period(12));
         let explicit = Macd.compute(&d, &Params { period: 12, param2: 26.0, param3: 9.0, param4: 0.0 });
@@ -477,7 +483,7 @@ mod tests {
     #[test]
     fn registry_lanes_match_the_original_compute_tuples() {
         let (high, low, close, volume, ts) = bars(200);
-        let d = Ohlcv { high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
+        let d = Ohlcv { open: &close, high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts };
         let eq = |a: &[f32], b: &[f32]| {
             a.len() == b.len()
                 && a.iter().zip(b).all(|(p, q)| (p.is_nan() && q.is_nan()) || p == q)

@@ -3593,6 +3593,7 @@ impl Chart {
             let close_series: &[f32] =
                 if ind.kind == IndicatorType::OBV { &chart_closes } else { closes };
             let data = reg::Ohlcv {
+                open: &chart_opens,
                 high: &chart_highs,
                 low: &chart_lows,
                 close: close_series,

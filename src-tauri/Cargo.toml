@@ -77,6 +77,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
 rfd = "0.15"
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu"] }
+rhai = { version = "1.25.1", features = ["sync"] }
 
 [target.'cfg(windows)'.dependencies]
 # W1-04: Win32_System_Diagnostics_Debug added for `MessageBeep` (windows-sys
