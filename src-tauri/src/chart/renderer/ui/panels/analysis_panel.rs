@@ -89,7 +89,7 @@ pub(crate) fn draw(
                     );
                 }
                 AnalysisTab::Scripts =>
-                    super::script_panel::draw_content(ui, watchlist, t),
+                    super::script_panel::draw_content(ui, watchlist, ap, t),
                 AnalysisTab::Seasonality =>
                     super::seasonality_panel::draw_content(ui, watchlist, panes, ap, t),
                 AnalysisTab::Research =>

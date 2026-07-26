@@ -32,13 +32,104 @@ use super::super::components::text::MonospaceCode;
 use super::super::widgets::cards::Card;
 use super::super::super::gpu::{Watchlist, Theme};
 
-// ── Preset example scripts ──────────────────────────────────────────────────
+// ── Preset example scripts (W3-02 slice 2) ──────────────────────────────────
+// Real, runnable Rhai for the custom-indicator engine. Each returns an array
+// aligned to `close`; warmup slots use NAN. These are the templates the spec
+// asked for, expressed against the single-series contract the engine supports
+// today (multi-lane outputs — banded VWAP, CVD coloring — are a follow-up).
 
 const PRESETS: &[(&str, &str)] = &[
-    ("SMA Crossover",  "buy when sma(close,10) crosses above sma(close,50)"),
-    ("RSI Oversold",   "buy when rsi(close,14) < 30"),
-    ("MACD Signal",    "buy when macd_line > signal_line AND macd_line[1] < signal_line[1]"),
+    ("SMA", r#"// Simple moving average of close over `period`.
+let out = [];
+for i in 0..close.len() {
+    if i < period - 1 { out.push(NAN); }
+    else { let s = 0.0; for j in 0..period { s += close[i-j]; } out.push(s / period); }
+}
+out"#),
+    ("Momentum", r#"// Price change over `period` bars.
+let out = [];
+for i in 0..close.len() {
+    if i < period { out.push(NAN); }
+    else { out.push(close[i] - close[i - period]); }
+}
+out"#),
+    ("Range %", r#"// Bar range as a percent of close — uses high/low/close.
+let out = [];
+for i in 0..close.len() {
+    if close[i] == 0.0 { out.push(NAN); }
+    else { out.push((high[i] - low[i]) / close[i] * 100.0); }
+}
+out"#),
 ];
+
+/// W3-02 slice 2: validate a script by running it over a synthetic fixture — the
+/// same sandboxed engine that renders it on the chart. Returns a human summary
+/// on success, or the compile/runtime error for inline display. The chart's
+/// real bars drive the actual indicator once added; this just proves the script
+/// compiles and runs without hanging (op-capped) before the trader commits it.
+fn validate_script(src: &str) -> Result<String, String> {
+    if src.trim().is_empty() {
+        return Err("No script to run — the editor is empty.".to_string());
+    }
+    // Deterministic fixture: a 60-bar ramp+wiggle. Enough to exercise typical
+    // period windows without depending on live data.
+    let n = 60usize;
+    let close: Vec<f32> = (0..n).map(|i| 100.0 + i as f32 * 0.1 + (i as f32 * 0.4).sin() * 2.0).collect();
+    let high: Vec<f32> = close.iter().map(|c| c + 0.4).collect();
+    let low: Vec<f32> = close.iter().map(|c| c - 0.4).collect();
+    let volume: Vec<f32> = (0..n).map(|i| 1000.0 + i as f32).collect();
+    let ts: Vec<i64> = (0..n as i64).map(|i| i * 60).collect();
+    let data = crate::chart::indicators::Ohlcv {
+        open: &close, high: &high, low: &low, close: &close, volume: &volume, timestamps: &ts,
+    };
+    let params = crate::chart::indicators::Params::with_period(20);
+    let vals = crate::chart::indicators::script::eval_script_indicator(src, &data, &params)?;
+    let finite = vals.iter().filter(|v| v.is_finite()).count();
+    let last = vals.iter().rev().find(|v| v.is_finite()).copied();
+    Ok(format!(
+        "OK — compiled and ran on a {n}-bar fixture.\n\
+         {finite}/{n} finite values{}.\n\n\
+         Click \u{201C}Add to Chart\u{201D} to render it on the active pane with live bars.",
+        last.map(|v| format!(", last = {v:.4}")).unwrap_or_default()
+    ))
+}
+
+/// W3-02 slice 2: path of the workbench draft script under the state dir.
+fn workbench_path() -> std::path::PathBuf {
+    let dir = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let scripts = dir.join("state").join("scripts");
+    let _ = std::fs::create_dir_all(&scripts);
+    scripts.join("workbench.rhai")
+}
+
+/// W3-02 slice 2: persist the editor draft to the workbench file. Returns the
+/// path on success. Indicators added to a chart persist with the workspace; this
+/// keeps an un-added draft across restarts.
+fn save_workbench_script(src: &str) -> Result<String, String> {
+    let path = workbench_path();
+    std::fs::write(&path, src).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
+/// Load the workbench draft into the editor once per process, only if the editor
+/// is still empty — so a saved draft survives a restart without fighting the
+/// user's Clear/edits within a session.
+fn maybe_load_workbench(watchlist: &mut Watchlist) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static LOADED: AtomicBool = AtomicBool::new(false);
+    if LOADED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    if watchlist.script.source.is_empty() {
+        if let Ok(src) = std::fs::read_to_string(workbench_path()) {
+            if !src.trim().is_empty() {
+                watchlist.script.source = src;
+            }
+        }
+    }
+}
 
 // ── Backtest data structures ────────────────────────────────────────────────
 
@@ -126,7 +217,9 @@ pub(crate) enum ScriptResultTab {
 /// Shared body for both the standalone `draw` (SidePanelShell) and the
 /// `draw_content` path used by analysis_panel as a tab. `show_save` is `true`
 /// only for the standalone shell (analysis_panel doesn't expose Save).
-fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save: bool) {
+fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_pane: Option<usize>, t: &Theme, show_save: bool) {
+    // W3-02 slice 2: seed the editor from the last saved draft (once per process).
+    maybe_load_workbench(watchlist);
     let w = ui.available_width();
 
     // ── AI Prompt ─────────────────────────────────────────────
@@ -167,24 +260,34 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
     // ── Actions ───────────────────────────────────────────────
     PanelSection::new("ACTIONS").show(ui, t, |ui, t| {
         ui.horizontal(|ui| {
+            // W3-02 slice 2: Run now REALLY evaluates the script (sandboxed,
+            // op-capped) over a fixture and shows the result or the compile/
+            // runtime error inline — the "NO SCRIPT ENGINE" scaffold is gone.
             if action_button(ui, "\u{25B6} Run", t.bull, t).clicked() {
-                if watchlist.script.source.is_empty() {
-                    watchlist.script.output = "Error: No script to run.".to_string();
-                } else {
-                    // AUDIT P0-5: "Bars processed / Signals generated" were
-                    // hardcoded constants — no parser or evaluator runs here.
-                    // Say so rather than inventing counts.
-                    watchlist.script.output = format!(
-                        "*** SIMULATED — NO SCRIPT ENGINE ***\n\
-                         This script was NOT parsed or evaluated. The scripting\n\
-                         engine is not implemented; this panel is a UI scaffold.\n\n\
-                         Script: {}",
-                        watchlist.script.source
-                    );
-                }
+                watchlist.script.output = match validate_script(&watchlist.script.source) {
+                    Ok(summary) => summary,
+                    Err(e) => format!("Script error:\n{e}"),
+                };
                 watchlist.script.result_tab = ScriptResultTab::Output;
             }
             ui.add_space(gap_xs());
+            // W3-02 slice 2: the usability payoff — add the editor's script as a
+            // live indicator on the active pane (renders via the gated compute
+            // path; persists with the workspace). Only when we know the pane.
+            if let Some(pane) = active_pane {
+                if action_button(ui, "\u{2795} Add to Chart", t.accent, t).clicked() {
+                    let src = watchlist.script.source.clone();
+                    if src.trim().is_empty() {
+                        watchlist.script.output = "Nothing to add — the editor is empty.".to_string();
+                    } else {
+                        crate::chart_renderer::commands::push(
+                            crate::chart_renderer::commands::AppCommand::AddScriptIndicator { pane, src });
+                        watchlist.script.output = format!("Added as a custom indicator on pane {pane}.");
+                    }
+                    watchlist.script.result_tab = ScriptResultTab::Output;
+                }
+                ui.add_space(gap_xs());
+            }
             if action_button(ui, "\u{1F4CA} Backtest", t.accent, t).clicked() {
                 let result = mock_backtest();
                 let mut out = String::new();
@@ -208,7 +311,14 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
             if show_save {
                 ui.add_space(gap_xs());
                 if action_button(ui, "Save", t.dim, t).clicked() {
-                    watchlist.script.output = "Script saved. (placeholder — persistence coming soon)".to_string();
+                    // W3-02 slice 2: real persistence — write the editor source to
+                    // a workbench file under the state dir. (Indicators added to a
+                    // chart also persist with the workspace; this keeps the
+                    // editor's draft across restarts even before it's added.)
+                    watchlist.script.output = match save_workbench_script(&watchlist.script.source) {
+                        Ok(path) => format!("Saved to {path}"),
+                        Err(e) => format!("Save failed: {e}"),
+                    };
                     watchlist.script.result_tab = ScriptResultTab::Output;
                 }
             }
@@ -247,8 +357,8 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
 // ── Public entry points ─────────────────────────────────────────────────────
 
 /// Inner body for use inside analysis_panel tab. No Save action here.
-pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
-    draw_body(ui, watchlist, t, false);
+pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_pane: usize, t: &Theme) {
+    draw_body(ui, watchlist, Some(active_pane), t, false);
 }
 
 /// Standalone panel — outer chrome via canonical SidePanelShell.
@@ -256,10 +366,10 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "script",
     is_open: |w| w.script.open,
-    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.active_pane, cx.t, Some(slot)),
 };
 
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_pane: usize, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
     if !watchlist.script.open { return; }
 
     let resp = SidePanelShell::new("apex_script", "APEX SCRIPT")
@@ -270,7 +380,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, sl
         )
         .rail_slot(slot)
         .show(ctx, t, |ui, t| {
-            draw_body(ui, watchlist, t, true);
+            draw_body(ui, watchlist, Some(active_pane), t, true);
         });
     if resp.close_clicked { watchlist.update_sidebar_state(|s| s.script_open = false); }
 }
@@ -503,5 +613,31 @@ fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: 
     }
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+}
+
+#[cfg(test)]
+mod w3_02_slice2_tests {
+    use super::{PRESETS, validate_script};
+
+    #[test]
+    fn every_shipped_preset_actually_runs() {
+        // The spec ships example templates; a template that doesn't compile/run
+        // is worse than none. Validate each through the real engine.
+        for (name, src) in PRESETS {
+            let r = validate_script(src);
+            assert!(r.is_ok(), "preset '{name}' failed to run: {:?}", r.err());
+            assert!(r.unwrap().contains("OK"), "preset '{name}' should report OK");
+        }
+    }
+
+    #[test]
+    fn validate_reports_errors_and_empty() {
+        assert!(validate_script("").is_err(), "empty script is an error");
+        assert!(validate_script("   \n  ").is_err(), "whitespace-only is an error");
+        let err = validate_script("let x = ;;;").unwrap_err();
+        assert!(!err.is_empty(), "a syntax error surfaces a message");
+        // a runaway is caught by the engine op-limit, surfaced here as Err
+        assert!(validate_script("while true { let x = 1; } []").is_err());
     }
 }
