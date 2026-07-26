@@ -742,6 +742,93 @@ fn quote_is_stale(age_secs: u64, threshold_secs: u64) -> bool {
     threshold_secs > 0 && age_secs > threshold_secs
 }
 
+/// W2-01 Stage A: default paper-fill slippage, in basis points, applied to
+/// market-style fills (market orders + triggered stops). Limits fill AT the
+/// limit price — no slippage, by definition. Configurable realism is Stage C.
+const PAPER_SLIPPAGE_BPS: f32 = 1.0;
+
+/// W2-01 Stage A: execution direction of an order side. Buy/TriggerBuy lift the
+/// offer; everything else (Sell, Stop, OcoStop, OcoTarget, TriggerSell) hits the
+/// bid.
+fn is_buy_execution(side: OrderSide) -> bool {
+    matches!(side, OrderSide::Buy | OrderSide::TriggerBuy)
+}
+
+/// W2-01 Stage A: the paper fill price for an order against a market tick, or
+/// `None` if it should not fill yet. This is the fill/no-fill matrix, pure and
+/// unit-tested with no manager, broker, or feed.
+///
+/// `bid`/`ask`/`last` are the current quote (0 = unavailable → last-trade
+/// fallback). `slippage_bps` applies to market-style fills only — a limit fills
+/// AT its limit, which is the point of a limit. Semantics:
+/// - Market: fills now at the marketable side ± slippage.
+/// - Limit: fills at the limit once the marketable side reaches it.
+/// - Stop / TrailingStop: triggers when the reference price crosses the stop,
+///   then fills like a market (± slippage).
+/// - StopLimit: triggers like a stop, then fills only if marketable at the limit.
+fn paper_fill_price(
+    order_type: ManagedOrderType,
+    is_buy: bool,
+    limit: f32,
+    stop: f32,
+    bid: f32,
+    ask: f32,
+    last: f32,
+    slippage_bps: f32,
+) -> Option<f32> {
+    let slip = slippage_bps / 10_000.0;
+    let buy_px = if ask > 0.0 { ask } else { last }; // what a buy pays
+    let sell_px = if bid > 0.0 { bid } else { last }; // what a sell receives
+    let ref_px = if last > 0.0 { last } else if is_buy { buy_px } else { sell_px }; // for triggers
+    match order_type {
+        ManagedOrderType::Market => {
+            if is_buy {
+                (buy_px > 0.0).then(|| buy_px * (1.0 + slip))
+            } else {
+                (sell_px > 0.0).then(|| sell_px * (1.0 - slip))
+            }
+        }
+        ManagedOrderType::Limit => {
+            if limit <= 0.0 {
+                return None;
+            }
+            if is_buy {
+                (buy_px > 0.0 && buy_px <= limit).then_some(limit)
+            } else {
+                (sell_px > 0.0 && sell_px >= limit).then_some(limit)
+            }
+        }
+        ManagedOrderType::Stop | ManagedOrderType::TrailingStop => {
+            if stop <= 0.0 || ref_px <= 0.0 {
+                return None;
+            }
+            let triggered = if is_buy { ref_px >= stop } else { ref_px <= stop };
+            if !triggered {
+                return None;
+            }
+            if is_buy {
+                Some(buy_px * (1.0 + slip))
+            } else {
+                Some(sell_px * (1.0 - slip))
+            }
+        }
+        ManagedOrderType::StopLimit => {
+            if stop <= 0.0 || limit <= 0.0 || ref_px <= 0.0 {
+                return None;
+            }
+            let triggered = if is_buy { ref_px >= stop } else { ref_px <= stop };
+            if !triggered {
+                return None;
+            }
+            if is_buy {
+                (buy_px <= limit).then_some(limit)
+            } else {
+                (sell_px >= limit).then_some(limit)
+            }
+        }
+    }
+}
+
 /// W0-06 (audit): has the combined daily loss breached the cap? `realized` and
 /// `unrealized` are signed P&L (negative = loss). When `include_unrealized` is
 /// false only realized counts. A cap of 0 means disabled. Pure so the rule is
@@ -1301,6 +1388,78 @@ impl OrderManager {
             // (clean or crash) restores today's realized P&L instead of $0.
             self.persist_daily_loss();
         }
+    }
+
+    /// W2-01 Stage A: fill eligible paper orders for `symbol` against a tick.
+    ///
+    /// Each fill routes through the SAME path a live fill takes — state → Filled,
+    /// filled_qty, avg_fill_price, state_history, `record_fill_pnl`, a toast — so
+    /// every downstream consumer (positions, daily-loss breaker, journal, and the
+    /// pair-integrity sweep that cancels bracket siblings) works unchanged. Only
+    /// runs in paper mode; a no-op otherwise. Returns the number filled.
+    ///
+    /// Drivers call this from the reconcile poll with the latest quote. Draft
+    /// orders (not yet submitted) are skipped; terminal and PendingCancel orders
+    /// are excluded via `is_active`.
+    fn apply_paper_fills(&mut self, symbol: &str, bid: f32, ask: f32, last: f32) -> usize {
+        if !self.paper_mode {
+            return 0;
+        }
+        let now = epoch_ms();
+        let idxs: Vec<usize> = (0..self.orders.len())
+            .filter(|&i| {
+                let o = &self.orders[i];
+                o.symbol == symbol
+                    && o.state.is_active()
+                    && o.state != OrderState::Draft
+            })
+            .collect();
+        let mut filled = 0usize;
+        for idx in idxs {
+            let (ot, side, limit, stop) = {
+                let o = &self.orders[idx];
+                (o.order_type, o.side, o.price.to_f32(), o.stop_price.to_f32())
+            };
+            let is_buy = is_buy_execution(side);
+            let Some(fp) = paper_fill_price(ot, is_buy, limit, stop, bid, ask, last, PAPER_SLIPPAGE_BPS)
+            else {
+                continue;
+            };
+            {
+                let o = &mut self.orders[idx];
+                o.state = OrderState::Filled;
+                o.filled_qty = o.qty;
+                o.avg_fill_price = Price::from_f32(fp);
+                o.updated_at = ts_from_ms(now);
+                o.state_history.push((OrderState::Filled, ts_from_ms(now)));
+            }
+            self.record_fill_pnl(idx);
+            let (sym, q) = (self.orders[idx].symbol.clone(), self.orders[idx].qty);
+            let side_str = if is_buy { "BUY" } else { "SELL" };
+            self.push_toast_deduped(format!("PAPER FILLED: {side_str} {sym} x{q} @ {fp:.2}"));
+            filled += 1;
+        }
+        filled
+    }
+
+    /// W2-01 Stage A: partner ids of terminal bracket/OCO legs whose sibling is
+    /// still active — the set the pair-integrity sweep cancels. Extracted as a
+    /// pure read so paper fills (and the live reconcile) share one definition and
+    /// it is unit-testable. (Behaviour identical to the prior inline scan.)
+    fn orphaned_pair_partner_ids(&self) -> Vec<u64> {
+        let mut out = Vec::new();
+        for o in &self.orders {
+            if let Some(pid) = o.pair_id {
+                if o.state.is_terminal() {
+                    if let Some(p) = self.orders.iter().find(|x| x.id == pid) {
+                        if p.state.is_active() {
+                            out.push(p.id);
+                        }
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// W0-05 (audit): write the daily-loss accumulator to its sidecar. Called
@@ -3705,6 +3864,23 @@ fn find_local_match(orders: &[ManagedOrder], ib: &super::IbOrder) -> Option<usiz
 fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder]) {
     let now = epoch_ms();
 
+    // ── W2-01 Stage A: paper fills ──
+    // In paper mode there is no broker, so this poll IS the fill engine: for
+    // each symbol with an active paper order, read the latest quote and fill
+    // eligible orders. Fills go through the same state/PnL path as live fills,
+    // so the pair-integrity sweep below cancels bracket siblings unchanged.
+    if mgr.paper_mode {
+        let symbols: std::collections::HashSet<String> = mgr.orders.iter()
+            .filter(|o| o.state.is_active() && o.state != OrderState::Draft)
+            .map(|o| o.symbol.clone())
+            .collect();
+        for sym in symbols {
+            if let Some(snap) = crate::apex_data::live_state::get_snapshot(&sym) {
+                mgr.apply_paper_fills(&sym, snap.bid as f32, snap.ask as f32, snap.last as f32);
+            }
+        }
+    }
+
     // Track which local orders the broker still references this poll.
     let mut seen_local_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
     // Re-fire-cancel queue for Rule 4.
@@ -4036,18 +4212,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
     // If one leg of a bracket/OCO is now terminal but its partner is still
     // active, cancel the partner. Catches the case where the broker fills
     // one leg out-of-band and never sends us the cancel for the other.
-    let mut to_cancel_partners: Vec<u64> = Vec::new();
-    for o in &mgr.orders {
-        if let Some(pid) = o.pair_id {
-            if o.state.is_terminal() {
-                if let Some(p) = mgr.orders.iter().find(|x| x.id == pid) {
-                    if p.state.is_active() {
-                        to_cancel_partners.push(p.id);
-                    }
-                }
-            }
-        }
-    }
+    let to_cancel_partners: Vec<u64> = mgr.orphaned_pair_partner_ids();
     for cid in to_cancel_partners {
         report(ErrorLevel::Warn, "reconcile", "orphan_pair_cancel", format!("cancelling partner id={}", cid));
         // CC1: defer journal append until ORDER_MANAGER guard drops.
@@ -7204,6 +7369,91 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.price, Price::from_f32(105.0), "accepted modify keeps the new price");
         assert!(!o.modify_inflight);
+    }
+
+    #[test]
+    fn w2_01_paper_fill_matrix() {
+        use ManagedOrderType::*;
+        // Market: fills now at the marketable side ± slippage (1bp here).
+        let mkt_buy = paper_fill_price(Market, true, 0.0, 0.0, 99.0, 100.0, 99.5, 1.0).unwrap();
+        assert!((mkt_buy - 100.0 * 1.0001).abs() < 1e-3, "market buy lifts the ask + slip");
+        let mkt_sell = paper_fill_price(Market, false, 99.0, 100.0, 0.0, 0.0, 99.5, 1.0);
+        // no bid/ask → last fallback
+        assert!((mkt_sell.unwrap() - 99.5 * 0.9999).abs() < 1e-3, "market sell hits bid/last - slip");
+
+        // Limit BUY at 100: fills only when the ask reaches ≤ 100, AT the limit.
+        assert_eq!(paper_fill_price(Limit, true, 100.0, 0.0, 99.9, 100.0, 99.95, 1.0), Some(100.0));
+        assert_eq!(paper_fill_price(Limit, true, 100.0, 0.0, 100.1, 100.2, 100.15, 1.0), None, "ask above limit → no fill");
+        // Limit SELL at 100: fills when bid ≥ 100.
+        assert_eq!(paper_fill_price(Limit, false, 100.0, 0.0, 100.0, 100.1, 100.05, 1.0), Some(100.0));
+        assert_eq!(paper_fill_price(Limit, false, 100.0, 0.0, 99.9, 100.0, 99.95, 1.0), None, "bid below limit → no fill");
+
+        // Stop: buy-stop triggers when price rises to the stop; sell-stop when it falls.
+        assert!(paper_fill_price(Stop, true, 0.0, 105.0, 105.0, 105.1, 105.0, 1.0).is_some(), "buy-stop triggers at/above");
+        assert_eq!(paper_fill_price(Stop, true, 0.0, 105.0, 104.0, 104.1, 104.0, 1.0), None, "buy-stop below → dormant");
+        assert!(paper_fill_price(Stop, false, 0.0, 95.0, 94.9, 95.0, 95.0, 1.0).is_some(), "sell-stop triggers at/below");
+        assert_eq!(paper_fill_price(Stop, false, 0.0, 95.0, 96.0, 96.1, 96.0, 1.0), None, "sell-stop above → dormant");
+
+        // StopLimit BUY: triggers at stop, then fills only if marketable at limit.
+        assert_eq!(paper_fill_price(StopLimit, true, 106.0, 105.0, 105.5, 105.8, 105.5, 1.0), Some(106.0), "triggered + marketable → limit");
+        assert_eq!(paper_fill_price(StopLimit, true, 105.2, 105.0, 105.5, 105.8, 105.5, 1.0), None, "triggered but ask above limit → rests");
+        assert_eq!(paper_fill_price(StopLimit, true, 106.0, 105.0, 104.0, 104.2, 104.0, 1.0), None, "not triggered → nothing");
+    }
+
+    #[test]
+    fn w2_01_apply_paper_fills_fills_crossed_limit_and_records_pnl() {
+        let mut m = fresh_manager();
+        // Buy 10 @ limit 100.
+        let buy_id = match m.submit(limit_intent("SPY", OrderSide::Buy, 100.0, 10)) {
+            OrderResult::Accepted(id) => id,
+            other => panic!("buy not accepted: {other:?}"),
+        };
+        // Tick with ask == 100 → fills the buy at 100.
+        assert_eq!(m.apply_paper_fills("SPY", 99.9, 100.0, 99.95), 1);
+        let bo = m.orders.iter().find(|o| o.id == buy_id).unwrap();
+        assert_eq!(bo.state, OrderState::Filled);
+        assert!((bo.avg_fill_price.to_f32() - 100.0).abs() < 1e-3);
+
+        // A non-crossing tick fills nothing further.
+        assert_eq!(m.apply_paper_fills("SPY", 99.0, 99.1, 99.05), 0);
+
+        // Sell 10 @ limit 105 → fills when bid ≥ 105, realizing +$50.
+        let _sell = m.submit(limit_intent("SPY", OrderSide::Sell, 105.0, 10));
+        assert_eq!(m.apply_paper_fills("SPY", 105.0, 105.1, 105.05), 1);
+        assert!(m.realized_pnl_today > 49.0 && m.realized_pnl_today < 51.0,
+            "round-trip 100→105 x10 ≈ +$50, got {}", m.realized_pnl_today);
+    }
+
+    #[test]
+    fn w2_01_paper_fill_triggers_bracket_sibling_cancel() {
+        // Fill one leg of a pair; the orphaned-partner sweep must flag the other.
+        let mut m = fresh_manager();
+        // Leg a: take-profit sell LIMIT @ 110. Leg b: protective sell STOP @ 90.
+        let a = match m.submit(limit_intent("SPY", OrderSide::Sell, 110.0, 10)) {
+            OrderResult::Accepted(id) => id, o => panic!("{o:?}") };
+        let b = match m.submit(limit_intent("SPY", OrderSide::Sell, 90.0, 10)) {
+            OrderResult::Accepted(id) => id, o => panic!("{o:?}") };
+        for o in &mut m.orders {
+            if o.id == a { o.pair_id = Some(b); }
+            if o.id == b {
+                o.pair_id = Some(a);
+                o.order_type = ManagedOrderType::Stop; // sell-stop, triggers only when price FALLS to 90
+                o.stop_price = Price::from_f32(90.0);
+                o.price = Price::ZERO;
+            }
+        }
+        // Price hits 110 → leg `a` fills (sell limit); leg `b` (stop @ 90) dormant.
+        assert_eq!(m.apply_paper_fills("SPY", 110.0, 110.1, 110.05), 1);
+        let partners = m.orphaned_pair_partner_ids();
+        assert!(partners.contains(&b), "filling leg a must orphan (→cancel) leg b; got {partners:?}");
+    }
+
+    #[test]
+    fn w2_01_paper_fills_are_paper_only() {
+        let mut m = fresh_manager();
+        m.paper_mode = false; // live: the tick engine must NOT fill anything
+        let _ = m.submit(limit_intent("SPY", OrderSide::Buy, 100.0, 10));
+        assert_eq!(m.apply_paper_fills("SPY", 99.0, 100.0, 99.5), 0, "live mode: no synthetic fills");
     }
 
     #[test]
