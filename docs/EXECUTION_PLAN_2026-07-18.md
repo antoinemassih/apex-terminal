@@ -116,8 +116,8 @@ Work items in ID order within a wave unless a dependency says otherwise.
 >   the core `w0_03_pending_cancel_broker_filled_adopts_fill_not_masked`.
 > - **W0-04 DONE** `d72fe80b` — rejected modify reverts optimistic price +
 >   reconcile limit-price self-heal. +4 tests.
-> - **W0-07 CODE-COMPLETE, CORPUS PENDING** (`78becfc6`) — decision made: option
->   (a), a notional cap. The market-order fat-finger backstop
+> - **W0-07 DONE** (`78becfc6`, corpus 1067/1067 on 2026-07-26 post-reboot) —
+>   decision made: option (a), a notional cap. The market-order fat-finger backstop
 >   (`RiskLimits.market_fat_finger_notional`, default $50k = the `max_notional`
 >   default) is a soft NeedsApproval gate that activates ONLY when `max_notional`
 >   is disabled (0) — the exact hole where a market order had zero fat-finger
@@ -502,8 +502,8 @@ Shipped items 1 and 3 with **zero new crates**:
   `errors_sink`, so a misconfigured webhook is visible instead of silently
   eating the trader's alerts.
 
-Item 2 (OS toast) was **W1-04b** — CODE-COMPLETE, CORPUS PENDING (`3317ce98`).
-Decision made: new crate approved. `tauri-winrt-notification` v0.8.1 (the crate
+Item 2 (OS toast) was **W1-04b** — DONE (`3317ce98`, corpus 1067/1067 on
+2026-07-26 post-reboot). Decision made: new crate approved. `tauri-winrt-notification` v0.8.1 (the crate
 Tauri itself uses), Windows-gated so it adds nothing on other targets.
 `show_toast()` fires from `deliver()` BEFORE the webhook early-return (so it
 works with no webhook configured), off the render thread via `spawn_guarded`,
@@ -514,6 +514,21 @@ silently, so that attribution is deliberate. Opt-out via `APEX_ALERT_NO_TOAST`.
 Failures → errors_sink. Verified: cargo check, full suite 861/0, binary builds
 and LINKS the new dep. Corpus gate blocked 2026-07-25 — see below.
 
+> **RESOLVED 2026-07-26** — user fixed the microcode; post-reboot the machine is
+> healthy (fast clean builds, processes killable again). A single fresh build at
+> HEAD (W0-07 + W1-04b + the realtime-follow fix below) gated **1067/1067, 0
+> real** on a quiet machine. Both items above are now DONE. History kept below.
+>
+> **REALTIME CANDLE FOLLOW + ALERTS (`8e94abf6`)** — user-reported live bug:
+> candles weren't updating/panning in realtime. Root cause was `tick_simulation`
+> gating its sim-data generation with early `return`s, which ALSO skipped the
+> auto-scroll follow, pan re-engage, and price/drawing alert checking that lived
+> below them — so on any real feed (crypto or ApexData = production) the chart
+> stopped following new candles AND no alert ever fired. The 1067 corpus never
+> caught it because it runs in sim mode. Renamed to `tick_pane_frame`, gated only
+> the generation, moved the follow/alerts to run on the real path. 3 regression
+> tests on the real-feed path (which the corpus can't exercise). Corpus 1067/1067.
+>
 > **CORPUS GATE BLOCKED 2026-07-25 (W0-07 + W1-04b) — machine reboot needed.**
 > Both items are verified by cargo check, the full unit suite (861/0, incl. the
 > 2 new W0-07 tests), and a clean binary build that links the new toast crate.
