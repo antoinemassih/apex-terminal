@@ -101,6 +101,13 @@ EPRINTLN_RE = re.compile(r"eprintln!\(")
 # Direct field mutation in ui/: `wl.foo = ` / `watchlist.foo = ` / `chart.foo = `
 # (crude but matches the audit's counting method; excludes ==, +=, <=, >=, !=).
 MUT_RE = re.compile(r"\b(watchlist|wl|chart)\.[a-z_][a-z0-9_]*\s*=\s*[^=]")
+# W3-01 Stage 4: `IndicatorType::` references — the ~210-site sprawl that made
+# adding one indicator a cross-file chore. Stages 1-3 routed metadata, compute,
+# and persistence through the registry (chart::indicators); this ratchet locks
+# the count so new code goes through the registry instead of re-growing the enum
+# match sites. Does NOT need to reach 0 (the enum def + its registry_id/label/
+# from_persisted matches are legitimate); it just may only shrink.
+INDICATOR_ENUM_RE = re.compile(r"IndicatorType::")
 
 
 def collect():
@@ -110,6 +117,7 @@ def collect():
         "dead_code_allows": 0,
         "ui_direct_mutation": 0,
         "eprintln_in_data": 0,
+        "indicator_enum_matches": 0,   # W3-01 Stage 4: IndicatorType:: sprawl
         "file_loc": {},   # relpath -> loc (only for files over soft ceiling)
     }
     for path in iter_rs_files():
@@ -139,6 +147,10 @@ def collect():
             counts["ui_direct_mutation"] += len(MUT_RE.findall(text))
         if r.startswith("data/"):
             counts["eprintln_in_data"] += len(EPRINTLN_RE.findall(text))
+        # Count IndicatorType:: in production code only (test modules legitimately
+        # reference it, e.g. the delegation/persistence guards). `prod` is already
+        # truncated at the first #[cfg(test)] above.
+        counts["indicator_enum_matches"] += len(INDICATOR_ENUM_RE.findall(prod))
         loc = len(lines)
         if loc > FILE_LOC_SOFT:
             counts["file_loc"][r] = loc
@@ -169,8 +181,12 @@ def check(cur, base):
             nudges.append(f"unwrap[{area}] {c} < baseline {b} (-{b - c})")
 
     # scalar ratchets
-    for key in ("expect_total", "dead_code_allows", "ui_direct_mutation", "eprintln_in_data"):
-        c, b = cur[key], base[key]
+    for key in ("expect_total", "dead_code_allows", "ui_direct_mutation", "eprintln_in_data",
+                "indicator_enum_matches"):
+        # A newly-added metric absent from the committed baseline seeds to its
+        # current value (no spurious first-run failure); --update then locks it.
+        c = cur[key]
+        b = base.get(key, c)
         if c > b:
             failures.append(f"{key} {c} > baseline {b} (+{c - b})")
         elif c < b:
