@@ -977,6 +977,26 @@ This is the foundation W3-02 (embed Rhai for custom indicators) builds on.
 **Accept:** unit: script indicator computes on fixture and matches a native
 equivalent; a deliberately-infinite script is killed by op-limit; corpus.
 
+**SLICE 1 DONE** (`a280821e` engine, `e99ab24a` wiring) — corpus 1067/1067.
+Items 1 + 2 of the spec:
+- Sandboxed Rhai engine `chart::indicators::script::eval_script_indicator` —
+  op-cap (10M, kills `while true`), array/string/depth caps, no file/net,
+  `eval` disabled. Script contract: read-only open/high/low/close/volume +
+  period + NAN, returns an array aligned to close.
+- Wired end-to-end: `IndicatorType::Script` (hidden variant, not in the picker;
+  metadata answered directly, never via `spec()`), `Indicator.script_src`/
+  `script_error`, a recompute arm that evals over chart OHLCV and captures
+  errors (broken script → NaN + inline error, never stale), persistence of
+  `script_src`, and `AppCommand::AddScriptIndicator` as the creation seam.
+- Both acceptance unit tests met (script SMA matches native; infinite loop
+  killed) plus 8 more (engine + real recompute-path wiring).
+
+**SLICE 2 (remaining, spec items 3 + 4):** make `script_panel` a real indicator
+editor — author/edit source, save per-script files under a user `scripts/` dir,
+surface `script_error` inline, ship the 3 example templates, and drop the
+SIMULATED badge for this path. This is the authoring UX; the compute path is
+done and gated.
+
 ### W3-03 · Script hooks: signal → AppCommand (order path)  [P1 · L]
 **Depends:** W3-02.
 **Do:**
