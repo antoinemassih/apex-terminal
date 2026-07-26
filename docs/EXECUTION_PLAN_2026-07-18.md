@@ -939,11 +939,21 @@ start got a build overlapping scenarios 2-51 → 50 "out-of-bounds bar" failures
 Re-run on a genuinely quiet window: 1067/1067 clean. Confirms once more that
 out-of-bounds-bar bursts are contention, never indicator code.
 
-**Remaining stages** (each its own corpus-gated commit):
-- **Stage 3** — persist by string id + params (migrate from enum ordinal).
-  `registry_id()` strings are the persistence key and must not change once
-  shipped.
+**STAGE 3: DONE** (`f0d8bba4`, corpus 1067/1067). Persistence now writes
+`registry_id()` (stable) instead of `label()` (display) — a future UI relabel
+can no longer silently drop indicators from saved workspaces. Load resolves via
+`IndicatorType::from_persisted(key)`, which accepts the id AND the old label, so
+pre-Stage-3 saves keep loading and migrate on next save. (Code was label-keyed,
+never enum-ordinal as the plan assumed — same intent: display-string → stable-id.)
+4 tests incl. a collision guard (no variant's label equals another's id).
+
+**Remaining stage** (its own corpus-gated commit):
 - **Stage 4** — enum-match-site ratchet in quality_gate.py; drive 210 down.
+  This is the cleanup/enforcement stage: with metadata (S1), compute (S2), and
+  persistence (S3) all routed through the registry, the ~210 `IndicatorType::`
+  references can be driven down and a ratchet added so they don't regrow. Not
+  behaviour-changing — the extensibility payoff (one file = one indicator) is
+  already in place for W3-02 (Rhai) to build on.
 
 ### W3-02 · Embed Rhai: custom indicators  [P1 · L]
 **Depends:** W3-01.
