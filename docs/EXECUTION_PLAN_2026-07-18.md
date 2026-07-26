@@ -991,11 +991,22 @@ Items 1 + 2 of the spec:
 - Both acceptance unit tests met (script SMA matches native; infinite loop
   killed) plus 8 more (engine + real recompute-path wiring).
 
-**SLICE 2 (remaining, spec items 3 + 4):** make `script_panel` a real indicator
-editor — author/edit source, save per-script files under a user `scripts/` dir,
-surface `script_error` inline, ship the 3 example templates, and drop the
-SIMULATED badge for this path. This is the authoring UX; the compute path is
-done and gated.
+**SLICE 2 DONE** (`755796ff`) — corpus 1067/1067. `script_panel` is now a real
+custom-indicator editor:
+- Run REALLY evaluates through the sandboxed engine over a fixture, result/error
+  inline — the "NO SCRIPT ENGINE" scaffold output is gone (Backtest tab stays
+  honestly SIMULATED-badged; that's still mock, a separate item).
+- "Add to Chart" dispatches `AppCommand::AddScriptIndicator` to the active pane
+  (renders via the gated compute path, persists with the workspace).
+- 3 real runnable Rhai presets (SMA, Momentum, Range %) — a test validates each
+  actually runs.
+- Save writes `state/scripts/workbench.rhai`; reloaded once on open if the
+  editor is empty (real draft persistence).
+
+**W3-02 COMPLETE.** Custom Rhai indicators are authorable, runnable, renderable,
+and persistent. FOLLOW-UP (not blocking): multi-lane script output (banded VWAP,
+CVD coloring) — the engine's single-series contract is what's wired today; a
+per-script file LIBRARY (multiple named scripts) beyond the single workbench slot.
 
 ### W3-03 · Script hooks: signal → AppCommand (order path)  [P1 · L]
 **Depends:** W3-02.
