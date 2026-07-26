@@ -4093,16 +4093,30 @@ pub(crate) fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing>
     Some(drawing)
 }
 
-fn tick_simulation(chart: &mut Chart) {
-    // Skip simulation for crypto — real data comes from ApexCrypto.
+fn tick_pane_frame(chart: &mut Chart) {
+    // Per-frame pane tick. Two responsibilities that used to be fatally
+    // conflated:
+    //
+    //  1. SIMULATION data generation (synthetic ticks + candles) — only when
+    //     there is no real feed: not crypto (ApexCrypto serves those) and
+    //     ApexData disabled.
+    //  2. Auto-scroll follow, pan re-engage, and price/drawing ALERT checking —
+    //     these must run for EVERY pane every frame, real feed or not.
+    //
+    // BUG (fixed here): this was `tick_simulation`, and (1)'s guards were
+    // written as early `return`s at the top of the function — so they skipped
+    // (2) as well. With a real feed (crypto, or ApexData = the production
+    // default) the function returned immediately, which meant the chart never
+    // re-followed the latest candle after the user panned, AND no price or
+    // drawing alert ever fired. The 1067-scenario corpus never caught it because
+    // it runs with ApexData DISABLED (sim mode), where the early returns don't
+    // trigger and everything ran. Reported from live use: "candles weren't
+    // updating/panning in realtime." Only the GENERATION is gated now.
+    //
     // Wave 9c: registry-backed asset class via `symbol_meta` (avoids the
     // `is_crypto(&str)` suffix heuristic mis-flagging XUSDT-style equities).
-    if chart.symbol_meta.is_crypto() { return; }
-    // Skip simulation when ApexData is the active feed (Polygon-backed).
-    // Off-hours we just want the chart to sit still; ticks/bars come from
-    // WS Trade/Bar frames or not at all.
-    if crate::apex_data::is_enabled() { return; }
-    if !chart.bars.is_empty() {
+    let sim_active = !chart.symbol_meta.is_crypto() && !crate::apex_data::is_enabled();
+    if sim_active && !chart.bars.is_empty() {
         // Init sim_price from last bar's close — and immediately create a new
         // candle so the simulation never overwrites historical data.
         if chart.sim_price == 0.0 {
@@ -4160,10 +4174,16 @@ fn tick_simulation(chart: &mut Chart) {
             chart.timestamps.push(last_ts + interval);
         }
 
-        if chart.auto_scroll {
-            chart.vs = chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32;
-        }
+    }
 
+    // ── Auto-scroll follow (real feed AND sim) ──
+    // Keep the latest candle pinned in view while following. This is the
+    // authoritative per-frame snap; `process()` also advances `vs` incrementally
+    // on each append, but that alone can't re-fit after a resize/zoom and — the
+    // reason this moved OUT of the sim block — never ran at all for a real feed,
+    // which is what made the chart stop panning to new candles in production.
+    if chart.auto_scroll && !chart.bars.is_empty() {
+        chart.vs = chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32;
     }
 
     // ── Draw-mode price freeze: lock Y-range while user is mid-stroke ──
@@ -4781,7 +4801,7 @@ pub(crate) fn update_simulation(panes: &mut [Chart]) {
             }
         }
         chart.update_indicators();
-        tick_simulation(chart);
+        tick_pane_frame(chart);
     }
     span_end();
 }
@@ -9460,6 +9480,86 @@ mod w1_10_drawing_alert_tests {
         let none = crate::chart_renderer::compute::evaluate_drawings_against_bar(
             &candidates, 1000, 92.0, 95.0, 90.0, 93.0, &[1000]);
         assert!(none.is_empty(), "a bar that never reaches the line must not fire");
+    }
+}
+
+#[cfg(test)]
+mod realtime_follow_and_alert_tests {
+    //! Regression tests for the `tick_pane_frame` early-return bug: auto-scroll
+    //! follow and alert checking were trapped behind `tick_simulation`'s
+    //! real-feed early returns, so on a live feed (production) the chart stopped
+    //! following new candles and NO alert fired. These pin the behaviour on the
+    //! REAL-feed path, which the corpus (sim mode) never exercised.
+    use super::*;
+
+    fn bar(c: f32) -> Bar {
+        Bar { open: c, high: c + 0.5, low: c - 0.5, close: c, volume: 1.0, _pad: 0.0 }
+    }
+    fn chart_with(n: usize, vc: u32) -> Chart {
+        let mut ch = Chart::new_with("SPY", "1m");
+        for i in 0..n {
+            ch.bars.push(bar(100.0 + i as f32 * 0.01));
+            ch.timestamps.push(60 * i as i64);
+        }
+        ch.vc = vc;
+        ch.auto_scroll = true;
+        ch
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn auto_scroll_follows_latest_candle_on_real_feed() {
+        // THE user-reported bug. Real feed enabled = production default. Before
+        // the fix, tick_simulation returned early and the follow snap never ran,
+        // so the view stayed wherever it was and new candles formed off-screen.
+        let prev = crate::apex_data::config::is_enabled();
+        crate::apex_data::config::set_enabled(true);
+        let mut ch = chart_with(300, 100);
+        ch.vs = 0.0; // as if the view had stopped following
+        tick_pane_frame(&mut ch);
+        let expect = 300.0 - 100.0 + CHART_RIGHT_PAD as f32;
+        crate::apex_data::config::set_enabled(prev);
+        assert_eq!(ch.vs, expect, "auto-scroll must follow the latest candle on the REAL feed");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn panned_away_stays_put_on_real_feed() {
+        // With auto_scroll off (user panned) and the latest off-screen, the view
+        // must NOT jump — re-engage only after the inactivity timeout, which a
+        // fresh chart hasn't hit. Proves the re-engage logic is now reachable on
+        // the real feed without over-correcting.
+        let prev = crate::apex_data::config::is_enabled();
+        crate::apex_data::config::set_enabled(true);
+        let mut ch = chart_with(300, 100);
+        ch.auto_scroll = false;
+        ch.vs = 50.0;
+        tick_pane_frame(&mut ch);
+        crate::apex_data::config::set_enabled(prev);
+        assert_eq!(ch.vs, 50.0, "panned-away view stays put until re-engage timeout");
+        assert!(!ch.auto_scroll, "must not silently re-enable follow while parked mid-history");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn price_alert_fires_on_real_feed() {
+        // The latent critical bug the same early-return caused: alerts never
+        // fired in production. Muted + no-toast so the test is silent.
+        std::env::set_var("APEX_ALERT_MUTE", "1");
+        std::env::set_var("APEX_ALERT_NO_TOAST", "1");
+        let prev = crate::apex_data::config::is_enabled();
+        crate::apex_data::config::set_enabled(true);
+        let mut ch = chart_with(30, 20);
+        *ch.bars.last_mut().unwrap() = bar(105.0); // latest close above the level
+        ch.price_alerts.push(PriceAlert {
+            id: 1, price: 104.0, above: true, triggered: false, draft: false, symbol: "SPY".into(),
+        });
+        tick_pane_frame(&mut ch);
+        let fired = ch.price_alerts[0].triggered;
+        crate::apex_data::config::set_enabled(prev);
+        std::env::remove_var("APEX_ALERT_MUTE");
+        std::env::remove_var("APEX_ALERT_NO_TOAST");
+        assert!(fired, "price alert must fire on the REAL feed (was skipped in production)");
     }
 }
 
