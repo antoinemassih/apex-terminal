@@ -947,13 +947,18 @@ pre-Stage-3 saves keep loading and migrate on next save. (Code was label-keyed,
 never enum-ordinal as the plan assumed — same intent: display-string → stable-id.)
 4 tests incl. a collision guard (no variant's label equals another's id).
 
-**Remaining stage** (its own corpus-gated commit):
-- **Stage 4** — enum-match-site ratchet in quality_gate.py; drive 210 down.
-  This is the cleanup/enforcement stage: with metadata (S1), compute (S2), and
-  persistence (S3) all routed through the registry, the ~210 `IndicatorType::`
-  references can be driven down and a ratchet added so they don't regrow. Not
-  behaviour-changing — the extensibility payoff (one file = one indicator) is
-  already in place for W3-02 (Rhai) to build on.
+**STAGE 4: DONE** (`60b7aec5`). Added the `indicator_enum_matches` ratchet to
+dev/quality_gate.py (production-only count, fail-on-increase), baselined at 169.
+The audit's ~210 counted tests too; Stages 1-3 cut production sites, and the
+ratchet now prevents regrowth so new indicators go through the registry. Not
+behaviour-changing (no corpus needed). Also reconciled the 2026-07-10 baseline
+that had gone stale across the session's work (unwrap[ui] 16→41 — all
+`.lock().unwrap()` idiom, render hard-cap intact; minor dead_code/mutation);
+FOLLOW-UP flagged to drive ui `.unwrap()` down via a poisoned-lock helper.
+
+**W3-01 COMPLETE (Stages 1-4).** The extensibility payoff is in place: adding an
+indicator = one file implementing the `Indicator` trait + one registry line.
+This is the foundation W3-02 (embed Rhai for custom indicators) builds on.
 
 ### W3-02 · Embed Rhai: custom indicators  [P1 · L]
 **Depends:** W3-01.
