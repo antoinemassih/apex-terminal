@@ -16,7 +16,11 @@ use super::LineStyle; // re-exported from ui_kit at mod.rs
 fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String {
     let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
-            "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
+            // W3-01 Stage 3: persist the STABLE registry id, not the display
+            // label — so a future UI relabel can't silently drop indicators from
+            // saved workspaces. Old label-keyed saves still load (from_persisted
+            // accepts both).
+            "kind": ind.kind.registry_id(), "period": ind.period, "color": ind.color,
             "visible": ind.visible, "thickness": ind.thickness,
             "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
             "source": ind.source, "offset": ind.offset,
@@ -215,7 +219,8 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
     let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         // Serialize indicators — include ALL styling fields
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
-            "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
+            // W3-01 Stage 3: stable registry id (see the other save site above).
+            "kind": ind.kind.registry_id(), "period": ind.period, "color": ind.color,
             "visible": ind.visible, "thickness": ind.thickness,
             "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
             "source": ind.source, "offset": ind.offset,
@@ -492,8 +497,11 @@ pub(crate) fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
             if let Some(inds) = p.get("indicators").and_then(|v| v.as_array()) {
                 chart.indicators.clear();
                 for (idx, ind_json) in inds.iter().enumerate() {
-                    let kind_label = ind_json.get("kind").and_then(|v| v.as_str()).unwrap_or("SMA");
-                    let kind = IndicatorType::all().iter().find(|t| t.label() == kind_label).copied().unwrap_or(IndicatorType::SMA);
+                    // W3-01 Stage 3: resolve by stable registry id, falling back
+                    // to the old display label for pre-Stage-3 saves. Unknown
+                    // keys default to SMA (unchanged behaviour).
+                    let kind_key = ind_json.get("kind").and_then(|v| v.as_str()).unwrap_or("sma");
+                    let kind = IndicatorType::from_persisted(kind_key).unwrap_or(IndicatorType::SMA);
                     let period = ind_json.get("period").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
                     let color = ind_json.get("color").and_then(|v| v.as_str()).unwrap_or(INDICATOR_COLORS[idx % INDICATOR_COLORS.len()]);
                     let visible = ind_json.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);

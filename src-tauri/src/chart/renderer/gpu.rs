@@ -1033,6 +1033,28 @@ impl IndicatorType {
         }
     }
 
+    /// W3-01 Stage 3: resolve a PERSISTED indicator key back to its variant.
+    ///
+    /// Accepts the stable `registry_id` ("sma", "bbands", "williams_r", …) that
+    /// Stage 3 now writes, AND — for backward compatibility — the old display
+    /// `label()` ("SMA", "BB", "%R", …) that pre-Stage-3 workspaces stored. A
+    /// user's existing saves keep loading; they migrate to the id transparently
+    /// on the next save.
+    ///
+    /// WHY the switch: `label()` is a DISPLAY string. Persisting by it meant any
+    /// future UI relabel (say "BB" → "Bollinger") would silently drop that
+    /// indicator from every saved workspace (fall back to SMA). `registry_id` is
+    /// the documented-stable contract, decoupled from display. Returns `None`
+    /// for an unknown key so the caller can apply its own fallback.
+    ///
+    /// Pure → unit-testable without a chart or the filesystem.
+    pub(crate) fn from_persisted(key: &str) -> Option<Self> {
+        Self::all()
+            .iter()
+            .copied()
+            .find(|t| t.registry_id() == key || t.label() == key)
+    }
+
     /// The registry entry backing this variant.
     ///
     /// Infallible by construction — `registry_id` returns ids the registry
@@ -9618,6 +9640,56 @@ mod w3_01_registry_delegation_tests {
     fn the_guard_table_covers_the_whole_enum() {
         // Otherwise a new variant could skip the contract above unnoticed.
         assert_eq!(EXPECTED.len(), IndicatorType::all().len());
+    }
+
+    // ─── W3-01 Stage 3: persistence key resolution ───────────────────────────
+
+    #[test]
+    fn from_persisted_round_trips_every_registry_id() {
+        // What Stage 3 now WRITES must read back to the same variant.
+        for kind in IndicatorType::all() {
+            let id = kind.registry_id();
+            assert_eq!(
+                IndicatorType::from_persisted(id), Some(*kind),
+                "registry_id {id} must round-trip"
+            );
+        }
+    }
+
+    #[test]
+    fn from_persisted_still_reads_old_label_saves() {
+        // Pre-Stage-3 workspaces stored the display label. They must keep
+        // loading, mapping to the same variant, or a user loses saved indicators.
+        for (kind, label, _period, _cat) in EXPECTED {
+            assert_eq!(
+                IndicatorType::from_persisted(label), Some(*kind),
+                "legacy label {label} must still resolve"
+            );
+        }
+        // The specifically fragile ones: labels that differ sharply from the id.
+        assert_eq!(IndicatorType::from_persisted("%R"), Some(IndicatorType::WilliamsR));
+        assert_eq!(IndicatorType::from_persisted("BB"), Some(IndicatorType::BollingerBands));
+    }
+
+    #[test]
+    fn from_persisted_rejects_unknown_keys() {
+        // Caller applies its own fallback (SMA) — resolver itself says "no".
+        assert_eq!(IndicatorType::from_persisted("not_an_indicator"), None);
+        assert_eq!(IndicatorType::from_persisted(""), None);
+    }
+
+    #[test]
+    fn registry_id_and_label_do_not_collide() {
+        // from_persisted matches id OR label. If any variant's label equalled a
+        // DIFFERENT variant's id, resolution would be ambiguous. Prove disjoint.
+        for a in IndicatorType::all() {
+            for b in IndicatorType::all() {
+                if a != b {
+                    assert_ne!(a.label(), b.registry_id(),
+                        "{a:?} label collides with {b:?} id — ambiguous persistence");
+                }
+            }
+        }
     }
 }
 
