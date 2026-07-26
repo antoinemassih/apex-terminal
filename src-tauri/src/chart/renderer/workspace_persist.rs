@@ -25,7 +25,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
             "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
             "source": ind.source, "offset": ind.offset,
             "ob_level": ind.ob_level, "os_level": ind.os_level,
-            "source_tf": ind.source_tf,
+            "source_tf": ind.source_tf, "script_src": ind.script_src,
             "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
             // Band styling (BB, Keltner, etc.) — v3 parity
             "upper_color": ind.upper_color, "lower_color": ind.lower_color,
@@ -225,7 +225,7 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
             "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
             "source": ind.source, "offset": ind.offset,
             "ob_level": ind.ob_level, "os_level": ind.os_level,
-            "source_tf": ind.source_tf,
+            "source_tf": ind.source_tf, "script_src": ind.script_src,
             "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
             // Band styling (BB, Keltner, etc.)
             "upper_color": ind.upper_color, "lower_color": ind.lower_color,
@@ -510,6 +510,9 @@ pub(crate) fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
                     let mut ind = Indicator::new(id, kind, period, color);
                     ind.visible = visible;
                     ind.thickness = thickness;
+                    // W3-02: restore Rhai source for script indicators (empty for
+                    // native). recompute re-evaluates it on the next data change.
+                    ind.script_src = ind_json.get("script_src").and_then(|v| v.as_str()).unwrap_or("").to_string();
                     ind.param2 = ind_json.get("param2").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                     ind.param3 = ind_json.get("param3").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                     ind.param4 = ind_json.get("param4").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;

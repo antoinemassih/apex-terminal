@@ -355,6 +355,7 @@ fn type_long_name(k: IndicatorType) -> &'static str {
         IndicatorType::WilliamsR => "Williams %R",
         IndicatorType::ATR => "Average True Range",
         IndicatorType::OBV => "On-Balance Volume",
+        IndicatorType::Script => "Custom Script", // W3-02
     }
 }
 

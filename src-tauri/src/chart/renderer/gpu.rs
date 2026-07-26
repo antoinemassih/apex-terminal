@@ -1009,7 +1009,16 @@ pub(crate) const ALL_LAYOUTS: &[Layout] = &[
 // ─── Indicators ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR, Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR, OBV }
+pub(crate) enum IndicatorType {
+    SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR,
+    Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR, OBV,
+    /// W3-02: a user Rhai script indicator. Deliberately NOT in `all()` (the
+    /// picker) or the static `chart::indicators` registry — it has no static
+    /// impl because its behaviour lives in per-instance `Indicator.script_src`.
+    /// Metadata is answered directly (never via `spec()`), and `recompute`
+    /// evaluates the script instead of a registry entry.
+    Script,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum IndicatorCategory { Overlay, Oscillator }
@@ -1030,6 +1039,7 @@ impl IndicatorType {
             Self::RSI => "rsi", Self::MACD => "macd", Self::Stochastic => "stochastic",
             Self::ADX => "adx", Self::CCI => "cci", Self::WilliamsR => "williams_r",
             Self::ATR => "atr", Self::OBV => "obv",
+            Self::Script => "script", // W3-02 (no static registry entry)
         }
     }
 
@@ -1049,6 +1059,10 @@ impl IndicatorType {
     ///
     /// Pure → unit-testable without a chart or the filesystem.
     pub(crate) fn from_persisted(key: &str) -> Option<Self> {
+        // W3-02: Script is not in `all()` (the picker), so match it explicitly.
+        if key == "script" || key == "Script" {
+            return Some(Self::Script);
+        }
         Self::all()
             .iter()
             .copied()
@@ -1074,10 +1088,18 @@ impl IndicatorType {
     // load-bearing rather than sitting orphaned beside the enum — this
     // codebase's dominant defect class is complete logic with zero callers,
     // and a registry nothing called would have been the seventh instance.
-    pub(crate) fn label(self) -> &'static str { self.spec().label() }
+    // W3-02: Script answers its own metadata — it has no `spec()` (its behaviour
+    // is per-instance script source, not a static registry entry), so calling
+    // spec() for it would panic. Every other variant delegates to the registry.
+    pub(crate) fn label(self) -> &'static str {
+        if matches!(self, Self::Script) { "Script" } else { self.spec().label() }
+    }
     pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR, Self::OBV] }
-    pub(crate) fn default_period(self) -> usize { self.spec().default_period() }
+    pub(crate) fn default_period(self) -> usize {
+        if matches!(self, Self::Script) { 1 } else { self.spec().default_period() }
+    }
     pub(crate) fn category(self) -> IndicatorCategory {
+        if matches!(self, Self::Script) { return IndicatorCategory::Overlay; }
         match self.spec().category() {
             crate::chart::indicators::Category::Oscillator => IndicatorCategory::Oscillator,
             crate::chart::indicators::Category::Overlay => IndicatorCategory::Overlay,
@@ -1128,6 +1150,11 @@ pub(crate) struct Indicator {
     pub(crate) fill_color_hex: String,
     pub(crate) upper_thickness: f32,
     pub(crate) lower_thickness: f32,
+    // W3-02: Rhai script indicators. `script_src` is the user's source (empty
+    // for native indicators); `script_error` holds the last compile/runtime
+    // error so the UI can surface it inline instead of rendering nothing.
+    pub(crate) script_src: String,
+    pub(crate) script_error: Option<String>,
 }
 
 pub(crate) const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1wk"];
@@ -1143,7 +1170,8 @@ impl Indicator {
                source_bars: vec![], source_timestamps: vec![], source_loaded: false,
                param2: 0.0, param3: 0.0, param4: 0.0, source: 0, offset: 0, ob_level: 0.0, os_level: 0.0,
                upper_color: String::new(), lower_color: String::new(), fill_color_hex: String::new(),
-               upper_thickness: 0.0, lower_thickness: 0.0 }
+               upper_thickness: 0.0, lower_thickness: 0.0,
+               script_src: String::new(), script_error: None }
     }
     pub(crate) fn display_name(&self) -> String {
         let tf = if self.source_tf.is_empty() { "Chart" } else { &self.source_tf };
@@ -3558,6 +3586,28 @@ impl Chart {
             let skip = !ind.source_tf.is_empty() && !(ind.source_loaded && !ind.source_bars.is_empty());
             if skip {
                 ind.values = vec![f32::NAN; self.bars.len()];
+                ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
+                ind.histogram = vec![];
+                continue;
+            }
+
+            // W3-02: a script indicator evaluates its Rhai source over the chart
+            // OHLCV, bypassing the registry (it has no static spec). Compile/
+            // runtime errors are captured on the indicator for inline display;
+            // on error the series is all-NaN so a broken script renders nothing
+            // rather than stale values. Sandboxed + op-capped in the engine.
+            if ind.kind == IndicatorType::Script {
+                let data = crate::chart::indicators::Ohlcv {
+                    open: &chart_opens, high: &chart_highs, low: &chart_lows,
+                    close: &chart_closes, volume: &chart_volumes, timestamps: &self.timestamps,
+                };
+                let params = crate::chart::indicators::Params {
+                    period: ind.period, param2: ind.param2, param3: ind.param3, param4: ind.param4,
+                };
+                match crate::chart::indicators::script::eval_script_indicator(&ind.script_src, &data, &params) {
+                    Ok(vals) => { ind.values = vals; ind.script_error = None; }
+                    Err(e)   => { ind.values = vec![f32::NAN; self.bars.len()]; ind.script_error = Some(e); }
+                }
                 ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                 ind.histogram = vec![];
                 continue;
@@ -9503,6 +9553,83 @@ mod w1_10_drawing_alert_tests {
         let none = crate::chart_renderer::compute::evaluate_drawings_against_bar(
             &candidates, 1000, 92.0, 95.0, 90.0, 93.0, &[1000]);
         assert!(none.is_empty(), "a bar that never reaches the line must not fire");
+    }
+}
+
+#[cfg(test)]
+mod w3_02_script_indicator_wiring_tests {
+    //! W3-02 slice 1b: prove the script indicator is WIRED into
+    //! recompute_indicators (the engine's own tests live in
+    //! chart::indicators::script). A ScriptIndicator that computed correctly in a
+    //! unit test but never rendered would be the orphaned-logic trap this audit
+    //! keeps finding — these tests exercise the real pane path.
+    use super::*;
+
+    fn chart_with_bars(n: usize) -> Chart {
+        let mut ch = Chart::new_with("SPY", "1m");
+        // Chart::new() seeds default indicators (SMA20/50, EMA…). Clear them so
+        // indicators[0] is the script indicator this test pushes.
+        ch.indicators.clear();
+        for i in 0..n {
+            let c = 100.0 + (i as f32 * 0.3).sin() * 4.0;
+            ch.bars.push(Bar { open: c, high: c + 0.5, low: c - 0.5, close: c, volume: 1000.0, _pad: 0.0 });
+            ch.timestamps.push(i as i64 * 60);
+        }
+        ch
+    }
+
+    const SMA_SRC: &str = r#"
+        let out = [];
+        for i in 0..close.len() {
+            if i < period - 1 { out.push(NAN); }
+            else { let s = 0.0; for j in 0..period { s += close[i-j]; } out.push(s/period); }
+        }
+        out
+    "#;
+
+    #[test]
+    fn script_indicator_computes_through_recompute() {
+        let mut ch = chart_with_bars(80);
+        let mut ind = Indicator::new(1, IndicatorType::Script, 10, "#fff");
+        ind.script_src = SMA_SRC.to_string();
+        ch.indicators.push(ind);
+
+        ch.recompute_indicators();
+
+        let ind = &ch.indicators[0];
+        assert_eq!(ind.values.len(), 80, "series aligns to bars");
+        assert!(ind.script_error.is_none(), "valid script has no error");
+        // matches native SMA(10) outside the warmup
+        let native = crate::chart::renderer::compute::compute_sma(
+            &ch.bars.iter().map(|b| b.close).collect::<Vec<_>>(), 10);
+        for i in 20..80 {
+            assert!((ind.values[i] - native[i]).abs() < 1e-3, "bar {i}: {} vs {}", ind.values[i], native[i]);
+        }
+    }
+
+    #[test]
+    fn broken_script_sets_error_and_renders_nothing() {
+        let mut ch = chart_with_bars(40);
+        let mut ind = Indicator::new(1, IndicatorType::Script, 10, "#fff");
+        ind.script_src = "while true { let x = 1; } []".to_string(); // op-limit trip
+        ch.indicators.push(ind);
+
+        ch.recompute_indicators();
+
+        let ind = &ch.indicators[0];
+        assert!(ind.script_error.is_some(), "runaway script must surface an error");
+        assert_eq!(ind.values.len(), 40, "series still aligned");
+        assert!(ind.values.iter().all(|v| v.is_nan()), "broken script renders NaN, not stale/garbage");
+    }
+
+    #[test]
+    fn script_metadata_never_calls_spec() {
+        // Script has no registry entry; its metadata must resolve directly (a
+        // spec() call would panic). Also round-trips through persistence.
+        assert_eq!(IndicatorType::Script.label(), "Script");
+        assert_eq!(IndicatorType::Script.registry_id(), "script");
+        assert_eq!(IndicatorType::from_persisted("script"), Some(IndicatorType::Script));
+        assert_eq!(IndicatorType::category(IndicatorType::Script), IndicatorCategory::Overlay);
     }
 }
 

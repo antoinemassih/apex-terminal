@@ -163,6 +163,9 @@ pub enum AppCommand {
     /// from the active theme palette via `indicator_default_color`; period defaults from `IndicatorType`.
     /// Also opens the editor for the freshly-added indicator.
     AddIndicator { pane: usize, kind: IndicatorType },
+    /// W3-02: add a Rhai script indicator with the given source (evaluated in
+    /// recompute_indicators). The script panel (slice 2) dispatches this.
+    AddScriptIndicator { pane: usize, src: String },
     /// Remove an indicator by id from a pane.
     RemoveIndicator { pane: usize, id: u32 },
     /// Remove ALL indicators from a pane (clean slate).
@@ -837,6 +840,22 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             let id = p.next_indicator_id;
             p.next_indicator_id += 1;
             p.indicators.push(Indicator::new(id, kind, kind.default_period(), &color_owned));
+            p.editing_indicator = Some(id);
+            p.indicator_bar_count = 0;
+        }
+
+        // W3-02: add a Rhai script indicator. This is the seam the script panel
+        // (slice 2) calls; the source is evaluated in recompute_indicators.
+        // Forcing indicator_bar_count = 0 makes the next update recompute it.
+        AppCommand::AddScriptIndicator { pane, src } => {
+            let Some(p) = panes.get_mut(pane) else { return; };
+            let t = get_theme(p.theme_idx);
+            let color_owned = indicator_default_color(p.indicators.len(), &t);
+            let id = p.next_indicator_id;
+            p.next_indicator_id += 1;
+            let mut ind = Indicator::new(id, IndicatorType::Script, 1, &color_owned);
+            ind.script_src = src;
+            p.indicators.push(ind);
             p.editing_indicator = Some(id);
             p.indicator_bar_count = 0;
         }
