@@ -30,6 +30,27 @@ Remove code with zero production callers (grep-verified in the audit). Deleting 
 - `button.rs` — zero-caller constructors `icon_toolbar`/`icon_panel_header`/`icon_tab_close`; and `Icon::button/_colored/_large` in `icons.rs:159-175`; `button_style.rs` 5 zero-caller impls.
 **Accept:** `cargo build` + `cargo test --lib` clean; grep confirms no remaining callers; `quality_gate.py` dead-code ratchet drops; corpus 1067/1067 (pure removals must not change render).
 
+**> RE-SCOPED during execution (2026-07-27, `7817fe07`).** The "delete ~25 dead
+widgets" premise was partly wrong: most "zero production caller" widgets are
+showcased in `widget_gallery` (and some have characterization tests), which for
+a component LIBRARY is valid inventory, not dead code — gutting gallery sections
+is low-value churn. Revised U0-1 scope:
+> - **Done:** removed only truly-dead-EVERYWHERE symbols — `Icon::button/_colored/
+>   _large`, `Button::icon_toolbar/icon_panel_header/icon_tab_close` (tests
+>   rewired onto the underlying placement API). Suite 884/0; corpus N/A
+>   (never-invoked fns, no render path).
+> - **Fold into U0-4 (panel wiring):** delete the real DUPLICATE DEFINITIONS
+>   `kit.rs:584-767` `PanelSection`/`PanelEmpty` shadows — that's the genuine
+>   landmine (wrong-import risk), distinct from library inventory.
+> - **Defer to U3/U4 file-touch:** `shell_variants` 3 unused enums (re-export
+>   surgery), `button_style` 5 impls (test-coupled), `ContextMenu` + `pane_grid`
+>   render half (coupled: pane_grid imports ContextMenu; pane_grid's data-model
+>   half is heavily used by `pane_layout`, so split it when reworking pane chrome).
+> - **Retain as library inventory** (do NOT delete): Tree, Breadcrumb, TagInput,
+>   TimePicker, Sidebar, tiles, etc. — showcased in the gallery, available for
+>   adoption. The higher-value move is WIRING the orphans (U0-2..U0-6), not
+>   deleting inventory.
+
 ### U0-2 · Collapse 3 toast systems → `ui_kit::Toast`  [M]
 Today: "Toast 2.0" (`top_nav.rs:1535-1846`, hand-rolled `egui::Window`), `pending_order_toasts.rs` (`OutlinedBox`), and the real `ui_kit::widgets::toast.rs` (used only in storybook). `toast.rs:86-88` was already extended (`.border_color()`) to absorb the pending-order site.
 - Migrate `pending_order_toasts.rs` onto `Toast`.
