@@ -32,7 +32,7 @@ use crate::chart_renderer::ui::style::{
     FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED,
     ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY,
-    TEXT_PRIMARY, COLOR_AMBER, COLOR_INFO_CYAN, COLOR_PROFIT_GREEN, COLOR_LOSS_RED, COLOR_PURPLE,
+    COLOR_AMBER, COLOR_INFO_CYAN, COLOR_PROFIT_GREEN, COLOR_LOSS_RED, COLOR_PURPLE,
     mono_4xs, mono_3xs, mono_2xs, mono_xs, mono_xs_plus, mono_sm, mono_md, mono_md_plus, mono_lg,
     font_sm, font_xl,
 };
@@ -10769,7 +10769,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 let t_ref = &_tref_owned;
                 let ghost_text = format!("{} {}", drag.symbol, drag.timeframe);
                 let font = mono_xs_plus();
-                let galley = ui.painter().layout_no_wrap(ghost_text.clone(), font.clone(), TEXT_PRIMARY);
+                let galley = ui.painter().layout_no_wrap(ghost_text.clone(), font.clone(), t_ref.text);
                 let gw = galley.size().x + 20.0;
                 let gh = galley.size().y + 8.0;
                 let ghost_rect = egui::Rect::from_min_size(
@@ -10781,7 +10781,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     egui::StrokeKind::Outside);
                 ui.painter().text(
                     egui::pos2(ghost_rect.left() + 10.0, ghost_rect.center().y),
-                    egui::Align2::LEFT_CENTER, &ghost_text, font, TEXT_PRIMARY);
+                    egui::Align2::LEFT_CENTER, &ghost_text, font, t_ref.text);
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             }
 
