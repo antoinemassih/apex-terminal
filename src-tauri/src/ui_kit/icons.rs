@@ -155,24 +155,9 @@ impl Icon {
     pub const FAST_FORWARD: &'static str = ph::FAST_FORWARD;
     pub const REWIND: &'static str = ph::REWIND;
 
-    /// Standard icon button (24px bold)
-    pub fn button(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {
-        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(24.0)).frame(false));
-        if !tooltip.is_empty() { btn.clone().on_hover_text(tooltip); }
-        btn
-    }
-
-    /// Icon button with color (24px bold)
-    pub fn button_colored(ui: &mut egui::Ui, icon: &str, color: egui::Color32, tooltip: &str) -> egui::Response {
-        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(24.0).color(color)).frame(false));
-        if !tooltip.is_empty() { btn.clone().on_hover_text(tooltip); }
-        btn
-    }
-
-    /// Large icon button — kept for call-site compatibility, same 24px bold
-    pub fn button_large(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {
-        Self::button(ui, icon, tooltip)
-    }
+    // U0-1 (UI polish): removed the legacy fixed-24px `button`/`button_colored`/
+    // `button_large` helpers — 0 callers, predated the placement-aware
+    // `Button::icon()` API. Use `Button::icon(Icon::X).placement(...)` instead.
 }
 
 // ── IconSet — pluggable glyph resolution ─────────────────────────────────────

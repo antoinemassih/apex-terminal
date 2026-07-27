@@ -334,23 +334,10 @@ impl<'a> Button<'a> {
 
     // ─── Placement-aware preset shortcuts ──────────────────────────────
 
-    /// Toolbar icon button (24×24 hit-target, 14px glyph, bg fill on hover).
-    pub fn icon_toolbar(icon: &'a str) -> Self {
-        Self::icon(icon).placement(IconPlacement::Toolbar)
-    }
-
-    /// Panel header icon button (20×20 hit-target, 13px glyph, bg fill on hover).
-    pub fn icon_panel_header(icon: &'a str) -> Self {
-        Self::icon(icon).placement(IconPlacement::PanelHeader)
-    }
-
-    /// Tab-close button (14×14 hit-target, 11px glyph, color-snap only — no bg fill).
-    /// Automatically applies `IconTone::Destructive`.
-    pub fn icon_tab_close() -> Self {
-        Self::icon(crate::ui_kit::icons::Icon::X)
-            .placement(IconPlacement::TabClose)
-            .tone_destructive()
-    }
+    // U0-1 (UI polish): removed `icon_toolbar`/`icon_panel_header`/
+    // `icon_tab_close` sugar constructors — 0 callers. Use
+    // `Button::icon(x).placement(IconPlacement::…)` directly (and
+    // `Button::close()` for the tab close-X).
 
     /// Override the icon/glyph color (Ghost variant). Useful for legacy
     /// IconBtn parity where each icon has its own color.
@@ -1483,17 +1470,19 @@ mod tests {
 
     // ── Placement-aware builder state tests ───────────────────────────────────
 
-    /// `Button::icon_toolbar` resolves to Toolbar placement.
+    /// Toolbar placement resolves (was `Button::icon_toolbar`, removed U0-1).
     #[test]
     fn icon_toolbar_resolves_to_toolbar_placement() {
-        let b = Button::icon_toolbar(crate::ui_kit::icons::Icon::GEAR);
+        let b = Button::icon(crate::ui_kit::icons::Icon::GEAR).placement(IconPlacement::Toolbar);
         assert_eq!(b.placement, Some(IconPlacement::Toolbar));
     }
 
-    /// `Button::icon_tab_close` resolves to TabClose placement + Destructive tone.
+    /// TabClose placement + Destructive tone resolves (was `Button::icon_tab_close`, removed U0-1).
     #[test]
     fn icon_tab_close_resolves_to_tabclose_and_destructive() {
-        let b = Button::icon_tab_close();
+        let b = Button::icon(crate::ui_kit::icons::Icon::X)
+            .placement(IconPlacement::TabClose)
+            .tone_destructive();
         assert_eq!(b.placement, Some(IconPlacement::TabClose));
         assert_eq!(b.icon_tone, IconTone::Destructive);
         // TabClose has no hover bg — assert via the placement API.
@@ -1527,10 +1516,10 @@ mod tests {
         assert!(b.min_size_override.is_some());
     }
 
-    /// `Button::icon_panel_header` resolves to PanelHeader placement.
+    /// PanelHeader placement resolves (was `Button::icon_panel_header`, removed U0-1).
     #[test]
     fn icon_panel_header_resolves_to_panel_header_placement() {
-        let b = Button::icon_panel_header(crate::ui_kit::icons::Icon::X);
+        let b = Button::icon(crate::ui_kit::icons::Icon::X).placement(IconPlacement::PanelHeader);
         assert_eq!(b.placement, Some(IconPlacement::PanelHeader));
     }
 
