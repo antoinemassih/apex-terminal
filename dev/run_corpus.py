@@ -38,14 +38,27 @@ _EXE_DIR = os.path.join(REPO, "src-tauri", "target", "debug")
 # now refreshed from the canonical exe whenever the canonical one is newer, so
 # "protected from taskkill" no longer means "frozen in time".
 _CANON = os.path.join(_EXE_DIR, "apex-native.exe")
-_PROT  = os.path.join(_EXE_DIR, "apex-native-corpus.exe")
+# SESSION-UNIQUE protected-copy name (2026-07-27). The old shared name
+# `apex-native-corpus.exe` meant a co-tenant session starting ITS corpus ran
+# `taskkill /F /IM apex-native-corpus.exe` and killed MY running app too — my
+# run then got a cascade of WinError 10061 "connection refused" from that
+# scenario onward. The port fix (APEX_CORPUS_PORT) solved the bind collision but
+# NOT this taskkill collision, because taskkill matches by process NAME, not
+# port. Tagging the exe per session (driver PID, overridable via APEX_CORPUS_TAG)
+# makes each session's app invisible to the other's name-based taskkill, so two
+# corpus runs can coexist on this shared machine.
+_SESSION_TAG = os.environ.get("APEX_CORPUS_TAG") or f"s{os.getpid()}"
+_PROT  = os.path.join(_EXE_DIR, f"apex-native-corpus-{_SESSION_TAG}.exe")
+_PROT_NAME = os.path.basename(_PROT)
 
 def _refresh_protected_copy():
     if not os.path.exists(_CANON):
         return _PROT if os.path.exists(_PROT) else _CANON
     if (not os.path.exists(_PROT)) or os.path.getmtime(_CANON) > os.path.getmtime(_PROT):
         import shutil
-        subprocess.run(["taskkill", "/F", "/IM", "apex-native-corpus.exe"], capture_output=True)
+        # Only our OWN session-tagged copy — never the bare shared name (that
+        # would be a co-tenant's app).
+        subprocess.run(["taskkill", "/F", "/IM", _PROT_NAME], capture_output=True)
         time.sleep(1.0)
         try:
             shutil.copy2(_CANON, _PROT)
@@ -67,11 +80,12 @@ def health():
         return False
 
 def kill_app():
-    # Kill both the protected-name copy and the canonical binary, so a run
-    # cleanly restarts its own app and reclaims :7892 regardless of which name
-    # is in use. Harmless if a name isn't running.
-    subprocess.run(["taskkill", "/F", "/IM", "apex-native-corpus.exe"], capture_output=True)
-    subprocess.run(["taskkill", "/F", "/IM", "apex-native.exe"], capture_output=True)
+    # Kill ONLY our own session-tagged copy — never the bare shared
+    # `apex-native-corpus.exe` (a co-tenant's corpus app) nor `apex-native.exe`
+    # (the user's manually-running dev app). This is what lets two corpus runs
+    # coexist on one machine; we run on our own APEX_CORPUS_PORT so there's no
+    # port conflict to reclaim. Harmless if our name isn't running.
+    subprocess.run(["taskkill", "/F", "/IM", _PROT_NAME], capture_output=True)
     time.sleep(1.0)
 
 def start_app():
