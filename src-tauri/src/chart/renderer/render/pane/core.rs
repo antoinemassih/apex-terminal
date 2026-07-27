@@ -6988,7 +6988,9 @@ fn render_chart_pane(
                 let ch_badge_cr = ch_st.r_xs as f32;
                 let ch_badge_stroke_w = if ch_st.hairline_borders { ch_st.stroke_std } else { style::stroke_thin() };
                 let cf = egui::FontId::monospace(style::font_lg());
-                let cg = painter.layout_no_wrap(chart.fmt_buf.clone(), cf.clone(), egui::Color32::WHITE);
+                // U1-3: theme foreground (was hardcoded WHITE, which failed
+                // contrast on the light theme's toolbar_bg fill below).
+                let cg = painter.layout_no_wrap(chart.fmt_buf.clone(), cf.clone(), t.text);
                 let cpad_x = 5.0; let cpad_y = 2.0;
                 let cbw = cg.size().x + cpad_x * 2.0;
                 let cbh = cg.size().y + cpad_y * 2.0;
@@ -6997,9 +6999,9 @@ fn render_chart_pane(
                     egui::vec2(cbw, cbh));
                 painter.rect_filled(cbr, ch_badge_cr, color_alpha(t.toolbar_bg, style::alpha_solid()));
                 painter.rect_stroke(cbr, ch_badge_cr, egui::Stroke::new(ch_badge_stroke_w, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
-                // Bolder via 0.5px double-draw
-                painter.text(egui::pos2(cbr.left() + cpad_x + 0.5, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf.clone(), egui::Color32::WHITE);
-                painter.text(egui::pos2(cbr.left() + cpad_x, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf, egui::Color32::WHITE);
+                // Bolder via 0.5px double-draw (faux-bold; U4-3 replaces with a bold FontId)
+                painter.text(egui::pos2(cbr.left() + cpad_x + 0.5, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf.clone(), t.text);
+                painter.text(egui::pos2(cbr.left() + cpad_x, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf, t.text);
 
                 // Time label at crosshair X position (bottom of chart)
                 let bar_idx_f = (pos.x - rect.left() + off - bs * 0.5) / bs + vs;
@@ -7017,7 +7019,7 @@ fn render_chart_pane(
                             _ => dt.format("%Y-%m-%d %H:%M").to_string(),
                         };
                         let tf_font = egui::FontId::monospace(style::font_lg());
-                        let tg = painter.layout_no_wrap(time_str.clone(), tf_font.clone(), egui::Color32::WHITE);
+                        let tg = painter.layout_no_wrap(time_str.clone(), tf_font.clone(), t.text); // U1-3: was WHITE
                         let tpad_x = 5.0; let tpad_y = 2.0;
                         let tbw = tg.size().x + tpad_x * 2.0;
                         let tbh = tg.size().y + tpad_y * 2.0;
@@ -7034,9 +7036,9 @@ fn render_chart_pane(
                             egui::vec2(tbw, tbh));
                         painter.rect_filled(tbr, ch_badge_cr, color_alpha(t.toolbar_bg, style::alpha_solid()));
                         painter.rect_stroke(tbr, ch_badge_cr, egui::Stroke::new(ch_badge_stroke_w, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
-                        // Bolder via 0.5px double-draw
-                        painter.text(egui::pos2(tbr.center().x + 0.5, tbr.center().y), egui::Align2::CENTER_CENTER, &time_str, tf_font.clone(), egui::Color32::WHITE);
-                        painter.text(tbr.center(), egui::Align2::CENTER_CENTER, &time_str, tf_font, egui::Color32::WHITE);
+                        // Bolder via 0.5px double-draw (faux-bold; U4-3 replaces with a bold FontId)
+                        painter.text(egui::pos2(tbr.center().x + 0.5, tbr.center().y), egui::Align2::CENTER_CENTER, &time_str, tf_font.clone(), t.text);
+                        painter.text(tbr.center(), egui::Align2::CENTER_CENTER, &time_str, tf_font, t.text);
                     }
                 }
                 // Measure tooltip — big clean distance display
