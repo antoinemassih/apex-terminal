@@ -2730,7 +2730,12 @@ impl Chart {
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
-            theme_idx: 5, // Gruvbox
+            theme_idx: 16, // Aperture — flagship default (Apex-native ApexTerminalThemes
+                           // React-port theme: pure-black canvas, hot-orange signature accent).
+                           // Was 5 (Gruvbox, a borrowed editor theme). List order is unchanged
+                           // so existing workspaces keep their saved theme_idx; only the
+                           // fresh-launch default moves. Gruvbox (idx 5) remains the
+                           // design-system equivalence baseline — see baseline.rs.
             draw_tool: String::new(), draw_picker: DrawPickerState::default(), pending_pt: None, pending_pt2: None, pending_pts: vec![], magnet: true,
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,

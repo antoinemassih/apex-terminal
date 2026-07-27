@@ -8,9 +8,12 @@
 //! `ACTIVE_STYLE = 0` and `Watchlist::style_idx = 0`.
 //!
 //! **Colour** → Gruvbox (`theme_idx = 5`, `THEMES[5]` in
-//! `src/chart/renderer/gpu.rs`).  The compile-time default is
-//! `theme_idx: 5 // Gruvbox` (gpu.rs line ~1928) and the JSON load-path
-//! falls back to `5` when no saved state is found.
+//! `src/chart/renderer/gpu.rs`).  This snapshot is the design-system
+//! equivalence REFERENCE theme and stays pinned to Gruvbox (index 5 is
+//! unchanged in the theme list).  NOTE: the fresh-launch default is no longer
+//! Gruvbox — it is now `theme_idx: 16` (Aperture, the Apex-native flagship);
+//! see gpu.rs.  The JSON load-path still falls back to Gruvbox's colours only
+//! for the baseline reference, not for the runtime default.
 //!
 //! Every value below was read from the canonical source (style_defaults / THEMES)
 //! and cross-checked against the five anchor surfaces specified in the task.
