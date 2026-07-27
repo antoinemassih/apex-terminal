@@ -52,8 +52,13 @@ pub(crate) fn render(
     ui.horizontal(|ui| {
         ui.add(PaneHeader::new("Portfolio").theme(t));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let (txt, c) = if connected { ("\u{25CF} BROKER LIVE", t.bull) } else { ("\u{25CB} NOT CONNECTED", color_half(t.dim)) };
-            ui.add(crate::chart_renderer::ui::components::text::MonospaceCode::new(txt).size_px(font_xs()).color(c));
+            let (label, tone) = if connected {
+                ("BROKER LIVE", crate::ui_kit::widgets::panel_section::Tone::Bull)
+            } else {
+                ("NOT CONNECTED", crate::ui_kit::widgets::panel_section::Tone::Default)
+            };
+            crate::ui_kit::widgets::StatusPill::new(label).tone(tone).dot(true)
+                .size(crate::ui_kit::widgets::tokens::Size::Xs).show(ui, t);
         });
     });
     separator(ui, tint(t, Tone::Border, alpha_muted()));
