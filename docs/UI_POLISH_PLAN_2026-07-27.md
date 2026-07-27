@@ -1,6 +1,30 @@
 # Apex Terminal — UI Polish Execution Plan
 **2026-07-27 · derived from `UI_AUDIT_2026-07-27.md` · item-by-item, for agents to execute**
 
+## Execution log (running)
+
+Corpus-gated on port 7893 (env-configurable inspector port shipped in `9de43ac6`
+to run around a supermodel co-tenant holding 7892). Each entry = 1067/1067, 0 real
+unless noted.
+
+- **Audit infra** (`9de43ac6`): scroll-axis-aware clip detection (`WidgetRecord::in_vscroll`)
+  — the baseline design/ux audits were flagging below-the-fold *scrollable* watchlist
+  rows as "clipped"; + env-configurable dev-inspector port.
+- **U0-1** (`7817fe07`, re-scoped `5e12ff64`): removed truly-dead icon/button sugar.
+- **U0-3** (`14217296` + batch): connection chips → `StatusPill` (bottom_dock LIVE/OFFLINE,
+  portfolio BROKER-LIVE/NOT-CONNECTED). DOM badge kept as the reference (order-flow delta).
+- **U1-1** (`03b6f091`): WCAG-AA `dim` text across all 21 shipped themes + a contrast gate test.
+- **U1-2** (`5b2770d4`): drag-ghost tab text → theme color (P&L labels were already themed).
+- **U1-3** (`6fd04e6e`): crosshair/time-axis text → theme color (was hardcoded white).
+- **U1-6** (`5b831e84` + batch): toast pin icon state; option badge tab-scoping (no bleed onto
+  stock tabs); `Label::truncate` real ellipsis (+test); "Suites" disabled rows marked "(soon)".
+
+**Next:** U0-2 (toast unify), U0-4/5 (PanelError/PanelLoading), U0-6 (ConfirmDialog),
+U0-7 (scanner double-title + stale docs), U1-4 (focus rings), U1-5 (tab close/overflow),
+U1-6b (toolbar icon collisions). U2 (identity palette) needs a product decision first.
+
+---
+
 ## Guiding principle (read first)
 
 **One design system, zero call-site escape hatches.** Apex's custom `ui_kit` + `design_system` is the asset — keep and finish it; do **not** migrate to egui standard widgets. egui is the *substrate* your widgets are built on, not something call sites reach for directly. Every finding below is about routing production code through the components you already built, deleting the dead duplicates, and then layering a signature identity on top.
