@@ -538,6 +538,49 @@ mod tests {
         assert!(ratio > 6.5 && ratio < 7.5, "expected ~7.0:1, got {ratio:.4}");
     }
 
+    // ── Shipped-theme readability gate (U1-1) ──────────────────────────────────
+    // The validator already knows how to check contrast; nothing ran it over the
+    // themes we actually ship. This gate does, for the body/muted text pairs a
+    // trader reads all day (last price, %, axis labels). Accents and semantic
+    // state colours are deliberately excluded — they are large/decorative marks,
+    // not body text, and holding them to 4.5:1 would wash out the palette.
+    fn readability_pairs(cs: &ColorScheme) -> [(Rgba, Rgba, &'static str); 4] {
+        [
+            (cs.text, cs.bg,      "text/bg"),
+            (cs.text, cs.surface, "text/surface"),
+            (cs.dim,  cs.bg,      "dim/bg"),
+            (cs.dim,  cs.surface, "dim/surface"),
+        ]
+    }
+
+    #[test]
+    fn shipped_themes_pass_wcag_aa_body_text() {
+        use crate::design_system::builtin::builtin_color_schemes;
+        use crate::design_system::color_scheme::{builtin_dark, builtin_light};
+
+        let mut schemes: Vec<ColorScheme> = builtin_color_schemes();
+        schemes.push(builtin_dark());
+        schemes.push(builtin_light());
+
+        let mut failures: Vec<String> = Vec::new();
+        for cs in &schemes {
+            for (fg, bg, label) in readability_pairs(cs) {
+                let ratio = contrast_ratio(fg, bg);
+                if ratio < WCAG_AA_NORMAL {
+                    failures.push(format!(
+                        "  {:<14} {:<12} {ratio:.2}:1  (fg {:?} on bg {:?})",
+                        cs.meta.name, label, [fg[0], fg[1], fg[2]], [bg[0], bg[1], bg[2]],
+                    ));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} shipped theme body-text pair(s) below WCAG AA 4.5:1:\n{}",
+            failures.len(), failures.join("\n"),
+        );
+    }
+
     #[test]
     fn same_rgb_detects_identical_channels() {
         assert!(same_rgb([10, 20, 30, 255], [10, 20, 30, 128])); // alpha differs — still same RGB
