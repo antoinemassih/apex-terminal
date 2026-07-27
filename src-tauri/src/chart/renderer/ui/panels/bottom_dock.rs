@@ -324,12 +324,19 @@ fn draw_account(ui: &mut egui::Ui, t: &Theme, account: &AccountData) {
         return;
     };
 
-    // Connection chip.
-    ui.horizontal(|ui| {
-        let (dot, label, col) = if acct.connected { ("●", "LIVE", t.bull) } else { ("○", "OFFLINE", t.bear) };
-        ui.add(MonospaceCode::new(dot).size_px(font_sm()).color(col));
-        ui.add(MonospaceCode::new(label).size_px(font_xs()).color(col).strong(true));
-    });
+    // Connection chip. U0-3: route through the canonical StatusPill (was a
+    // hand-rolled dot+text chip) so LIVE/OFFLINE shares one status vocabulary
+    // with the rest of the app.
+    let (label, tone) = if acct.connected {
+        ("LIVE", crate::ui_kit::widgets::panel_section::Tone::Bull)
+    } else {
+        ("OFFLINE", crate::ui_kit::widgets::panel_section::Tone::Bear)
+    };
+    crate::ui_kit::widgets::StatusPill::new(label)
+        .tone(tone)
+        .dot(true)
+        .size(crate::ui_kit::widgets::tokens::Size::Xs)
+        .show(ui, t);
     ui.add_space(gap_sm());
 
     // Metric tiles, wrapped across the wide footer.
