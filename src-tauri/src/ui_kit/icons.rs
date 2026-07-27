@@ -63,8 +63,11 @@ impl Icon {
     pub const CHECK_CIRCLE: &'static str = ph::CHECK_CIRCLE;
     /// Phosphor Bold "warning" — used as the icon for Warning-severity toasts.
     pub const WARNING: &'static str = ph::WARNING;
-    /// Phosphor Bold "push-pin" — used to indicate a pinned toast.
+    /// Phosphor Bold "push-pin" — the unpinned (outline) state.
     pub const PUSH_PIN: &'static str = ph::PUSH_PIN;
+    /// Phosphor Fill "push-pin" — the pinned state (filled), so pinned vs
+    /// unpinned differs by glyph, not only color (U1-6 toast pin fix).
+    pub const PUSH_PIN_FILL: &'static str = ph_fill::PUSH_PIN;
     /// Phosphor Fill "shield-warning" — stronger critical indicator for Critical-severity toasts.
     pub const SHIELD_WARNING_FILL: &'static str = ph_fill::SHIELD_WARNING;
     pub const RULER: &'static str = ph::RULER;

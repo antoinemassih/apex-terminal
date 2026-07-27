@@ -1774,7 +1774,9 @@ pub(crate) fn render(
                                     // window rect is hovered. Since we can't get the window
                                     // rect here easily, we show pin always for pinned toasts
                                     // and on hover for unpinned (egui will repaint on hover).
-                                    let pin_icon = if is_pinned { Icon::PUSH_PIN } else { Icon::PUSH_PIN };
+                                    // U1-6: pinned = filled pin, unpinned = outline (both branches
+                                    // were identical, so the glyph never signaled state — only color did).
+                                    let pin_icon = if is_pinned { Icon::PUSH_PIN_FILL } else { Icon::PUSH_PIN };
                                     let pin_col = if is_pinned {
                                         color_alpha(sev_color, (180.0 * alpha) as u8)
                                     } else {
