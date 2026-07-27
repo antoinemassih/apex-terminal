@@ -17,7 +17,13 @@ Usage: python dev/run_corpus.py [base_url]
 """
 import sys, json, glob, os, time, subprocess, urllib.request, urllib.error
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:7892").rstrip("/")
+# Dev-inspector port. Default 7892, overridable via APEX_CORPUS_PORT — 7892 is
+# shared with supermodel's harness on this machine, so when a co-tenant holds it
+# the apex app can never bind (its bind retries forever) and start_app times out
+# with "app did not become healthy". Point both the launched app (via
+# APEX_DEV_INSPECTOR_PORT) and this driver at the same chosen port.
+CORPUS_PORT = int(os.environ.get("APEX_CORPUS_PORT", "7892"))
+BASE = (sys.argv[1] if len(sys.argv) > 1 else f"http://127.0.0.1:{CORPUS_PORT}").rstrip("/")
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCEN = os.path.join(REPO, "dev", "scenarios")
 _EXE_DIR = os.path.join(REPO, "src-tauri", "target", "debug")
@@ -74,7 +80,11 @@ def start_app():
     # DEBUG (2026-07-17): app stdout/stderr used to go to DEVNULL, so an app
     # crash mid-corpus left NO trace and the run just stalled. Capture it.
     _applog = open(os.path.join(REPO, "dev", "corpus_app.log"), "ab", buffering=0)
-    subprocess.Popen([EXE], cwd=REPO,
+    # Launch the app on the chosen inspector port (see CORPUS_PORT) so a
+    # supermodel process holding 7892 doesn't block the run.
+    _env = dict(os.environ)
+    _env["APEX_DEV_INSPECTOR_PORT"] = str(CORPUS_PORT)
+    subprocess.Popen([EXE], cwd=REPO, env=_env,
                      stdout=_applog, stderr=_applog,
                      creationflags=0x00000008)  # DETACHED_PROCESS
     for _ in range(60):

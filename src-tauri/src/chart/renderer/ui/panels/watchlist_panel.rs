@@ -645,7 +645,7 @@ if is_spawn || watchlist.open {
                                     crate::dev_inspector::WidgetRecord::from_response(
                                         &format!("watchlist.section.{si}.header"), "header", &sec_title,
                                         &resp.header_response, ui,
-                                    )
+                                    ).in_vscroll()
                                 );
 
                                 // Right-click context menu on section header
@@ -854,7 +854,7 @@ if is_spawn || watchlist.open {
                                             crate::dev_inspector::WidgetRecord::from_response(
                                                 &format!("watchlist.option.{si}.{ii}"), "button", item_sym,
                                                 &resp.response, ui,
-                                            )
+                                            ).in_vscroll()
                                         );
 
                                         let drag_resp = resp.response.interact(egui::Sense::click_and_drag());
@@ -1028,7 +1028,7 @@ if is_spawn || watchlist.open {
                                             crate::dev_inspector::WidgetRecord::from_response(
                                                 &format!("watchlist.item.{si}.{ii}"), "button", item_sym,
                                                 resp, ui,
-                                            )
+                                            ).in_vscroll()
                                         );
 
                                         // ── Corporate-actions / news badges ──

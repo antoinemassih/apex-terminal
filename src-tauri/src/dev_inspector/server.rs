@@ -13,7 +13,16 @@ use crate::dev_inspector::layout::{self};
 use crate::dev_inspector::input_queue::DevInput;
 use crate::dev_inspector::annotations::{DebugAnnotation, AnnotationOp};
 
-const PORT: u16 = 7892;
+/// Dev-inspector HTTP port. Default 7892, overridable via
+/// `APEX_DEV_INSPECTOR_PORT` — the port is shared with supermodel's harness on
+/// this machine, so a corpus run that would otherwise collide (the bind retries
+/// forever and the app never becomes healthy) can pick a free port instead.
+fn inspector_port() -> u16 {
+    std::env::var("APEX_DEV_INSPECTOR_PORT")
+        .ok()
+        .and_then(|s| s.trim().parse::<u16>().ok())
+        .unwrap_or(7892)
+}
 const SCENARIO_DIR: &str = "dev/scenarios";
 /// Maximum request body size accepted (8 MiB). Bodies larger than this are
 /// rejected to prevent memory exhaustion from a locally-crafted request.
@@ -79,7 +88,8 @@ pub fn start(shared: Arc<Mutex<DevSharedState>>, queues: Arc<Mutex<DevQueues>>) 
     std::thread::Builder::new()
         .name("dev-inspector-http".into())
         .spawn(move || {
-            let addr = format!("127.0.0.1:{PORT}");
+            let port = inspector_port();
+            let addr = format!("127.0.0.1:{port}");
             // Retry loop: on Windows a recently-killed process leaves the port in
             // TIME_WAIT for 30-60 s. Retrying every 2 s lets us rebind without
             // requiring the caller to wait for OS cleanup.
@@ -237,7 +247,7 @@ fn handle(
         // ── Health ────────────────────────────────────────────────────────
         ("GET", "/health") => {
             ok_json(&mut stream, &serde_json::json!({
-                "status": "ok", "port": PORT,
+                "status": "ok", "port": inspector_port(),
             }));
         }
 

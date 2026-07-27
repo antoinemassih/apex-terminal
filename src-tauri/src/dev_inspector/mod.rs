@@ -115,6 +115,29 @@ impl WidgetRecord {
     pub fn with_style(mut self, class: impl Into<String>) -> Self {
         self.style_class = Some(class.into()); self
     }
+    /// Mark this widget as living inside a VERTICAL scroll viewport, then
+    /// recompute `is_clipped` ignoring the vertical axis. Vertical overflow in a
+    /// vscroll is reachable by scrolling — it is NOT "clipped" in the sense the
+    /// design audit cares about (content cut off and unreachable). Horizontal
+    /// overflow is still flagged: a vertical scroll area does not scroll
+    /// sideways, so a widget cut off on the x-axis is genuinely inaccessible.
+    ///
+    /// WHY (2026-07-27): the baseline design/ux audits (572/913) walk the whole
+    /// widget tree for `no_clipped_widgets`. The watchlist is a non-virtualized
+    /// `ScrollArea::vertical` — every below-the-fold section header / row lands
+    /// in the tree with a rect past the viewport and tripped `is_clipped`, so as
+    /// soon as the DB held enough saved watchlists to overflow the pane the
+    /// baseline went red on scrollable-but-reachable content. This restores the
+    /// audit's true meaning without weakening horizontal-clip detection.
+    pub fn in_vscroll(mut self) -> Self {
+        const TOL: f32 = 0.5;
+        let (r, c) = (&self.rect, &self.clip_rect);
+        self.is_clipped = r.w > 0.0 && r.h > 0.0 && (
+            r.x        < c.x - TOL ||
+            r.x + r.w  > c.x + c.w + TOL
+        );
+        self
+    }
 }
 
 // ─── Design contract violation ────────────────────────────────────────────────
@@ -289,7 +312,9 @@ pub fn init() {
 
     install_panic_hook();
     server::start(shared.clone(), queues.clone());
-    eprintln!("[dev-inspector] HTTP server on http://127.0.0.1:7892");
+    let insp_port = std::env::var("APEX_DEV_INSPECTOR_PORT").ok()
+        .and_then(|s| s.trim().parse::<u16>().ok()).unwrap_or(7892);
+    eprintln!("[dev-inspector] HTTP server on http://127.0.0.1:{insp_port}");
 
     if is_headless() {
         start_headless_ticker(shared, queues);
@@ -1451,5 +1476,45 @@ fn connection_label() -> String {
         "ok".into()
     } else {
         format!("errors:{}", recent.len())
+    }
+}
+
+#[cfg(test)]
+mod clip_tests {
+    use super::*;
+
+    fn rec_with(rect: SerRect, clip: SerRect) -> WidgetRecord {
+        let mut w = WidgetRecord::state("t", "button", "T");
+        w.rect = rect;
+        w.clip_rect = clip;
+        w
+    }
+
+    // Viewport 100x100 at origin; a row scrolled off the bottom (y=140).
+    fn below_fold() -> WidgetRecord {
+        rec_with(SerRect { x: 0.0, y: 140.0, w: 80.0, h: 20.0 },
+                 SerRect { x: 0.0, y: 0.0, w: 100.0, h: 100.0 })
+    }
+
+    #[test]
+    fn vscroll_below_fold_is_not_clipped() {
+        // Reachable by scrolling — must NOT count as clipped in a vscroll list.
+        assert!(below_fold().in_vscroll().is_clipped == false);
+    }
+
+    #[test]
+    fn vscroll_horizontal_overflow_still_clipped() {
+        // A vertical scroll area does not scroll sideways: x-overflow is truly
+        // cut off and must remain flagged even under in_vscroll().
+        let w = rec_with(SerRect { x: 0.0, y: 10.0, w: 140.0, h: 20.0 },
+                         SerRect { x: 0.0, y: 0.0, w: 100.0, h: 100.0 });
+        assert!(w.in_vscroll().is_clipped);
+    }
+
+    #[test]
+    fn vscroll_fully_visible_is_not_clipped() {
+        let w = rec_with(SerRect { x: 5.0, y: 5.0, w: 80.0, h: 20.0 },
+                         SerRect { x: 0.0, y: 0.0, w: 100.0, h: 100.0 });
+        assert!(w.in_vscroll().is_clipped == false);
     }
 }
