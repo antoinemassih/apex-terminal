@@ -769,12 +769,18 @@ impl<'a> PainterPaneHeader<'a> {
                     Align2::LEFT_CENTER, sym, title_font.clone(), sym_col,
                 );
                 let mut price_x = tab_rect.left() + tab_pad + sym_galley.size().x + gap_between;
-                // Option badges in tab strip (C/P pill + DTE)
-                if let Some((side, expiry)) = self.option_badges {
-                    price_x += paint_option_badges(
-                        &painter, price_x, tab_rect.center().y, tab_rect.height(),
-                        side, expiry, t,
-                    );
+                // Option badges in tab strip (C/P pill + DTE). `option_badges` is a
+                // single header-level value derived from the pane's ACTIVE
+                // instrument (core.rs), so it only describes the active tab —
+                // painting it on every tab bled a C/P+DTE badge onto unrelated
+                // stock tabs sharing the pane. Gate on the active tab.
+                if is_active_tab {
+                    if let Some((side, expiry)) = self.option_badges {
+                        price_x += paint_option_badges(
+                            &painter, price_x, tab_rect.center().y, tab_rect.height(),
+                            side, expiry, t,
+                        );
+                    }
                 }
                 // On accent header (Aperture orange bar), use h_dim for price/change text.
                 let price_color = if accent_header && is_active_tab {
