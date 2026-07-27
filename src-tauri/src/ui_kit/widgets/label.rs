@@ -115,7 +115,20 @@ impl<'a> Label<'a> {
         let max_w = ui.available_width();
         let galley = ui.fonts(|f| {
             if self.truncate {
-                f.layout(self.text.clone(), font_id.clone(), color, max_w)
+                // Single-row elision with a trailing ellipsis — previously this
+                // branch called the same wrapping `layout` as `wrap`, so
+                // `truncate(true)` wrapped to multiple rows instead of eliding.
+                let mut job = egui::text::LayoutJob::single_section(
+                    self.text.clone(),
+                    egui::TextFormat { font_id: font_id.clone(), color, ..Default::default() },
+                );
+                job.wrap = egui::text::TextWrapping {
+                    max_width: max_w,
+                    max_rows: 1,
+                    break_anywhere: true,
+                    overflow_character: Some('…'),
+                };
+                f.layout_job(job)
             } else if self.wrap {
                 f.layout(self.text.clone(), font_id.clone(), color, max_w)
             } else {
@@ -135,5 +148,36 @@ impl<'a> Widget for Label<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, &theme)
+    }
+}
+
+#[cfg(test)]
+mod truncate_tests {
+    // Locks the fix: `Label::truncate(true)` must ELIDE to a single row with an
+    // ellipsis, not wrap to multiple rows (the old bug). Mirrors the LayoutJob
+    // the widget builds in `show`.
+    fn layout_truncated(ctx: &egui::Context, text: &str, max_w: f32) -> std::sync::Arc<egui::Galley> {
+        let font_id = egui::FontId::proportional(14.0);
+        ctx.fonts(|f| {
+            let mut job = egui::text::LayoutJob::single_section(
+                text.to_string(),
+                egui::TextFormat { font_id: font_id.clone(), color: egui::Color32::WHITE, ..Default::default() },
+            );
+            job.wrap = egui::text::TextWrapping {
+                max_width: max_w, max_rows: 1, break_anywhere: true, overflow_character: Some('…'),
+            };
+            f.layout_job(job)
+        })
+    }
+
+    #[test]
+    fn truncate_elides_long_text_to_one_row() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |_| {});
+        let long = layout_truncated(&ctx, "This is a very long label that will never fit here", 40.0);
+        assert!(long.elided, "long text should be elided");
+        assert_eq!(long.rows.len(), 1, "truncate must produce exactly one row");
+        let short = layout_truncated(&ctx, "OK", 400.0);
+        assert!(!short.elided, "short text that fits should not be elided");
     }
 }
