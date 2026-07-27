@@ -1,7 +1,7 @@
 //! Signals panel — sidebar with subdivided sections, each with its own tab bar.
 //!
-//! Chrome (outer side panel, header, "+", tab strips, dividers, close-X)
-//! is delegated to [`SplitSectionPanel`](crate::chart_renderer::ui::panels::split_section_panel::SplitSectionPanel).
+//! Chrome (outer side panel, header, "+", tab strip, dividers, close-X)
+//! is delegated to [`SidePanelShell::tabs`](crate::chart_renderer::ui::panels::side_panel_shell::SidePanelShell).
 //! This module is now responsible only for tab definitions and per-tab
 //! body dispatch.
 

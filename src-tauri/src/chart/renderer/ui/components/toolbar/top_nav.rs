@@ -1534,12 +1534,12 @@ pub(crate) fn render(
 
     // ── Toast 2.0 — bottom-left anchor, fixed 360px, severity-coded ─────────
     //
-    // Severity byte vocabulary (prefix stripped before display):
-    //   no prefix / \x00 → Info     (accent tint, Icon::INFO)
-    //   \x01             → Warning  (warn tint,   Icon::WARNING)
-    //   \x02             → Danger   (bear tint,   Icon::SHIELD_WARNING)
-    //   \x03             → Critical (bear tint + pulse + stronger alpha, Icon::SHIELD_WARNING_FILL)
-    //   \x04             → Success  (bull tint,   Icon::CHECK_CIRCLE)
+    // Severity → visuals, taken from `Notification.severity`
+    // (`NotificationSeverity`, resolved in `severity_visuals` below):
+    //   Info    → accent tint, Icon::INFO
+    //   Success → bull tint,   Icon::CHECK_CIRCLE
+    //   Warning → warn tint,   Icon::WARNING
+    //   Error   → bear tint + critical pulse, Icon::SHIELD_WARNING_FILL
     //
     // Layout rules:
     //   - Anchored bottom-left: 16px from left edge, 16px from bottom.

@@ -63,6 +63,11 @@ pub(crate) fn draw_content(
     t: &Theme,
     pending_symbol: &mut Option<String>,
     panel_w: f32,
+    // When rendered standalone, `draw` already puts "SCANNERS" in the
+    // SidePanelShell title, so the in-body SectionLabel would double it up.
+    // The embedded/tab path (analysis_panel) has a generic shell header and
+    // wants the in-body title. (U0-7)
+    show_title: bool,
 ) {
     // ── Auto-fetch ──
     let should_fetch = match watchlist.scanner.last_fetch {
@@ -88,7 +93,9 @@ pub(crate) fn draw_content(
     // owned by analysis_panel). The standalone `draw` path attaches SCANNERS
     // as the shell title and skips this row.
     ui.horizontal(|ui| {
-        ui.add(SectionLabel::new("SCANNERS").xs().color(t.accent));
+        if show_title {
+            ui.add(SectionLabel::new("SCANNERS").xs().color(t.accent));
+        }
         if let Some(last) = watchlist.scanner.last_fetch {
             let elapsed = last.elapsed().as_secs();
             let remaining = if elapsed < REFRESH_INTERVAL_SECS { REFRESH_INTERVAL_SECS - elapsed } else { 0 };
@@ -480,7 +487,7 @@ pub(crate) fn draw(
         .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             let panel_w = ui.available_width();
-            draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w);
+            draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w, false);
         });
 
     if resp.close_clicked { watchlist.update_sidebar_state(|s| s.scanner_open = false); }

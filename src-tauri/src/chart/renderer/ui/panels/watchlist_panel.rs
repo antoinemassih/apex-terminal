@@ -2093,7 +2093,7 @@ if is_spawn || watchlist.open {
                 WatchlistTab::Scan => {
                     let panel_w = ui.available_width();
                     let mut pending_symbol: Option<String> = None;
-                    super::scanner_panel::draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w);
+                    super::scanner_panel::draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w, true);
                     if let Some(sym) = pending_symbol {
                         if let Some(p) = panes.get_mut(ap) { p.pending_symbol_change = Some(sym); }
                     }
