@@ -759,12 +759,15 @@ fn render_chart_pane(
         }
 
         // Tab hovered tracking — widget uses chart.tab_hovered as input each frame.
-        // We can't recover which tab index is hovered from the response without tab rects,
-        // so we clear hovered when pointer leaves the header area and rely on the widget
-        // painting the correct cursor icon from the previous-frame hovered_tab input.
-        if hdr.hover_pos.is_none() {
-            chart.tab_hovered = None;
-        }
+        // The header returns per-tab rects (`hdr.tab_rects`, screen coords) and the
+        // pointer position within the header (`hdr.hover_pos`), so we CAN recover the
+        // hovered tab index and feed it back next frame. Previously this only ever
+        // cleared to None, so the close-× showed on the ACTIVE tab only and an
+        // inactive tab could not be closed without first activating it (U1-5).
+        chart.tab_hovered = match hdr.hover_pos {
+            Some(hp) => hdr.tab_rects.iter().position(|r| r.contains(hp)),
+            None => None,
+        };
 
         // Tab drag (cross-pane)
         if let Some(ti) = hdr.tab_drag_started {
