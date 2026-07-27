@@ -735,8 +735,8 @@ pub(crate) fn render(
                     publish_toggle(watchlist, fan, PaneToggle::ShowAutoFib, nv, ap);
                 }
                 ui.separator();
-                ui.add(SelectableRow::new("Triangulator", false).disabled(true));
-                ui.add(SelectableRow::new("Auto Target", false).disabled(true));
+                ui.add(SelectableRow::new("Triangulator (soon)", false).disabled(true));
+                ui.add(SelectableRow::new("Auto Target (soon)", false).disabled(true));
             });
 
             }); // end Indicators outer dropdown
