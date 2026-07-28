@@ -401,11 +401,9 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     // ── Body ──
     match cache_snapshot {
         None | Some(LoadStatus::Loading) => {
-            ui.add_space(gap_lg());
-            ui.vertical_centered(|ui| {
-                ui.label(egui::RichText::new("Loading…")
-                    .monospace().size(FONT_SM).color(t.dim));
-            });
+            // U0-5: route through the canonical PanelLoading (was a hand-rolled
+            // centered RichText) so the loading treatment matches app-wide.
+            crate::ui_kit::widgets::PanelLoading::new().reason("Loading…").show(ui, t);
         }
         Some(LoadStatus::NotFound) => {
             ui.add_space(gap_md());
