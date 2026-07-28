@@ -19,9 +19,19 @@ unless noted.
 - **U1-6** (`5b831e84` + batch): toast pin icon state; option badge tab-scoping (no bleed onto
   stock tabs); `Label::truncate` real ellipsis (+test); "Suites" disabled rows marked "(soon)".
 
-**Next:** U0-2 (toast unify), U0-4/5 (PanelError/PanelLoading), U0-6 (ConfirmDialog),
-U0-7 (scanner double-title + stale docs), U1-4 (focus rings), U1-5 (tab close/overflow),
-U1-6b (toolbar icon collisions). U2 (identity palette) needs a product decision first.
+- **U1-5** (`965cc85f`): resolve hovered tab index → inactive tabs are closable (was: close-× only on active tab).
+- **U0-7** (`ae5cb97a`): scanner double-title fix (show_title param) + stale SplitSectionPanel/toast docs.
+- **U2-1 — DECISION MADE** (`b45a4dbd`, full 1067/1067 gate confirmed 2026-07-28): flagship default = **Aperture** (existing Apex-native theme, per "use the themes we already have"), replacing Gruvbox. List order unchanged (saved workspaces keep their theme).
+- **U0-4** (`9dd540b0`): outages read as errors — 5 research_panel feed-disconnects → PanelError; 2 compact notes bear-tinted.
+- **U0-5** (`06c72e03`): provenance loading → PanelLoading (the only clean panel-body loader; rest are compact-inline or painter-based).
+- **Infra** (`48dd22ff`): corpus app process name is now session-tagged so two runs coexist on the shared machine (the port fix wasn't enough — taskkill matches by name).
+
+**Remaining — needs your eyes or a decision, NOT more blind autonomy:**
+- **Decision:** U2-2 curated Theme×Style "Looks" (which pairings to feature).
+- **UX-flow (review recommended):** U0-6 ConfirmDialog for destructive actions (adds a confirm step; must respect the shipped two-step arm behavior).
+- **Aesthetic / can't verify blind:** U1-6b toolbar icon-glyph choices, U0-2 toast visual unification, U2-3 typography, U2-4 iconography, U4 chrome/motion feel — corpus checks geometry, not whether it *looks* right.
+- **Larger safe refactors (visual-neutral, doable but big):** U3-1..U3-6 consolidation (chip/card/overlay families, enum/size collapses), U4-1 retire painter_pane onto chrome/pane.rs.
+- **U1-4 focus rings:** a11y-valuable but needs per-widget focus-nav wiring across ~11 widgets and can't be verified without tabbing through the live UI.
 
 ---
 
