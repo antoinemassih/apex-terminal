@@ -24,6 +24,7 @@ use std::sync::{OnceLock, Mutex, atomic::{AtomicBool, Ordering}};
 use super::super::style::*;
 use super::super::super::gpu::Theme;
 use crate::ui_kit::sx::Tone;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::ui_kit::widgets::PanelSection;
 use super::side_panel_shell::{SidePanelShell, Width, RailSlot};
 
@@ -265,7 +266,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
 
     // Selector + scenario header.
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("BASKET").color(t.dim).size(font_xs()));
+        ui.label(TextStyle::Caption.as_rich("BASKET", t.dim));
         egui::ComboBox::from_id_salt("msg_ten_parent")
             .selected_text(parent.as_str())
             .width(58.0)
@@ -277,7 +278,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
                     }
                 }
             });
-        ui.label(egui::RichText::new("THEME").color(t.dim).size(font_xs()));
+        ui.label(TextStyle::Caption.as_rich("THEME", t.dim));
         egui::ComboBox::from_id_salt("msg_ten_theme")
             .selected_text(theme.replace('_', " ").to_uppercase())
             .width(110.0)
@@ -292,9 +293,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
             });
         if is_sample {
             ui.label(
-                egui::RichText::new("SAMPLE DATA")
-                    .color(tint(t, Tone::Warn, alpha_active()))
-                    .size(font_xs()),
+                TextStyle::Caption.as_rich("SAMPLE DATA", tint(t, Tone::Warn, alpha_active())),
             );
         }
     });
@@ -302,16 +301,11 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
     // Scenario headline.
     ui.horizontal(|ui| {
         let pton = path_tone(&sc.path);
-        ui.label(egui::RichText::new(&sc.path)
-            .color(tint(t, pton, alpha_near_opaque()))
-            .size(font_md())
-            .strong());
-        ui.label(egui::RichText::new(format!("conf {:.0}%", sc.confidence * 100.0))
-            .color(t.dim).size(font_xs()));
+        ui.label(TextStyle::Body.as_rich(&sc.path, tint(t, pton, alpha_near_opaque())).strong());
+        ui.label(TextStyle::Caption.as_rich(&format!("conf {:.0}%", sc.confidence * 100.0), t.dim));
         if sc.invalidation > 0.0 {
             let above = if sc.inval_is_above { "↑" } else { "↓" };
-            ui.label(egui::RichText::new(format!("inval {above}{:.1}", sc.invalidation))
-                .color(tint(t, Tone::Bear, alpha_active())).size(font_xs()));
+            ui.label(TextStyle::Caption.as_rich(&format!("inval {above}{:.1}", sc.invalidation), tint(t, Tone::Bear, alpha_active())));
         }
     });
     ui.add_space(gap_xs());

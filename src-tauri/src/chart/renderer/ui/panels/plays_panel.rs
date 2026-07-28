@@ -29,6 +29,7 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::Input;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType, PlayLine, PlayLineKind, PlayTarget};
 use crate::ui_kit::icons::Icon;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 const TAG_PRESETS: &[&str] = &["momentum", "breakout", "earnings", "scalp", "swing", "mean-rev", "gap", "squeeze"];
 
@@ -715,7 +716,7 @@ fn render_play_card(
 
                 // Type icon + symbol.
                 ui.add_space(gap_xs());
-                ui.label(egui::RichText::new(play.play_type.icon()).size(font_sm()).color(color_half(t.dim)));
+                ui.label(TextStyle::BodySm.as_rich(play.play_type.icon(), color_half(t.dim)));
                 ui.label(egui::RichText::new(&play.symbol).monospace().size(font_lg()).color(t.text));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

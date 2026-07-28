@@ -7,6 +7,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::Theme;
 use crate::chart_renderer::trading::OrderSide;
 use crate::chart_renderer::ui::style::{color_alpha, color_half, color_muted, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, row_height_default};
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant as KitVariant, Size as KitSize}};
@@ -77,7 +78,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 if let Some(ref opt) = c.opt_sym {
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        ui.label(egui::RichText::new(Icon::LIGHTNING).size(font_md()).color(c.t.accent));
+                        ui.label(TextStyle::Body.as_rich(Icon::LIGHTNING, c.t.accent));
                         ui.label(egui::RichText::new(opt).monospace().size(font_md()).strong().color(c.t.text));
                     });
                     ui.add_space(gap_xs());

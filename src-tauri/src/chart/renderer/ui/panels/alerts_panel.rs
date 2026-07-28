@@ -17,6 +17,7 @@ use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, PanelTone, Tooltip};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;
@@ -255,9 +256,7 @@ fn alert_row(
     PanelListRow::new(&id_salt)
         .leading(move |ui, _t| {
             ui.label(
-                egui::RichText::new(Icon::CIRCLE)
-                    .font(egui::FontId::proportional(font_md()))
-                    .color(dot_col),
+                TextStyle::Body.as_rich(Icon::CIRCLE, dot_col),
             );
         })
         .primary(symbol)
@@ -296,9 +295,7 @@ fn draft_row(
     PanelListRow::new(&id_salt)
         .leading(move |ui, _t| {
             ui.label(
-                egui::RichText::new(Icon::CIRCLE)
-                    .font(egui::FontId::proportional(font_md()))
-                    .color(dot_col),
+                TextStyle::Body.as_rich(Icon::CIRCLE, dot_col),
             );
         })
         .primary(&alert.symbol)
@@ -358,9 +355,7 @@ fn playbook_alert_row(
     PanelListRow::new(&id_salt)
         .leading(move |ui, _t| {
             ui.label(
-                egui::RichText::new(Icon::CIRCLE)
-                    .font(egui::FontId::proportional(font_md()))
-                    .color(dot_col),
+                TextStyle::Body.as_rich(Icon::CIRCLE, dot_col),
             );
         })
         .primary(&primary)

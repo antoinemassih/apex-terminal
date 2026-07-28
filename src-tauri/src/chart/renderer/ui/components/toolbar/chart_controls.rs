@@ -22,6 +22,7 @@ use crate::ui_kit::widgets::{
     tokens::{Variant as KitVariant, Size as KitSize},
 };
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::chart_renderer::gpu::{
     Chart, Watchlist, Theme,
     TB_BTN_CLICKED,
@@ -205,8 +206,8 @@ pub(crate) fn render(
                     drawing_menu.response.hovered(), has_tool, "drawing");
                 {
                     Tooltip::rich(|ui, theme| {
-                        ui.label(egui::RichText::new("Drawing Tools").size(font_sm()).strong().color(theme.text()));
-                        ui.label(egui::RichText::new("Lines, channels, fibs, patterns").size(font_xs()).color(theme.dim()));
+                        ui.label(TextStyle::BodySm.as_rich("Drawing Tools", theme.text()).strong());
+                        ui.label(TextStyle::Caption.as_rich("Lines, channels, fibs, patterns", theme.dim()));
                     }).show(ui, &drawing_menu.response, t);
                 }
                 if let Some(tool) = new_tool {
@@ -744,8 +745,8 @@ pub(crate) fn render(
                 indicators_menu.response.hovered(), false, "indicators");
             {
                 Tooltip::rich(|ui, theme| {
-                    ui.label(egui::RichText::new("Indicators").size(font_sm()).strong().color(theme.text()));
-                    ui.label(egui::RichText::new("MAs, Oscillators, Volume, Overlays, Tools, Suites").size(font_xs()).color(theme.dim()));
+                    ui.label(TextStyle::BodySm.as_rich("Indicators", theme.text()).strong());
+                    ui.label(TextStyle::Caption.as_rich("MAs, Oscillators, Volume, Overlays, Tools, Suites", theme.dim()));
                 }).show(ui, &indicators_menu.response, t);
             }
             #[cfg(debug_assertions)]
@@ -869,8 +870,8 @@ pub(crate) fn render(
                 widgets_menu.response.hovered(), false, "widgets");
             {
                 Tooltip::rich(|ui, theme| {
-                    ui.label(egui::RichText::new("Widgets").size(font_sm()).strong().color(theme.text()));
-                    ui.label(egui::RichText::new("Add live data tiles to the chart").size(font_xs()).color(theme.dim()));
+                    ui.label(TextStyle::BodySm.as_rich("Widgets", theme.text()).strong());
+                    ui.label(TextStyle::Caption.as_rich("Add live data tiles to the chart", theme.dim()));
                 }).show(ui, &widgets_menu.response, t);
             }
             #[cfg(debug_assertions)]

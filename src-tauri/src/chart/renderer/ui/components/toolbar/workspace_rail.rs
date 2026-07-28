@@ -22,6 +22,7 @@ use crate::ui_kit::widgets::{Button as KitButton, MenuItem, Tooltip, Input};
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::sx::Tone;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::chart_renderer::ui::style::{
     tint, font_xs, font_sm, gap_xs, gap_sm, stroke_std, radius_sm, contrast_fg,
 };
@@ -175,8 +176,8 @@ pub(crate) fn render_workspace_rail(
                         // including an unsaved "Untitled" that has no list row yet.
                         if !active.trim().is_empty() {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(Icon::CIRCLE_FILL).size(font_xs()).color(t.accent));
-                                ui.label(egui::RichText::new(active.as_str()).size(font_sm()).strong().color(t.text));
+                                ui.label(TextStyle::Caption.as_rich(Icon::CIRCLE_FILL, t.accent));
+                                ui.label(TextStyle::BodySm.as_rich(active.as_str(), t.text).strong());
                                 if !active_is_saved {
                                     ui.label(egui::RichText::new("·unsaved").monospace().size(font_xs()).color(t.warn));
                                 }

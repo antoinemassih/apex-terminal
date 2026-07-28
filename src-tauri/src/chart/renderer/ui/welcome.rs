@@ -20,6 +20,7 @@ use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle};
 use crate::ui_kit::widgets::number_stepper::NumberStepper;
 use crate::ui_kit::widgets::stepper::Stepper;
 use crate::ui_kit::widgets::tokens::{Size, Variant};
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 const WIZARD_W: f32 = 580.0;
 const WIZARD_H: f32 = 520.0;
@@ -247,11 +248,7 @@ fn draw_step_welcome(ui: &mut egui::Ui, theme: &Theme) {
 
     ui.add_space(st::gap_sm());
     ui.horizontal_centered(|ui| {
-        ui.label(
-            RichText::new("A pro-grade trading terminal built for speed")
-                .font(FontId::proportional(st::font_md()))
-                .color(theme.dim),
-        );
+        ui.label(TextStyle::Body.as_rich("A pro-grade trading terminal built for speed", theme.dim));
     });
 
     ui.add_space(st::gap_lg());
@@ -266,17 +263,9 @@ fn draw_step_welcome(ui: &mut egui::Ui, theme: &Theme) {
     for bullet in bullets {
         ui.horizontal(|ui| {
             ui.add_space(st::gap_md());
-            ui.label(
-                RichText::new("•")
-                    .font(FontId::proportional(st::font_md()))
-                    .color(theme.accent),
-            );
+            ui.label(TextStyle::Body.as_rich("•", theme.accent));
             ui.add_space(st::gap_xs());
-            ui.label(
-                RichText::new(*bullet)
-                    .font(FontId::proportional(st::font_md()))
-                    .color(theme.text),
-            );
+            ui.label(TextStyle::Body.as_rich(bullet, theme.text));  // bullet: &&str → &str via deref coercion
         });
         ui.add_space(st::gap_xs());
     }
@@ -291,18 +280,9 @@ fn draw_step_broker(
     advance: &mut bool,
 ) {
     ui.add_space(st::gap_md());
-    ui.label(
-        RichText::new("Connect a broker")
-            .font(FontId::proportional(st::font_lg()))
-            .color(theme.text)
-            .strong(),
-    );
+    ui.label(TextStyle::BodyLg.as_rich("Connect a broker", theme.text).strong());
     ui.add_space(st::gap_sm());
-    ui.label(
-        RichText::new("Connect your brokerage account to enable live trading.")
-            .font(FontId::proportional(st::font_md()))
-            .color(theme.dim),
-    );
+    ui.label(TextStyle::Body.as_rich("Connect your brokerage account to enable live trading.", theme.dim));
     ui.add_space(st::gap_lg());
 
     // Two side-by-side broker cards
@@ -319,18 +299,9 @@ fn draw_step_broker(
                 .padding(st::gap_md())
                 .show(ui, theme, |ui| {
                 ui.set_width(card_w - st::gap_md() * 2.0);
-                ui.label(
-                    RichText::new("Interactive Brokers")
-                        .font(FontId::proportional(st::font_md()))
-                        .color(theme.text)
-                        .strong(),
-                );
+                ui.label(TextStyle::Body.as_rich("Interactive Brokers", theme.text).strong());
                 ui.add_space(st::gap_xs());
-                ui.label(
-                    RichText::new("Connect via TWS or IB Gateway")
-                        .font(FontId::proportional(st::font_sm()))
-                        .color(theme.dim),
-                );
+                ui.label(TextStyle::BodySm.as_rich("Connect via TWS or IB Gateway", theme.dim));
                 ui.add_space(st::gap_sm());
                 if Button::new("Open connection panel")
                     .variant(Variant::Primary)
@@ -357,18 +328,9 @@ fn draw_step_broker(
                 .padding(st::gap_md())
                 .show(ui, theme, |ui| {
                 ui.set_width(card_w - st::gap_md() * 2.0);
-                ui.label(
-                    RichText::new("Skip for now")
-                        .font(FontId::proportional(st::font_md()))
-                        .color(theme.text)
-                        .strong(),
-                );
+                ui.label(TextStyle::Body.as_rich("Skip for now", theme.text).strong());
                 ui.add_space(st::gap_xs());
-                ui.label(
-                    RichText::new("Continue in paper-trading mode")
-                        .font(FontId::proportional(st::font_sm()))
-                        .color(theme.dim),
-                );
+                ui.label(TextStyle::BodySm.as_rich("Continue in paper-trading mode", theme.dim));
                 ui.add_space(st::gap_sm());
                 if Button::new("I'll do this later")
                     .variant(Variant::Ghost)
@@ -392,31 +354,19 @@ fn draw_step_risk(
     max_position_pct: &mut f32,
 ) {
     ui.add_space(st::gap_md());
-    ui.label(
-        RichText::new("Set your risk limits")
-            .font(FontId::proportional(st::font_lg()))
-            .color(theme.text)
-            .strong(),
-    );
+    ui.label(TextStyle::BodyLg.as_rich("Set your risk limits", theme.text).strong());
     ui.add_space(st::gap_sm());
-    ui.label(
-        RichText::new(
-            "These limits help protect your account. You can change them later in Settings → Trading.",
-        )
-        .font(FontId::proportional(st::font_md()))
-        .color(theme.dim),
-    );
+    ui.label(TextStyle::Body.as_rich(
+        "These limits help protect your account. You can change them later in Settings → Trading.",
+        theme.dim,
+    ));
     ui.add_space(st::gap_lg());
 
     // Daily loss cap row
     ui.horizontal(|ui| {
         ui.allocate_ui(Vec2::new(220.0, 24.0), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    RichText::new("Daily loss cap (USD)")
-                        .font(FontId::proportional(st::font_sm()))
-                        .color(st::tint(theme, Tone::Text, 180)),
-                );
+                ui.label(TextStyle::BodySm.as_rich("Daily loss cap (USD)", st::tint(theme, Tone::Text, 180)));
             });
         });
         ui.add_space(st::gap_md());
@@ -431,11 +381,10 @@ fn draw_step_risk(
     ui.add_space(st::gap_xs());
     ui.horizontal(|ui| {
         ui.add_space(220.0 + st::gap_md());
-        ui.label(
-            RichText::new("Apex halts new trades when your loss (realized + unrealized) reaches this in a day.")
-                .font(FontId::proportional(st::font_sm()))
-                .color(theme.dim),
-        );
+        ui.label(TextStyle::BodySm.as_rich(
+            "Apex halts new trades when your loss (realized + unrealized) reaches this in a day.",
+            theme.dim,
+        ));
     });
 
     ui.add_space(st::gap_md());
@@ -444,11 +393,7 @@ fn draw_step_risk(
     ui.horizontal(|ui| {
         ui.allocate_ui(Vec2::new(220.0, 24.0), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    RichText::new("Max position size (% of account)")
-                        .font(FontId::proportional(st::font_sm()))
-                        .color(st::tint(theme, Tone::Text, 180)),
-                );
+                ui.label(TextStyle::BodySm.as_rich("Max position size (% of account)", st::tint(theme, Tone::Text, 180)));
             });
         });
         ui.add_space(st::gap_md());
@@ -467,9 +412,10 @@ fn draw_step_risk(
             // W0-09: honest disclosure — this % is not enforced from here (no
             // account-size-aware conversion at first run). Position sizing lives
             // in Settings → Trading once an account is connected.
-            RichText::new("Set your position-size limit in Settings → Trading once your account is connected.")
-                .font(FontId::proportional(st::font_sm()))
-                .color(theme.dim),
+            TextStyle::BodySm.as_rich(
+                "Set your position-size limit in Settings → Trading once your account is connected.",
+                theme.dim,
+            ),
         );
     });
     ui.add_space(st::gap_md());
@@ -487,21 +433,14 @@ fn draw_step_done(ui: &mut egui::Ui, theme: &Theme) {
     });
     ui.add_space(st::gap_md());
     ui.horizontal_centered(|ui| {
-        ui.label(
-            RichText::new(
-                "Apex is pre-seeded with SPY, QQQ, AAPL, MSFT, NVDA, TSLA and 6 more symbols.",
-            )
-            .font(FontId::proportional(st::font_md()))
-            .color(theme.text),
-        );
+        ui.label(TextStyle::Body.as_rich(
+            "Apex is pre-seeded with SPY, QQQ, AAPL, MSFT, NVDA, TSLA and 6 more symbols.",
+            theme.text,
+        ));
     });
     ui.add_space(st::gap_sm());
     ui.horizontal_centered(|ui| {
-        ui.label(
-            RichText::new("Run /help anytime to see available commands.")
-                .font(FontId::proportional(st::font_md()))
-                .color(theme.dim),
-        );
+        ui.label(TextStyle::Body.as_rich("Run /help anytime to see available commands.", theme.dim));
     });
     ui.add_space(st::gap_lg());
 }

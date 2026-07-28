@@ -27,6 +27,7 @@
 
 use std::collections::{HashSet, VecDeque};
 use crate::chart_renderer::ui::style::tint;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::ui_kit::sx::Tone;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -303,8 +304,7 @@ fn draw_toast_body(
     ui.add_space(gap_xs());
     {
         let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
-        ui.label(egui::RichText::new(&spike.headline).strong().size(font_sm())
-            .color(t.text));
+        ui.label(TextStyle::BodySm.as_rich(&spike.headline, t.text).strong());
         ui.add_space(gap_2xs());
         // Explanation — truncate visually via egui's wrapping; the data itself is
         // unbounded. We give it a fixed height and rely on egui's clip rect.

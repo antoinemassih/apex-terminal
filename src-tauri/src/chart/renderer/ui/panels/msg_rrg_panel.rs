@@ -18,6 +18,7 @@ use super::super::style::*;
 use super::super::super::gpu::Theme;
 use crate::ui_kit::sx::Tone;
 use crate::ui_kit::widgets::PanelSection;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use super::side_panel_shell::{SidePanelShell, Width, RailSlot};
 
 // ── Panel open flag (no Watchlist field needed) ────────────────────────────
@@ -225,7 +226,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
     let (edges, is_sample) = get_or_refresh(&parent, &tf);
 
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("BASKET").color(t.dim).size(font_xs()));
+        ui.label(TextStyle::Caption.as_rich("BASKET", t.dim));
         egui::ComboBox::from_id_salt("msg_rrg_parent")
             .selected_text(parent.as_str())
             .width(60.0)
@@ -237,7 +238,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
                     }
                 }
             });
-        ui.label(egui::RichText::new("TF").color(t.dim).size(font_xs()));
+        ui.label(TextStyle::Caption.as_rich("TF", t.dim));
         egui::ComboBox::from_id_salt("msg_rrg_tf")
             .selected_text(tf.as_str())
             .width(42.0)
@@ -251,9 +252,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
             });
         if is_sample {
             ui.label(
-                egui::RichText::new("SAMPLE DATA")
-                    .color(tint(t, Tone::Warn, alpha_active()))
-                    .size(font_xs()),
+                TextStyle::Caption.as_rich("SAMPLE DATA", tint(t, Tone::Warn, alpha_active())),
             );
         }
     });
@@ -280,8 +279,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
                     ui.horizontal(|ui| {
                         let (r, painter) = ui.allocate_painter(egui::vec2(8.0, 8.0), egui::Sense::hover());
                         painter.circle_filled(r.rect.center(), 3.5, c);
-                        ui.label(egui::RichText::new(format!("{} {:.0}%", e.symbol, e.weight * 100.0))
-                            .color(t.text).size(font_xs()));
+                        ui.label(TextStyle::Caption.as_rich(&format!("{} {:.0}%", e.symbol, e.weight * 100.0), t.text));
                     });
                 }
             });
@@ -291,8 +289,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
                     ui.horizontal(|ui| {
                         let (r, painter) = ui.allocate_painter(egui::vec2(8.0, 8.0), egui::Sense::hover());
                         painter.circle_filled(r.rect.center(), 3.5, c);
-                        ui.label(egui::RichText::new(format!("{} {:.0}%", e.symbol, e.weight * 100.0))
-                            .color(t.text).size(font_xs()));
+                        ui.label(TextStyle::Caption.as_rich(&format!("{} {:.0}%", e.symbol, e.weight * 100.0), t.text));
                     });
                 }
             });

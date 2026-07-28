@@ -19,6 +19,7 @@ use crate::ui_kit::widgets::{ToggleRow, ThemePreviewCard, NumberStepper, PanelSe
 use crate::ui_kit::widgets::SegmentedControl;
 use crate::ui_kit::widgets::theme_preview_card::PreviewKind;
 use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 /// Unified body padding for the settings modal. Single source of truth —
 /// every PanelSection / FormRow inside the scroll area inherits this and
@@ -515,9 +516,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
     PanelSection::new("THEME STUDIO").show(ui, t, |ui, t| {
         ui.horizontal(|ui| {
             ui.label(
-                egui::RichText::new("Visual component storybook and live theme editor.")
-                    .size(font_xs())
-                    .color(t.dim),
+                TextStyle::Caption.as_rich("Visual component storybook and live theme editor.", t.dim),
             );
         });
         ui.add_space(gap_xs());
@@ -1055,9 +1054,7 @@ fn draw_themes_section(
             if !err.is_empty() {
                 ui.add_space(gap_xs());
                 ui.label(
-                    egui::RichText::new(err.as_str())
-                        .size(font_xs())
-                        .color(t.bear),
+                    TextStyle::Caption.as_rich(err.as_str(), t.bear),
                 );
             }
         });

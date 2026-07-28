@@ -21,6 +21,7 @@ use crate::chart::renderer::ui::foundation::{
 };
 use crate::ui_kit::widgets::RowVariant;
 use crate::ui_kit::widgets::tokens::Size;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::ui_kit::widgets::HoverCard;
 use super::watchlist_columns::{
     spec as col_spec, ColumnCtx, WatchlistColumnId, WatchlistItemData,
@@ -779,9 +780,7 @@ impl<'a> WatchlistRow<'a> {
                     ) {
                         ui.horizontal(|ui| {
                             ui.label(
-                                egui::RichText::new(label)
-                                    .size(font_sm())
-                                    .color(label_col),
+                                TextStyle::BodySm.as_rich(label, label_col),
                             );
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),

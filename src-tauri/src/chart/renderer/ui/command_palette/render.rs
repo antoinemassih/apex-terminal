@@ -9,6 +9,7 @@ use super::super::components::text::SectionLabel;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
 use super::super::super::gpu::*;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, pal_w: f32) {
     ui.horizontal(|ui| {
@@ -118,22 +119,19 @@ pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(Stri
     };
 
     let cat_col = super::matcher::cat_from_label(cat_label).map(|c| c.color(t)).unwrap_or(t.dim);
-    ui.label(egui::RichText::new(cat_label).size(super::super::style::font_sm()).strong().color(cat_col));
+    ui.label(TextStyle::BodySm.as_rich(cat_label, cat_col).strong());
     ui.add_space(gap_sm());
-    ui.label(egui::RichText::new(label).size(font_md()).strong().color(t.text));
+    ui.label(TextStyle::Body.as_rich(label, t.text).strong());
     ui.add_space(gap_lg());
 
     if let Some(sym) = id.strip_prefix("sym:") {
         draw_symbol_preview(ui, t, sym, panes, ap);
     } else if id == "ai:chat" {
-        ui.label(egui::RichText::new("Conversational assistant\npowered by fine-tuned Gemma 4.")
-            .size(super::super::style::font_sm()).color(color_subtle(t.text)));
+        ui.label(TextStyle::BodySm.as_rich("Conversational assistant\npowered by fine-tuned Gemma 4.", color_subtle(t.text)));
         ui.add_space(gap_sm());
-        ui.label(egui::RichText::new("• scanners in plain English\n• alert creation\n• context-aware answers")
-            .size(font_sm()).color(t.dim));
+        ui.label(TextStyle::BodySm.as_rich("• scanners in plain English\n• alert creation\n• context-aware answers", t.dim));
     } else if id == "dyn:reorganize" {
-        ui.label(egui::RichText::new("Dynamic UI (Gemma 2B)")
-            .size(super::super::style::font_sm()).strong().color(Category::Dynamic.color(t)));
+        ui.label(TextStyle::BodySm.as_rich("Dynamic UI (Gemma 2B)", Category::Dynamic.color(t)).strong());
         preview_hint(ui, "LLM-driven layout reorganization.\nPlaceholder — see docs/dynamic-gemma-ui.md.", t);
     } else if id.starts_with("theme:") {
         let name = id.trim_start_matches("theme:");
