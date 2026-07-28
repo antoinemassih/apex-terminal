@@ -980,7 +980,7 @@ fn render_chart_pane(
                             egui::Color32::TRANSPARENT
                         };
                         if ui.add(egui::Button::new(
-                            egui::RichText::new(label).size(crate::chart_renderer::ui::style::font_sm()).color(fg))
+                            TextStyle::BodySm.as_rich(label, fg))
                             .fill(bg)
                             .corner_radius(4.0)
                         ).clicked() {
@@ -1000,7 +1000,7 @@ fn render_chart_pane(
                             .collect();
                         let cur_template: String = chart.pane_template_name.clone().unwrap_or_else(|| "None".to_string());
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Template:").size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
+                            ui.label(TextStyle::BodySm.as_rich("Template:", t.dim));
                             let tpl_id = format!("pane_picker_template_{pane_idx}");
                             let tpl_opts: Vec<(String, String)> =
                                 template_names.iter().map(|n| (n.clone(), n.clone())).collect();
@@ -1018,14 +1018,12 @@ fn render_chart_pane(
                             let stock_active = !chart.pane_picker_option_mode;
                             let opt_active = chart.pane_picker_option_mode;
                             let stock_btn = ui.add(egui::Button::new(
-                                egui::RichText::new("Stock").size(crate::chart_renderer::ui::style::font_sm())
-                                    .color(if stock_active { t.accent } else { t.dim }))
+                                TextStyle::BodySm.as_rich("Stock", if stock_active { t.accent } else { t.dim }))
                                 .fill(if stock_active { crate::chart_renderer::ui::style::color_alpha(t.accent, crate::chart_renderer::ui::style::alpha_tint()) } else { egui::Color32::TRANSPARENT })
                                 .corner_radius(4.0));
                             if stock_btn.clicked() { chart.pane_picker_option_mode = false; }
                             let opt_btn = ui.add(egui::Button::new(
-                                egui::RichText::new("Option").size(crate::chart_renderer::ui::style::font_sm())
-                                    .color(if opt_active { t.accent } else { t.dim }))
+                                TextStyle::BodySm.as_rich("Option", if opt_active { t.accent } else { t.dim }))
                                 .fill(if opt_active { crate::chart_renderer::ui::style::color_alpha(t.accent, crate::chart_renderer::ui::style::alpha_tint()) } else { egui::Color32::TRANSPARENT })
                                 .corner_radius(4.0));
                             if opt_btn.clicked() { chart.pane_picker_option_mode = true; }
@@ -1093,19 +1091,19 @@ fn render_chart_pane(
 
                             if chart.pane_picker_query.is_empty() {
                                 ui.add_space(4.0);
-                                ui.label(egui::RichText::new("Recent").size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
+                                ui.label(TextStyle::BodySm.as_rich("Recent", t.dim));
                                 let recents = chart.recent_symbols.clone();
                                 for (sym, name) in &recents {
                                     ui.horizontal(|ui| {
                                         if ui.add(egui::Button::new(
-                                            egui::RichText::new(sym).size(crate::chart_renderer::ui::style::font_sm()).color(t.text))
+                                            TextStyle::BodySm.as_rich(sym, t.text))
                                             .fill(egui::Color32::TRANSPARENT)
                                         ).clicked() {
                                             chart.pending_symbol_change = Some(sym.clone());
                                             fetch_bars_background(sym.clone(), chart.timeframe.clone(), 0);
                                             close_picker = true;
                                         }
-                                        ui.label(egui::RichText::new(name).size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
+                                        ui.label(TextStyle::BodySm.as_rich(name, t.dim));
                                     });
                                 }
                             } else {
@@ -1113,14 +1111,14 @@ fn render_chart_pane(
                                 for (sym, name, _exch) in &results {
                                     ui.horizontal(|ui| {
                                         if ui.add(egui::Button::new(
-                                            egui::RichText::new(sym).size(crate::chart_renderer::ui::style::font_sm()).color(t.text))
+                                            TextStyle::BodySm.as_rich(sym, t.text))
                                             .fill(egui::Color32::TRANSPARENT)
                                         ).clicked() {
                                             chart.pending_symbol_change = Some(sym.clone());
                                             fetch_bars_background(sym.clone(), chart.timeframe.clone(), 0);
                                             close_picker = true;
                                         }
-                                        ui.label(egui::RichText::new(name).size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
+                                        ui.label(TextStyle::BodySm.as_rich(name, t.dim));
                                     });
                                 }
                             }
@@ -1163,8 +1161,7 @@ fn render_chart_pane(
                             ui.horizontal(|ui| {
                                 let can_back = dte_idx > 0;
                                 let back_col = if can_back { t.accent } else { t.dim.gamma_multiply(0.3) };
-                                if ui.add(egui::Button::new(egui::RichText::new(crate::ui_kit::icons::Icon::CARET_LEFT)
-                                    .size(crate::chart_renderer::ui::style::font_lg()).color(back_col))
+                                if ui.add(egui::Button::new(TextStyle::BodyLg.as_rich(crate::ui_kit::icons::Icon::CARET_LEFT, back_col))
                                     .fill(egui::Color32::TRANSPARENT)
                                 ).clicked() && can_back {
                                     chart.option_quick.dte_idx = dte_idx - 1;
@@ -1175,8 +1172,7 @@ fn render_chart_pane(
                                     .monospace().size(crate::chart_renderer::ui::style::font_lg()).strong().color(t.text));
                                 let can_fwd = dte_idx < DTE_LIST.len() - 1;
                                 let fwd_col = if can_fwd { t.accent } else { t.dim.gamma_multiply(0.3) };
-                                if ui.add(egui::Button::new(egui::RichText::new(crate::ui_kit::icons::Icon::CARET_RIGHT)
-                                    .size(crate::chart_renderer::ui::style::font_lg()).color(fwd_col))
+                                if ui.add(egui::Button::new(TextStyle::BodyLg.as_rich(crate::ui_kit::icons::Icon::CARET_RIGHT, fwd_col))
                                     .fill(egui::Color32::TRANSPARENT)
                                 ).clicked() && can_fwd {
                                     chart.option_quick.dte_idx = dte_idx + 1;
@@ -1356,7 +1352,7 @@ fn render_chart_pane(
                         let mut newly_selected: Option<String> = None;
                         let mut do_save = false;
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Template:").size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
+                            ui.label(TextStyle::BodySm.as_rich("Template:", t.dim));
                             let tpl_id = format!("{id_salt}_{pane_idx}");
                             let tpl_opts: Vec<(String, String)> =
                                 templates_snapshot.iter().map(|n| (n.clone(), n.clone())).collect();
@@ -1392,7 +1388,7 @@ fn render_chart_pane(
                 }
 
                 ui.add_space(4.0);
-                if ui.add(egui::Button::new(egui::RichText::new("Close").size(crate::chart_renderer::ui::style::font_sm()).color(t.dim))
+                if ui.add(egui::Button::new(TextStyle::BodySm.as_rich("Close", t.dim))
                     .fill(egui::Color32::TRANSPARENT)
                 ).clicked() {
                     close_picker = true;
@@ -10913,9 +10909,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                         ui.add_space(gap_md());
                         ui.horizontal(|ui| {
                             ui.add_space(gap_lg());
-                            ui.label(egui::RichText::new(Icon::SHIELD_WARNING)
-                                .size(font_md())
-                                .color(theme.warn));
+                            ui.label(TextStyle::Body.as_rich(Icon::SHIELD_WARNING, theme.warn));
                             ui.add_space(gap_sm());
                             ui.label(egui::RichText::new("This order tripped a soft risk gate.")
                                 .monospace()

@@ -2,6 +2,7 @@
 //! text + numeric input fields, radio button rows.
 
 use super::super::style::*;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use egui::{self, Color32, Response, RichText, Sense, Stroke, Ui, Vec2};
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::Button as KitButton;
@@ -44,7 +45,7 @@ pub fn search_input(
         })
         .show(ui, &ambient_theme(ui.ctx()), |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("\u{1F50D}").size(font_sm()).color(dim));
+                ui.label(TextStyle::BodySm.as_rich("\u{1F50D}", dim));
                 let r = Input::new(buffer)
                     .frameless(true)
                     .text_color(accent)

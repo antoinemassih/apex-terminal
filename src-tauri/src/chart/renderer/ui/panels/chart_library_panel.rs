@@ -22,6 +22,7 @@ use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width,
 use crate::ui_kit::widgets::{Button, Input, PanelEmpty, PanelListRow, PanelSection, Size, Tooltip};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::icons::Icon;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 enum ChartLibTab {
@@ -140,9 +141,7 @@ pub(crate) fn draw(
                                         PanelListRow::new(&id_salt)
                                             .leading(move |ui, _t| {
                                                 ui.label(
-                                                    egui::RichText::new(Icon::CHART_BAR)
-                                                        .font(egui::FontId::proportional(font_md()))
-                                                        .color(accent),
+                                                    TextStyle::Body.as_rich(Icon::CHART_BAR, accent),
                                                 );
                                             })
                                             .primary(name)

@@ -16,6 +16,7 @@ use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, Too
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::icons::Icon;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 /// A single screenshot entry with chart state for replay.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -177,9 +178,7 @@ pub(crate) fn draw_content(
                         PanelListRow::new(&id_salt)
                             .leading(move |ui, _t| {
                                 ui.label(
-                                    egui::RichText::new(Icon::CAMERA)
-                                        .font(egui::FontId::proportional(font_md()))
-                                        .color(accent_col),
+                                    TextStyle::Body.as_rich(Icon::CAMERA, accent_col),
                                 );
                             })
                             .primary(&primary)

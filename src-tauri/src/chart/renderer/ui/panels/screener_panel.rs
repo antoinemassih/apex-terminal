@@ -46,6 +46,7 @@ use egui::{Context, Ui};
 use crate::chart_renderer::gpu::{Chart, Theme, Watchlist};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::chart_renderer::ui::style::*;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::state::aggregates::{SavedScreenEntry, ScreenPanelState, ScreenViewMode};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{
@@ -609,9 +610,7 @@ fn draw_screen_rows(
                 // keeps its accent color (warn tone) and isn't plain dim text.
                 if eff_clone.decay_alert {
                     ui.add(egui::Label::new(
-                        egui::RichText::new(crate::ui_kit::icons::Icon::WARNING)
-                            .color(t.warn)
-                            .size(font_xs())
+                        TextStyle::Caption.as_rich(crate::ui_kit::icons::Icon::WARNING, t.warn)
                     ));
                 }
             })
