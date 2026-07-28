@@ -174,8 +174,10 @@ pub(crate) fn render(
                                 .bar(used.min(1.0)).show(ui, t);
                         }
                     } else {
+                        // U0-4: risk feed down reads as a problem (bear tint), not a
+                        // neutral dim note; kept inline (compact section body).
                         ui.add(crate::chart_renderer::ui::components::text::MonospaceCode::new(
-                            "risk feed not connected").size_px(font_2xs()).color(color_dim(t.dim)));
+                            "risk feed not connected").size_px(font_2xs()).color(color_dim(t.bear)));
                     }
                 });
             });

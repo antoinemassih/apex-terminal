@@ -320,7 +320,10 @@ fn draw_positions(ui: &mut egui::Ui, t: &Theme, account: &AccountData) {
 fn draw_account(ui: &mut egui::Ui, t: &Theme, account: &AccountData) {
     let Some((acct, _, _)) = account.as_ref() else {
         ui.add_space(gap_sm());
-        ui.add(MonospaceCode::new("Broker not connected").size_px(font_sm()).color(t.dim).gamma(0.5));
+        // U0-4: read as a problem (bear tint), not a neutral dim shrug. Kept as
+        // an inline note (not a full PanelError block) — this is a compact
+        // status row, and the OFFLINE StatusPill above already flags the state.
+        ui.add(MonospaceCode::new("Broker not connected").size_px(font_sm()).color(t.bear).gamma(0.85));
         return;
     };
 

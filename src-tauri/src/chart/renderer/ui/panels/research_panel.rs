@@ -16,7 +16,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Chart, Theme};
 use super::super::components::text::MonospaceCode;
-use crate::ui_kit::widgets::{PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone};
+use crate::ui_kit::widgets::{PanelEmpty, PanelError, PanelKeyValueRow, PanelSection, PanelTone};
 use crate::ui_kit::icons::Icon;
 
 pub(crate) fn draw_content(
@@ -98,7 +98,8 @@ pub(crate) fn draw_content(
         PanelSection::new(&format!("FUNDAMENTALS — {}", chart.symbol))
             .title_color(t.accent)
             .show(ui, t, |ui, t| {
-                PanelEmpty::new("Fundamentals feed not connected").show(ui, t);
+                PanelError::new("Fundamentals feed not connected")
+                    .hint("Provider offline or not configured").show(ui, t);
             });
     }
 
@@ -186,7 +187,8 @@ pub(crate) fn draw_content(
                 // default — nothing FETCHES analyst data — so "No coverage" read
                 // as "we checked, there's none". Disclose the missing feed
                 // honestly instead, matching the Fundamentals section.
-                PanelEmpty::new("Analyst feed not connected").show(ui, t);
+                PanelError::new("Analyst feed not connected")
+                    .hint("Provider offline or not configured").show(ui, t);
                 return;
             }
             ui.horizontal(|ui| {
@@ -229,7 +231,8 @@ pub(crate) fn draw_content(
             if f.earnings.is_empty() {
                 // W1-12: no fetch populates f.earnings — disclose, don't imply
                 // this stock has no earnings history.
-                PanelEmpty::new("Earnings feed not connected").show(ui, t);
+                PanelError::new("Earnings feed not connected")
+                    .hint("Provider offline or not configured").show(ui, t);
                 return;
             }
             for eq in &f.earnings {
@@ -254,7 +257,8 @@ pub(crate) fn draw_content(
             if chart.insider_trades.is_empty() {
                 // W1-12: chart.insider_trades is only ever cleared to Vec::new()
                 // (gpu.rs), never populated — disclose the missing feed.
-                PanelEmpty::new("Insider feed not connected").show(ui, t);
+                PanelError::new("Insider feed not connected")
+                    .hint("Provider offline or not configured").show(ui, t);
                 return;
             }
             for trade in &chart.insider_trades {
@@ -284,7 +288,8 @@ pub(crate) fn draw_content(
             if chart.econ_calendar.is_empty() {
                 // W1-12: chart.econ_calendar is only ever cleared to Vec::new()
                 // (gpu.rs), never populated — disclose the missing feed.
-                PanelEmpty::new("Economic calendar feed not connected").show(ui, t);
+                PanelError::new("Economic calendar feed not connected")
+                    .hint("Provider offline or not configured").show(ui, t);
                 return;
             }
             for event in &chart.econ_calendar {
