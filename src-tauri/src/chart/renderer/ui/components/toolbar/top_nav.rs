@@ -1012,7 +1012,7 @@ pub(crate) fn render(
                 // appear.
                 if !crate::drawing_db::is_persisting() {
                     let chip = ui.label(
-                        egui::RichText::new("⚠ drawings not saving")
+                        egui::RichText::new(format!("{} drawings not saving", Icon::WARNING))
                             .size(font_xs())
                             .color(t.warn),
                     );

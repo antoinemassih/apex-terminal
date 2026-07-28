@@ -165,7 +165,7 @@ pub(crate) fn draw(
                                     );
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         if ui.small_button(
-                                            egui::RichText::new("✕").color(red)
+                                            egui::RichText::new(crate::ui_kit::icons::Icon::X).color(red)
                                         ).on_hover_text("Reject — hide and log for learning").clicked() {
                                             cfg.rejected_drawings.insert(id.clone());
                                             crate::chart_renderer::gpu::post_drawing_feedback(
@@ -176,7 +176,7 @@ pub(crate) fn draw(
                                             );
                                         }
                                         if ui.small_button(
-                                            egui::RichText::new("✓").color(green)
+                                            egui::RichText::new(crate::ui_kit::icons::Icon::CHECK).color(green)
                                         ).on_hover_text("Accept — confirm this line is good").clicked() {
                                             crate::chart_renderer::gpu::post_drawing_feedback(
                                                 id.clone(),

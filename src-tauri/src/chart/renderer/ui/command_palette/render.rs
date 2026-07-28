@@ -13,7 +13,7 @@ use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, pal_w: f32) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("✦ Ask Apex").size(font_lg()).strong().color(t.text));
+        ui.label(TextStyle::BodyLg.as_rich(&format!("{} Ask Apex", crate::ui_kit::icons::Icon::SPARKLE), t.text).strong());
         ui.add_space(gap_lg());
         let (badge_rect, _) = ui.allocate_exact_size(egui::vec2(68.0, 18.0), egui::Sense::hover());
         let painter = ui.painter();

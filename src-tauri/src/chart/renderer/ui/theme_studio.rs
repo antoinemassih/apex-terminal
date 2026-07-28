@@ -541,7 +541,7 @@ fn draw_editor(ui: &mut Ui, _ctx: &Context, t: &Theme, pack: &mut WorkingPack) {
 
                         if report.errors.is_empty() && report.warnings.is_empty() {
                             ui.label(
-                                egui::RichText::new("✓ No issues")
+                                egui::RichText::new(format!("{} No issues", crate::ui_kit::icons::Icon::CHECK))
                                     .size(11.0)
                                     .color(t.bull),
                             );
@@ -550,7 +550,7 @@ fn draw_editor(ui: &mut Ui, _ctx: &Context, t: &Theme, pack: &mut WorkingPack) {
                         for f in &report.errors {
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(
-                                    egui::RichText::new("✕")
+                                    egui::RichText::new(crate::ui_kit::icons::Icon::X)
                                         .size(10.0)
                                         .color(t.bear),
                                 );
