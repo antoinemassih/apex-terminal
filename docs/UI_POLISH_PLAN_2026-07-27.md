@@ -26,6 +26,15 @@ unless noted.
 - **U0-5** (`06c72e03`): provenance loading → PanelLoading (the only clean panel-body loader; rest are compact-inline or painter-based).
 - **Infra** (`48dd22ff`): corpus app process name is now session-tagged so two runs coexist on the shared machine (the port fix wasn't enough — taskkill matches by name).
 
+- **U2-3 typography adoption (2026-07-28, `0af3f240` + `407cd078`):** ~83 hand-rolled
+  proportional `RichText` sites across ~23 files routed onto `TextStyle` tiers (via
+  parallel subagents + a size-equivalent tier map; near-zero visual change). **KEY
+  FINDING:** the audit's raw "466 RichText / 229 colors / 74 glyphs" massively overstates
+  the gap — ~85% of RichText is intentional monospace (trading data), most colors are
+  signal/Greek/category hues (theme-independent by design), and the glyphs were mostly the
+  dev bug-inspector + `—`/`→` false positives. The GENUINE proportional gap (~83 sites) is
+  now closed; the rest is correct domain styling, not debt.
+
 **Remaining — needs your eyes or a decision, NOT more blind autonomy:**
 - **Decision:** U2-2 curated Theme×Style "Looks" (which pairings to feature).
 - **UX-flow (review recommended):** U0-6 ConfirmDialog for destructive actions (adds a confirm step; must respect the shipped two-step arm behavior).
