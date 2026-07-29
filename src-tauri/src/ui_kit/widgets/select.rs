@@ -443,6 +443,11 @@ fn paint_select<'a, T: 'a>(
     if invalid {
         border_col = palette_ct(theme).base(Tone::Bear);
     }
+    if disabled {
+        // U1-4: dim the border too when disabled (fill + text already dim);
+        // a full-strength border around a dimmed fill read as inconsistent.
+        border_col = st::color_alpha(border_col, 128);
+    }
     let surface_bg = if disabled {
         st::color_alpha(palette_ct(theme).base(Tone::Surface), 128)
     } else {

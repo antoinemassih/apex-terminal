@@ -365,8 +365,9 @@ pub fn draw_race(
     separator(ui, t.toolbar_border);
 
     if snap.rows.is_empty() {
-        PanelEmpty::new("Waiting for race data")
-            .hint("Score appears when the scan evaluates")
+        // Audit fix: waiting for the scan to produce data is a LOADING state.
+        crate::ui_kit::widgets::PanelLoading::new()
+            .reason("Waiting for race data\u{2026}")
             .show(ui, t);
         ctx.request_repaint_after(Duration::from_millis(500));
         return;

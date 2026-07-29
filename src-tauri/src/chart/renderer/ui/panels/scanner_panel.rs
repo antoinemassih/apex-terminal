@@ -312,9 +312,10 @@ pub(crate) fn draw_content(
                     Spinner::new().size(KitSize::Md).show(ui, t);
                     ui.add_space(gap_sm());
                 });
-                PanelEmpty::new("Fetching quotes")
-                    .glyph("\u{1F50D}")
-                    .hint(&format!("{} symbols in universe", SCANNER_UNIVERSE.len()))
+                // Audit fix: a fetch-in-progress is a LOADING state (spinner),
+                // not a neutral PanelEmpty.
+                crate::ui_kit::widgets::PanelLoading::new()
+                    .reason(&format!("Fetching quotes \u{2014} {} symbols\u{2026}", SCANNER_UNIVERSE.len()))
                     .show(ui, t);
                 ui.add_space(gap_sm());
                 let row_w = (panel_w - 8.0).max(80.0);

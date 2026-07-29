@@ -285,6 +285,11 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         if invalid {
             border_col = palette_ct(theme).base(Tone::Bear);
         }
+        if disabled {
+            // U1-4: dim the border too when disabled (the fill is dimmed at paint
+            // time below) so it doesn't read as a full-strength box around dim content.
+            border_col = st::color_alpha(border_col, 128);
+        }
 
         let bg_fill = background_color_override.unwrap_or_else(|| theme.surface_raised());
 

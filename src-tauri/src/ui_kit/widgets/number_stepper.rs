@@ -113,6 +113,12 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
             ui.add_enabled(!disabled, dv)
         });
         crate::chart_renderer::bug_anchor::mark(bug_loc, "stepper", resp.inner.rect);
+        // U1-4: accent focus ring on keyboard focus (DragValue is focusable). Its
+        // own doc promised this; it was relying on egui-default focus visuals.
+        crate::ui_kit::tokens::cursor::focus_ring(
+            ui, &resp.inner,
+            crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Accent),
+        );
         resp.inner
     }
 }
