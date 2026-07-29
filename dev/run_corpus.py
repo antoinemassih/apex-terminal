@@ -85,8 +85,27 @@ def kill_app():
     # (the user's manually-running dev app). This is what lets two corpus runs
     # coexist on one machine; we run on our own APEX_CORPUS_PORT so there's no
     # port conflict to reclaim. Harmless if our name isn't running.
+    #
+    # GOTCHA (2026-07-29): a flat sleep(1.0) after taskkill is NOT enough. When
+    # the app has crashed/degraded, its process lingers as a GPU-driver-held
+    # zombie (Windows: process object still enumerable, RAM + inspector port
+    # still held) for several seconds AFTER taskkill reports success. Respawning
+    # into that window binds nothing — the new instance can't take the port and
+    # every subsequent scenario fails with connection-refused, cascading a whole
+    # run into a false red. Fix: POLL until no same-named process remains (up to
+    # ~24s) so the driver has time to release the handle before we respawn.
     subprocess.run(["taskkill", "/F", "/IM", _PROT_NAME], capture_output=True)
-    time.sleep(1.0)
+    for _ in range(24):
+        out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {_PROT_NAME}", "/NH"],
+                             capture_output=True, text=True).stdout
+        if _PROT_NAME.lower() not in out.lower():
+            time.sleep(0.5)  # small grace for port teardown after the handle drops
+            return
+        subprocess.run(["taskkill", "/F", "/IM", _PROT_NAME], capture_output=True)
+        time.sleep(1.0)
+    # Fell through — a stubborn zombie. Leave a breadcrumb; start_app's health
+    # loop will surface the failure loudly rather than silently cascading.
+    print(f"corpus: WARNING {_PROT_NAME} still present after 24s of kill attempts", flush=True)
 
 def start_app():
     kill_app()
