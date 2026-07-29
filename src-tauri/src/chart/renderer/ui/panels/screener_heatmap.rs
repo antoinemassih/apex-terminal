@@ -205,7 +205,7 @@ pub fn render_screener_heatmap(
         // Active sector filter chip
         if let Some(sf) = sector_filter {
             ui.add_space(gap_md());
-            let chip_label = format!("{}  ✕", sf);
+            let chip_label = format!("{}  {}", sf, crate::ui_kit::icons::Icon::X);
             if ui.add(
                 egui::Button::new(egui::RichText::new(&chip_label).font(egui::FontId::monospace(font_xs())).color(t.accent))
                     .fill(st::color_alpha(t.accent, st::alpha_soft()))

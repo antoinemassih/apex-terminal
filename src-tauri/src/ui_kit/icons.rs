@@ -81,6 +81,7 @@ impl Icon {
 
     // UI
     pub const CARET_DOWN: &'static str = ph::CARET_DOWN;
+    pub const CARET_UP: &'static str = ph::CARET_UP;
     pub const CARET_RIGHT: &'static str = ph::CARET_RIGHT;
     pub const CARET_LEFT: &'static str = ph::CARET_LEFT;
     pub const DOTS_SIX_VERTICAL: &'static str = ph::DOTS_SIX_VERTICAL;

@@ -357,7 +357,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.vertical_centered(|ui| {
             ui.label(egui::RichText::new("No signal selected")
                 .monospace().size(FONT_SM).color(t.dim));
-            ui.label(egui::RichText::new("Click 🔍 next to any signal to trace its evidence.")
+            ui.label(egui::RichText::new(format!("Click {} next to any signal to trace its evidence.", crate::ui_kit::icons::Icon::MAGNIFYING_GLASS))
                 .monospace().size(FONT_XS).color(color_subtle(t.dim)));
         });
         return;

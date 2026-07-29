@@ -321,7 +321,7 @@ pub fn draw_results(
         let hdr = color_muted(t.dim);
 
         let make_hdr = |label: &str, sorted: bool, asc: bool| -> String {
-            if sorted { if asc { format!("{label} ▲") } else { format!("{label} ▼") } }
+            if sorted { if asc { format!("{label} {}", Icon::CARET_UP) } else { format!("{label} {}", Icon::CARET_DOWN) } }
             else { label.to_string() }
         };
 
@@ -620,7 +620,7 @@ fn draw_provenance_popup(
                         ));
                     } else {
                         for pred in &prov.predicates {
-                            let pass_icon = if pred.pass { "✓" } else { "✗" };
+                            let pass_icon = if pred.pass { Icon::CHECK } else { Icon::X };
                             let pass_color = if pred.pass { t.bull } else { t.bear };
                             // Operand key (truncated for display).
                             let key_short = pred.operand_key

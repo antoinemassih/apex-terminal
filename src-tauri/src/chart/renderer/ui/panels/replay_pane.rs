@@ -528,7 +528,7 @@ fn draw_status_row(ui: &mut egui::Ui, s: &ReplayPaneState, t: &Theme) {
     });
     if let Some(err) = &s.error {
         ui.add_space(gap_xs());
-        ui.colored_label(t.bear, format!("⚠ {err}"));
+        ui.colored_label(t.bear, format!("{} {err}", crate::ui_kit::icons::Icon::WARNING));
     }
 }
 

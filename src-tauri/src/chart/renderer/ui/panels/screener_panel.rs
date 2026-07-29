@@ -588,7 +588,7 @@ fn draw_screen_rows(
         if let Some(n) = slot_num { secondary_parts.push(format!("[{}]", n)); }
         if let Some(ref e) = eff {
             secondary_parts.push(format!("{:+.1}%", e.realized_edge * 100.0));
-            if e.decay_alert { secondary_parts.push("⚠ decay".to_string()); }
+            if e.decay_alert { secondary_parts.push(format!("{} decay", Icon::WARNING)); }
         }
         let secondary = secondary_parts.join("  ");
 
@@ -647,7 +647,7 @@ fn draw_screen_rows(
                     let bound_to = hotkey_slots[(slot - 1) as usize].as_deref();
                     let is_mine  = bound_to == Some(screen.id.as_str());
                     let label    = if is_mine {
-                        format!("[{}]  ✓ assigned", slot)
+                        format!("[{}]  {} assigned", slot, Icon::CHECK)
                     } else if bound_to.is_some() {
                         format!("[{}]  (reassign)", slot)
                     } else {

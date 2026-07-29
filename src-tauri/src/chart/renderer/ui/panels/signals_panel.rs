@@ -174,7 +174,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
             ui.label(egui::RichText::new("score").monospace().size(font_3xs()).color(t.dim));
             ui.label(egui::RichText::new("engine").monospace().size(font_3xs()).color(t.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new("🔍").monospace().size(font_3xs()).color(t.dim));
+                ui.label(egui::RichText::new(Icon::MAGNIFYING_GLASS).monospace().size(font_3xs()).color(t.dim));
                 ui.add_space(gap_xs());
                 ui.label(egui::RichText::new("trust").monospace().size(font_3xs()).color(t.dim));
                 ui.add_space(gap_xs());
@@ -252,7 +252,7 @@ pub(crate) fn draw_signal_row_calibrated(
             // Layout is right-to-left; items are appended in reverse display order.
             // 🔍 button → opens ProvenancePane via the cross-panel event bus.
             let has_lineage = lineage.is_some();
-            let btn = Button::new("🔍").variant(KitVariant::Ghost).size(KitSize::Xs)
+            let btn = Button::new(Icon::MAGNIFYING_GLASS).variant(KitVariant::Ghost).size(KitSize::Xs)
                 .fg(if has_lineage { _t.accent } else { color_muted(_t.dim) })
                 .min_size(egui::vec2(18.0, 16.0))
                 .disabled(!has_lineage)

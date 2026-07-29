@@ -319,7 +319,7 @@ impl egui::Widget for InlineValidation {
                 self.ok_color.unwrap_or(amb.bull),
             ),
             ValidationState::Error => (
-                "✗",
+                Icon::X,
                 self.err_color.unwrap_or(amb.bear),
             ),
             ValidationState::Neutral => (

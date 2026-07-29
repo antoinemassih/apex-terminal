@@ -407,10 +407,7 @@ pub(crate) fn render(
                 .show(ctx, |ui| {
                     let fg = crate::chart_renderer::ui::style::contrast_fg(fill);
                     ui.horizontal_centered(|ui| {
-                        ui.label(egui::RichText::new(msg)
-                            .color(fg)
-                            .size(font_md() as f32)
-                            .strong());
+                        ui.label(TextStyle::Body.as_rich(msg, fg).strong());
                     });
                 });
         }
@@ -725,7 +722,7 @@ pub(crate) fn render(
                         ui.horizontal(|ui| {
                             // Active dot
                             if is_active {
-                                ui.label(egui::RichText::new(Icon::CIRCLE_FILL).size(font_xs()).color(t.accent));
+                                ui.label(TextStyle::Caption.as_rich(Icon::CIRCLE_FILL, t.accent));
                             } else {
                                 ui.label(egui::RichText::new("  ").size(font_xs()));
                             }
@@ -789,8 +786,8 @@ pub(crate) fn render(
                     use crate::ui_kit::widgets::Tooltip;
                     let active_ws = watchlist.workspace.active.clone();
                     Tooltip::rich(move |ui, theme| {
-                        ui.label(egui::RichText::new("Workspaces").size(font_sm()).strong().color(theme.text()));
-                        ui.label(egui::RichText::new(format!("Active: {}", active_ws)).size(font_xs()).color(theme.dim()));
+                        ui.label(TextStyle::BodySm.as_rich("Workspaces", theme.text()).strong());
+                        ui.label(TextStyle::Caption.as_rich(&format!("Active: {}", active_ws), theme.dim()));
                     }).show(ui, &ws_menu.response, t);
                 }
                 #[cfg(debug_assertions)]
@@ -986,8 +983,8 @@ pub(crate) fn render(
                     crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);
                     let tip_detail_clone = tip_detail.clone();
                     Tooltip::rich(move |ui, theme| {
-                        ui.label(egui::RichText::new(&tip_detail_clone).size(font_xs()).color(theme.text()));
-                        ui.label(egui::RichText::new("Click to open Connection panel").size(font_xs()).color(theme.dim()));
+                        ui.label(TextStyle::Caption.as_rich(&tip_detail_clone, theme.text()));
+                        ui.label(TextStyle::Caption.as_rich("Click to open Connection panel", theme.dim()));
                     }).show(ui, &resp, t);
                     if resp.clicked() { *conn_panel_open = !*conn_panel_open; }
                     #[cfg(debug_assertions)]
@@ -1012,17 +1009,13 @@ pub(crate) fn render(
                 // appear.
                 if !crate::drawing_db::is_persisting() {
                     let chip = ui.label(
-                        egui::RichText::new(format!("{} drawings not saving", Icon::WARNING))
-                            .size(font_xs())
-                            .color(t.warn),
+                        TextStyle::Caption.as_rich(&format!("{} drawings not saving", Icon::WARNING), t.warn),
                     );
                     Tooltip::rich(move |ui, theme| {
-                        ui.label(egui::RichText::new("Postgres is unavailable")
-                            .size(font_xs()).color(theme.text()));
-                        ui.label(egui::RichText::new(
+                        ui.label(TextStyle::Caption.as_rich("Postgres is unavailable", theme.text()));
+                        ui.label(TextStyle::Caption.as_rich(
                             "Drawings are being buffered to disk and will be saved \
-                             automatically when the database returns.")
-                            .size(font_xs()).color(theme.dim()));
+                             automatically when the database returns.", theme.dim()));
                     }).show(ui, &chip, t);
                     #[cfg(debug_assertions)]
                     crate::dev_inspector::record(
@@ -1108,8 +1101,8 @@ pub(crate) fn render(
                     );
                     paint_nav_col_tint(ui, tb_rect, search_resp.rect, t, search_resp.hovered(), watchlist.cmd_palette.open, "right_search");
                     Tooltip::rich(|ui, theme| {
-                        ui.label(egui::RichText::new("Search").size(font_sm()).strong().color(theme.text()));
-                        ui.label(egui::RichText::new("Search & command palette").size(font_xs()).color(theme.dim()));
+                        ui.label(TextStyle::BodySm.as_rich("Search", theme.text()).strong());
+                        ui.label(TextStyle::Caption.as_rich("Search & command palette", theme.dim()));
                         ui.add(Kbd::new("Cmd+K"));
                     }).show(ui, &search_resp, t);
                     if search_resp.clicked() {
@@ -1742,13 +1735,11 @@ pub(crate) fn render(
                         .show(ui, |ui| {
                             // ── Top row: icon + message + close button ──────
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(egui::RichText::new(icon).size(font_md()).color(icon_col));
+                                ui.label(TextStyle::Body.as_rich(icon, icon_col));
                                 ui.add_space(gap_xs());
                                 // Message — wraps at TOAST_W boundary.
                                 ui.label(
-                                    egui::RichText::new(display_msg)
-                                        .size(font_sm())
-                                        .color(text_col)
+                                    TextStyle::BodySm.as_rich(display_msg, text_col)
                                 );
                             });
 
@@ -1759,7 +1750,7 @@ pub(crate) fn render(
                                 } else {
                                     "1m+ ago".to_string()
                                 };
-                                ui.label(egui::RichText::new(age_str).size(font_xs()).color(dim_col));
+                                ui.label(TextStyle::Caption.as_rich(&age_str, dim_col));
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     // Close button — always dismisses (even if pinned).

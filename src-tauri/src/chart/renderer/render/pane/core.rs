@@ -11099,7 +11099,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     ui.horizontal(|ui| {
                         ui.strong("Widget Gallery");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("✕").clicked() { close_gal = true; }
+                            if ui.small_button(crate::ui_kit::icons::Icon::X).clicked() { close_gal = true; }
                         });
                     });
                     ui.separator();
@@ -11135,7 +11135,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     ui.horizontal(|ui| {
                         ui.strong("Chart Viz Gallery");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("✕").clicked() { close_viz = true; }
+                            if ui.small_button(crate::ui_kit::icons::Icon::X).clicked() { close_viz = true; }
                         });
                     });
                     ui.separator();

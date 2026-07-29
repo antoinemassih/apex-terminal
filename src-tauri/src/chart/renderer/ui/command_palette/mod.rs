@@ -255,7 +255,7 @@ fn draw_normal_mode(
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(KitButton::new("✦ Gemma 4").variant(Variant::Secondary).simple_treatment(true).size(Size::Sm).fg(Category::Ai.color(t))).clicked() {
+            if ui.add(KitButton::new(format!("{} Gemma 4", crate::ui_kit::icons::Icon::SPARKLE).as_str()).variant(Variant::Secondary).simple_treatment(true).size(Size::Sm).fg(Category::Ai.color(t))).clicked() {
                 watchlist.cmd_palette.ai_mode = true;
             }
         });
