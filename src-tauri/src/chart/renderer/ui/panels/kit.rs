@@ -49,29 +49,6 @@ fn header_metrics(wl: Option<&Watchlist>) -> (f32, f32) {
     }
 }
 
-/// Vertical hairline divider matching `painter_pane`'s `header_divider_strong`
-/// — `border_variant` at alpha 200, `stroke_thin`, inset 3px from top/bottom.
-/// Use this between adjacent action buttons in a panel header's trailing slot
-/// so they read as a grouped cluster like the chart pane's right cluster.
-///
-/// ```ignore
-/// PanelHeader::new("FOO").show_with(ui, t, |ui| {
-///     if panel_action_btn(ui, "Save", t.accent) {}
-///     panel_action_divider(ui, t);
-///     if panel_action_btn(ui, "Close", t.dim) {}
-/// });
-/// ```
-pub fn panel_action_divider(ui: &mut Ui, t: &Theme) {
-    // Allocate a 1px-wide vertical slot the height of the surrounding row.
-    let h = ui.spacing().interact_size.y.max(20.0);
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, h), Sense::hover());
-    let col = color_alpha(t.border_variant, 200);
-    ui.painter().line_segment(
-        [Pos2::new(rect.center().x, rect.top() + 3.0),
-         Pos2::new(rect.center().x, rect.bottom() - 3.0)],
-        Stroke::new(stroke_thin(), col),
-    );
-}
 
 // ── Chart-pane-parity chrome ─────────────────────────────────────────────────
 //
@@ -566,135 +543,6 @@ impl Tone {
     }
 }
 
-// ── PanelSection ─────────────────────────────────────────────────────────────
-
-/// A standardized section header followed by its body.
-///
-/// ```ignore
-/// let r = PanelSection::new("ACTIVE")
-///     .tone(Tone::Accent)
-///     .count(active.len())
-///     .action("Clear All", Tone::Danger)
-///     .show(ui, t, |ui| {
-///         for a in &active { /* row */ }
-///     });
-/// if r.action_clicked { /* dispatch clear */ }
-/// ```
-#[must_use = "PanelSection must be rendered with `.show(...)`"]
-pub struct PanelSection<'a> {
-    title: &'a str,
-    tone: Tone,
-    count: Option<usize>,
-    meta: Option<String>,
-    action_label: Option<&'a str>,
-    action_tone: Tone,
-    rule: bool,
-    body_top: f32,
-    body_bottom: f32,
-}
-
-pub struct SectionResponse<R> {
-    pub action_clicked: bool,
-    pub body: R,
-}
-
-impl<'a> PanelSection<'a> {
-    pub fn new(title: &'a str) -> Self {
-        Self {
-            title,
-            tone: Tone::Default,
-            count: None,
-            meta: None,
-            action_label: None,
-            action_tone: Tone::Accent,
-            rule: true,
-            body_top: gap_sm(),
-            body_bottom: gap_md(),
-        }
-    }
-    pub fn tone(mut self, t: Tone) -> Self { self.tone = t; self }
-    pub fn count(mut self, n: usize) -> Self { self.count = Some(n); self }
-    pub fn meta(mut self, m: impl Into<String>) -> Self { self.meta = Some(m.into()); self }
-    pub fn action(mut self, label: &'a str, tone: Tone) -> Self {
-        self.action_label = Some(label);
-        self.action_tone = tone;
-        self
-    }
-    /// Disable the hairline rule under the header.
-    pub fn rule(mut self, on: bool) -> Self { self.rule = on; self }
-    /// Override vertical spacing around the body (default: gap_sm above, gap_md below).
-    pub fn margins(mut self, top: f32, bottom: f32) -> Self {
-        self.body_top = top;
-        self.body_bottom = bottom;
-        self
-    }
-
-    pub fn show<R>(
-        self,
-        ui: &mut Ui,
-        t: &Theme,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> SectionResponse<R> {
-        let title_color = self.tone.color(t);
-        let action_color = self.action_tone.color(t);
-        let mut action_clicked = false;
-
-        ui.horizontal(|ui| {
-            ui.add(SectionLabel::new(self.title).xs().color(title_color));
-            if let Some(n) = self.count {
-                ui.add_space(gap_xs());
-                ui.label(
-                    RichText::new(format!("{}", n))
-                        .monospace()
-                        .size(font_xs())
-                        .strong()
-                        .color(color_alpha(title_color, alpha_line())),
-                );
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if let Some(label) = self.action_label {
-                    if panel_action_btn(ui, label, action_color) {
-                        action_clicked = true;
-                    }
-                    if self.meta.is_some() {
-                        ui.add_space(gap_sm());
-                    }
-                }
-                if let Some(m) = &self.meta {
-                    ui.label(
-                        RichText::new(m)
-                            .monospace()
-                            .size(font_xs())
-                            .color(tint(t, SxTone::Dim, alpha_line())),
-                    );
-                }
-            });
-        });
-
-        if self.rule {
-            ui.add_space(gap_xs());
-            section_rule(ui, t);
-        }
-        ui.add_space(self.body_top);
-        let r = body(ui);
-        ui.add_space(self.body_bottom);
-
-        SectionResponse { action_clicked, body: r }
-    }
-}
-
-/// Hairline section rule: ~12% opacity of the toolbar border, full panel width.
-fn section_rule(ui: &mut Ui, t: &Theme) {
-    let color = tint(t, SxTone::Border, alpha_subtle());
-    let rect = ui.available_rect_before_wrap();
-    let y = ui.cursor().min.y;
-    ui.painter().line_segment(
-        [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-        Stroke::new(stroke_thin(), color),
-    );
-    ui.add_space(1.0);
-}
-
 // ── Inline action button ─────────────────────────────────────────────────────
 
 /// Compact ghost button used inline in section headers ("Clear All", "Place").
@@ -704,51 +552,6 @@ pub fn panel_action_btn(ui: &mut Ui, label: &str, color: Color32) -> bool {
     Button::new(label).variant(Variant::Ghost).size(KitSize::Xs)
         .fg(color).min_size(Vec2::new(0.0, 16.0))
         .show(ui, &theme).clicked()
-}
-
-// ── PanelEmpty ───────────────────────────────────────────────────────────────
-
-/// Single-line muted empty state for inside a section — short, low-key.
-///
-/// ```ignore
-/// PanelEmpty::new("No active alerts").show(ui, t);
-/// ```
-#[must_use = "PanelEmpty must be rendered with `.show(...)`"]
-pub struct PanelEmpty<'a> {
-    text: &'a str,
-    glyph: Option<&'a str>,
-    indent: f32,
-}
-
-impl<'a> PanelEmpty<'a> {
-    pub fn new(text: &'a str) -> Self {
-        Self { text, glyph: None, indent: gap_sm() }
-    }
-    pub fn glyph(mut self, g: &'a str) -> Self { self.glyph = Some(g); self }
-    pub fn indent(mut self, px: f32) -> Self { self.indent = px; self }
-
-    pub fn show(self, ui: &mut Ui, t: &Theme) {
-        let color = tint(t, SxTone::Dim, alpha_line());
-        ui.horizontal(|ui| {
-            if self.indent > 0.0 { ui.add_space(self.indent); }
-            if let Some(g) = self.glyph {
-                ui.label(
-                    RichText::new(g)
-                        .monospace()
-                        .size(font_xs())
-                        .color(color),
-                );
-                ui.add_space(gap_xs());
-            }
-            ui.label(
-                RichText::new(self.text)
-                    .monospace()
-                    .size(font_xs())
-                    .italics()
-                    .color(color),
-            );
-        });
-    }
 }
 
 // ── PanelInputRow ────────────────────────────────────────────────────────────
@@ -886,77 +689,8 @@ impl<'a> PanelDualAction<'a> {
     }
 }
 
-// ── Stat (inline label-value chip) ───────────────────────────────────────────
-
-/// Compact tabular `LABEL value` for header right-side context (e.g. `AAPL @ 200.50`).
-/// Renders both pieces in mono_xs, label in muted-line, value in tone color.
-#[must_use = "Stat must be added with `ui.add(...)` to render"]
-pub struct Stat<'a> {
-    label: &'a str,
-    value: String,
-    tone: Tone,
-}
-
-impl<'a> Stat<'a> {
-    pub fn new(label: &'a str, value: impl Into<String>) -> Self {
-        Self { label, value: value.into(), tone: Tone::Text }
-    }
-    pub fn tone(mut self, t: Tone) -> Self { self.tone = t; self }
-}
-
-impl<'a> Stat<'a> {
-    pub fn show(self, ui: &mut Ui, t: &Theme) {
-        let lc = tint(t, SxTone::Dim, alpha_line());
-        let vc = self.tone.color(t);
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_xs();
-            ui.label(
-                RichText::new(self.label)
-                    .monospace()
-                    .size(font_xs())
-                    .color(lc),
-            );
-            ui.label(
-                RichText::new(self.value)
-                    .monospace()
-                    .size(font_xs())
-                    .strong()
-                    .color(vc),
-            );
-        });
-    }
-}
-
 // ── Standardized panel margin helpers ────────────────────────────────────────
-
-/// Standard vertical break between unrelated sections inside a panel.
-#[inline]
-pub fn section_break(ui: &mut Ui) { ui.add_space(gap_md()); }
 
 /// Standard "list row" gap between adjacent rows of the same kind.
 #[inline]
 pub fn row_gap(ui: &mut Ui) { ui.add_space(gap_xs()); }
-
-/// Panel body content frame — applies the standard side-panel inner padding
-/// (left/right `gap_lg`, bottom `gap_lg`, top `gap_md` to clear the header's
-/// 10px gradient shadow). Use after `PanelHeader` / `PanelHeaderWithClose`
-/// when the surrounding `PanelFrame` is `zero_margin` (the default since
-/// we adopted chart-pane-parity headers).
-///
-/// ```ignore
-/// PanelHeader::new("ALERTS").show(ui, t);
-/// kit::panel_body(ui, |ui| {
-///     // section content with normal horizontal padding
-/// });
-/// ```
-pub fn panel_body<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> R {
-    let frame = egui::Frame::NONE
-        .inner_margin(egui::Margin {
-            left:   super::super::style::gap_lg() as i8,
-            right:  super::super::style::gap_lg() as i8,
-            top:    gap_md() as i8,
-            bottom: super::super::style::gap_lg() as i8,
-        });
-    frame.show(ui, body).inner
-}
-

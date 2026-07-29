@@ -68,7 +68,6 @@ pub mod text_area;
 pub mod search_input;
 pub mod segmented_control;
 pub mod toggle_group;
-pub mod tag_input;
 pub mod time_picker;
 pub mod range_slider;
 pub mod form_row;
@@ -94,7 +93,6 @@ pub mod panel_key_value_row;
 // Foundation extension wave 2 (Agent V)
 pub mod panel_sub_section;
 // DS-IMPL-2: new panel primitives (wave 3)
-pub mod table_header;
 // pill_row deleted P6.2 — superseded by SegmentedControl + ToggleGroup; zero production callers.
 pub mod outlined_box; // P6.4 — themed bordered container frame
 pub mod confirm_dialog; // P6.4 — preset modal for "are you sure?" prompts
@@ -115,9 +113,8 @@ pub mod frames;
 pub mod pane_grid;
 // S5: StyleCtx — threaded style context (see ctx.rs).
 pub mod ctx;
-// Session-6 card-pattern primitives (port of React CardSlots.tsx + tiles.tsx).
-pub mod card_slots;
-pub mod tiles;
+// card_slots/tiles removed (U3 audit): StatTile/QuoteTile/SparkTile/LiveFlash +
+// CardHeader/CardBody/CardFooter were fully orphaned (0 callers, not even gallery).
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
@@ -138,7 +135,6 @@ pub use input::{Input, InputResponse};
 pub use text_area::TextArea;
 pub use search_input::SearchInput;
 pub use select::{Select, SelectResponse};
-pub use tag_input::TagInput;
 pub use date_picker::{DatePicker, DatePickerResponse};
 pub use time_picker::TimePicker;
 pub use self::color_picker::ColorPicker;
@@ -182,7 +178,6 @@ pub use panel_list_row::{Column as PanelColumn, ColAlign as PanelColAlign};
 pub use panel_key_value_row::PanelKeyValueRow;
 pub use metric_row::{MetricRow, Tone as MetricTone};
 pub use panel_toolbar::PanelToolbar;
-pub use table_header::TableHeader;
 pub use outlined_box::OutlinedBox;
 pub use confirm_dialog::{ConfirmDialog, ConfirmDialogResponse, ConfirmOutcome, ConfirmTone};
 pub use tool_overlay::{ToolOverlay, ToolOverlayResponse};
@@ -233,8 +228,6 @@ pub use scroll_area::{ScrollDirection, ThemedScrollArea};
 pub use theme_preview_card::ThemePreviewCard;
 pub use selectable_row::SelectableRow;
 pub use pane_grid::{PaneGrid, PaneState, PaneId, SplitId, Axis as PaneAxis};
-pub use card_slots::{CardHeader, CardBody, CardFooter};
-pub use tiles::{StatTile, QuoteTile, SparkTile, LiveFlash, Dir as TileDir};
 
 use egui::{Ui, RichText};
 use super::icons::Icon;
