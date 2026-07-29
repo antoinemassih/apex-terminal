@@ -219,6 +219,8 @@ fn paint_slider<T: egui::emath::Numeric>(
                 ui.allocate_exact_size(Vec2::new(value_label_w, total_h), Sense::hover());
             }
 
+            crate::ui_kit::tokens::cursor::focus_ring(ui, &response, crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Accent));
+
             full_resp = Some(response);
         });
     });

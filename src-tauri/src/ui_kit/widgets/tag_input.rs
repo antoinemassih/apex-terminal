@@ -377,6 +377,8 @@ impl<'a> TagInput<'a> {
             m.data.insert_temp(sugg_open_id, sugg_open);
         });
 
+        st::cursor::focus_ring(ui, &container_resp, palette_ct(theme).base(SxTone::Accent));
+
         container_resp
     }
 }

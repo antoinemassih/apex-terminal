@@ -258,6 +258,8 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
 
+            st::cursor::focus_ring(ui, &seg_resp, pal.base(Tone::Accent));
+
             x += w + gap;
 
             // Merge response so the outer response reflects clicks.

@@ -476,6 +476,7 @@ fn paint_tabs(
 
         let tab_id = outer_id.with(("tab", i));
         let tab_resp = ui.interact(rect, tab_id, Sense::click_and_drag());
+        crate::ui_kit::tokens::cursor::focus_ring(ui, &tab_resp, crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Accent));
 
         let hover_t = motion::ease_bool(ui.ctx(), tab_id.with("hov"),
             tab_resp.hovered() && !item.disabled, motion::FAST);

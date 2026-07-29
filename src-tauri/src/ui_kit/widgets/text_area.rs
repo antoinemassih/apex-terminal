@@ -236,6 +236,8 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
             row_resp.mark_changed();
         }
 
+        st::cursor::focus_ring(ui, &row_resp, palette_ct(theme).base(Tone::Accent));
+
         // ── Char counter helper (overrides plain helper when limit set) ──
         let helper_str: Option<String> = if let Some(max) = char_limit {
             Some(format!("{} / {}", value.chars().count(), max))

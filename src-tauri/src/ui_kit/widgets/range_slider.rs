@@ -242,6 +242,8 @@ fn paint_range_slider<T: egui::emath::Numeric>(
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
 
+            crate::ui_kit::tokens::cursor::focus_ring(ui, &response, crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Accent));
+
             full_resp = Some(response);
         });
     });
