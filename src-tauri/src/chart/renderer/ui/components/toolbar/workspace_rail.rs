@@ -280,10 +280,30 @@ pub(crate) fn render_workspace_rail(
         watchlist.workspace.rename_buf.clear();
     }
     if let Some(name) = delete_req {
-        delete_workspace(&name);
-        if watchlist.workspace.active == name { watchlist.workspace.active.clear(); }
-        if watchlist.workspace.rename_target.as_deref() == Some(name.as_str()) {
-            watchlist.workspace.rename_target = None;
+        // U0-6: defer to a confirmation modal — deleting a saved workspace is
+        // hard to undo. The actual delete happens on Confirm below.
+        watchlist.workspace.pending_delete = Some(name);
+    }
+
+    // ── Delete-workspace confirmation modal (U0-6) ──
+    if let Some(name) = watchlist.workspace.pending_delete.clone() {
+        use crate::ui_kit::widgets::{ConfirmDialog, ConfirmOutcome, ConfirmTone};
+        let resp = ConfirmDialog::new("Delete workspace?")
+            .id("confirm_delete_workspace")
+            .body(&format!("\u{201c}{name}\u{201d} and its saved layout will be permanently deleted."))
+            .confirm("Delete", ConfirmTone::Danger)
+            .show(ctx, t);
+        match resp.outcome {
+            ConfirmOutcome::Confirmed => {
+                delete_workspace(&name);
+                if watchlist.workspace.active == name { watchlist.workspace.active.clear(); }
+                if watchlist.workspace.rename_target.as_deref() == Some(name.as_str()) {
+                    watchlist.workspace.rename_target = None;
+                }
+                watchlist.workspace.pending_delete = None;
+            }
+            ConfirmOutcome::Cancelled => watchlist.workspace.pending_delete = None,
+            ConfirmOutcome::Open => {}
         }
     }
 }

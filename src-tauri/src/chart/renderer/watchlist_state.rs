@@ -483,6 +483,9 @@ pub(crate) struct WorkspaceState {
     pub(crate) pending_new_blank: bool,
     pub(crate) rename_target: Option<String>, // was workspace_rename_target
     pub(crate) rename_buf: String,      // was workspace_rename_buf
+    /// U0-6: a Delete requested from the context menu is held here until the
+    /// user confirms the modal (deleting a saved workspace is hard to undo).
+    pub(crate) pending_delete: Option<String>,
 }
 
 impl Default for WorkspaceState {
@@ -495,6 +498,7 @@ impl Default for WorkspaceState {
             pending_new_blank: false,
             rename_target: None,
             rename_buf: String::new(),
+            pending_delete: None,
         }
     }
 }

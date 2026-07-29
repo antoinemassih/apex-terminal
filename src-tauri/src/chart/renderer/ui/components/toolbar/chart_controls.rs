@@ -861,7 +861,10 @@ pub(crate) fn render(
                 ui.separator();
                 if !panes[ap].chart_widgets.is_empty() {
                     if ui.add(SelectableRow::new("Remove All Widgets", false).leading_icon(Icon::TRASH)).clicked() {
-                        panes[ap].chart_widgets.clear();
+                        // U0-6: defer to a confirmation modal (removes every widget
+                        // on the pane at once). Pending state lives in egui temp
+                        // memory keyed by pane index; the modal renders at fn end.
+                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("confirm_remove_widgets"), ap));
                         ui.close_menu();
                     }
                 }
@@ -920,4 +923,23 @@ pub(crate) fn render(
             // Close the tools group box.
             let tools_x1 = ui.cursor().left();
             group_box(ui, tools_x0, tools_x1, tools_box);
+
+    // ── Remove-all-widgets confirmation modal (U0-6) ──
+    let rw_id = egui::Id::new("confirm_remove_widgets");
+    if let Some(pane_idx) = ui.ctx().data(|d| d.get_temp::<usize>(rw_id)) {
+        use crate::ui_kit::widgets::{ConfirmDialog, ConfirmOutcome, ConfirmTone};
+        let resp = ConfirmDialog::new("Remove all widgets?")
+            .id("confirm_remove_widgets_dlg")
+            .body("Every widget on this pane will be removed.")
+            .confirm("Remove all", ConfirmTone::Danger)
+            .show(ui.ctx(), t);
+        match resp.outcome {
+            ConfirmOutcome::Confirmed => {
+                if let Some(p) = panes.get_mut(pane_idx) { p.chart_widgets.clear(); }
+                ui.ctx().data_mut(|d| d.remove::<usize>(rw_id));
+            }
+            ConfirmOutcome::Cancelled => { ui.ctx().data_mut(|d| d.remove::<usize>(rw_id)); }
+            ConfirmOutcome::Open => {}
+        }
+    }
 }
