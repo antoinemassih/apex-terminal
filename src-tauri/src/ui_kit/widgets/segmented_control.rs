@@ -103,7 +103,7 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             (false, Size::Xl) => 30.0,
         };
         let pad_x = if self.compact { st::gap_2xs() } else { st::gap_xs() };
-        let radius = if self.connected { 4.0_f32 } else { 4.0_f32 };
+        let radius = 4.0_f32; // same in connected + separated modes (was a dead conditional)
         let gap = if self.connected { 0.0_f32 } else { 3.0_f32 };
 
         // Resolve item count + labels

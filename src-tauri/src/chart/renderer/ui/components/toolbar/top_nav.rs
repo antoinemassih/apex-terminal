@@ -1132,7 +1132,7 @@ pub(crate) fn render(
                 // left of Search. Default ON for every style; this overrides it.
                 {
                     let tn_on = crate::chart_renderer::ui::style::toolnav_visible();
-                    let resp = toolbar_btn(ui, Icon::BROWSERS, tn_on, t);
+                    let resp = toolbar_btn(ui, Icon::SLIDERS, tn_on, t); // toolbar-row toggle (was BROWSERS, collided with Workspace menu)
                     #[cfg(debug_assertions)]
                     crate::dev_inspector::record(
                         crate::dev_inspector::WidgetRecord::from_response("toolbar.toolnav_toggle", "button", "Toolbar toggle", &resp, ui)
@@ -1225,7 +1225,7 @@ pub(crate) fn render(
                 // ── Screener toggle (Wave S2) — Ctrl+Shift+S ─────────────────
                 {
                     let screener_open = watchlist.sidebar_state_snapshot().screener_panel_open;
-                    let resp = toolbar_btn(ui, &nav_label(Icon::MAGNIFYING_GLASS, "Screener"), screener_open, t);
+                    let resp = toolbar_btn(ui, &nav_label(Icon::FUNNEL, "Screener"), screener_open, t); // FUNNEL = filter/screen (was MAGNIFYING_GLASS, collided with Search)
                     crate::ui_kit::widgets::Tooltip::new("Screener (Ctrl+Shift+S)").show(ui, &resp, t);
                     paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), screener_open, "right_screener");
                     if resp.clicked() {
@@ -1265,7 +1265,7 @@ pub(crate) fn render(
                 }
                 panel_toggle!(Icon::CURRENCY_DOLLAR, "Orders",     orders_panel_open,     "Orders Panel",                                "right_orders");
                 panel_toggle!(Icon::CHART_LINE,      "Analysis",   watchlist.analysis.open, analysis_open, "Analysis Sidebar",              "right_analysis");
-                panel_toggle!(Icon::CHART_LINE,      "Auto-Chart", auto_chart_open,       "Auto-Charting (lines, levels, patterns, tuning)", "right_autochart");
+                panel_toggle!(Icon::SPARKLE,         "Auto-Chart", auto_chart_open,       "Auto-Charting (lines, levels, patterns, tuning)", "right_autochart"); // SPARKLE = auto/AI (was CHART_LINE, collided with Analysis)
                 panel_toggle!(Icon::PULSE,           "Indicators", watchlist.indicators.panel_open, indicators_panel_open, "Indicators (Active + Library + Tools)",       "right_indicators");
 
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
