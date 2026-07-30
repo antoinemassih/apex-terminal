@@ -668,21 +668,21 @@ pub fn shadow_dropdown_themed(t: &super::super::gpu::Theme) -> egui::epaint::Sha
 /// `theme.bg` darkened/lightened by gamma × 0.95 for dark themes.
 #[inline]
 pub fn elevation_1(theme: &super::super::gpu::Theme) -> Color32 {
-    theme.bg.gamma_multiply(ELEVATION_1_FACTOR)
+    crate::ui_kit::style::elevate(theme.bg, crate::ui_kit::style::ELEVATE_CARD)
 }
 
 /// Elevation 2 — raised panel, popover body, inline editor surface.
 /// `theme.bg` × 0.88 for dark themes.
 #[inline]
 pub fn elevation_2(theme: &super::super::gpu::Theme) -> Color32 {
-    theme.bg.gamma_multiply(ELEVATION_2_FACTOR)
+    crate::ui_kit::style::elevate(theme.bg, crate::ui_kit::style::ELEVATE_RAISED)
 }
 
 /// Elevation 3 — modal / dialog surface (highest Z-layer).
 /// `theme.bg` × 0.85 for dark themes.
 #[inline]
 pub fn elevation_3(theme: &super::super::gpu::Theme) -> Color32 {
-    theme.bg.gamma_multiply(ELEVATION_3_FACTOR)
+    crate::ui_kit::style::elevate(theme.bg, crate::ui_kit::style::ELEVATE_MODAL)
 }
 
 // ─── Semantic color accessors ────────────────────────────────────────────────
@@ -1278,7 +1278,7 @@ pub(crate) fn color_layer_up(t: &crate::chart_renderer::gpu::Theme, n: u8) -> Co
 /// reads as adjacent to the chart pane.
 #[inline]
 pub(crate) fn header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    t.bg.gamma_multiply(ELEVATION_1_FACTOR)
+    crate::ui_kit::style::elevate(t.bg, crate::ui_kit::style::ELEVATE_PANEL_HEADER)
 }
 
 /// Section header surface — one shade darker than `header_surface` so
@@ -1287,7 +1287,7 @@ pub(crate) fn header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
 /// PanelSection → PanelSubSection → panel body (darkest).
 #[inline]
 pub(crate) fn section_header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    t.bg.gamma_multiply(ELEVATION_2_FACTOR)
+    crate::ui_kit::style::elevate(t.bg, crate::ui_kit::style::ELEVATE_PANEL_SECTION)
 }
 
 /// Panel body surface — darker than `t.bg` so the side panel body
@@ -1296,7 +1296,7 @@ pub(crate) fn section_header_surface(t: &crate::chart_renderer::gpu::Theme) -> C
 /// recessed) — readable depth without high-contrast slabs.
 #[inline]
 pub(crate) fn panel_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    t.bg.gamma_multiply(ELEVATION_3_FACTOR)
+    crate::ui_kit::style::elevate(t.bg, crate::ui_kit::style::ELEVATE_PANEL_BODY)
 }
 
 // ─── Shell region framing (floating-card chrome) ─────────────────────────────
@@ -3144,36 +3144,33 @@ mod ds_impl_3_tests {
         assert_eq!(STROKE_MEDIUM, stroke_medium());
     }
 
-    /// elevation_1/2/3 must return theme.bg gamma-multiplied by the documented
-    /// perceptual constants (0.95 / 0.88 / 0.85).
+    /// elevation_1/2/3 must return `elevate(bg, N)` with the documented per-role
+    /// shift amounts (2026-07-30: additive raised ramp replaced the gamma one so
+    /// depth survives near-black backgrounds — see `ui_kit::style::elevate`).
     #[test]
-    fn elevation_tints_use_correct_gamma() {
+    fn elevation_tints_use_correct_shift() {
+        use crate::ui_kit::style::{elevate, ELEVATE_CARD, ELEVATE_RAISED, ELEVATE_MODAL};
         let all = crate::chart_renderer::gpu::get_all_themes();
         let t = all.iter().find(|t| t.name == "Midnight")
             .expect("Midnight theme must exist");
-        let expected_1 = t.bg.gamma_multiply(0.95);
-        let expected_2 = t.bg.gamma_multiply(0.88);
-        let expected_3 = t.bg.gamma_multiply(0.85);
-        assert_eq!(elevation_1(t), expected_1, "elevation_1 gamma constant");
-        assert_eq!(elevation_2(t), expected_2, "elevation_2 gamma constant");
-        assert_eq!(elevation_3(t), expected_3, "elevation_3 gamma constant");
+        assert_eq!(elevation_1(t), elevate(t.bg, ELEVATE_CARD),   "elevation_1 shift");
+        assert_eq!(elevation_2(t), elevate(t.bg, ELEVATE_RAISED), "elevation_2 shift");
+        assert_eq!(elevation_3(t), elevate(t.bg, ELEVATE_MODAL),  "elevation_3 shift");
     }
 
-    /// elevation_1 must be brighter (higher in RGBA sum) than elevation_2,
-    /// which must be brighter than elevation_3, for a typical dark background.
+    /// Higher elevation = more lift. On a dark background the raised ramp makes
+    /// each step LIGHTER, so lum(e3) >= lum(e2) >= lum(e1) (was reversed under
+    /// the old gamma-darken model).
     #[test]
     fn elevation_depth_order_is_monotonic() {
         let all = crate::chart_renderer::gpu::get_all_themes();
         let t = all.iter().find(|t| t.name == "Midnight")
             .expect("Midnight theme must exist");
-        // Sum RGB channels as a proxy for luminance.
         let lum = |c: egui::Color32| c.r() as u32 + c.g() as u32 + c.b() as u32;
-        // On dark bg, gamma_multiply < 1 darkens — so lum(e1) >= lum(e2) >= lum(e3).
-        // (They may be equal if bg is black, but that's not the case for real themes.)
-        assert!(lum(elevation_1(t)) >= lum(elevation_2(t)),
-            "elevation_1 should be >= elevation_2 in luminance");
-        assert!(lum(elevation_2(t)) >= lum(elevation_3(t)),
-            "elevation_2 should be >= elevation_3 in luminance");
+        assert!(lum(elevation_3(t)) >= lum(elevation_2(t)),
+            "elevation_3 should be >= elevation_2 in luminance (raised ramp)");
+        assert!(lum(elevation_2(t)) >= lum(elevation_1(t)),
+            "elevation_2 should be >= elevation_1 in luminance (raised ramp)");
     }
 }
 

@@ -7479,6 +7479,14 @@ impl GpuCtx {
             #[cfg(not(debug_assertions))]
             let shots: Vec<String> = Vec::new();
             if !reqs.is_empty() || !shots.is_empty() {
+                // Dev capture hygiene: `capture_window_region` screen-grabs the
+                // desktop DC via BitBlt, so any window overlapping ours (IBKR
+                // login, detached order-entry panels) would leak into the PNG.
+                // Pop ourselves to the top first so the grab is clean. Left
+                // AlwaysOnTop for the rest of the capture session; harmless in
+                // the debug-only screenshot path.
+                window.set_window_level(winit::window::WindowLevel::AlwaysOnTop);
+                window.focus_window();
                 use winit::raw_window_handle::HasWindowHandle;
                 if let Ok(handle) = window.window_handle() {
                     if let winit::raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {

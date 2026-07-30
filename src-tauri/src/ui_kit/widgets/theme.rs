@@ -92,14 +92,22 @@ pub trait ComponentTheme {
     /// only if a theme wants a separate "raised-surface" border tone.
     fn surface_border(&self) -> Color32 { self.border() }
 
-    /// Header band background — one elevation step over `bg()`.
-    fn header_surface(&self) -> Color32 { self.bg().gamma_multiply(0.95) }
+    /// Header band background — most-lifted panel surface. Additive luminance
+    /// shift (raised on dark, inset on light) so it survives near-black bg —
+    /// see `crate::ui_kit::style::elevate`.
+    fn header_surface(&self) -> Color32 {
+        crate::ui_kit::style::elevate(self.bg(), crate::ui_kit::style::ELEVATE_PANEL_HEADER)
+    }
 
-    /// Section-header band background — two elevation steps over `bg()`.
-    fn section_header_surface(&self) -> Color32 { self.bg().gamma_multiply(0.88) }
+    /// Section-header band background — mid elevation step.
+    fn section_header_surface(&self) -> Color32 {
+        crate::ui_kit::style::elevate(self.bg(), crate::ui_kit::style::ELEVATE_PANEL_SECTION)
+    }
 
-    /// Panel body background — three elevation steps over `bg()`.
-    fn panel_surface(&self) -> Color32 { self.bg().gamma_multiply(0.85) }
+    /// Panel body background — the side-panel card that lifts off the canvas.
+    fn panel_surface(&self) -> Color32 {
+        crate::ui_kit::style::elevate(self.bg(), crate::ui_kit::style::ELEVATE_PANEL_BODY)
+    }
 
     /// Header divider/border colour. 38α over `text()`.
     fn header_border(&self) -> Color32 {

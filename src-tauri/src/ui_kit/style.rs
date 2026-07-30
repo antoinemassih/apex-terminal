@@ -407,6 +407,42 @@ pub const ELEVATION_1_FACTOR: f32 = 0.95;
 pub const ELEVATION_2_FACTOR: f32 = 0.88;
 pub const ELEVATION_3_FACTOR: f32 = 0.85;
 
+// ─── Elevation surface shift (2026-07-30 fix) ────────────────────────────────
+//
+// The gamma-multiplier ladder above (0.95/0.88/0.85) only ever DARKENS `bg`.
+// On a near-black theme like Aperture (bg ≈ #000) that collapses every surface
+// back to black — zero visible depth, which is exactly why dark themes rendered
+// flat vs the ApexTerminalThemes mockup (panels lift off the canvas there).
+//
+// `elevate()` replaces the multiply with an additive luminance shift toward the
+// contrast direction: dark bg → lighter (raised card), light bg → darker (inset
+// panel). This mirrors `hairline_border`'s dark/light-aware philosophy and makes
+// the depth ramp visible on ALL palettes, near-black included. Amounts are 0-255
+// channel deltas; larger = more lift. Light themes take a gentler shift so cream
+// editorial palettes get readable panels without going muddy.
+#[inline]
+pub fn elevate(bg: egui::Color32, amount: i16) -> egui::Color32 {
+    let (r, g, b) = (bg.r() as i16, bg.g() as i16, bg.b() as i16);
+    let is_dark = (r + g + b) < 384;
+    // Dark: lighten by `amount`. Light: darken, but gentler (3/5) so light
+    // palettes keep a soft inset rather than a heavy slab.
+    let s: i16 = if is_dark { amount } else { -((amount * 3) / 5) };
+    let c = |v: i16| (v + s).clamp(0, 255) as u8;
+    egui::Color32::from_rgb(c(r), c(g), c(b))
+}
+
+/// Per-role elevation shift amounts (channel deltas passed to [`elevate`]).
+/// Ordering preserves the legacy ramp — panel header is the most-lifted surface,
+/// body the least — just made additive so it survives near-black backgrounds.
+// Amounts tuned to the ApexTerminalThemes mockup ladder (Aperture: bg #000 →
+// panel #141311 ≈ +19 → surface #1a1816 ≈ +26 → elevated #1f1d1a ≈ +31).
+pub const ELEVATE_PANEL_HEADER:  i16 = 30; // SidePanelShell / chart pane header band
+pub const ELEVATE_PANEL_SECTION: i16 = 26; // PanelSection / sub-section header
+pub const ELEVATE_PANEL_BODY:    i16 = 20; // side-panel body card (lifts off canvas)
+pub const ELEVATE_CARD:          i16 = 22; // resting card / tile
+pub const ELEVATE_RAISED:        i16 = 30; // popover / inline editor
+pub const ELEVATE_MODAL:         i16 = 38; // modal / dialog (highest Z)
+
 // ─── Line-height multipliers (P2.5) ─────────────────────────────────────────
 //
 // Multipliers applied to font size to derive line height. Replace the bare
