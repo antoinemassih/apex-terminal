@@ -26,6 +26,11 @@ impl ComponentTheme for Theme {
     fn warn(&self) -> Color32 { self.warn }
     fn bg(&self) -> Color32 { self.bg }
     fn surface(&self) -> Color32 { self.toolbar_bg }
+    // Per-style: editorial styles (Mariner/Alto/Relay) render section headers
+    // monospace; others proportional. Read from the active StyleSystem token.
+    fn section_header_mono(&self) -> bool {
+        crate::chart_renderer::ui::style::current().section_header_mono
+    }
     // ── Derived overlays (Zed-style) ────────────────────────────────────
     // Source: gpu.rs Theme struct doc; previously stored as 10 redundant
     // fields on Theme + 15 initializer copies. Now derived from text/accent

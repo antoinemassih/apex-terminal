@@ -351,18 +351,20 @@ impl<'a> PanelSection<'a> {
                     // Title — uppercase mono_xs strong. One tier smaller
                     // than the SidePanelShell header so the section
                     // reads as nested chrome inside the panel.
-                    // Section headers are labels, not data — render PROPORTIONAL
-                    // (was monospace) at font_sm (was the tiny font_xs) so headers
-                    // are legible and consistent with the mockup's proportional
-                    // section labels. Monospace stays reserved for numeric/tabular
-                    // values, which fixes the app-wide mono/proportional muddle.
-                    ui.label(
-                        RichText::new(title_str.to_uppercase())
-                            .family(egui::FontFamily::Proportional)
-                            .size(font_sm())
-                            .strong()
-                            .color(title_color),
-                    );
+                    // Section headers at font_sm (was tiny font_xs) for legibility.
+                    // Family is PER-STYLE (never hardcoded): editorial styles that
+                    // set `section_header_mono` keep monospace eyebrows; all others
+                    // use proportional. Numeric counts stay mono regardless.
+                    let mut header_rt = RichText::new(title_str.to_uppercase())
+                        .size(font_sm())
+                        .strong()
+                        .color(title_color);
+                    header_rt = if t.section_header_mono() {
+                        header_rt.monospace()
+                    } else {
+                        header_rt.family(egui::FontFamily::Proportional)
+                    };
+                    ui.label(header_rt);
                     if let Some(n) = count {
                         ui.add_space(gap_xs());
                         // When collapsed (and collapsible) show count as

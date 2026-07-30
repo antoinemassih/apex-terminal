@@ -109,6 +109,12 @@ pub trait ComponentTheme {
         crate::ui_kit::style::elevate(self.bg(), crate::ui_kit::style::ELEVATE_PANEL_BODY)
     }
 
+    /// Whether section headers render monospace (per-style: editorial styles like
+    /// Mariner/Alto/Relay opt in). Default proportional so ui_kit widgets pick
+    /// the right family without hardcoding a global choice. The chart Theme
+    /// overrides this from the active StyleSystem's `section_header_mono` token.
+    fn section_header_mono(&self) -> bool { false }
+
     /// Header divider/border colour. 38α over `text()`.
     fn header_border(&self) -> Color32 {
         let t = self.text();
