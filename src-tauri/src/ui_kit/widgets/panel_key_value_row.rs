@@ -70,9 +70,11 @@ impl<'a> PanelKeyValueRow<'a> {
 
         let painter = ui.painter_at(rect);
 
-        // Label — left.
+        // Label — left. PROPORTIONAL (labels are text, not data); the value on
+        // the right stays monospace so numbers align. Consistent with the
+        // app-wide label=proportional / value=mono rule.
         let label_color = color_muted(palette_ct(t).base(SxTone::Dim));
-        let label_font = FontId::monospace(font_xs());
+        let label_font = FontId::proportional(font_xs());
         painter.text(
             Pos2::new(rect.left(), rect.center().y),
             egui::Align2::LEFT_CENTER,

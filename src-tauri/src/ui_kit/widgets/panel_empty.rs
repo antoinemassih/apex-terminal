@@ -86,9 +86,11 @@ impl<'a> PanelEmpty<'a> {
                     );
                     ui.add_space(gap_xs());
                 }
+                // Empty-state title + hint are descriptive prose → PROPORTIONAL
+                // (was monospace, which read as raw/techy for sentences).
                 ui.label(
                     RichText::new(self.title)
-                        .monospace()
+                        .family(egui::FontFamily::Proportional)
                         .size(font_sm())
                         .color(t.dim()),
                 );
@@ -96,7 +98,7 @@ impl<'a> PanelEmpty<'a> {
                     ui.add_space(gap_xs());
                     ui.label(
                         RichText::new(h)
-                            .monospace()
+                            .family(egui::FontFamily::Proportional)
                             .size(font_xs())
                             .color(color_muted(t.dim())),
                     );
