@@ -702,7 +702,7 @@ fn render_play_card(
     let card_resp = PanelCard::new()
         .tone(tone)
         .stripe(true)
-        .padding(gap_xs())
+        .padding(gap_sm())
         .show(ui, t, |ui, t| {
             // ── Header row: direction pill · type icon · symbol · status pill · R:R ──
             let mut delete_clicked   = false;
@@ -717,7 +717,9 @@ fn render_play_card(
                 // Type icon + symbol.
                 ui.add_space(gap_xs());
                 ui.label(TextStyle::BodySm.as_rich(play.play_type.icon(), color_half(t.dim)));
-                ui.label(egui::RichText::new(&play.symbol).monospace().size(font_lg()).color(t.text));
+                // Symbol is a NAME → proportional + bold (not monospace data).
+                ui.label(egui::RichText::new(&play.symbol)
+                    .family(egui::FontFamily::Proportional).size(font_lg()).strong().color(t.text));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Delete button (always visible for discoverability, enabled on hover).
@@ -749,25 +751,20 @@ fn render_play_card(
                 });
             });
 
-            ui.add_space(gap_xs());
+            ui.add_space(gap_sm());
 
-            // ── Entry / Target / Stop ──
-            ui.horizontal(|ui| {
-                PanelKeyValueRow::new("ENTRY", format!("${:.2}", play.entry_price))
-                    .show(ui, t);
-            });
-            ui.horizontal(|ui| {
+            // ── Entry / Target / Stop — tight, aligned key/value rows (no
+            // redundant horizontal wrappers, controlled vertical rhythm). ──
+            ui.scope(|ui| {
+                ui.spacing_mut().item_spacing.y = gap_xs();
+                PanelKeyValueRow::new("ENTRY", format!("${:.2}", play.entry_price)).show(ui, t);
                 PanelKeyValueRow::new("TARGET", format!("${:.2}", play.target_price))
-                    .tone(PanelTone::Bull)
-                    .show(ui, t);
-            });
-            if play.play_type != PlayType::Scalp && play.stop_price > 0.0 {
-                ui.horizontal(|ui| {
+                    .tone(PanelTone::Bull).show(ui, t);
+                if play.play_type != PlayType::Scalp && play.stop_price > 0.0 {
                     PanelKeyValueRow::new("STOP", format!("${:.2}", play.stop_price))
-                        .tone(PanelTone::Bear)
-                        .show(ui, t);
-                });
-            }
+                        .tone(PanelTone::Bear).show(ui, t);
+                }
+            });
 
             // ── Additional targets with allocations ──
             if play.targets.len() > 1 {
@@ -783,7 +780,7 @@ fn render_play_card(
                 }
             }
 
-            ui.add_space(gap_xs());
+            ui.add_space(gap_sm());
 
             // ── R:R bar ──
             let risk   = (play.entry_price - play.stop_price).abs();
