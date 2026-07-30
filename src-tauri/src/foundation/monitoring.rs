@@ -1101,12 +1101,17 @@ fn start_http_server(metrics: Arc<Mutex<Snapshot>>) {
     use std::net::TcpListener;
 
     std::thread::Builder::new().name("metrics-http".into()).spawn(move || {
-        let listener = match TcpListener::bind("0.0.0.0:9091") {
+        // Bind loopback in debug so a desktop dev build never listens on all
+        // interfaces — that non-loopback bind is what triggers the Windows
+        // Firewall "allow this app" prompt on every rebuilt binary, which blocks
+        // the screenshot/dev loop. Release keeps 0.0.0.0 for remote scraping.
+        let bind_addr = if cfg!(debug_assertions) { "127.0.0.1:9091" } else { "0.0.0.0:9091" };
+        let listener = match TcpListener::bind(bind_addr) {
             Ok(l) => l,
-            Err(e) => { eprintln!("[monitoring] Failed to bind :9091 — {e}"); return; }
+            Err(e) => { eprintln!("[monitoring] Failed to bind {bind_addr} — {e}"); return; }
         };
-        eprintln!("[monitoring] Prometheus metrics at http://0.0.0.0:9091/metrics");
-        eprintln!("[monitoring] Jank events at http://0.0.0.0:9091/jank");
+        eprintln!("[monitoring] Prometheus metrics at http://{bind_addr}/metrics");
+        eprintln!("[monitoring] Jank events at http://{bind_addr}/jank");
 
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };

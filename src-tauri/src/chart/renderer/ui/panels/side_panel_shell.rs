@@ -105,14 +105,29 @@ pub(crate) fn take_size_cycle(ctx: &Context) -> bool {
 /// the slot's body surface first so the real header band composites over it
 /// exactly as in standalone mode.
 fn rail_slot_ui(ctx: &Context, id: &str, slot: RailSlot, t: &Theme) -> Ui {
+    // Float each rail panel as an elevated rounded CARD instead of a flush
+    // edge-to-edge fill (mockup parity). Inset by a gap so adjacent panels and
+    // the canvas separate; paint a soft drop shadow + rounded surface + hairline
+    // border for real depth. Content renders inside the inset card rect.
+    let gap = crate::chart_renderer::ui::style::gap_md();
+    let card = slot.rect.shrink(gap);
+    let rr = egui::CornerRadius::same(12);
     let mut ui = Ui::new(
         ctx.clone(),
         egui::Id::new(("rail_slot_ui", id)),
-        egui::UiBuilder::new().max_rect(slot.rect).layer_id(slot.layer),
+        egui::UiBuilder::new().max_rect(card).layer_id(slot.layer),
     );
+    // Clip a touch outside the card so the shadow isn't cut off.
     ui.set_clip_rect(slot.rect);
-    // Slot body surface (matches the standalone panel frame fill).
-    ui.painter().rect_filled(slot.rect, egui::CornerRadius::ZERO, t.panel_surface());
+    let p = ui.painter().clone();
+    // Soft drop shadow: two translucent offset layers below/right.
+    let sh = t.shadow_color_alpha(40);
+    p.rect_filled(card.translate(egui::vec2(0.0, 3.0)), rr, sh);
+    p.rect_filled(card.translate(egui::vec2(0.0, 1.5)), rr, t.shadow_color_alpha(28));
+    // Card surface + hairline border.
+    p.rect_filled(card, rr, t.panel_surface());
+    p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), t.border()), egui::StrokeKind::Inside);
+    ui.set_clip_rect(card);
     ui
 }
 
@@ -310,13 +325,17 @@ impl<'a> SidePanelShell<'a> {
         // Shell region: float the rail as a rounded card when the active style
         // is tiled (Aperture/Glass). Gap on all sides separates it from the
         // workspace (left) and window edge (right).
+        // Float every side panel as an elevated rounded card (mockup parity):
+        // gap on all sides + radius + a soft shadow give real depth vs the flat
+        // edge-to-edge look. Tiled styles (Aperture/Glass) keep their larger
+        // region_gap; other styles get a modest one so the card still reads.
         let rgap = crate::chart_renderer::ui::style::region_gap();
-        if rgap > 0.0 {
-            let rr = crate::chart_renderer::ui::style::current().region_radius as u8;
-            frame = frame
-                .outer_margin(egui::Margin { left: rgap as i8, right: rgap as i8, top: 0, bottom: rgap as i8 })
-                .corner_radius(egui::CornerRadius::same(rr));
-        }
+        let cgap = if rgap > 0.0 { rgap } else { gap_sm() };
+        let rr = if rgap > 0.0 { crate::chart_renderer::ui::style::current().region_radius } else { 10.0 };
+        frame = frame
+            .outer_margin(egui::Margin { left: cgap as i8, right: cgap as i8, top: cgap as i8, bottom: cgap as i8 })
+            .corner_radius(egui::CornerRadius::same(rr as u8))
+            .shadow(crate::chart_renderer::ui::style::shadow_card_themed(t));
         let panel = panel.frame(frame);
 
         let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
@@ -462,13 +481,17 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
         // Shell region: float the rail as a rounded card when the active style
         // is tiled (Aperture/Glass). Gap on all sides separates it from the
         // workspace (left) and window edge (right).
+        // Float every side panel as an elevated rounded card (mockup parity):
+        // gap on all sides + radius + a soft shadow give real depth vs the flat
+        // edge-to-edge look. Tiled styles (Aperture/Glass) keep their larger
+        // region_gap; other styles get a modest one so the card still reads.
         let rgap = crate::chart_renderer::ui::style::region_gap();
-        if rgap > 0.0 {
-            let rr = crate::chart_renderer::ui::style::current().region_radius as u8;
-            frame = frame
-                .outer_margin(egui::Margin { left: rgap as i8, right: rgap as i8, top: 0, bottom: rgap as i8 })
-                .corner_radius(egui::CornerRadius::same(rr));
-        }
+        let cgap = if rgap > 0.0 { rgap } else { gap_sm() };
+        let rr = if rgap > 0.0 { crate::chart_renderer::ui::style::current().region_radius } else { 10.0 };
+        frame = frame
+            .outer_margin(egui::Margin { left: cgap as i8, right: cgap as i8, top: cgap as i8, bottom: cgap as i8 })
+            .corner_radius(egui::CornerRadius::same(rr as u8))
+            .shadow(crate::chart_renderer::ui::style::shadow_card_themed(t));
         let panel = panel.frame(frame);
 
         let SidePanelShellTabs {
