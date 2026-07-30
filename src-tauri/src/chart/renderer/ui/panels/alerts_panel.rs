@@ -130,7 +130,6 @@ fn draw_content_cx(
     let total_triggered = triggered_alerts.len() + pane_triggered.len();
 
     let mut active_section = PanelSection::new("ACTIVE")
-        .title_color(t.accent)
         .count(total_active);
     if total_active > 0 {
         active_section = active_section.action("Clear All", PanelTone::Danger);

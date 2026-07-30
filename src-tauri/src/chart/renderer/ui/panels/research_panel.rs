@@ -37,7 +37,6 @@ pub(crate) fn draw_content(
     // when it lands. Only populated for stock symbols.
     if let Some(td) = crate::chart_renderer::gpu::ticker_detail_cached(&chart.symbol) {
         PanelSection::new("COMPANY")
-            .title_color(t.accent)
             .show(ui, t, |ui, t| {
                 if !td.name.is_empty() {
                     ui.horizontal(|ui| {
@@ -81,7 +80,6 @@ pub(crate) fn draw_content(
     // ── Valuation ──
     if have_fund {
         PanelSection::new(&format!("VALUATION — {}", chart.symbol))
-            .title_color(t.accent)
             .show(ui, t, |ui, t| {
                 for (label, value) in [
                     ("P/E (TTM)",  format!("{:.1}",   f.pe_ratio)),
@@ -96,7 +94,6 @@ pub(crate) fn draw_content(
             });
     } else {
         PanelSection::new(&format!("FUNDAMENTALS — {}", chart.symbol))
-            .title_color(t.accent)
             .show(ui, t, |ui, t| {
                 PanelError::new("Fundamentals feed not connected")
                     .hint("Provider offline or not configured").show(ui, t);
@@ -109,7 +106,6 @@ pub(crate) fn draw_content(
     if let Some(oa) = crate::chart_renderer::gpu::options_analytics_cached(&chart.symbol) {
         if oa.any() {
             PanelSection::new("OPTIONS ANALYTICS")
-                .title_color(t.accent)
                 .show(ui, t, |ui, t| {
                     if let Some(em) = &oa.expected_move {
                         let exp = if em.expiry.is_empty() { String::new() } else { format!("  exp {}", em.expiry) };

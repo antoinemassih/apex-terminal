@@ -30,7 +30,6 @@ pub(crate) fn draw_content(
     let timestamps = &panes[ap].timestamps;
 
     PanelSection::new(&format!("SEASONALITY — {}", sym))
-        .title_color(t.accent)
         .show(ui, t, |ui, t| {
             if bars.len() < 252 || timestamps.len() < bars.len() {
                 PanelEmpty::new("Insufficient data")

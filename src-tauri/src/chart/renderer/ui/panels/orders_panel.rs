@@ -122,7 +122,6 @@ fn draw_book(
 
         let resp = PanelSection::new("POSITIONS")
             .count(pos_count)
-            .title_color(t.accent)
             .action("Close All", PanelTone::Bear)
             .show(ui, t, |ui, t| {
                 if has_positions {
@@ -243,7 +242,6 @@ fn draw_book(
 
     PanelSection::new("ORDERS")
         .count(active_count)
-        .title_color(t.accent)
         .show(ui, t, |ui, t| {
             // Drafts / active badges row (preserves "{n}d {n}a" semantics).
             if active_count > 0 || draft_count > 0 {
@@ -432,7 +430,6 @@ fn draw_book(
     if !ib_orders.is_empty() {
         PanelSection::new("IB ORDERS")
             .count(ib_orders.len())
-            .title_color(t.accent)
             .show(ui, t, |ui, t| {
                 for o in &ib_orders {
                     let is_fill = o.status == "filled";

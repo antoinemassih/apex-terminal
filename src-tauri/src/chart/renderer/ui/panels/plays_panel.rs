@@ -45,7 +45,6 @@ pub(crate) fn draw_content(
 
     // ── Header: PLAYBOOK section with count + "+ New Play" action ──
     let header_resp = PanelSection::new("PLAYBOOK")
-        .title_color(t.accent)
         .count(watchlist.plays.len())
         .action("+ New Play", PanelTone::Accent)
         .show(ui, t, |_ui, _t| {});

@@ -1296,7 +1296,6 @@ if is_spawn || watchlist.open {
                             .map(|s| s.items.len()).sum();
                         PanelSection::new("OPTIONS")
                             .count(opt_count)
-                            .title_color(t.accent)
                             .rule(false)
                             .show(ui, t, |_ui, _t| {});
 
