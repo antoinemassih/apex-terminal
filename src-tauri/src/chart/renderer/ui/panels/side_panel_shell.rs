@@ -105,13 +105,25 @@ pub(crate) fn take_size_cycle(ctx: &Context) -> bool {
 /// the slot's body surface first so the real header band composites over it
 /// exactly as in standalone mode.
 fn rail_slot_ui(ctx: &Context, id: &str, slot: RailSlot, t: &Theme) -> Ui {
-    // Float each rail panel as an elevated rounded CARD instead of a flush
-    // edge-to-edge fill (mockup parity). Inset by a gap so adjacent panels and
-    // the canvas separate; paint a soft drop shadow + rounded surface + hairline
-    // border for real depth. Content renders inside the inset card rect.
-    let gap = crate::chart_renderer::ui::style::gap_md();
+    // Per-STYLE panel treatment (never hardcoded): tiled styles (Aperture/
+    // Cadence/Glass — `region_gap > 0`) float each rail panel as an elevated
+    // rounded card, using the style's own `region_radius`. Flush styles
+    // (Meridien/Mariner — `region_gap == 0`) fill the slot edge-to-edge with
+    // sharp corners, matching their editorial personality.
+    let st = crate::chart_renderer::ui::style::current();
+    let gap = st.region_gap;
+    if gap <= 0.0 {
+        let mut ui = Ui::new(
+            ctx.clone(),
+            egui::Id::new(("rail_slot_ui", id)),
+            egui::UiBuilder::new().max_rect(slot.rect).layer_id(slot.layer),
+        );
+        ui.set_clip_rect(slot.rect);
+        ui.painter().rect_filled(slot.rect, egui::CornerRadius::ZERO, t.panel_surface());
+        return ui;
+    }
     let card = slot.rect.shrink(gap);
-    let rr = egui::CornerRadius::same(12);
+    let rr = egui::CornerRadius::same(st.region_radius as u8);
     let mut ui = Ui::new(
         ctx.clone(),
         egui::Id::new(("rail_slot_ui", id)),
@@ -121,10 +133,9 @@ fn rail_slot_ui(ctx: &Context, id: &str, slot: RailSlot, t: &Theme) -> Ui {
     ui.set_clip_rect(slot.rect);
     let p = ui.painter().clone();
     // Soft drop shadow: two translucent offset layers below/right.
-    let sh = t.shadow_color_alpha(40);
-    p.rect_filled(card.translate(egui::vec2(0.0, 3.0)), rr, sh);
+    p.rect_filled(card.translate(egui::vec2(0.0, 3.0)), rr, t.shadow_color_alpha(40));
     p.rect_filled(card.translate(egui::vec2(0.0, 1.5)), rr, t.shadow_color_alpha(28));
-    // Card surface + hairline border.
+    // Card surface + subtle border.
     p.rect_filled(card, rr, t.panel_surface());
     p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), crate::chart_renderer::ui::style::color_alpha(t.text, 22)), egui::StrokeKind::Inside);
     ui.set_clip_rect(card);
@@ -320,44 +331,62 @@ impl<'a> SidePanelShell<'a> {
             crate::chart_renderer::bug_anchor::register(&bug_key, ui.min_rect(), bug_loc.file(), bug_loc.line());
             return SidePanelShellResponse { close_clicked };
         }
-        // Transparent panel — egui::SidePanel ignores frame outer_margin/radius/
-        // shadow, so paint an elevated rounded CARD manually (same approach as
-        // rail_slot_ui) for a consistent floating look across docked panels too.
+        // Per-STYLE docked-panel treatment (never hardcoded). Tiled styles
+        // (region_gap > 0: Aperture/Cadence/Glass) float the panel as a rounded
+        // card via manual paint (egui::SidePanel ignores frame radius/shadow).
+        // Flush styles (region_gap == 0: Meridien/Mariner) fill edge-to-edge with
+        // sharp corners via the normal PanelFrame.
+        let st = crate::chart_renderer::ui::style::current();
+        let region_gap = st.region_gap;
+        let region_radius = st.region_radius as u8;
+        let flush = region_gap <= 0.0;
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref())
-            .frame(egui::Frame::NONE);
+            .frame(if flush {
+                PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build()
+            } else {
+                egui::Frame::NONE
+            });
 
         let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
 
         let mut close_clicked = false;
         let panel_inner = panel.show(ctx, |ui| {
-            let gap = gap_sm();
-            let card = ui.max_rect().shrink(gap);
-            let rr = egui::CornerRadius::same(12);
-            let p = ui.painter().clone();
-            p.rect_filled(card.translate(egui::vec2(0.0, 3.0)), rr, t.shadow_color_alpha(40));
-            p.rect_filled(card.translate(egui::vec2(0.0, 1.5)), rr, t.shadow_color_alpha(28));
-            p.rect_filled(card, rr, t.panel_surface());
-            p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), crate::chart_renderer::ui::style::color_alpha(t.text, 22)), egui::StrokeKind::Inside);
-            // Content renders into a child UI clipped to the card so scroll/resize
-            // still work (the ScrollArea inside the body sizes to `card`).
-            let mut cui = egui::Ui::new(
-                ui.ctx().clone(),
-                egui::Id::new(("side_card", id)),
-                egui::UiBuilder::new().max_rect(card).layer_id(ui.layer_id()),
-            );
-            cui.set_clip_rect(card);
-            let ui = &mut cui;
-            let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
-                .fill(t.header_surface())
-                .borderless()
-                .square()
-                .padding(0.0)
-                .show(ui, t, |ui| {
-                    let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
-                    if closed { close_clicked = true; }
-                });
-            paint_header_underline_and_shadow(ui, t, header_resp.response.rect, id);
-            render_body_and_footer(ui, t, body, footer);
+            if flush {
+                // Sharp, edge-to-edge — render straight into the panel ui.
+                let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
+                    .fill(t.header_surface()).borderless().square().padding(0.0)
+                    .show(ui, t, |ui| {
+                        let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
+                        if closed { close_clicked = true; }
+                    });
+                paint_header_underline_and_shadow(ui, t, header_resp.response.rect, id);
+                render_body_and_footer(ui, t, body, footer);
+            } else {
+                // Floating rounded card, inset by region_gap, radius region_radius.
+                let card = ui.max_rect().shrink(region_gap);
+                let rr = egui::CornerRadius::same(region_radius);
+                let p = ui.painter().clone();
+                p.rect_filled(card.translate(egui::vec2(0.0, 3.0)), rr, t.shadow_color_alpha(40));
+                p.rect_filled(card.translate(egui::vec2(0.0, 1.5)), rr, t.shadow_color_alpha(28));
+                p.rect_filled(card, rr, t.panel_surface());
+                p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), crate::chart_renderer::ui::style::color_alpha(t.text, 22)), egui::StrokeKind::Inside);
+                // Content into a child UI clipped to the card so scroll/resize work.
+                let mut cui = egui::Ui::new(
+                    ui.ctx().clone(),
+                    egui::Id::new(("side_card", id)),
+                    egui::UiBuilder::new().max_rect(card).layer_id(ui.layer_id()),
+                );
+                cui.set_clip_rect(card);
+                let ui = &mut cui;
+                let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
+                    .fill(t.header_surface()).borderless().square().padding(0.0)
+                    .show(ui, t, |ui| {
+                        let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
+                        if closed { close_clicked = true; }
+                    });
+                paint_header_underline_and_shadow(ui, t, header_resp.response.rect, id);
+                render_body_and_footer(ui, t, body, footer);
+            }
         });
         crate::chart_renderer::bug_anchor::register(&bug_key, panel_inner.response.rect, bug_loc.file(), bug_loc.line());
         SidePanelShellResponse { close_clicked }

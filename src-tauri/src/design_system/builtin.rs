@@ -1235,6 +1235,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         chrome: Chrome {
             pane_gap: 0.0, pane_gap_alpha: 0, pane_active_indicator: 2,
             tab_underline_thickness: 3.0, accent_emphasis: 1.1,
+            // Spotify-style: panels float as rounded cards (like Aperture), so
+            // Cadence gets a region gap + radius. Sharp styles keep region_gap 0.
+            region_gap: 8.0, region_radius: 12.0,
             ..Chrome::default()
         },
         ..StyleSystem::builtin_default()
