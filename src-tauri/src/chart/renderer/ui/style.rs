@@ -983,11 +983,12 @@ pub fn section_label(ui: &mut egui::Ui, text: &str, color: Color32) {
     if st.section_label_padding_bottom > 0.0 { ui.add_space(st.section_label_padding_bottom); }
 }
 
-/// Extra-small section label — dim monospace at 6 pt, uppercase when style requires (#12).
+/// Extra-small section label — dim monospace, uppercase when style requires (#12).
+/// Uses font_2xs (8px) as the legibility floor; 6px was unreadable.
 #[inline]
 pub fn section_label_xs(ui: &mut egui::Ui, text: &str, color: Color32) {
     let label = style_label_case(text);
-    ui.label(RichText::new(label).monospace().size(6.0).color(color));
+    ui.label(RichText::new(label).monospace().size(crate::ui_kit::style::font_2xs()).color(color));
 }
 
 /// Dim info label — FONT_SM regular.

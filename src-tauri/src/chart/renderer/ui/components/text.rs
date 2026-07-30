@@ -302,7 +302,7 @@ impl<'a> Widget for SectionLabel<'a> {
         // Other sizes preserve legacy monospace look via explicit RichText.
         let rt = match self.size {
             SectionLabelSize::Sm => TextStyle::Label.as_rich(&s, resolved),
-            SectionLabelSize::Tiny => RichText::new(s).monospace().size(7.0).strong().color(resolved),
+            SectionLabelSize::Tiny => RichText::new(s).monospace().size(crate::ui_kit::style::font_2xs()).strong().color(resolved),
             SectionLabelSize::Xs   => RichText::new(s).monospace().size(font_xs()).strong().color(resolved),
             SectionLabelSize::Md   => RichText::new(s).monospace().size(font_md()).strong().color(resolved),
             SectionLabelSize::Lg   => RichText::new(s).monospace().size(font_lg()).strong().color(resolved),

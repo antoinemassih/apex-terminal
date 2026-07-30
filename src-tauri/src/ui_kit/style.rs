@@ -334,7 +334,7 @@ pub fn shadow_color_alpha_of(shadow_color: Color32, alpha: u8) -> Color32 {
 // DesignTokens font set doesn't expose those tiers (yet).
 
 #[inline] pub fn font_4xs()    -> f32 { 6.0 }
-#[inline] pub fn font_3xs()    -> f32 { 7.0 }
+#[inline] pub fn font_3xs()    -> f32 { 8.0 } // legibility floor (was 7.0 — too small to read)
 #[inline] pub fn font_2xs()    -> f32 { frame_tokens().font_2xs }
 #[inline] pub fn font_xs()     -> f32 { frame_tokens().font_xs }
 #[inline] pub fn font_xs_plus() -> f32 { 10.0 }
