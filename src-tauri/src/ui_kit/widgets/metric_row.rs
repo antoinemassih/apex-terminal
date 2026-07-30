@@ -79,8 +79,13 @@ impl<'a> MetricRow<'a> {
         };
 
         let resp = ui.horizontal(|ui| {
-            let mut label_text = RichText::new(self.label).size(label_size).color(label_color);
-            if self.monospace { label_text = label_text.monospace(); }
+            // Label is text, not data → always PROPORTIONAL. Only the value
+            // (right side, below) honours `monospace` so numbers stay tabular.
+            // This removes the mono/proportional muddle in metric rows.
+            let label_text = RichText::new(self.label)
+                .size(label_size)
+                .color(label_color)
+                .family(egui::FontFamily::Proportional);
             ui.label(label_text);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut v = RichText::new(&self.value).size(value_size).color(value_color);

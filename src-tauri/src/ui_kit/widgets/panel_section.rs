@@ -351,10 +351,15 @@ impl<'a> PanelSection<'a> {
                     // Title — uppercase mono_xs strong. One tier smaller
                     // than the SidePanelShell header so the section
                     // reads as nested chrome inside the panel.
+                    // Section headers are labels, not data — render PROPORTIONAL
+                    // (was monospace) at font_sm (was the tiny font_xs) so headers
+                    // are legible and consistent with the mockup's proportional
+                    // section labels. Monospace stays reserved for numeric/tabular
+                    // values, which fixes the app-wide mono/proportional muddle.
                     ui.label(
                         RichText::new(title_str.to_uppercase())
-                            .monospace()
-                            .size(font_xs())
+                            .family(egui::FontFamily::Proportional)
+                            .size(font_sm())
                             .strong()
                             .color(title_color),
                     );
