@@ -322,13 +322,11 @@ impl<'a> SidePanelShell<'a> {
         }
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
         let mut frame = PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build();
-        // Shell region: float the rail as a rounded card when the active style
-        // is tiled (Aperture/Glass). Gap on all sides separates it from the
-        // workspace (left) and window edge (right).
-        // Float every side panel as an elevated rounded card (mockup parity):
-        // gap on all sides + radius + a soft shadow give real depth vs the flat
-        // edge-to-edge look. Tiled styles (Aperture/Glass) keep their larger
-        // region_gap; other styles get a modest one so the card still reads.
+        // NOTE: egui::SidePanel does not visibly honour frame outer_margin/radius/
+        // shadow, so this standalone (docked) path does not yet float as a card
+        // like the rail-slot path. Carding it needs manual painting into an inset
+        // child UI while preserving resize + scroll — TODO, pending single-pane
+        // visual verification (the OBJECTS panel is the main user).
         let rgap = crate::chart_renderer::ui::style::region_gap();
         let cgap = if rgap > 0.0 { rgap } else { gap_sm() };
         let rr = if rgap > 0.0 { crate::chart_renderer::ui::style::current().region_radius } else { 10.0 };

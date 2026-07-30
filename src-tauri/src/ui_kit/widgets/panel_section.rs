@@ -322,8 +322,10 @@ impl<'a> PanelSection<'a> {
             .inner_margin(egui::Margin {
                 left: gap_lg() as i8,
                 right: gap_lg() as i8,
-                top: gap_xs() as i8,
-                bottom: gap_xs() as i8,
+                // gap_sm (was gap_xs) — section headers were vertically cramped
+                // vs the mockup; a touch more breathing room reads far cleaner.
+                top: gap_sm() as i8,
+                bottom: gap_sm() as i8,
             })
             .fill(resolved_header_fill)
             .show(ui, |ui| {
