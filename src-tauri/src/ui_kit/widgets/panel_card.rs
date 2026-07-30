@@ -38,9 +38,7 @@
 use egui::{CornerRadius, Frame, Margin, Pos2, Rect, Stroke, Ui};
 
 use super::panel_section::Tone;
-use crate::ui_kit::tokens::{
-    gap_md, radius_md,
-};
+use crate::ui_kit::tokens::gap_md;
 use crate::ui_kit::widgets::theme::ComponentTheme;
 
 #[must_use = "PanelCard must be rendered with `.show(...)`"]
@@ -87,13 +85,15 @@ impl PanelCard {
         body: impl FnOnce(&mut Ui, &T) -> R,
     ) -> R {
         let bg = t.color_layer_up(1);
-        let radius = CornerRadius::same(radius_md() as u8);
+        let float = t.cards_float();
+        // Rounder cards on tiled styles (radius_lg — the signature bigger radius),
+        // sharp on flush styles (Meridien/Mariner). Never hardcoded.
+        let rr = if float { crate::ui_kit::style::radius_lg() as u8 } else { 0 };
+        let radius = CornerRadius::same(rr);
         let pad = self.padding as i8;
-        // Crisp per-style card edge (subtle text-alpha border, matching the panel
-        // cards) so a card always reads as a distinct raised surface — not a
-        // barely-there layer. Radius is per-style (radius_md), so flush styles
-        // stay near-sharp and tiled styles round.
-        let border = crate::ui_kit::style::color_alpha(t.text(), 16);
+        // Refined per-style edge: a subtle text-alpha hairline. Slightly stronger
+        // than before so the card reads as a distinct raised surface.
+        let border = crate::ui_kit::style::color_alpha(t.text(), 20);
         let mut frame = Frame::NONE
             .fill(bg)
             .corner_radius(radius)
@@ -104,14 +104,26 @@ impl PanelCard {
                 top: pad,
                 bottom: pad,
             });
-        // Soft drop shadow on FLOATING styles (Aperture/Cadence/Glass) or when the
-        // card is toned (needs elevation to read). Flat styles (Meridien/Mariner)
-        // rely on the border + fill only — per the per-style card personality.
-        if t.cards_float() || self.tone != Tone::Default {
+        // Slight soft drop shadow on FLOATING styles (Aperture/Cadence/Glass) or
+        // when toned. Flat styles rely on border + fill only.
+        if float || self.tone != Tone::Default {
             frame = frame.shadow(t.shadow_card());
         }
 
         let resp = frame.show(ui, |ui| body(ui, t));
+
+        // Texture / elevation cue: a 1px top-highlight bevel just inside the top
+        // edge (lighter than the surface) so the card catches a hint of light —
+        // reads as raised, not flat. Floating styles only; inset past the corners.
+        if float {
+            let r = resp.response.rect;
+            let inset = (rr as f32).max(2.0);
+            ui.painter().line_segment(
+                [egui::pos2(r.left() + inset, r.top() + 0.5),
+                 egui::pos2(r.right() - inset, r.top() + 0.5)],
+                Stroke::new(1.0, crate::ui_kit::style::color_alpha(t.text(), 12)),
+            );
+        }
 
         // Optional left accent stripe — painted on top after the frame.
         if self.stripe {
