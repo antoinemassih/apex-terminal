@@ -524,8 +524,17 @@ impl<'a> PainterPaneHeader<'a> {
                 // ── Background fill ──────────────────────────────────────────
                 if self.is_active {
                     if st.pane_active_fill_accent {
-                        // Aperture: solid accent fill (orange bar).
-                        painter.rect_filled(rect, 0.0, t.accent);
+                        // A solid accent fill across the whole header reads as a
+                        // loud, alarming orange bar. Use a restrained active
+                        // indicator instead — a faint accent wash + a crisp 2px
+                        // accent top stripe — which still clearly marks the active
+                        // pane without shouting (mockup parity).
+                        painter.rect_filled(rect, 0.0, tint(t, Tone::Accent, alpha_subtle()));
+                        let stripe = Rect::from_min_max(
+                            rect.min,
+                            pos2(rect.max.x, rect.min.y + 2.0),
+                        );
+                        painter.rect_filled(stripe, 0.0, t.accent);
                     } else if st.pane_active_indicator & 2 != 0 {
                         // Standard fill: direction-aware so light themes lift
                         // instead of darken. Mirror `color_layer_up` logic.
