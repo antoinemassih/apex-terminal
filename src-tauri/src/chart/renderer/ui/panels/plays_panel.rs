@@ -748,32 +748,24 @@ fn render_play_card(
 
             ui.add_space(gap_sm());
 
-            // ── Contained stats: Entry/Target/Stop in an inset, recessed sub-box
-            //    (own bordered area) as a 3-up stat row. ──
+            // ── Entry/Target/Stop — 3-up stat row directly on the card (NO inner
+            //    box: avoid boxes-within-boxes). Separation comes from spacing. ──
             let show_stop = play.play_type != PlayType::Scalp && play.stop_price > 0.0;
-            egui::Frame::NONE
-                .fill(t.bg)
-                .corner_radius(egui::CornerRadius::same(crate::ui_kit::style::radius_sm() as u8))
-                .stroke(egui::Stroke::new(crate::ui_kit::style::stroke_thin(),
-                    crate::ui_kit::style::color_alpha(t.text, 12)))
-                .inner_margin(egui::Margin::same(gap_sm() as i8))
-                .show(ui, |ui| {
-                    let ncols = if show_stop { 3 } else { 2 };
-                    ui.columns(ncols, |cols| {
-                        let mut stat = |ui: &mut egui::Ui, label: &str, val: String, col: egui::Color32| {
-                            ui.vertical(|ui| {
-                                ui.spacing_mut().item_spacing.y = 1.0;
-                                ui.label(TextStyle::Caption.as_rich(label, color_half(t.dim)));
-                                ui.label(egui::RichText::new(val).monospace().size(font_sm()).strong().color(col));
-                            });
-                        };
-                        stat(&mut cols[0], "ENTRY",  format!("${:.2}", play.entry_price),  t.text);
-                        stat(&mut cols[1], "TARGET", format!("${:.2}", play.target_price), t.bull);
-                        if show_stop {
-                            stat(&mut cols[2], "STOP", format!("${:.2}", play.stop_price), t.bear);
-                        }
+            let ncols = if show_stop { 3 } else { 2 };
+            ui.columns(ncols, |cols| {
+                let mut stat = |ui: &mut egui::Ui, label: &str, val: String, col: egui::Color32| {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        ui.label(TextStyle::Caption.as_rich(label, color_half(t.dim)));
+                        ui.label(egui::RichText::new(val).monospace().size(font_sm()).strong().color(col));
                     });
-                });
+                };
+                stat(&mut cols[0], "ENTRY",  format!("${:.2}", play.entry_price),  t.text);
+                stat(&mut cols[1], "TARGET", format!("${:.2}", play.target_price), t.bull);
+                if show_stop {
+                    stat(&mut cols[2], "STOP", format!("${:.2}", play.stop_price), t.bear);
+                }
+            });
 
             // ── Additional targets with allocations ──
             if play.targets.len() > 1 {

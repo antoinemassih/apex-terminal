@@ -179,6 +179,11 @@ pub(crate) fn paint_nav_col_tint(
     active: bool,
     label_id: &str,
 ) {
+    // DISABLED (2026-07-30): this column-tint overlay stacked ON TOP of the
+    // Button's own Ghost hover/active fill, giving nav items two mismatched
+    // highlights. The unified Button is now the single, consistent highlight,
+    // so this bespoke overlay is disabled (callers left; delete in cleanup).
+    if true { let _ = (tb_rect, btn_rect, hovered, active, label_id); return; }
     use crate::chart::renderer::ui::components::motion;
     let active_id = egui::Id::new(("nav_col_active", label_id));
     let hover_id  = egui::Id::new(("nav_col_hover",  label_id));
