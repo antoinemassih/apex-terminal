@@ -66,11 +66,13 @@ pub fn toolbar_btn(
     .status(true)
     .active(active);
 
-    // Active state: tint the foreground (label/glyph) to accent. Status mode's
-    // base palette only animates bg/border on active; we override the fg so
-    // the toggled-on state reads as accent-coloured, matching legacy behaviour.
+    // Active state: accent foreground PLUS a soft accent-tinted pill background,
+    // so a toggled-on nav item reads as a clear "selected" chip (mockup parity)
+    // rather than just colored text lost among its neighbours.
     if active {
-        btn = btn.fg(t.accent);
+        btn = btn
+            .fg(t.accent)
+            .fill(crate::chart_renderer::ui::style::color_alpha(t.accent, 30));
     }
 
     let resp = btn.show(ui, t);
