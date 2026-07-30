@@ -753,16 +753,24 @@ fn render_play_card(
 
             ui.add_space(gap_sm());
 
-            // ── Entry / Target / Stop — tight, aligned key/value rows (no
-            // redundant horizontal wrappers, controlled vertical rhythm). ──
-            ui.scope(|ui| {
-                ui.spacing_mut().item_spacing.y = gap_xs();
-                PanelKeyValueRow::new("ENTRY", format!("${:.2}", play.entry_price)).show(ui, t);
-                PanelKeyValueRow::new("TARGET", format!("${:.2}", play.target_price))
-                    .tone(PanelTone::Bull).show(ui, t);
-                if play.play_type != PlayType::Scalp && play.stop_price > 0.0 {
-                    PanelKeyValueRow::new("STOP", format!("${:.2}", play.stop_price))
-                        .tone(PanelTone::Bear).show(ui, t);
+            // ── Entry / Target / Stop — compact 3-up STAT ROW: label (caption)
+            //    over a bold value, laid across the full width. Fills the card
+            //    instead of leaving an empty middle in label-left/value-right
+            //    rows (trade-card best practice: grouped, scannable stats). ──
+            let show_stop = play.play_type != PlayType::Scalp && play.stop_price > 0.0;
+            let ncols = if show_stop { 3 } else { 2 };
+            ui.columns(ncols, |cols| {
+                let mut stat = |ui: &mut egui::Ui, label: &str, val: String, col: egui::Color32| {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        ui.label(TextStyle::Caption.as_rich(label, color_half(t.dim)));
+                        ui.label(egui::RichText::new(val).monospace().size(font_sm()).strong().color(col));
+                    });
+                };
+                stat(&mut cols[0], "ENTRY",  format!("${:.2}", play.entry_price),  t.text);
+                stat(&mut cols[1], "TARGET", format!("${:.2}", play.target_price), t.bull);
+                if show_stop {
+                    stat(&mut cols[2], "STOP", format!("${:.2}", play.stop_price), t.bear);
                 }
             });
 
