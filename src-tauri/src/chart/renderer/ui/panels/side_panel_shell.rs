@@ -126,7 +126,7 @@ fn rail_slot_ui(ctx: &Context, id: &str, slot: RailSlot, t: &Theme) -> Ui {
     p.rect_filled(card.translate(egui::vec2(0.0, 1.5)), rr, t.shadow_color_alpha(28));
     // Card surface + hairline border.
     p.rect_filled(card, rr, t.panel_surface());
-    p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), t.border()), egui::StrokeKind::Inside);
+    p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), crate::chart_renderer::ui::style::color_alpha(t.text, 22)), egui::StrokeKind::Inside);
     ui.set_clip_rect(card);
     ui
 }
@@ -337,7 +337,7 @@ impl<'a> SidePanelShell<'a> {
             p.rect_filled(card.translate(egui::vec2(0.0, 3.0)), rr, t.shadow_color_alpha(40));
             p.rect_filled(card.translate(egui::vec2(0.0, 1.5)), rr, t.shadow_color_alpha(28));
             p.rect_filled(card, rr, t.panel_surface());
-            p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), t.border()), egui::StrokeKind::Inside);
+            p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), crate::chart_renderer::ui::style::color_alpha(t.text, 22)), egui::StrokeKind::Inside);
             // Content renders into a child UI clipped to the card so scroll/resize
             // still work (the ScrollArea inside the body sizes to `card`).
             let mut cui = egui::Ui::new(
