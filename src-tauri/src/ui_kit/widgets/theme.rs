@@ -115,6 +115,12 @@ pub trait ComponentTheme {
     /// overrides this from the active StyleSystem's `section_header_mono` token.
     fn section_header_mono(&self) -> bool { false }
 
+    /// Whether cards should FLOAT (rounded + soft drop shadow) vs sit flush
+    /// (flat, minimal). Per-style: tiled styles (Aperture/Cadence/Glass — those
+    /// with a region gap) float; editorial styles (Meridien/Mariner) stay flat.
+    /// The chart Theme overrides from `region_gap > 0`. Default true.
+    fn cards_float(&self) -> bool { true }
+
     /// Header divider/border colour. 38α over `text()`.
     fn header_border(&self) -> Color32 {
         let t = self.text();

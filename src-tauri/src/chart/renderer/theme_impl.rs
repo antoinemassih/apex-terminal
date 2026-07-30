@@ -31,6 +31,10 @@ impl ComponentTheme for Theme {
     fn section_header_mono(&self) -> bool {
         crate::chart_renderer::ui::style::current().section_header_mono
     }
+    // Cards float (rounded + shadow) only on tiled styles (region_gap > 0).
+    fn cards_float(&self) -> bool {
+        crate::chart_renderer::ui::style::current().region_gap > 0.0
+    }
     // ── Derived overlays (Zed-style) ────────────────────────────────────
     // Source: gpu.rs Theme struct doc; previously stored as 10 redundant
     // fields on Theme + 15 initializer copies. Now derived from text/accent

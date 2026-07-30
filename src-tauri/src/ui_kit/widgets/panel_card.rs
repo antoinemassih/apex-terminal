@@ -89,16 +89,25 @@ impl PanelCard {
         let bg = t.color_layer_up(1);
         let radius = CornerRadius::same(radius_md() as u8);
         let pad = self.padding as i8;
+        // Crisp per-style card edge (subtle text-alpha border, matching the panel
+        // cards) so a card always reads as a distinct raised surface — not a
+        // barely-there layer. Radius is per-style (radius_md), so flush styles
+        // stay near-sharp and tiled styles round.
+        let border = crate::ui_kit::style::color_alpha(t.text(), 16);
         let mut frame = Frame::NONE
             .fill(bg)
             .corner_radius(radius)
+            .stroke(Stroke::new(crate::ui_kit::style::stroke_thin(), border))
             .inner_margin(Margin {
                 left: pad,
                 right: pad,
                 top: pad,
                 bottom: pad,
             });
-        if self.tone != Tone::Default {
+        // Soft drop shadow on FLOATING styles (Aperture/Cadence/Glass) or when the
+        // card is toned (needs elevation to read). Flat styles (Meridien/Mariner)
+        // rely on the border + fill only — per the per-style card personality.
+        if t.cards_float() || self.tone != Tone::Default {
             frame = frame.shadow(t.shadow_card());
         }
 
