@@ -290,6 +290,9 @@ pub enum AppCommand {
     /// Open/close the Auto-Charting side panel (front-end panel test).
     #[cfg(debug_assertions)]
     SetAutoChartPanel { open: bool },
+    /// Open/close the OBJECTS (object tree) left panel. Added for dev-inspector
+    /// view control (compose a deterministic layout for screenshot verification).
+    SetObjectTree { open: bool },
     /// Set a spreadsheet cell's raw text (grows the grid as needed).
     #[cfg(debug_assertions)]
     SetCell { pane: usize, row: usize, col: usize, text: String },
@@ -1113,6 +1116,11 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             watchlist.heatmap.cells = cells;
         }
 
+        AppCommand::SetObjectTree { open } => {
+            // Route through the sidebar-state store (the store→flat sync sets the
+            // watchlist flag each frame). Dev-inspector view control.
+            watchlist.update_sidebar_state(|s| s.object_tree_open = open);
+        }
         #[cfg(debug_assertions)]
         AppCommand::SetAutoChartPanel { open } => {
             // Route through the sidebar-state store (else the store→flat sync

@@ -2287,6 +2287,10 @@ fn parse_app_command(
             let open = body["open"].as_bool().unwrap_or(true);
             Ok(AppCommand::SetAutoChartPanel { open })
         }
+        "SetObjectTree" | "set_object_tree" => {
+            let open = body["open"].as_bool().unwrap_or(true);
+            Ok(AppCommand::SetObjectTree { open })
+        }
         "SetCell" | "set_cell" => {
             let row  = body["row"].as_u64().unwrap_or(0) as usize;
             let col  = body["col"].as_u64().unwrap_or(0) as usize;

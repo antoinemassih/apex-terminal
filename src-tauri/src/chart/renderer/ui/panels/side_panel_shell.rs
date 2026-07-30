@@ -320,29 +320,33 @@ impl<'a> SidePanelShell<'a> {
             crate::chart_renderer::bug_anchor::register(&bug_key, ui.min_rect(), bug_loc.file(), bug_loc.line());
             return SidePanelShellResponse { close_clicked };
         }
-        let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
-        let mut frame = PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build();
-        // NOTE: egui::SidePanel does not visibly honour frame outer_margin/radius/
-        // shadow, so this standalone (docked) path does not yet float as a card
-        // like the rail-slot path. Carding it needs manual painting into an inset
-        // child UI while preserving resize + scroll — TODO, pending single-pane
-        // visual verification (the OBJECTS panel is the main user).
-        let rgap = crate::chart_renderer::ui::style::region_gap();
-        let cgap = if rgap > 0.0 { rgap } else { gap_sm() };
-        let rr = if rgap > 0.0 { crate::chart_renderer::ui::style::current().region_radius } else { 10.0 };
-        frame = frame
-            .outer_margin(egui::Margin { left: cgap as i8, right: cgap as i8, top: cgap as i8, bottom: cgap as i8 })
-            .corner_radius(egui::CornerRadius::same(rr as u8))
-            .shadow(crate::chart_renderer::ui::style::shadow_card_themed(t));
-        let panel = panel.frame(frame);
+        // Transparent panel — egui::SidePanel ignores frame outer_margin/radius/
+        // shadow, so paint an elevated rounded CARD manually (same approach as
+        // rail_slot_ui) for a consistent floating look across docked panels too.
+        let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref())
+            .frame(egui::Frame::NONE);
 
         let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
 
         let mut close_clicked = false;
         let panel_inner = panel.show(ctx, |ui| {
-            // Wrap the header in a Frame filled with `t.header_surface()`
-            // so the side panel's header band matches the chart pane
-            // header above it — same fill, same visual weight.
+            let gap = gap_sm();
+            let card = ui.max_rect().shrink(gap);
+            let rr = egui::CornerRadius::same(12);
+            let p = ui.painter().clone();
+            p.rect_filled(card.translate(egui::vec2(0.0, 3.0)), rr, t.shadow_color_alpha(40));
+            p.rect_filled(card.translate(egui::vec2(0.0, 1.5)), rr, t.shadow_color_alpha(28));
+            p.rect_filled(card, rr, t.panel_surface());
+            p.rect_stroke(card, rr, egui::Stroke::new(stroke_thin(), t.border()), egui::StrokeKind::Inside);
+            // Content renders into a child UI clipped to the card so scroll/resize
+            // still work (the ScrollArea inside the body sizes to `card`).
+            let mut cui = egui::Ui::new(
+                ui.ctx().clone(),
+                egui::Id::new(("side_card", id)),
+                egui::UiBuilder::new().max_rect(card).layer_id(ui.layer_id()),
+            );
+            cui.set_clip_rect(card);
+            let ui = &mut cui;
             let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(t.header_surface())
                 .borderless()
