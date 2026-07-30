@@ -94,10 +94,14 @@ impl PanelCard {
         // Refined per-style edge: a subtle text-alpha hairline. Slightly stronger
         // than before so the card reads as a distinct raised surface.
         let border = crate::ui_kit::style::color_alpha(t.text(), 20);
+        // Outer margin so cards breathe from the panel edges and from each other
+        // (stacked cards) instead of sitting flush against the borders.
+        let om = crate::ui_kit::style::gap_sm() as i8;
         let mut frame = Frame::NONE
             .fill(bg)
             .corner_radius(radius)
             .stroke(Stroke::new(crate::ui_kit::style::stroke_thin(), border))
+            .outer_margin(Margin { left: om, right: om, top: om / 2, bottom: om / 2 })
             .inner_margin(Margin {
                 left: pad,
                 right: pad,

@@ -701,78 +701,79 @@ fn render_play_card(
 
     let card_resp = PanelCard::new()
         .tone(tone)
-        .stripe(true)
-        .padding(gap_sm())
+        .stripe(false) // left stripe removed — direction shown by the anchor dot below
+        .padding(gap_md())
         .show(ui, t, |ui, t| {
-            // ── Header row: direction pill · type icon · symbol · status pill · R:R ──
             let mut delete_clicked   = false;
             let mut activate_clicked = false;
 
+            // ── Eyebrow: direction + status TAGS (left), R-multiple + close (right) ──
             ui.horizontal(|ui| {
-                // Direction pill.
-                let pill_size = egui::vec2(42.0, 16.0);
-                let (pill_rect, _) = ui.allocate_exact_size(pill_size, egui::Sense::hover());
-                paint_pill(ui.painter(), pill_rect, play.direction.label(), dir_color, PillStyle::Soft, mono_xs(), t);
-
-                // Type icon + symbol.
+                let (pr, _) = ui.allocate_exact_size(egui::vec2(42.0, 16.0), egui::Sense::hover());
+                paint_pill(ui.painter(), pr, play.direction.label(), dir_color, PillStyle::Soft, mono_xs(), t);
                 ui.add_space(gap_xs());
-                ui.label(TextStyle::BodySm.as_rich(play.play_type.icon(), color_half(t.dim)));
-                // Symbol is a NAME → proportional + bold (not monospace data).
-                ui.label(egui::RichText::new(&play.symbol)
-                    .family(egui::FontFamily::Proportional).size(font_lg()).strong().color(t.text));
+                let status_color = match play.status {
+                    PlayStatus::Draft     => t.dim,
+                    PlayStatus::Published => t.accent,
+                    PlayStatus::Active    => t.warn,
+                    PlayStatus::Won       => t.bull,
+                    PlayStatus::Lost      => t.bear,
+                    _                     => color_half(t.dim),
+                };
+                let (sr, _) = ui.allocate_exact_size(egui::vec2(48.0, 16.0), egui::Sense::hover());
+                paint_pill(ui.painter(), sr, play.status.label(), status_color, PillStyle::Subtle, mono_sm(), t);
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Delete button (always visible for discoverability, enabled on hover).
-                    let del = Button::close()
-                        .placement(IconPlacement::ListRow)
-                        .show(ui, t);
+                    let del = Button::close().placement(IconPlacement::ListRow).show(ui, t);
                     if del.clicked() { delete_clicked = true; }
                     Tooltip::new("Delete play").show(ui, &del, t);
-
-                    // R:R label.
                     if play.risk_reward > 0.0 {
-                        ui.add_space(gap_xs());
                         ui.label(egui::RichText::new(format!("{:.1}R", play.risk_reward))
-                            .monospace().size(font_sm()).color(t.accent));
+                            .monospace().size(font_md()).strong().color(t.accent));
                     }
-
-                    // Status pill.
-                    let status_color = match play.status {
-                        PlayStatus::Draft     => t.dim,
-                        PlayStatus::Published => t.accent,
-                        PlayStatus::Active    => t.warn,
-                        PlayStatus::Won       => t.bull,
-                        PlayStatus::Lost      => t.bear,
-                        _                     => color_half(t.dim),
-                    };
-                    let pill_size = egui::vec2(48.0, 16.0);
-                    let (sr, _) = ui.allocate_exact_size(pill_size, egui::Sense::hover());
-                    paint_pill(ui.painter(), sr, play.status.label(), status_color, PillStyle::Subtle, mono_sm(), t);
                 });
             });
 
             ui.add_space(gap_sm());
 
-            // ── Entry / Target / Stop — compact 3-up STAT ROW: label (caption)
-            //    over a bold value, laid across the full width. Fills the card
-            //    instead of leaving an empty middle in label-left/value-right
-            //    rows (trade-card best practice: grouped, scannable stats). ──
-            let show_stop = play.play_type != PlayType::Scalp && play.stop_price > 0.0;
-            let ncols = if show_stop { 3 } else { 2 };
-            ui.columns(ncols, |cols| {
-                let mut stat = |ui: &mut egui::Ui, label: &str, val: String, col: egui::Color32| {
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 1.0;
-                        ui.label(TextStyle::Caption.as_rich(label, color_half(t.dim)));
-                        ui.label(egui::RichText::new(val).monospace().size(font_sm()).strong().color(col));
-                    });
-                };
-                stat(&mut cols[0], "ENTRY",  format!("${:.2}", play.entry_price),  t.text);
-                stat(&mut cols[1], "TARGET", format!("${:.2}", play.target_price), t.bull);
-                if show_stop {
-                    stat(&mut cols[2], "STOP", format!("${:.2}", play.stop_price), t.bear);
-                }
+            // ── Ticker ANCHOR: a coloured direction dot + the big symbol. This is
+            //    the visual anchor of the card (replaces the old left edge stripe). ──
+            ui.horizontal(|ui| {
+                let (dot, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                ui.painter().circle_filled(dot.center(), 4.0, dir_color);
+                ui.add_space(gap_xs());
+                ui.label(egui::RichText::new(&play.symbol)
+                    .family(egui::FontFamily::Proportional).size(font_xl()).strong().color(t.text));
             });
+
+            ui.add_space(gap_sm());
+
+            // ── Contained stats: Entry/Target/Stop in an inset, recessed sub-box
+            //    (own bordered area) as a 3-up stat row. ──
+            let show_stop = play.play_type != PlayType::Scalp && play.stop_price > 0.0;
+            egui::Frame::NONE
+                .fill(t.bg)
+                .corner_radius(egui::CornerRadius::same(crate::ui_kit::style::radius_sm() as u8))
+                .stroke(egui::Stroke::new(crate::ui_kit::style::stroke_thin(),
+                    crate::ui_kit::style::color_alpha(t.text, 12)))
+                .inner_margin(egui::Margin::same(gap_sm() as i8))
+                .show(ui, |ui| {
+                    let ncols = if show_stop { 3 } else { 2 };
+                    ui.columns(ncols, |cols| {
+                        let mut stat = |ui: &mut egui::Ui, label: &str, val: String, col: egui::Color32| {
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 1.0;
+                                ui.label(TextStyle::Caption.as_rich(label, color_half(t.dim)));
+                                ui.label(egui::RichText::new(val).monospace().size(font_sm()).strong().color(col));
+                            });
+                        };
+                        stat(&mut cols[0], "ENTRY",  format!("${:.2}", play.entry_price),  t.text);
+                        stat(&mut cols[1], "TARGET", format!("${:.2}", play.target_price), t.bull);
+                        if show_stop {
+                            stat(&mut cols[2], "STOP", format!("${:.2}", play.stop_price), t.bear);
+                        }
+                    });
+                });
 
             // ── Additional targets with allocations ──
             if play.targets.len() > 1 {
