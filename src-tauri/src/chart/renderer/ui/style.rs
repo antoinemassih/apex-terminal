@@ -137,6 +137,7 @@ pub fn begin_frame() {
         radius_sm:     r_sm,
         radius_md:     r_md,
         radius_lg:     r_lg,
+        radius_pill:   current().r_pill as f32,
         // Strokes (already resolved with override + DesignTokens precedence above).
         stroke_hair,
         stroke_thin,

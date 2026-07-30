@@ -1113,12 +1113,17 @@ fn paint_secondary_with_treatment(
 }
 
 fn default_radius(v: Variant) -> f32 {
+    // Per-STYLE radii (never hardcoded): read the active style's radius scale so
+    // buttons round correctly per StyleSystem — Aperture soft (sm≈10), Meridien/
+    // Mariner sharp (sm≈4), etc. Pills use the per-style pill token so styles
+    // with pill:0 render sharp instead of forced-round.
+    use crate::ui_kit::style::{radius_sm, radius_xs, radius_pill};
     match v {
-        Variant::Primary | Variant::Secondary | Variant::Danger | Variant::NeutralAction => 4.0,
-        Variant::Ghost | Variant::MutedIcon | Variant::InlineClose | Variant::DynamicTint => 2.0,
+        Variant::Primary | Variant::Secondary | Variant::Danger
+        | Variant::NeutralAction | Variant::Chrome => radius_sm(),
+        Variant::Ghost | Variant::MutedIcon | Variant::InlineClose | Variant::DynamicTint => radius_xs(),
         Variant::Link | Variant::TextOnly | Variant::Tab => 0.0,
-        Variant::Chip | Variant::Toggle => 99.0, // pill
-        Variant::Chrome => 4.0,
+        Variant::Chip | Variant::Toggle => radius_pill(),
     }
 }
 

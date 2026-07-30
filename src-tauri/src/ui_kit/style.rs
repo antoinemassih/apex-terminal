@@ -54,6 +54,8 @@ pub struct TokenSnapshot {
     pub radius_sm: f32,
     pub radius_md: f32,
     pub radius_lg: f32,
+    /// Pill/fully-round radius — PER-STYLE (Aperture 99, Meridien 0 sharp).
+    pub radius_pill: f32,
     // Strokes.
     pub stroke_hair:   f32,
     pub stroke_thin:   f32,
@@ -134,7 +136,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     gap_xs: 4.0, gap_xs_mid: 6.0, gap_sm: 8.0, gap_md: 12.0,
     gap_lg: 16.0, gap_xl: 20.0, gap_2xl: 24.0, gap_3xl: 32.0,
     // Radii.
-    radius_xs: 2.0, radius_sm: 4.0, radius_md: 6.0, radius_lg: 12.0,
+    radius_xs: 2.0, radius_sm: 4.0, radius_md: 6.0, radius_lg: 12.0, radius_pill: 999.0,
     // Strokes.
     stroke_hair: 0.3, stroke_thin: 0.5, stroke_medium: 0.8,
     stroke_std: 1.0, stroke_bold: 1.5, stroke_thick: 2.0,
@@ -390,7 +392,7 @@ pub fn stroke_heavy()       -> f32 { 3.0 }
 
 // ─── Radii (px) — pure constants ─────────────────────────────────────────────
 
-pub fn radius_pill() -> f32 { 999.0 }
+pub fn radius_pill() -> f32 { frame_tokens().radius_pill }
 
 // ─── Alpha (0..=255) — pure constants ────────────────────────────────────────
 
