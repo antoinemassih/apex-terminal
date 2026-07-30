@@ -58,21 +58,22 @@ pub fn toolbar_btn(
             || c.is_ascii_digit()
     });
 
+    // Nav/toolbar buttons are GHOST (transparent) so there is exactly ONE
+    // highlight system: `paint_nav_col_tint` for nav items (the designed,
+    // per-style, animated column/chip highlight) and Ghost's own subtle hover
+    // for standalone toolbar buttons. Previously this stacked status-mode bg +
+    // an accent-pill fill + col_tint = the "multiple/weird" highlights.
+    // Active = accent FOREGROUND only (no competing bg fill).
     let mut btn = if is_icon_only {
         Button::icon(label).glyph_size(16.0).placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Toolbar)
     } else {
         Button::new(label)
     }
-    .status(true)
+    .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
     .active(active);
 
-    // Active state: accent foreground PLUS a soft accent-tinted pill background,
-    // so a toggled-on nav item reads as a clear "selected" chip (mockup parity)
-    // rather than just colored text lost among its neighbours.
     if active {
-        btn = btn
-            .fg(t.accent)
-            .fill(crate::chart_renderer::ui::style::color_alpha(t.accent, 30));
+        btn = btn.fg(t.accent);
     }
 
     let resp = btn.show(ui, t);
