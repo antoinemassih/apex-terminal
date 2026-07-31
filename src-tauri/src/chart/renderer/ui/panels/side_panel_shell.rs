@@ -609,6 +609,17 @@ fn build_side_panel(
         .resizable(true)
 }
 
+/// The side-panel header strip — `[icon] [title] … [header actions] [close ×]`.
+///
+/// Every side panel in the app renders through here. The strip's geometry is
+/// the shared flex row solved by
+/// [`kit::solve_header_strip`](super::kit::solve_header_strip) — one flexbox
+/// container replacing the `ui.horizontal(..)` + `Layout::right_to_left(..)`
+/// nesting that used to push the trailing controls right (and that made the
+/// gutters drift between panels). Colour, type and the close-button treatment
+/// are unchanged.
+///
+/// Returns `true` when the close-X was clicked.
 fn render_header<'a>(
     ui: &mut Ui,
     t: &Theme,
@@ -674,5 +685,81 @@ fn render_body_and_footer<'a>(
         body_frame.show(ui, |ui| { body(ui, t); });
     } else {
         body_frame.show(ui, |ui| { body(ui, t); });
+    }
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+//
+// `render_header` needs a live `Ui`, but its GEOMETRY is the pure flex row in
+// `kit::solve_header_strip`. These tests pin the shapes the shell actually
+// asks for — with an icon, without one, and the rail-slot variant where the
+// size-cycle control is injected as an extra header action — so the strip that
+// every side panel renders through is verified headlessly.
+
+#[cfg(test)]
+mod tests {
+    use super::super::kit::solve_header_strip;
+    use crate::chart_renderer::ui::style::{gap_md, gap_sm};
+
+    fn approx(a: f32, b: f32) -> bool { (a - b).abs() < 0.01 }
+
+    fn panel_header_rect() -> egui::Rect {
+        // A Width::Medium side panel (300px) at the pane-aligned 32px height.
+        egui::Rect::from_min_size(egui::pos2(980.0, 48.0), egui::vec2(300.0, 32.0))
+    }
+
+    /// `SidePanelShell::new(..).icon(..)` — icon fixed, title next to it,
+    /// header actions absorb the slack, close-X flush right.
+    #[test]
+    fn shell_header_places_icon_title_and_a_flush_right_close() {
+        let r = panel_header_rect();
+        let s = solve_header_strip(r, Some(12.0), 64.0, true);
+
+        let icon = s.icon.expect("icon slot");
+        assert!(approx(icon.left(), r.left() + gap_sm()), "got {}", icon.left());
+        assert!(approx(s.title.left(), icon.right() + gap_sm()), "got {}", s.title.left());
+        assert!(approx(s.actions.left(), s.title.right() + gap_md()), "got {}", s.actions.left());
+
+        let close = s.close.expect("close slot");
+        assert!(approx(close.right(), r.right() - gap_sm()), "got {}", close.right());
+        assert!(approx(s.actions.right(), close.left() - gap_sm()), "got {}", s.actions.right());
+    }
+
+    /// Most shells pass no icon; the title then starts at the strip inset and
+    /// the actions slot still runs the whole way to the close button.
+    #[test]
+    fn shell_header_without_an_icon_still_spans_the_full_strip() {
+        let r = panel_header_rect();
+        let s = solve_header_strip(r, None, 64.0, true);
+        assert!(s.icon.is_none());
+        assert!(approx(s.title.left(), r.left() + gap_sm()), "got {}", s.title.left());
+        let close = s.close.expect("close slot");
+        assert!(approx(s.actions.right(), close.left() - gap_sm()));
+        assert!(s.actions.width() > 0.0, "actions slot collapsed");
+    }
+
+    /// The strip is the FULL header rect, which is what
+    /// `paint_header_underline_and_shadow` receives: the underline must span
+    /// edge to edge, past the strip's own left/right inset.
+    #[test]
+    fn header_rect_stays_wider_than_its_inset_content() {
+        let r = panel_header_rect();
+        let s = solve_header_strip(r, None, 64.0, true);
+        assert!(s.title.left() > r.left(), "content is not inset");
+        assert!(s.close.unwrap().right() < r.right(), "content is not inset");
+    }
+
+    /// Rail-slot mode injects the size-cycle control into the same trailing
+    /// slot as the panel's own actions, and panels differ in icon and title.
+    /// None of that may move the close-X: it is anchored to the strip, which is
+    /// exactly the drift the flex migration removes.
+    #[test]
+    fn the_close_button_is_anchored_regardless_of_icon_or_title() {
+        let r = panel_header_rect();
+        let plain = solve_header_strip(r, None, 64.0, true).close.unwrap();
+        let with_icon = solve_header_strip(r, Some(12.0), 64.0, true).close.unwrap();
+        let long_title = solve_header_strip(r, Some(12.0), 240.0, true).close.unwrap();
+        assert_eq!(plain, with_icon);
+        assert_eq!(plain, long_title);
     }
 }

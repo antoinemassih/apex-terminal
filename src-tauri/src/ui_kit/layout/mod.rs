@@ -5,4 +5,4 @@
 //! arithmetic. It computes GEOMETRY ONLY: all colour, type, radius and
 //! per-style treatment continues to come from the design system.
 pub mod flex;
-pub use flex::{Align, Flex, Item, Justify, Size};
+pub use flex::{Align, Flex, Item, Justify, Pad, Size};

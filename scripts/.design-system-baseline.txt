@@ -89,7 +89,7 @@
 1 src-tauri/src/ui_kit/widgets/panel_error.rs
 3 src-tauri/src/ui_kit/widgets/panel_key_value_row.rs
 10 src-tauri/src/ui_kit/widgets/panel_list_row.rs
-6 src-tauri/src/ui_kit/widgets/panel_section.rs
+3 src-tauri/src/ui_kit/widgets/panel_section.rs
 3 src-tauri/src/ui_kit/widgets/panel_sub_section.rs
 1 src-tauri/src/ui_kit/widgets/popover.rs
 2 src-tauri/src/ui_kit/widgets/progress.rs

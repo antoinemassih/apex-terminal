@@ -23,6 +23,7 @@
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone as SxTone;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 
 use super::super::style::{
     alpha_ghost, alpha_line, alpha_soft, alpha_subtle,
@@ -65,6 +66,120 @@ fn header_metrics(wl: Option<&Watchlist>) -> (f32, f32) {
 const HEADER_CLOSE_SIZE: f32 = 18.0;
 const HEADER_TAB_TOP_INSET: f32 = 1.0;
 const HEADER_TAB_HEIGHT_INSET: f32 = 2.0;
+
+// ── Header strip geometry (flexbox) ──────────────────────────────────────────
+//
+// The header strip used to be hand-rolled: a running `cx` cursor for the
+// leading cluster plus a nested `right_to_left` layout to shove the trailing
+// controls against the edge. That is the arithmetic the layout engine exists
+// to delete, and it is why gutters drifted between panels.
+//
+// The strip is now ONE flex row. Geometry only — every colour, font, radius
+// and glyph below still comes from the design system, unchanged.
+//
+//   ┌ gap_sm ┬ icon ┬ gap_sm ┬ title ┬ gap_md ┬ actions (grow) ┬ gap_sm ┬ × ┬ gap_sm ┐
+//
+// `solve_*` are pure `Rect -> Rect` functions (no `Ui`, no `Context`), so the
+// header geometry is unit-testable headlessly — see the tests at the bottom of
+// this file.
+
+/// Solved slots of the static-title header strip. All rects are absolute
+/// (already translated into the header rect).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HeaderStrip {
+    /// Leading icon slot — `None` when the header has no icon.
+    pub icon: Option<Rect>,
+    /// Title slot. Full strip height; paint `LEFT_CENTER` at its left edge.
+    pub title: Rect,
+    /// Everything between the title and the close button: the LTR title-actions
+    /// flow and the RTL trailing-actions flow both live here.
+    pub actions: Rect,
+    /// The `HEADER_CLOSE_SIZE`-square close button, flush right — `None` when
+    /// the header is not closable.
+    pub close: Option<Rect>,
+}
+
+/// The flex spec for the static-title header strip. Widths are MEASURED galley
+/// widths: `Item::auto()` has no intrinsic size under `Flex::solve` (leaves
+/// carry no measure function), so intrinsic content is measured by the caller
+/// and passed as `Item::fixed`.
+fn header_flex(icon_w: Option<f32>, title_w: f32, closable: bool) -> Flex {
+    let mut f = Flex::row()
+        // Strip inset — the same `gap_sm` the cursor arithmetic used.
+        .padding_sides(gap_sm(), gap_sm(), 0.0, 0.0)
+        // Every slot spans the full strip height so painting at `slot.center().y`
+        // is identical to the old `rect.center().y` vertical centring.
+        .align(FlexAlign::Stretch);
+    let title_margin = if icon_w.is_some() { gap_sm() } else { 0.0 };
+    if let Some(w) = icon_w {
+        f = f.item(Item::fixed(w));
+    }
+    f = f
+        // The title yields (shrinks) rather than shoving the close button off
+        // the strip when a panel is narrower than its own title.
+        .item(Item::fixed(title_w).shrink(1.0).margin_start(title_margin))
+        .item(Item::grow(1.0).margin_start(gap_md()));
+    if closable {
+        f = f.item(Item::fixed(HEADER_CLOSE_SIZE).margin_start(gap_sm()));
+    }
+    f
+}
+
+/// Solve [`header_flex`] inside `rect` and hand back absolute slot rects.
+pub(crate) fn solve_header_strip(
+    rect: Rect,
+    icon_w: Option<f32>,
+    title_w: f32,
+    closable: bool,
+) -> HeaderStrip {
+    let solved = header_flex(icon_w, title_w, closable).solve(rect.size());
+    let off = rect.min.to_vec2();
+    let mut it = solved.into_iter().map(|r| r.translate(off));
+    let icon = if icon_w.is_some() { it.next() } else { None };
+    let title = it.next().unwrap_or(Rect::NOTHING);
+    let actions = it.next().unwrap_or(Rect::NOTHING);
+    // The close SLOT is full-height; the button itself is a centred square,
+    // exactly as the old `Rect::from_center_size(.., splat(HEADER_CLOSE_SIZE))`.
+    let close = if closable {
+        it.next().map(|s| Rect::from_center_size(s.center(), Vec2::splat(HEADER_CLOSE_SIZE)))
+    } else {
+        None
+    };
+    HeaderStrip { icon, title, actions, close }
+}
+
+/// Solved slots of the tab-driven header strip.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HeaderTabsStrip {
+    /// Room the tab strip + trailing actions share (everything left of close).
+    pub strip: Rect,
+    /// The close button square, flush right — `None` when not closable.
+    pub close: Option<Rect>,
+}
+
+/// Solve the tab header's OUTER chrome. Only the outer strip is flexed: the tab
+/// run itself stays painter-driven because tab widths are content-measured with
+/// their own overflow-to-`»`-menu rule, which is a different problem from
+/// distributing a fixed set of slots.
+pub(crate) fn solve_header_tabs_strip(rect: Rect, closable: bool) -> HeaderTabsStrip {
+    let mut f = Flex::row()
+        .padding_sides(gap_sm(), gap_sm(), 0.0, 0.0)
+        .align(FlexAlign::Stretch)
+        .item(Item::grow(1.0));
+    if closable {
+        f = f.item(Item::fixed(HEADER_CLOSE_SIZE).margin_start(gap_sm()));
+    }
+    let solved = f.solve(rect.size());
+    let off = rect.min.to_vec2();
+    let strip = solved.first().map(|r| r.translate(off)).unwrap_or(Rect::NOTHING);
+    let close = if closable {
+        solved.get(1)
+            .map(|s| Rect::from_center_size(s.translate(off).center(), Vec2::splat(HEADER_CLOSE_SIZE)))
+    } else {
+        None
+    };
+    HeaderTabsStrip { strip, close }
+}
 
 fn paint_chrome_perimeter(painter: &egui::Painter, rect: Rect, t: &Theme) {
     let st = current();
@@ -214,58 +329,52 @@ impl<'a> PanelHeader<'a> {
 
         // Use per-style font family: mono for Alto/Mariner/Relay, proportional for others.
         let title_font = FontId::new(font_size, section_header_font_id().family);
+        let icon_font = FontId::monospace(font_size);
+        let title_text = style_label_case(self.title);
 
-        // Paint icon + title in painter mode.
-        let mut cx = rect.left() + gap_sm();
-        if let Some(g) = self.icon {
-            let icon_font = FontId::monospace(font_size);
-            let galley = painter.layout_no_wrap(g.to_string(), icon_font.clone(), t.accent);
+        // Measure the intrinsic content, then let the flex engine place it.
+        // (`Item::auto()` cannot help here — `Flex::solve` has no font access.)
+        let icon_w = self.icon.map(|g| {
+            painter.layout_no_wrap(g.to_string(), icon_font.clone(), t.accent).size().x
+        });
+        let title_w = painter
+            .layout_no_wrap(title_text.clone(), title_font.clone(), t.text)
+            .size().x;
+
+        let strip = solve_header_strip(rect, icon_w, title_w, self.closable);
+
+        // Paint icon + title in painter mode, into their solved slots.
+        if let (Some(g), Some(islot)) = (self.icon, strip.icon) {
             painter.text(
-                Pos2::new(cx, rect.center().y),
+                Pos2::new(islot.left(), islot.center().y),
                 Align2::LEFT_CENTER, g, icon_font, t.accent,
             );
-            cx += galley.size().x + gap_sm();
         }
 
-        let title_text = style_label_case(self.title);
-        let title_galley = painter.layout_no_wrap(title_text.clone(), title_font.clone(), t.text);
-        let title_pos = Pos2::new(cx, rect.center().y);
+        let title_pos = Pos2::new(strip.title.left(), strip.title.center().y);
         // Pseudo-bold via double-paint (same trick painter_pane symbol mode uses).
         painter.text(
             Pos2::new(title_pos.x + 0.5, title_pos.y),
             Align2::LEFT_CENTER, &title_text, title_font.clone(), t.text,
         );
         painter.text(title_pos, Align2::LEFT_CENTER, &title_text, title_font, t.text);
-        cx += title_galley.size().x + gap_md();
 
         let mut closed = false;
 
-        // Layout-flow child UI inside the header rect for actions + close.
-        let actions_rect = Rect::from_min_max(
-            Pos2::new(cx, rect.top()),
-            Pos2::new(rect.right() - gap_sm(), rect.bottom()),
-        );
+        // Layout-flow child UI over the solved actions slot. The slot already
+        // stops short of the close button, so the trailing RTL flow no longer
+        // needs to hand-reserve it with `add_space`.
         let mut child = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(actions_rect)
+                .max_rect(strip.actions)
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         title_actions(&mut child);
         child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if self.closable {
-                let close_rect = Rect::from_center_size(
-                    Pos2::new(
-                        rect.right() - gap_sm() - HEADER_CLOSE_SIZE / 2.0,
-                        rect.center().y,
-                    ),
-                    Vec2::splat(HEADER_CLOSE_SIZE),
-                );
+            if let Some(close_rect) = strip.close {
                 if paint_close_btn(ui, &painter, close_rect, t) {
                     closed = true;
                 }
-                // Reserve the close-button slot in the layout flow so trailing
-                // `actions` don't paint on top of it.
-                ui.add_space(HEADER_CLOSE_SIZE + gap_sm());
             }
             actions(ui);
         });
@@ -364,14 +473,16 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
         let st_settings = current();
         let r_md_corner = super::super::style::radius_md() as u8;
 
-        // Reserve the close button rect first so tab widths can clamp short.
-        let close_w_reserved = if self.closable { HEADER_CLOSE_SIZE + gap_sm() * 2.0 } else { 0.0 };
+        // Outer chrome from the flex engine: the strip the tabs live in, and
+        // the flush-right close button. Replaces the hand-reserved
+        // `HEADER_CLOSE_SIZE + gap_sm() * 2.0` right margin.
+        let chrome = solve_header_tabs_strip(rect, self.closable);
 
         // ── Tab strip (painter-mode, mirrors painter_pane.rs:541-664) ──
         let tab_h = h - HEADER_TAB_HEIGHT_INSET;
         let tab_y = rect.top() + HEADER_TAB_TOP_INSET;
         let tab_pad = gap_md() + 4.0;
-        let mut cx = rect.left() + gap_sm();
+        let mut cx = chrome.strip.left();
         let mut tab_rects: Vec<Rect> = Vec::with_capacity(self.tabs.len());
 
         let active_idx = self.tabs.iter().position(|(v, _)| *v == *self.current).unwrap_or(0);
@@ -391,7 +502,7 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
             let tab_w = tab_pad + label_galley.size().x + tab_pad;
             // Clamp so tabs don't overlap the close + overflow buttons. Once one
             // tab doesn't fit, all remaining go to the overflow menu.
-            let max_right = rect.right() - close_w_reserved - overflow_reserved;
+            let max_right = chrome.strip.right() - overflow_reserved;
             if cx + tab_w > max_right {
                 hidden_idx.extend(ti..self.tabs.len());
                 break;
@@ -460,25 +571,17 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
         let mut closed = false;
         let actions_rect = Rect::from_min_max(
             Pos2::new(cx, rect.top()),
-            Pos2::new(rect.right() - gap_sm(), rect.bottom()),
+            Pos2::new(chrome.strip.right(), rect.bottom()),
         );
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(actions_rect)
                 .layout(egui::Layout::right_to_left(egui::Align::Center)),
         );
-        if self.closable {
-            let close_rect = Rect::from_center_size(
-                Pos2::new(
-                    rect.right() - gap_sm() - HEADER_CLOSE_SIZE / 2.0,
-                    rect.center().y,
-                ),
-                Vec2::splat(HEADER_CLOSE_SIZE),
-            );
+        if let Some(close_rect) = chrome.close {
             if paint_close_btn(&mut child, &painter, close_rect, t) {
                 closed = true;
             }
-            child.add_space(HEADER_CLOSE_SIZE + gap_sm());
         }
         // Overflow menu for tabs that didn't fit (placed left of the close btn).
         if !hidden_idx.is_empty() {
@@ -694,3 +797,134 @@ impl<'a> PanelDualAction<'a> {
 /// Standard "list row" gap between adjacent rows of the same kind.
 #[inline]
 pub fn row_gap(ui: &mut Ui) { ui.add_space(gap_xs()); }
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+//
+// The header strip is the chrome EVERY side panel renders through, and its
+// gutters used to be a running `cx` cursor plus a nested right-to-left layout —
+// untestable, and the source of the per-panel gutter drift the UI audit found.
+// `solve_header_strip` / `solve_header_tabs_strip` are pure `Rect -> Rect`, so
+// the whole shape is now asserted headlessly: no GPU, no egui context.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx(a: f32, b: f32) -> bool { (a - b).abs() < 0.01 }
+
+    fn header() -> Rect {
+        // Non-zero origin so a missing translate can't pass by accident.
+        Rect::from_min_size(Pos2::new(24.0, 60.0), Vec2::new(300.0, 32.0))
+    }
+
+    /// The canonical shape: icon fixed, title after it, actions absorb the
+    /// slack, close button flush right.
+    #[test]
+    fn icon_title_actions_and_a_flush_right_close() {
+        let r = header();
+        let s = solve_header_strip(r, Some(16.0), 80.0, true);
+
+        let icon = s.icon.expect("icon slot");
+        assert!(approx(icon.left(), r.left() + gap_sm()), "got {}", icon.left());
+        assert!(approx(icon.width(), 16.0));
+
+        // icon → title gutter is gap_sm
+        assert!(approx(s.title.left(), icon.right() + gap_sm()), "got {}", s.title.left());
+        assert!(approx(s.title.width(), 80.0));
+
+        // title → actions gutter is gap_md (the one seam that differs)
+        assert!(approx(s.actions.left(), s.title.right() + gap_md()), "got {}", s.actions.left());
+
+        let close = s.close.expect("close slot");
+        assert!(approx(close.right(), r.right() - gap_sm()), "got {}", close.right());
+        assert!(approx(close.width(), HEADER_CLOSE_SIZE));
+        assert!(approx(close.height(), HEADER_CLOSE_SIZE));
+        assert!(approx(close.center().y, r.center().y));
+
+        // actions → close gutter is gap_sm; the actions slot stops short of the
+        // close button, which is what removed the hand-rolled `add_space`.
+        assert!(approx(s.actions.right(), close.left() - gap_sm()), "got {}", s.actions.right());
+    }
+
+    /// No icon → the title starts at the strip inset itself.
+    #[test]
+    fn without_an_icon_the_title_starts_at_the_strip_inset() {
+        let r = header();
+        let s = solve_header_strip(r, None, 80.0, true);
+        assert!(s.icon.is_none());
+        assert!(approx(s.title.left(), r.left() + gap_sm()), "got {}", s.title.left());
+    }
+
+    /// With no trailing actions the growing slot still spans everything between
+    /// the title and the close — nothing collapses, so a panel that later adds
+    /// an action gets the identical gutter.
+    #[test]
+    fn the_actions_slot_absorbs_all_remaining_width() {
+        let r = header();
+        let s = solve_header_strip(r, Some(16.0), 80.0, true);
+        let expected = r.width()
+            - gap_sm() * 2.0            // strip inset both ends
+            - 16.0 - gap_sm()           // icon + its gutter
+            - 80.0 - gap_md()           // title + its gutter
+            - HEADER_CLOSE_SIZE - gap_sm();
+        assert!(approx(s.actions.width(), expected), "got {}", s.actions.width());
+    }
+
+    /// A non-closable header hands the trailing edge to the actions slot.
+    #[test]
+    fn without_a_close_button_the_actions_slot_reaches_the_trailing_inset() {
+        let r = header();
+        let s = solve_header_strip(r, None, 80.0, false);
+        assert!(s.close.is_none());
+        assert!(approx(s.actions.right(), r.right() - gap_sm()), "got {}", s.actions.right());
+    }
+
+    /// Every slot spans the full strip height, so painting at `slot.center().y`
+    /// reproduces the old `rect.center().y` vertical centring exactly.
+    #[test]
+    fn slots_span_the_full_header_height() {
+        let r = header();
+        let s = solve_header_strip(r, Some(16.0), 80.0, true);
+        assert!(approx(s.icon.unwrap().height(), r.height()));
+        assert!(approx(s.title.height(), r.height()));
+        assert!(approx(s.title.center().y, r.center().y));
+        assert!(approx(s.actions.height(), r.height()));
+    }
+
+    /// A title longer than the panel must not shove the close button off the
+    /// strip — the title yields instead (`flex-shrink`).
+    #[test]
+    fn a_long_title_yields_rather_than_pushing_the_close_off() {
+        let r = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(120.0, 32.0));
+        let s = solve_header_strip(r, None, 400.0, true);
+        let close = s.close.expect("close slot");
+        assert!(approx(close.right(), r.right() - gap_sm()), "got {}", close.right());
+        assert!(close.left() >= r.left(), "close fell off the strip: {}", close.left());
+    }
+
+    /// Tab header: the strip stops exactly one `gap_sm` short of the close
+    /// button, which is the room the tab run and the `»` overflow share.
+    #[test]
+    fn tabs_strip_reserves_the_close_button() {
+        let r = header();
+        let c = solve_header_tabs_strip(r, true);
+        let close = c.close.expect("close slot");
+        assert!(approx(c.strip.left(), r.left() + gap_sm()), "got {}", c.strip.left());
+        assert!(approx(close.right(), r.right() - gap_sm()), "got {}", close.right());
+        assert!(approx(c.strip.right(), close.left() - gap_sm()), "got {}", c.strip.right());
+        // Same reservation the old hand-written constant encoded.
+        assert!(
+            approx(c.strip.right(), r.right() - (HEADER_CLOSE_SIZE + gap_sm() * 2.0)),
+            "got {}", c.strip.right()
+        );
+    }
+
+    /// Non-closable tab header: the strip runs to the trailing inset.
+    #[test]
+    fn tabs_strip_without_close_runs_to_the_trailing_inset() {
+        let r = header();
+        let c = solve_header_tabs_strip(r, false);
+        assert!(c.close.is_none());
+        assert!(approx(c.strip.right(), r.right() - gap_sm()), "got {}", c.strip.right());
+    }
+}

@@ -989,3 +989,46 @@ pub fn motion_speed_override_opt() -> Option<MotionSpeed> {
     let v = MOTION_SPEED_OVERRIDE.load(Ordering::Acquire);
     if v < 0 { None } else { Some(MotionSpeed::from_u8(v as u8)) }
 }
+
+// ─── Text measurement (for flex/painter layout) ──────────────────────────────
+//
+// Flex layout needs intrinsic text sizes: a title or count chip is an
+// `Item::fixed(measured_width)` because a Taffy leaf has no measure function
+// and would otherwise resolve to zero. Every widget doing that was building its
+// own `FontId` and passing a throwaway colour to `layout_no_wrap`, which is
+// (a) duplicated, (b) easy to get out of sync with the FontId actually painted,
+// and (c) indistinguishable from real off-token drift to the design-system
+// ratchet. Centralised here so callers pass a SIZE TOKEN and never construct a
+// FontId or a placeholder colour.
+//
+// Sizes are rounded UP: solved rects can land a fraction narrower than the
+// galley, which clips the final glyph.
+
+/// Intrinsic size of `text` at `size` px in the proportional family.
+/// Pass a token (`font_sm()`, `font_md()`, …), never a literal.
+pub fn measure_prop(ui: &egui::Ui, text: &str, size: f32) -> egui::Vec2 {
+    measure_with(ui, text, egui::FontId::proportional(size))
+}
+
+/// Intrinsic size of `text` at `size` px in the monospace family.
+pub fn measure_mono(ui: &egui::Ui, text: &str, size: f32) -> egui::Vec2 {
+    measure_with(ui, text, egui::FontId::monospace(size))
+}
+
+/// Intrinsic size of `text` in an explicit `FontId` — for callers that already
+/// hold the exact font they will paint with (keeps measure and paint in sync).
+pub fn measure_with(ui: &egui::Ui, text: &str, font: egui::FontId) -> egui::Vec2 {
+    // The colour is irrelevant: this galley is measured, never painted.
+    ui.fonts(|f| f.layout_no_wrap(text.to_string(), font, egui::Color32::PLACEHOLDER))
+        .size()
+        .ceil()
+}
+
+/// `FontId` at an explicit size and family — for the per-STYLE cases where the
+/// family itself is a token (e.g. section headers are monospace on editorial
+/// styles, proportional elsewhere). Keeps widgets from constructing `FontId`
+/// directly, so the design-system ratchet stays meaningful.
+#[inline]
+pub fn font_at(size: f32, family: egui::FontFamily) -> egui::FontId {
+    egui::FontId::new(size, family)
+}

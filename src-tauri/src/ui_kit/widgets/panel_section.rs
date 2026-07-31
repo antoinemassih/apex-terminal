@@ -67,6 +67,7 @@ use egui::{Color32, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, S
 use super::super::icons::Icon;
 use super::tooltip::Tooltip;
 use super::theme::{active_theme, get_ambient_recipes};
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens::{
     color_alpha, font_sm, font_xs, gap_lg, gap_sm, gap_xs, stroke_thin,
 };
@@ -118,6 +119,128 @@ impl Tone {
 /// is fewer separators, not invisible ones — this rule fires only
 /// when `.rule(true)` so callers still control whether it appears.
 const RULE_ALPHA: u8 = 100;
+
+// ─── Header strip: flex spec ────────────────────────────────────────────────
+//
+// The header used to be `ui.horizontal { caret, title, count,
+// with_layout(right_to_left) { action|delete, meta } }`. The RTL child existed
+// for exactly one reason: to push the trailing content against the right edge.
+// That is a `grow` spacer in flexbox — one item, no nesting, and (unlike the
+// RTL child) solvable and assertable headlessly via [`Flex::solve`].
+//
+// The spec below is GEOMETRY ONLY. Fonts, colours, tokens and paint order are
+// unchanged; the flex just says where the boxes land.
+
+/// Caret glyph point size in the section header (proportional family).
+const CARET_GLYPH_PT: f32 = 12.0;
+/// Height (and, for the delete button, width) of the trailing ghost buttons.
+const SECTION_BTN_H: f32 = 16.0;
+
+/// Which header piece a solved flex slot belongs to. `Gap` slots are pure
+/// spacing (the old `ui.add_space(..)` calls and the elastic middle) and render
+/// nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Slot {
+    Gap,
+    Caret,
+    Title,
+    Count,
+    Action,
+    Delete,
+    Meta,
+}
+
+/// Intrinsic sizes of the header's pieces, measured with egui's fonts.
+///
+/// Split out so the flex spec can be built — and unit-tested — from plain
+/// numbers, with no egui context, GPU or window (see `header_layout_tests`).
+#[derive(Clone, Copy, Debug, Default)]
+struct HeaderMetrics {
+    /// Caret galley size; `None` when the section is not collapsible.
+    caret: Option<Vec2>,
+    title: Vec2,
+    count: Option<Vec2>,
+    meta: Option<Vec2>,
+    /// Trailing action button size; `None` when there is no `.action(..)` or
+    /// when the delete button wins (`delete_when_empty` + `count == 0`).
+    action: Option<Vec2>,
+    /// Trailing delete button size (mutually exclusive with `action`).
+    delete: Option<Vec2>,
+}
+
+/// Build the header's flex items, tagged with the piece each one renders.
+///
+/// Order (left → right) is exactly the order the old code produced:
+/// `caret · title · count …… meta · action|delete`. Note the trailing pair:
+/// the old RTL child added the button FIRST, which put it right-most, and the
+/// meta text to its left — so meta precedes the button here.
+fn header_slots(m: &HeaderMetrics) -> Vec<(Slot, Item)> {
+    let mut v: Vec<(Slot, Item)> = Vec::new();
+    if let Some(c) = m.caret {
+        v.push((Slot::Caret, Item::fixed(c.x).cross(c.y)));
+        // was `ui.add_space(gap_xs())` after the caret label
+        v.push((Slot::Gap, Item::fixed(gap_xs())));
+    }
+    v.push((Slot::Title, Item::fixed(m.title.x).cross(m.title.y)));
+    if let Some(c) = m.count {
+        // was `ui.add_space(gap_xs())` before the count chip
+        v.push((Slot::Gap, Item::fixed(gap_xs())));
+        v.push((Slot::Count, Item::fixed(c.x).cross(c.y)));
+    }
+    // The elastic middle — this ONE item replaces the whole
+    // `with_layout(Layout::right_to_left(Align::Center))` nesting.
+    v.push((Slot::Gap, Item::grow(1.0)));
+    if let Some(sz) = m.meta {
+        v.push((Slot::Meta, Item::fixed(sz.x).cross(sz.y)));
+    }
+    if let Some(sz) = m.delete {
+        v.push((Slot::Delete, Item::fixed(sz.x).cross(sz.y)));
+    } else if let Some(sz) = m.action {
+        if m.meta.is_some() {
+            // was `ui.add_space(gap_sm())` between the action button and meta
+            v.push((Slot::Gap, Item::fixed(gap_sm())));
+        }
+        v.push((Slot::Action, Item::fixed(sz.x).cross(sz.y)));
+    }
+    v
+}
+
+/// The header container itself: one row, `gap_xs()` gutter (the token that
+/// stood in for egui's `item_spacing` in the old horizontal layout), children
+/// vertically centered — same as `Layout::left_to_right(Align::Center)`.
+/// Padding is NOT set here: the enclosing `egui::Frame` still supplies the
+/// `gap_lg` / `gap_sm` inner margin, untouched.
+fn header_flex(slots: &[(Slot, Item)]) -> Flex {
+    Flex::row()
+        .gap(gap_xs())
+        .align(FlexAlign::Center)
+        .items(slots.iter().map(|(_, it)| *it))
+}
+
+/// Row height = the tallest piece, which is what `ui.horizontal` produced.
+fn header_row_height(m: &HeaderMetrics) -> f32 {
+    let mut h = m.title.y;
+    for s in [m.caret, m.count, m.meta, m.action, m.delete].iter().flatten() {
+        h = h.max(s.y);
+    }
+    h.max(1.0)
+}
+
+/// Intrinsic size of `text` in `font` — the measurement the flex spec needs.
+///
+/// Rounded UP: Taffy rounds solved rects to whole pixels, and a rect a
+/// half-pixel narrower than its galley would clip the last glyph's edge.
+fn text_size(ui: &Ui, text: &str, font: FontId) -> Vec2 {
+    // Delegates to the design system's measurement helper so measurement is
+    // defined in exactly one place (and so widgets don't hand-roll FontIds).
+    crate::ui_kit::style::measure_with(ui, text, font)
+}
+
+/// Render a label into its solved flex rect. `Extend` because the rect was
+/// sized from this exact galley — wrapping would be a rounding artefact.
+fn label_exact(ui: &mut Ui, rt: RichText) {
+    ui.add(egui::Label::new(rt).wrap_mode(egui::TextWrapMode::Extend));
+}
 
 #[must_use = "PanelSection must be rendered with `.show(...)`"]
 pub struct PanelSection<'a> {
@@ -334,82 +457,136 @@ impl<'a> PanelSection<'a> {
             })
             .fill(resolved_header_fill)
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // Leading caret (collapsible mode only). Matches the
-                    // PanelSubSection caret treatment: proportional 12px
-                    // glyph in title_color, vertically aligned. Drawn as
-                    // a label so it shares the horizontal layout — the
-                    // click sense lives on the whole header strip below.
-                    if collapsible {
-                        let caret_glyph = if is_expanded {
-                            Icon::CARET_DOWN
-                        } else {
-                            Icon::CARET_RIGHT
-                        };
-                        ui.label(
-                            RichText::new(caret_glyph)
-                                .size(12.0)
-                                .color(title_color),
-                        );
-                        ui.add_space(gap_xs());
-                    }
-                    // Title — uppercase mono_xs strong. One tier smaller
-                    // than the SidePanelShell header so the section
-                    // reads as nested chrome inside the panel.
-                    // Section headers at font_sm (was tiny font_xs) for legibility.
-                    // Family is PER-STYLE (never hardcoded): editorial styles that
-                    // set `section_header_mono` keep monospace eyebrows; all others
-                    // use proportional. Numeric counts stay mono regardless.
-                    let mut header_rt = RichText::new(title_str.to_uppercase())
-                        .size(font_sm())
-                        .strong()
-                        .color(title_color);
-                    header_rt = if t.section_header_mono() {
-                        header_rt.monospace()
+                // ── Header strip — geometry solved by the flex engine ────────
+                // Was `ui.horizontal { .. with_layout(right_to_left) { .. } }`.
+                // The RTL nesting is now a single `grow` spacer (see
+                // `header_slots`). Everything below — fonts, sizes, colours,
+                // tokens, paint order — is byte-for-byte what it was.
+                let caret_glyph = if is_expanded {
+                    Icon::CARET_DOWN
+                } else {
+                    Icon::CARET_RIGHT
+                };
+                // Title family is PER-STYLE (never hardcoded): editorial styles
+                // that set `section_header_mono` keep monospace eyebrows; all
+                // others use proportional. Numeric counts stay mono regardless.
+                let title_family = if t.section_header_mono() {
+                    egui::FontFamily::Monospace
+                } else {
+                    egui::FontFamily::Proportional
+                };
+                let title_text = title_str.to_uppercase();
+                // When collapsed (and collapsible) the count shows as an inline
+                // `(N)` hint — matches PanelSubSection.
+                let count_text = count.map(|n| {
+                    if collapsible && !is_expanded {
+                        format!("({})", n)
                     } else {
-                        header_rt.family(egui::FontFamily::Proportional)
-                    };
-                    ui.label(header_rt);
-                    if let Some(n) = count {
-                        ui.add_space(gap_xs());
-                        // When collapsed (and collapsible) show count as
-                        // an inline `(N)` hint — matches PanelSubSection.
-                        // Otherwise render the standard count chip.
-                        let count_label = if collapsible && !is_expanded {
-                            format!("({})", n)
-                        } else {
-                            format!("{}", n)
-                        };
-                        ui.label(
-                            RichText::new(count_label)
-                                .monospace()
-                                .size(font_xs())
-                                .strong()
-                                .color(color_alpha(title_color, 200)),
-                        );
+                        format!("{}", n)
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if show_delete {
-                            if section_delete_button(ui, color_alpha(palette_ct(t).base(SxTone::Dim), 200)) {
+                });
+
+                let metrics = HeaderMetrics {
+                    caret: if collapsible {
+                        Some(crate::ui_kit::style::measure_prop(ui, caret_glyph, CARET_GLYPH_PT))
+                    } else {
+                        None
+                    },
+                    title: text_size(ui, &title_text, crate::ui_kit::style::font_at(font_sm(), title_family.clone())),
+                    count: count_text
+                        .as_ref()
+                        .map(|s| crate::ui_kit::style::measure_mono(ui, s, font_xs())),
+                    meta: meta
+                        .as_ref()
+                        .map(|s| crate::ui_kit::style::measure_mono(ui, s, font_xs())),
+                    action: if show_delete {
+                        None
+                    } else {
+                        action
+                            .as_ref()
+                            .map(|(label, _)| section_action_button_size(ui, label))
+                    },
+                    delete: if show_delete {
+                        Some(Vec2::splat(SECTION_BTN_H))
+                    } else {
+                        None
+                    },
+                };
+                let slots = header_slots(&metrics);
+
+                // Reserve the strip, then solve inside it. The row is sized
+                // explicitly so the flex solves against the header height (not
+                // the whole remaining panel height) and so the strip spans the
+                // full content width, as the old RTL child made it do.
+                let row_size = Vec2::new(ui.available_width(), header_row_height(&metrics));
+                let (_row_id, row_rect) = ui.allocate_space(row_size);
+                let mut row_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(row_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                header_flex(&slots).show(&mut row_ui, |idx, ui| {
+                    match slots[idx].0 {
+                        Slot::Gap => {}
+                        // Leading caret (collapsible mode only): proportional
+                        // 12px glyph in title_color. Drawn as a label — the
+                        // click sense lives on the whole header strip below.
+                        Slot::Caret => label_exact(
+                            ui,
+                            RichText::new(caret_glyph)
+                                .size(CARET_GLYPH_PT)
+                                .color(title_color),
+                        ),
+                        // Title — uppercase strong at font_sm. One tier smaller
+                        // than the SidePanelShell header so the section reads as
+                        // nested chrome inside the panel.
+                        Slot::Title => label_exact(
+                            ui,
+                            RichText::new(title_text.clone())
+                                .size(font_sm())
+                                .strong()
+                                .color(title_color)
+                                .family(title_family.clone()),
+                        ),
+                        Slot::Count => {
+                            if let Some(s) = &count_text {
+                                label_exact(
+                                    ui,
+                                    RichText::new(s)
+                                        .monospace()
+                                        .size(font_xs())
+                                        .strong()
+                                        .color(color_alpha(title_color, 200)),
+                                );
+                            }
+                        }
+                        Slot::Meta => {
+                            if let Some(m) = &meta {
+                                label_exact(
+                                    ui,
+                                    RichText::new(m)
+                                        .monospace()
+                                        .size(font_xs())
+                                        .color(color_alpha(palette_ct(t).base(SxTone::Dim), 160)),
+                                );
+                            }
+                        }
+                        Slot::Delete => {
+                            if section_delete_button(
+                                ui,
+                                color_alpha(palette_ct(t).base(SxTone::Dim), 200),
+                            ) {
                                 delete_clicked = true;
                             }
-                        } else if let Some((label, tone)) = &action {
-                            if section_action_button(ui, label, tone.color(t)) {
-                                action_clicked = true;
-                            }
-                            if meta.is_some() {
-                                ui.add_space(gap_sm());
+                        }
+                        Slot::Action => {
+                            if let Some((label, tone)) = &action {
+                                if section_action_button(ui, label, tone.color(t)) {
+                                    action_clicked = true;
+                                }
                             }
                         }
-                        if let Some(m) = &meta {
-                            ui.label(
-                                RichText::new(m)
-                                    .monospace()
-                                    .size(font_xs())
-                                    .color(color_alpha(palette_ct(t).base(SxTone::Dim), 160)),
-                            );
-                        }
-                    });
+                    }
                 });
             });
         ui.spacing_mut().item_spacing = prev_pad;
@@ -520,7 +697,7 @@ fn paint_rule<T: ComponentTheme>(ui: &mut Ui, t: &T) {
 /// button (ghost, frameless, dim glyph that brightens on hover).
 fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
     let glyph = Icon::X;
-    let size = Vec2::new(16.0, 16.0);
+    let size = Vec2::splat(SECTION_BTN_H);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     Tooltip::new("Delete section").show(ui, &resp, &active_theme(ui.ctx()));
     let draw_color = if resp.hovered() {
@@ -535,7 +712,7 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
         rect.center(),
         egui::Align2::CENTER_CENTER,
         glyph,
-        FontId::proportional(font_sm()),
+        crate::ui_kit::style::prop_sm(),
         draw_color,
     );
     resp.clicked()
@@ -544,16 +721,26 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
 /// Local section-action button — small ghost button matching `kit::panel_action_btn`
 /// for visual parity. Reproduced here so this widget has no dependency on the
 /// legacy `kit` module.
+/// Intrinsic size of the trailing action button — the SAME arithmetic
+/// `section_action_button` allocates, factored out so the flex spec can reserve
+/// exactly the rect the button will fill.
+fn section_action_button_size(ui: &Ui, label: &str) -> Vec2 {
+    let galley = ui.fonts(|f| {
+        f.layout_no_wrap(label.to_string(), crate::ui_kit::style::mono_xs(), Color32::PLACEHOLDER)
+    });
+    let pad_x = gap_xs() + 2.0;
+    // Ceil for the same reason as `text_size`: the flex rect that reserves this
+    // button is rounded to whole pixels.
+    Vec2::new((galley.size().x + pad_x * 2.0).ceil(), SECTION_BTN_H)
+}
+
 fn section_action_button(ui: &mut Ui, label: &str, color: Color32) -> bool {
     let text = RichText::new(label)
         .monospace()
         .size(font_xs())
         .strong()
         .color(color);
-    let font = FontId::monospace(font_xs());
-    let galley = ui.fonts(|f| f.layout_no_wrap(label.to_string(), font, color));
-    let pad_x = gap_xs() + 2.0;
-    let size = Vec2::new(galley.size().x + pad_x * 2.0, 16.0);
+    let size = section_action_button_size(ui, label);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     if resp.hovered() {
         ui.painter()
@@ -564,7 +751,7 @@ fn section_action_button(ui: &mut Ui, label: &str, color: Color32) -> bool {
         rect.center(),
         egui::Align2::CENTER_CENTER,
         label,
-        FontId::monospace(font_xs()),
+        crate::ui_kit::style::mono_xs(),
         color,
     );
     let _ = text;
@@ -933,6 +1120,41 @@ mod tests {
         });
     }
 
+    /// Render path (not just `Flex::solve`): a header with every piece present
+    /// must still produce ONE `Response` covering the whole strip — that rect
+    /// is what callers hang `.context_menu(..)` on, and what the hairline rule
+    /// and the bug anchor are painted/registered against.
+    #[test]
+    fn full_header_response_covers_the_whole_strip() {
+        use std::cell::RefCell;
+        let theme = theme();
+        let expanded: RefCell<bool> = RefCell::new(true);
+        let ctx = egui::Context::default();
+        let seen: Cell<Option<egui::Rect>> = Cell::new(None);
+        let panel: Cell<Option<egui::Rect>> = Cell::new(None);
+
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                panel.set(Some(ui.max_rect()));
+                let mut e = expanded.borrow_mut();
+                let resp = PanelSection::new("ACTIVE")
+                    .count(3)
+                    .meta("12 total")
+                    .action("Clear", Tone::Danger)
+                    .collapsible(&mut *e)
+                    .show(ui, &theme, |_ui, _t| {});
+                seen.set(Some(resp.header_response.rect));
+            });
+        });
+
+        let hr = seen.get().expect("header rect");
+        let pr = panel.get().expect("panel rect");
+        // Full-width strip (the `grow` middle spans whatever the RTL child
+        // used to), and tall enough for the 16px trailing button + margins.
+        assert!(hr.width() >= pr.width() - 1.0, "header width {} panel {}", hr.width(), pr.width());
+        assert!(hr.height() >= 16.0, "header height {}", hr.height());
+    }
+
     #[test]
     fn chevron_click_toggles_expansion() {
         use std::cell::RefCell;
@@ -990,6 +1212,204 @@ mod tests {
 
         assert!(chevron_clicked_cell.get(), "chevron_clicked must be true on toggle frame");
         assert!(!*expanded.borrow(), "expanded should have flipped true → false");
+    }
+}
+
+// ─── Header geometry tests ──────────────────────────────────────────────────
+//
+// `header_slots` + `header_flex` are pure: given the intrinsic sizes of the
+// header's pieces they produce a `Flex`, and `Flex::solve` turns that into
+// rects. So the alignment the old `right_to_left` nesting used to do implicitly
+// is now assertable headlessly — no GPU, no window, no screenshot.
+//
+// Token values under test (default snapshot): gap_xs = 4, gap_sm = 8.
+
+#[cfg(test)]
+mod header_layout_tests {
+    use super::*;
+    use egui::vec2;
+
+    fn approx(a: f32, b: f32) -> bool {
+        (a - b).abs() < 0.01
+    }
+
+    /// Solve a header at `w` × its natural row height, returning
+    /// (slots, rects) so tests can look a piece up by name.
+    fn solve(m: &HeaderMetrics, w: f32) -> (Vec<(Slot, Item)>, Vec<Rect>) {
+        let slots = header_slots(m);
+        let rects = header_flex(&slots).solve(Vec2::new(w, header_row_height(m)));
+        (slots, rects)
+    }
+
+    fn rect_of(slots: &[(Slot, Item)], rects: &[Rect], want: Slot) -> Rect {
+        let i = slots
+            .iter()
+            .position(|(s, _)| *s == want)
+            .unwrap_or_else(|| panic!("no {:?} slot in header", want));
+        rects[i]
+    }
+
+    /// The core of the migration: the title keeps its intrinsic width at the
+    /// left, and the trailing action button lands flush against the right edge
+    /// — which is what the `right_to_left` child used to accomplish.
+    #[test]
+    fn title_starts_left_and_action_sits_flush_right() {
+        let m = HeaderMetrics {
+            title: vec2(80.0, 14.0),
+            action: Some(vec2(40.0, 16.0)),
+            ..Default::default()
+        };
+        let (slots, rects) = solve(&m, 300.0);
+        let title = rect_of(&slots, &rects, Slot::Title);
+        let action = rect_of(&slots, &rects, Slot::Action);
+        assert!(approx(title.left(), 0.0), "title left {}", title.left());
+        assert!(approx(title.width(), 80.0), "title width {}", title.width());
+        assert!(approx(action.right(), 300.0), "action right {}", action.right());
+        assert!(approx(action.width(), 40.0));
+        // ...and the button is right OF the title, not overlapping it.
+        assert!(action.left() > title.right());
+    }
+
+    /// The caret takes its measured width and the title starts after it plus
+    /// the gutter and the old `add_space(gap_xs())`.
+    #[test]
+    fn caret_takes_its_width_and_title_follows_after_the_gap() {
+        let m = HeaderMetrics {
+            caret: Some(vec2(12.0, 12.0)),
+            title: vec2(80.0, 14.0),
+            ..Default::default()
+        };
+        let (slots, rects) = solve(&m, 300.0);
+        let caret = rect_of(&slots, &rects, Slot::Caret);
+        let title = rect_of(&slots, &rects, Slot::Title);
+        assert!(approx(caret.left(), 0.0));
+        assert!(approx(caret.width(), 12.0));
+        // gutter + gap_xs spacer + gutter after the 12px caret.
+        let expect = 12.0 + gap_xs() * 3.0;
+        assert!(approx(title.left(), expect), "title left {} want {}", title.left(), expect);
+    }
+
+    /// The count chip keeps intrinsic width and follows the title.
+    #[test]
+    fn count_chip_follows_the_title() {
+        let m = HeaderMetrics {
+            title: vec2(80.0, 14.0),
+            count: Some(vec2(9.0, 12.0)),
+            ..Default::default()
+        };
+        let (slots, rects) = solve(&m, 300.0);
+        let title = rect_of(&slots, &rects, Slot::Title);
+        let count = rect_of(&slots, &rects, Slot::Count);
+        assert!(approx(count.width(), 9.0));
+        assert!(approx(count.left(), title.right() + gap_xs() * 3.0));
+    }
+
+    /// With no action, no delete and no meta, the elastic middle still runs all
+    /// the way to the right edge — the strip spans the full width exactly as
+    /// the old (empty) RTL child made it.
+    #[test]
+    fn without_a_trailing_slot_the_row_still_spans_to_the_right_edge() {
+        let m = HeaderMetrics { title: vec2(80.0, 14.0), ..Default::default() };
+        let (slots, rects) = solve(&m, 300.0);
+        assert_eq!(slots.last().unwrap().0, Slot::Gap, "row ends with the elastic middle");
+        assert!(
+            approx(rects.last().unwrap().right(), 300.0),
+            "spacer right {}",
+            rects.last().unwrap().right()
+        );
+        let title = rect_of(&slots, &rects, Slot::Title);
+        assert!(approx(title.left(), 0.0));
+    }
+
+    /// Meta text sits to the LEFT of the action button (the old RTL child added
+    /// the button first, i.e. right-most), separated by the `gap_sm()` the old
+    /// `add_space` used.
+    #[test]
+    fn meta_sits_left_of_the_action_separated_by_gap_sm() {
+        let m = HeaderMetrics {
+            title: vec2(80.0, 14.0),
+            meta: Some(vec2(50.0, 12.0)),
+            action: Some(vec2(40.0, 16.0)),
+            ..Default::default()
+        };
+        let (slots, rects) = solve(&m, 300.0);
+        let meta = rect_of(&slots, &rects, Slot::Meta);
+        let action = rect_of(&slots, &rects, Slot::Action);
+        assert!(approx(action.right(), 300.0));
+        assert!(meta.right() < action.left(), "meta must precede the action button");
+        // gutter + gap_sm spacer + gutter
+        let expect = gap_xs() + gap_sm() + gap_xs();
+        assert!(
+            approx(action.left() - meta.right(), expect),
+            "meta→action {} want {}",
+            action.left() - meta.right(),
+            expect
+        );
+    }
+
+    /// `delete_when_empty` + `count == 0`: the delete button takes the trailing
+    /// slot instead of the action, still flush right, and (matching the old
+    /// code) with no extra `gap_sm` before the meta text.
+    #[test]
+    fn delete_button_takes_the_trailing_slot_flush_right() {
+        let m = HeaderMetrics {
+            title: vec2(80.0, 14.0),
+            count: Some(vec2(9.0, 12.0)),
+            meta: Some(vec2(50.0, 12.0)),
+            delete: Some(Vec2::splat(SECTION_BTN_H)),
+            ..Default::default()
+        };
+        let (slots, rects) = solve(&m, 300.0);
+        assert!(
+            !slots.iter().any(|(s, _)| *s == Slot::Action),
+            "delete wins over action"
+        );
+        let del = rect_of(&slots, &rects, Slot::Delete);
+        let meta = rect_of(&slots, &rects, Slot::Meta);
+        assert!(approx(del.right(), 300.0), "delete right {}", del.right());
+        assert!(approx(del.width(), SECTION_BTN_H));
+        assert!(approx(del.left() - meta.right(), gap_xs()));
+    }
+
+    /// Cross-axis: every piece is vertically centered in the strip, which is
+    /// what `Layout::left_to_right(Align::Center)` did.
+    #[test]
+    fn pieces_are_vertically_centered_in_the_strip() {
+        let m = HeaderMetrics {
+            caret: Some(vec2(12.0, 12.0)),
+            title: vec2(80.0, 14.0),
+            action: Some(vec2(40.0, 16.0)),
+            ..Default::default()
+        };
+        // Tallest piece is the 16px button, so that's the row height.
+        assert!(approx(header_row_height(&m), 16.0));
+        let (slots, rects) = solve(&m, 300.0);
+        for want in [Slot::Caret, Slot::Title, Slot::Action] {
+            let r = rect_of(&slots, &rects, want);
+            assert!(
+                approx(r.center().y, 8.0),
+                "{:?} center y {} want 8",
+                want,
+                r.center().y
+            );
+        }
+        assert!(approx(rect_of(&slots, &rects, Slot::Title).height(), 14.0));
+    }
+
+    /// Degenerate width (panel dragged shut / first frame) must not panic and
+    /// must still produce one rect per slot.
+    #[test]
+    fn narrow_header_does_not_panic() {
+        let m = HeaderMetrics {
+            caret: Some(vec2(12.0, 12.0)),
+            title: vec2(80.0, 14.0),
+            meta: Some(vec2(50.0, 12.0)),
+            action: Some(vec2(40.0, 16.0)),
+            ..Default::default()
+        };
+        let slots = header_slots(&m);
+        let rects = header_flex(&slots).solve(Vec2::new(0.0, 16.0));
+        assert_eq!(rects.len(), slots.len());
     }
 }
 
