@@ -118,7 +118,27 @@ impl Tone {
 /// actually read against the panel surface. The "calm machine" goal
 /// is fewer separators, not invisible ones — this rule fires only
 /// when `.rule(true)` so callers still control whether it appears.
-const RULE_ALPHA: u8 = 100;
+/// Alpha of the section hairline over `text`.
+///
+/// A pixel-level trace of the rendered panel settled a long-running question:
+/// there is NO stray stroke around section bodies. The only lines in the whole
+/// panel are one hairline per section header plus the floating card's own left
+/// and right border. What reads as "a box around every section" is those four
+/// lines from THREE different elements — a section's own rule forms the top
+/// edge, the NEXT section's rule forms the bottom, and the card border forms
+/// the sides. Each is individually intentional; together they enclose.
+///
+/// So the fix is weight, not deletion: at `header_border()` (text @ 38) the
+/// rule composited to rgb(85,82,78) on a rgb(20,20,20) body — strong enough to
+/// read as an edge. Halved, it separates without enclosing. Deleting it
+/// entirely would lose the section boundary on flush styles that have no other
+/// separation.
+const RULE_ALPHA: u8 = 20;
+
+/// The section hairline colour — `text` at [`RULE_ALPHA`].
+fn rule_color<T: ComponentTheme + ?Sized>(t: &T) -> Color32 {
+    color_alpha(t.text(), RULE_ALPHA)
+}
 
 // ─── Header strip: flex spec ────────────────────────────────────────────────
 //
@@ -639,7 +659,7 @@ impl<'a> PanelSection<'a> {
         if rule_enabled {
             ui.painter().line_segment(
                 [Pos2::new(hr.left(), hr.bottom() - 0.5), Pos2::new(hr.right(), hr.bottom() - 0.5)],
-                Stroke::new(stroke_thin(), t.header_border()),
+                Stroke::new(stroke_thin(), rule_color(t)),
             );
         }
         // Small, even gap into the body (replaces the removed shadow band's
@@ -686,7 +706,7 @@ fn paint_rule<T: ComponentTheme>(ui: &mut Ui, t: &T) {
             Pos2::new(rect.left(), y),
             Pos2::new(rect.right(), y),
         ],
-        Stroke::new(stroke_thin(), t.header_border()),
+        Stroke::new(stroke_thin(), rule_color(t)),
     );
     ui.add_space(1.0);
 }

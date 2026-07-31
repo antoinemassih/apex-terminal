@@ -382,7 +382,7 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
             // rule delimits it just as clearly, without the boxed-in look.
             painter.line_segment(
                 [Pos2::new(rect.left(), rect.bottom() - 0.5), Pos2::new(rect.right(), rect.bottom() - 0.5)],
-                Stroke::new(stroke_thin(), t.header_border()),
+                Stroke::new(stroke_thin(), color_alpha(t.text(), 20)),
             );
         }
 
