@@ -199,7 +199,7 @@ impl<'a> Input<'a> {
         } else {
             paint_input(ui, theme, self)
         };
-        crate::chart_renderer::bug_anchor::mark(std::panic::Location::caller(), "input", r.response.rect);
+        crate::ui_kit::inspect::mark(std::panic::Location::caller(), "input", r.response.rect);
         r
     }
 }

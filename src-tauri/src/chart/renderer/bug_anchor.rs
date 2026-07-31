@@ -21,23 +21,31 @@
 //!      window. On save it writes the markdown block and (optionally) queues a
 //!      region screenshot fulfilled in `gpu.rs` (which has the HWND).
 
-use egui::{Align2, Color32, FontId, Rect, Sense, Stroke, Ui};
-use std::cell::{Cell, RefCell};
+//! ### Layer note (P6 dependency inversion)
+//! The *anchor registry* — `AnchorHit`, the inspect/ui-debug flags, and the
+//! `anchor`/`register`/`tag`/`mark`/`slug`/`button_key` instrumentation API —
+//! now lives in `ui_kit::inspect` and is re-exported below. `ui_kit` widgets
+//! instrument themselves through their own module; this file keeps only the
+//! host-specific half (overlay painting, report draft window, file/GDI I/O).
+//! The re-exports keep every `bug_anchor::…` call site (and the `bug_anchor!`
+//! macro) compiling unchanged.
+
+use egui::{Align2, Color32, FontId, Rect, Sense, Stroke};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+
+// ── Re-exports of the moved registry (ui_kit::inspect is the owner) ─────────
+pub use crate::ui_kit::inspect::{
+    anchor, apply_ui_debug, begin_frame, button_key, inspect, mark, register, set_inspect,
+    set_ui_debug, short, slug, tag, take_pending, toggle_inspect, toggle_ui_debug, ui_debug,
+    AnchorHit,
+};
+use crate::ui_kit::inspect::{set_pending, short_file, with_regions};
 
 // ── Palette (matches the supermodel inspect overlay) ────────────────────────
 const ACCENT: Color32 = Color32::from_rgb(120, 170, 255);
 const PANEL_BG: Color32 = Color32::from_rgb(18, 26, 44);
 const DIM: Color32 = Color32::from_rgb(150, 162, 186);
-
-/// A region the user can anchor a bug report to.
-#[derive(Clone)]
-pub struct AnchorHit {
-    pub key: String,
-    pub rect: Rect,
-    pub file: &'static str,
-    pub line: u32,
-}
 
 /// A region screenshot to capture in `gpu.rs` (which owns the window HWND).
 pub struct CaptureReq {
@@ -69,58 +77,15 @@ struct ReportDraft {
 }
 
 thread_local! {
-    static INSPECT: Cell<bool> = const { Cell::new(false) };
-    static FRAME: RefCell<Vec<AnchorHit>> = const { RefCell::new(Vec::new()) };
-    static PENDING: RefCell<Option<AnchorHit>> = const { RefCell::new(None) };
     static DRAFT: RefCell<Option<ReportDraft>> = const { RefCell::new(None) };
     static CAPTURE: RefCell<Vec<CaptureReq>> = const { RefCell::new(Vec::new()) };
     /// Region screenshot staged at click time: (bug_id, png path).
     static STAGED_REGION: RefCell<Option<(u32, PathBuf)>> = const { RefCell::new(None) };
 }
 
-pub fn set_inspect(on: bool) { INSPECT.with(|c| c.set(on)); }
-pub fn toggle_inspect() { INSPECT.with(|c| c.set(!c.get())); }
-pub fn inspect() -> bool { INSPECT.with(|c| c.get()) }
-
-// ── UI DEBUG mode (Ctrl+Shift+D) — egui's built-in widget inspector ──────────
-//
-// egui ships a DevTools-grade overlay (`Style::debug`) that draws every widget's
-// allocated rect, the widget that would be hit at the cursor, and expansion
-// warnings. It was never switched on in this app, which is why "what is drawing
-// this line?" has historically meant a colored-stroke probe + a 3-minute
-// rebuild instead of a hover. Distinct from `INSPECT` above: that one is the
-// *bug-report* anchor picker (registered regions only); this one is egui's
-// own view of EVERY widget, including ones nothing registered.
-thread_local! {
-    static UI_DEBUG: Cell<bool> = const { Cell::new(false) };
-}
-
-pub fn set_ui_debug(on: bool) { UI_DEBUG.with(|c| c.set(on)); }
-pub fn toggle_ui_debug() { UI_DEBUG.with(|c| c.set(!c.get())); }
-pub fn ui_debug() -> bool { UI_DEBUG.with(|c| c.get()) }
-
-/// Push the UI-debug flags into egui's style. Call once per frame, early
-/// (before widgets are laid out) so the overlay matches this frame's geometry.
-pub fn apply_ui_debug(ctx: &egui::Context) {
-    let on = ui_debug();
-    // Avoid a style write (which clones the Arc<Style>) on the common path.
-    let already = ctx.style().debug.debug_on_hover;
-    if on == already && !on { return; }
-    ctx.style_mut(|s| {
-        s.debug.debug_on_hover = on;
-        s.debug.show_widget_hits = on;
-        s.debug.show_interactive_widgets = on;
-        s.debug.show_expand_width = on;
-        s.debug.show_expand_height = on;
-        s.debug.show_resize = on;
-    });
-}
-
-/// Clear the per-frame region list. Call once before rendering the shell.
-pub fn begin_frame() { FRAME.with(|f| f.borrow_mut().clear()); }
-
-/// Take (and clear) a pending anchor capture from the last frame.
-pub fn take_pending() -> Option<AnchorHit> { PENDING.with(|p| p.borrow_mut().take()) }
+// `set_inspect` / `toggle_inspect` / `inspect`, the UI-debug flags +
+// `apply_ui_debug`, `begin_frame` and `take_pending` all moved to
+// `ui_kit::inspect` (see the layer note at the top) and are re-exported above.
 
 pub fn draft_is_open() -> bool { DRAFT.with(|d| d.borrow().is_some()) }
 
@@ -135,50 +100,9 @@ pub fn close_draft() {
 /// Drain queued region-screenshot requests (fulfilled by `gpu.rs`).
 pub fn take_capture_reqs() -> Vec<CaptureReq> { CAPTURE.with(|c| std::mem::take(&mut *c.borrow_mut())) }
 
-/// Register an instrumented region. No-op unless inspect mode is on. Draws a
-/// faint outline so the user can see what is addressable; the bright highlight
-/// for the hovered region is painted in [`resolve_frame`].
-pub fn anchor(ui: &Ui, key: &str, rect: Rect, file: &'static str, line: u32) {
-    if !inspect() || !rect.is_finite() || rect.area() <= 0.0 {
-        return;
-    }
-    FRAME.with(|f| f.borrow_mut().push(AnchorHit { key: key.to_string(), rect, file, line }));
-    ui.painter().rect_stroke(
-        rect,
-        2.0,
-        Stroke::new(1.0, Color32::from_rgba_unmultiplied(120, 170, 255, 70)),
-        egui::StrokeKind::Inside,
-    );
-}
-
-/// Register a region without painting an outline (for use where no `Ui` is
-/// handy). No-op unless inspect mode is on.
-pub fn register(key: &str, rect: Rect, file: &'static str, line: u32) {
-    if !inspect() || !rect.is_finite() || rect.area() <= 0.0 {
-        return;
-    }
-    FRAME.with(|f| f.borrow_mut().push(AnchorHit { key: key.to_string(), rect, file, line }));
-}
-
-/// Anchor an individual control by wrapping its `Response`. Returns the response
-/// unchanged so it threads through call sites. Source location is the call site.
-#[track_caller]
-pub fn tag(ui: &Ui, key: &str, resp: egui::Response) -> egui::Response {
-    if inspect() {
-        let loc = std::panic::Location::caller();
-        anchor(ui, key, resp.rect, loc.file(), loc.line());
-    }
-    resp
-}
-
-/// Register an anchor for a widget rect, using a call-site `Location` captured by
-/// the *caller's* `#[track_caller]`. Lets a widget's `show()` (marked
-/// `#[track_caller]`) attribute the anchor to the app code that called it:
-/// `bug_anchor::mark(std::panic::Location::caller(), "input", resp.rect)`.
-/// No outline (quiet) — relies on the hover highlight. No-op unless inspect is on.
-pub fn mark(loc: &'static std::panic::Location<'static>, key: &str, rect: Rect) {
-    register(key, rect, loc.file(), loc.line());
-}
+// `anchor` / `register` / `tag` / `mark` moved to `ui_kit::inspect` and are
+// re-exported at the top of this file — the widget-facing instrumentation API
+// is unchanged for every call site.
 
 /// `anchor!(ui, "area/section/control", rect)` — captures source location.
 #[macro_export]
@@ -188,41 +112,7 @@ macro_rules! bug_anchor {
     };
 }
 
-/// Slugify arbitrary label text into an anchor-key fragment.
-pub fn slug(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut prev_dash = false;
-    for ch in s.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-            prev_dash = false;
-        } else if !prev_dash && !out.is_empty() {
-            out.push('-');
-            prev_dash = true;
-        }
-    }
-    while out.ends_with('-') { out.pop(); }
-    if out.is_empty() { out.push_str("unnamed"); }
-    out
-}
-
-/// Build a `button/<slug>` key from a button's label (falling back to its icon
-/// glyph for icon-only buttons).
-pub fn button_key(label: &str, icon: Option<&str>) -> String {
-    let basis = if label.trim().is_empty() { icon.unwrap_or("") } else { label };
-    format!("button/{}", slug(basis))
-}
-
-/// Public accessor for trimming a source path to its `src/...` tail.
-pub fn short(f: &str) -> &str { short_file(f) }
-
-fn short_file(f: &str) -> &str {
-    if let Some(idx) = f.rfind("src/").or_else(|| f.rfind("src\\")) {
-        &f[idx..]
-    } else {
-        f
-    }
-}
+// `slug` / `button_key` / `short` moved to `ui_kit::inspect` (re-exported above).
 
 // ── Inspect overlay ─────────────────────────────────────────────────────────
 
@@ -260,14 +150,14 @@ pub fn resolve_frame(ctx: &egui::Context, note_open: bool) {
     // Resolve the region under the pointer (default = smallest; Alt = parent).
     let hit = ctx.pointer_hover_pos().and_then(|p| {
         let want_parent = ctx.input(|i| i.modifiers.alt);
-        let by_area = FRAME.with(|f| {
+        let by_area = with_regions(|regions| {
             let mut containing: Vec<AnchorHit> =
-                f.borrow().iter().filter(|a| a.rect.contains(p)).cloned().collect();
+                regions.iter().filter(|a| a.rect.contains(p)).cloned().collect();
             containing.sort_by(|a, b| a.rect.area().partial_cmp(&b.rect.area()).unwrap_or(std::cmp::Ordering::Equal));
             if want_parent { containing.into_iter().nth(1) } else { containing.into_iter().next() }
         });
-        by_area.or_else(|| FRAME.with(|f| {
-            f.borrow().iter().filter(|a| a.rect.contains(p))
+        by_area.or_else(|| with_regions(|regions| {
+            regions.iter().filter(|a| a.rect.contains(p))
                 .min_by(|a, b| a.rect.area().partial_cmp(&b.rect.area()).unwrap_or(std::cmp::Ordering::Equal))
                 .cloned()
         }))
@@ -291,7 +181,7 @@ pub fn resolve_frame(ctx: &egui::Context, note_open: bool) {
     if ctx.input(|i| i.pointer.primary_clicked()) {
         if let Some(hit) = hit {
             stage_region_capture(&hit);
-            PENDING.with(|pp| *pp.borrow_mut() = Some(hit));
+            set_pending(hit);
         }
         return;
     }
@@ -868,12 +758,14 @@ mod tests {
     fn pending_round_trips() {
         set_inspect(true);
         assert!(inspect());
-        PENDING.with(|p| *p.borrow_mut() = Some(AnchorHit {
+        // The PENDING thread-local moved to `ui_kit::inspect`; `set_pending` is
+        // its accessor (already used by `anchor()` above).
+        set_pending(AnchorHit {
             key: "a/b".into(),
             rect: Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(10.0, 10.0)),
             file: "src/x.rs",
             line: 1,
-        }));
+        });
         assert!(take_pending().is_some());
         assert!(take_pending().is_none());
         set_inspect(false);

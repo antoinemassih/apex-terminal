@@ -69,7 +69,7 @@ impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         let r = paint_checkbox(ui, theme, self);
-        crate::chart_renderer::bug_anchor::mark(std::panic::Location::caller(), "checkbox", r.rect);
+        crate::ui_kit::inspect::mark(std::panic::Location::caller(), "checkbox", r.rect);
         r
     }
 }

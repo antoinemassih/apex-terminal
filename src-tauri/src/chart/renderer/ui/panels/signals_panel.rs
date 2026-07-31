@@ -15,8 +15,11 @@ use crate::apex_data::types::{Calibrated, CombinedSignalV2};
 use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width, RailSlot};
-use crate::ui_kit::widgets::{Button, PanelListRow};
+use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow};
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::layout::{Align as FlexAlign, Item, Surface};
+use crate::ui_kit::scale::Space;
+use crate::ui_kit::style::measure_mono;
 
 /// Rail registration — Signals is now a standard `SidePanelShell::tabs` panel
 /// (same header / colors / split system as the rest), hosted by the rail.
@@ -166,26 +169,75 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
 
     let signals = live_state::all_combined_sorted();
     if signals.is_empty() {
-        ui.label(egui::RichText::new("No signals yet").monospace().size(font_xs()).color(color_muted(t.dim)));
+        PanelEmpty::new("No signals yet").min_height(48.0).show(ui, t);
     } else {
-        // Column header — keep alignment monospace-friendly so eyes can scan.
-        ui.horizontal(|ui| {
-            ui.add_space(gap_sm());
-            ui.label(egui::RichText::new("score").monospace().size(font_3xs()).color(t.dim));
-            ui.label(egui::RichText::new("engine").monospace().size(font_3xs()).color(t.dim));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(Icon::MAGNIFYING_GLASS).monospace().size(font_3xs()).color(t.dim));
-                ui.add_space(gap_xs());
-                ui.label(egui::RichText::new("trust").monospace().size(font_3xs()).color(t.dim));
-                ui.add_space(gap_xs());
-                ui.label(egui::RichText::new("calibrated").monospace().size(font_3xs()).color(t.dim));
-            });
-        });
+        draw_signals_column_header(ui, t);
         ui.add_space(gap_2xs());
         for sig in signals.iter().take(20) {
             draw_signal_row_calibrated(ui, sig, t);
         }
     }
+}
+
+/// Column header for the calibrated-signals table.
+///
+/// Was `ui.horizontal` + `add_space` + a nested `with_layout(right_to_left)`
+/// child whose only job was to push the last three columns against the right
+/// edge. That is one `grow` item in flexbox: leading columns keep their
+/// intrinsic width, the middle absorbs the slack, the trailing three sit flush
+/// right. Widths are MEASURED — `Item::auto()` has no intrinsic size under
+/// `Flex::solve`, so a header migrated to `auto()` would vanish.
+fn draw_signals_column_header(ui: &mut egui::Ui, t: &Theme) {
+    // Display order, left → right. The old RTL child appended the magnifier
+    // FIRST, which is why it ends up right-most here.
+    const LEADING: [&str; 2] = ["score", "engine"];
+    let trailing = ["calibrated", "trust", Icon::MAGNIFYING_GLASS];
+
+    let lead_sz: Vec<egui::Vec2> =
+        LEADING.iter().map(|c| measure_mono(ui, c, font_3xs())).collect();
+    let trail_sz: Vec<egui::Vec2> =
+        trailing.iter().map(|c| measure_mono(ui, c, font_3xs())).collect();
+    let h = lead_sz.iter().chain(trail_sz.iter()).fold(1.0_f32, |a, s| a.max(s.y));
+
+    // Reserve the strip first: `Surface` solves inside the box it is handed,
+    // and here that would otherwise be the whole remaining panel height.
+    let (_id, rect) = ui.allocate_space(egui::vec2(ui.available_width(), h));
+    let mut row = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+
+    let mut strip = Surface::row().gap(Space::Xs).align(FlexAlign::Center);
+    for (i, sz) in lead_sz.iter().enumerate() {
+        let mut it = Item::fixed(sz.x).cross(sz.y);
+        // The old leading `add_space(gap_sm())` — one seam, not the gutter.
+        if i == 0 { it = it.margin_start(Space::Sm.px()); }
+        strip = strip.item(it);
+    }
+    strip = strip.item(Item::grow(1.0).cross(h));
+    for sz in &trail_sz {
+        strip = strip.item(Item::fixed(sz.x).cross(sz.y));
+    }
+
+    let lead_n = LEADING.len();
+    strip.show(&mut row, t, |idx, ui| {
+        let text = if idx < lead_n {
+            Some(LEADING[idx])
+        } else if idx > lead_n {
+            trailing.get(idx - lead_n - 1).copied()
+        } else {
+            None // the elastic middle
+        };
+        if let Some(text) = text {
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(text).monospace().size(font_3xs()).color(t.dim),
+                )
+                .wrap_mode(egui::TextWrapMode::Extend),
+            );
+        }
+    });
 }
 
 /// Render one row of the calibrated signals table. Public for tests so we

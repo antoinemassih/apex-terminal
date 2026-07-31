@@ -8,7 +8,8 @@
 
 use super::super::super::gpu::{Chart, Theme, Watchlist};
 use crate::chart_renderer::ui::panels::side_panel_shell::{RailSlot, SidePanelShell, Width};
-use crate::ui_kit::widgets::{Button, Checkbox}; // WS-G G3: design-system primitives
+use crate::ui_kit::widgets::{Button, Checkbox, PanelSection}; // WS-G G3: design-system primitives
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 use egui;
 
 /// Record a panel control into the dev-inspector widget-tree so the harness can
@@ -67,74 +68,80 @@ pub(crate) fn draw(
             ui.add_space(6.0);
             let r = Checkbox::new(&mut cfg.enabled).label("Auto-charting ON").show(ui, t);
             rec_ctrl("auto_chart.enabled", "checkbox", "Auto-charting ON", &r, ui, cfg.enabled.to_string());
-            ui.separator();
+            // Section headers are `PanelSection`, not bare `ui.label` +
+            // `ui.separator()`. The widget already draws the uppercase strong
+            // eyebrow AND one hairline rule beneath it, so the hand-placed
+            // separators that used to fence each group off are redundant —
+            // keeping both would bracket every group top-and-bottom, which is
+            // the "box-in-box" chrome the design system deliberately removed.
             if cfg.enabled {
-                ui.label("Window of operation");
-                let r = ui.add(egui::Slider::new(&mut cfg.window, 100..=2000).text("bars back"));
-                rec_ctrl("auto_chart.window", "slider", "bars back", &r, ui, cfg.window.to_string());
-                let r = Checkbox::new(&mut cfg.anchored_only).label("Anchored only (no floating starts)").show(ui, t);
-                rec_ctrl("auto_chart.anchored_only", "checkbox", "Anchored only", &r, ui, cfg.anchored_only.to_string());
-                ui.separator();
-                ui.label("Layers");
-                let r = Checkbox::new(&mut cfg.trendlines).label("Trendlines").show(ui, t);
-                rec_ctrl("auto_chart.trendlines", "checkbox", "Trendlines", &r, ui, cfg.trendlines.to_string());
-                let r = Checkbox::new(&mut cfg.channels).label("Channels").show(ui, t);
-                rec_ctrl("auto_chart.channels", "checkbox", "Channels", &r, ui, cfg.channels.to_string());
-                let r = Checkbox::new(&mut cfg.levels).label("Levels").show(ui, t);
-                rec_ctrl("auto_chart.levels", "checkbox", "Levels", &r, ui, cfg.levels.to_string());
-                let r = Checkbox::new(&mut cfg.patterns).label("Chart patterns").show(ui, t);
-                rec_ctrl("auto_chart.patterns", "checkbox", "Chart patterns", &r, ui, cfg.patterns.to_string());
-                let r = Checkbox::new(&mut cfg.candles).label("Candlesticks").show(ui, t);
-                rec_ctrl("auto_chart.candles", "checkbox", "Candlesticks", &r, ui, cfg.candles.to_string());
-                ui.separator();
-                ui.label("Pivot method");
-                ui.horizontal(|ui| {
-                    for m in ["hybrid", "atr", "percent"] {
-                        let r = Button::toggle(m, cfg.pivot_mode == m).show(ui, t);
-                        rec_ctrl(&format!("auto_chart.pivot.{m}"), "toggle", m, &r, ui, (cfg.pivot_mode == m).to_string());
-                        if r.clicked() { cfg.pivot_mode = m.to_string(); }
-                    }
+                PanelSection::new("Window of operation").show(ui, t, |ui, _t| {
+                    let r = ui.add(egui::Slider::new(&mut cfg.window, 100..=2000).text("bars back"));
+                    rec_ctrl("auto_chart.window", "slider", "bars back", &r, ui, cfg.window.to_string());
+                    let r = Checkbox::new(&mut cfg.anchored_only).label("Anchored only (no floating starts)").show(ui, t);
+                    rec_ctrl("auto_chart.anchored_only", "checkbox", "Anchored only", &r, ui, cfg.anchored_only.to_string());
                 });
-                ui.separator();
-                ui.label("Tuning");
-                ui.add(egui::Slider::new(&mut cfg.atr_k, 0.5..=6.0).text("ATR x"));
-                ui.add(egui::Slider::new(&mut cfg.pct, 0.0..=0.05).text("% move"));
-                ui.add(egui::Slider::new(&mut cfg.min_touches, 2..=6).text("min touches"));
-                ui.add(egui::Slider::new(&mut cfg.max_lines, 4..=30).text("max lines"));
-                ui.add(egui::Slider::new(&mut cfg.sensitivity, 0.001..=0.02).text("sensitivity"));
-                ui.add(egui::Slider::new(&mut cfg.lookback, 50..=400).text("lookback"));
-                ui.add(egui::Slider::new(&mut cfg.swing_window, 2..=12).text("swing window"));
-
-                ui.separator();
-                ui.label("Extend lines");
-                ui.horizontal(|ui| {
-                    for e in ["none", "right", "both", "left"] {
-                        let r = Button::toggle(e, cfg.extend == e).show(ui, t);
-                        rec_ctrl(&format!("auto_chart.extend.{e}"), "toggle", e, &r, ui, (cfg.extend == e).to_string());
-                        if r.clicked() { cfg.extend = e.to_string(); }
-                    }
+                PanelSection::new("Layers").show(ui, t, |ui, _t| {
+                    let r = Checkbox::new(&mut cfg.trendlines).label("Trendlines").show(ui, t);
+                    rec_ctrl("auto_chart.trendlines", "checkbox", "Trendlines", &r, ui, cfg.trendlines.to_string());
+                    let r = Checkbox::new(&mut cfg.channels).label("Channels").show(ui, t);
+                    rec_ctrl("auto_chart.channels", "checkbox", "Channels", &r, ui, cfg.channels.to_string());
+                    let r = Checkbox::new(&mut cfg.levels).label("Levels").show(ui, t);
+                    rec_ctrl("auto_chart.levels", "checkbox", "Levels", &r, ui, cfg.levels.to_string());
+                    let r = Checkbox::new(&mut cfg.patterns).label("Chart patterns").show(ui, t);
+                    rec_ctrl("auto_chart.patterns", "checkbox", "Chart patterns", &r, ui, cfg.patterns.to_string());
+                    let r = Checkbox::new(&mut cfg.candles).label("Candlesticks").show(ui, t);
+                    rec_ctrl("auto_chart.candles", "checkbox", "Candlesticks", &r, ui, cfg.candles.to_string());
                 });
-
-                ui.separator();
-                ui.label("Methods (compare — see what works)");
-                for (id, label) in [
-                    ("wick", "Wick swing-pairs"), ("body", "Body"), ("inner", "Inner"),
-                    ("volume", "Volume-weighted"), ("anchored", "Anchored"),
-                    ("regression", "Regression"), ("fibfan", "Fib fan"), ("speed", "Speed lines"),
-                    ("hough", "Hough transform"), ("ransac", "RANSAC"), ("kalman", "Kalman"),
-                    ("kde", "KDE levels"), ("cusum", "CUSUM"), ("wavelet", "Wavelet"),
-                    ("pca", "PCA"), ("tls", "Total least squares"), ("svd", "SVD"),
-                    ("bayesian", "Bayesian"),
-                ] {
-                    let mut on = cfg.methods.iter().any(|m| m == id);
-                    if Checkbox::new(&mut on).label(label).show(ui, t).changed() {
-                        if on {
-                            cfg.methods.push(id.to_string());
-                        } else {
-                            cfg.methods.retain(|m| m != id);
+                PanelSection::new("Pivot method").show(ui, t, |ui, _t| {
+                    ui.horizontal(|ui| {
+                        for m in ["hybrid", "atr", "percent"] {
+                            let r = Button::toggle(m, cfg.pivot_mode == m).show(ui, t);
+                            rec_ctrl(&format!("auto_chart.pivot.{m}"), "toggle", m, &r, ui, (cfg.pivot_mode == m).to_string());
+                            if r.clicked() { cfg.pivot_mode = m.to_string(); }
                         }
-                    }
-                }
+                    });
+                });
+                PanelSection::new("Tuning").show(ui, t, |ui, _t| {
+                    ui.add(egui::Slider::new(&mut cfg.atr_k, 0.5..=6.0).text("ATR x"));
+                    ui.add(egui::Slider::new(&mut cfg.pct, 0.0..=0.05).text("% move"));
+                    ui.add(egui::Slider::new(&mut cfg.min_touches, 2..=6).text("min touches"));
+                    ui.add(egui::Slider::new(&mut cfg.max_lines, 4..=30).text("max lines"));
+                    ui.add(egui::Slider::new(&mut cfg.sensitivity, 0.001..=0.02).text("sensitivity"));
+                    ui.add(egui::Slider::new(&mut cfg.lookback, 50..=400).text("lookback"));
+                    ui.add(egui::Slider::new(&mut cfg.swing_window, 2..=12).text("swing window"));
+                });
+                PanelSection::new("Extend lines").show(ui, t, |ui, _t| {
+                    ui.horizontal(|ui| {
+                        for e in ["none", "right", "both", "left"] {
+                            let r = Button::toggle(e, cfg.extend == e).show(ui, t);
+                            rec_ctrl(&format!("auto_chart.extend.{e}"), "toggle", e, &r, ui, (cfg.extend == e).to_string());
+                            if r.clicked() { cfg.extend = e.to_string(); }
+                        }
+                    });
+                });
+                PanelSection::new("Methods")
+                    .meta("compare — see what works")
+                    .show(ui, t, |ui, _t| {
+                        for (id, label) in [
+                            ("wick", "Wick swing-pairs"), ("body", "Body"), ("inner", "Inner"),
+                            ("volume", "Volume-weighted"), ("anchored", "Anchored"),
+                            ("regression", "Regression"), ("fibfan", "Fib fan"), ("speed", "Speed lines"),
+                            ("hough", "Hough transform"), ("ransac", "RANSAC"), ("kalman", "Kalman"),
+                            ("kde", "KDE levels"), ("cusum", "CUSUM"), ("wavelet", "Wavelet"),
+                            ("pca", "PCA"), ("tls", "Total least squares"), ("svd", "SVD"),
+                            ("bayesian", "Bayesian"),
+                        ] {
+                            let mut on = cfg.methods.iter().any(|m| m == id);
+                            if Checkbox::new(&mut on).label(label).show(ui, t).changed() {
+                                if on {
+                                    cfg.methods.push(id.to_string());
+                                } else {
+                                    cfg.methods.retain(|m| m != id);
+                                }
+                            }
+                        }
+                    });
             }
 
             // ── Drawing feedback list ─────────────────────────────────────
@@ -149,50 +156,65 @@ pub(crate) fn draw(
                     .collect();
 
                 if !drawings.is_empty() {
-                    ui.separator();
-                    ui.label(format!("Active drawings ({})", drawings.len()));
                     let red = t.bear;
-                    egui::ScrollArea::vertical()
-                        .id_source("drawings_scroll")
-                        .max_height(180.0)
-                        .show(ui, |ui| {
-                            let green = t.bull;
-                            for (id, method, dtype) in &drawings {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(format!("{} / {}", method, dtype))
-                                            .small(),
-                                    );
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.small_button(
-                                            egui::RichText::new(crate::ui_kit::icons::Icon::X).color(red)
-                                        ).on_hover_text("Reject — hide and log for learning").clicked() {
-                                            cfg.rejected_drawings.insert(id.clone());
-                                            crate::chart_renderer::gpu::post_drawing_feedback(
-                                                id.clone(),
-                                                "reject".to_string(),
-                                                sym.clone(),
-                                                tf.clone(),
+                    PanelSection::new("Active drawings")
+                        .count(drawings.len())
+                        .show(ui, t, |ui, _t| {
+                            egui::ScrollArea::vertical()
+                                .id_source("drawings_scroll")
+                                .max_height(180.0)
+                                .show(ui, |ui| {
+                                    let green = t.bull;
+                                    // Left as a natural-flow row loop: this is a
+                                    // repeating list body, not panel chrome, and
+                                    // `ui_kit::layout::flex` is explicit that a
+                                    // per-row Taffy solve is the wrong trade there.
+                                    for (id, method, dtype) in &drawings {
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(format!("{} / {}", method, dtype))
+                                                    .small(),
                                             );
-                                        }
-                                        if ui.small_button(
-                                            egui::RichText::new(crate::ui_kit::icons::Icon::CHECK).color(green)
-                                        ).on_hover_text("Accept — confirm this line is good").clicked() {
-                                            crate::chart_renderer::gpu::post_drawing_feedback(
-                                                id.clone(),
-                                                "accept".to_string(),
-                                                sym.clone(),
-                                                tf.clone(),
-                                            );
-                                        }
-                                    });
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                // Kit buttons, not `ui.small_button`:
+                                                // icon-only ghost buttons that inherit
+                                                // the per-style treatment and hover fill.
+                                                let reject = Button::icon(crate::ui_kit::icons::Icon::X)
+                                                    .size(KitSize::Xs)
+                                                    .fg(red)
+                                                    .show(ui, t)
+                                                    .on_hover_text("Reject — hide and log for learning");
+                                                if reject.clicked() {
+                                                    cfg.rejected_drawings.insert(id.clone());
+                                                    crate::chart_renderer::gpu::post_drawing_feedback(
+                                                        id.clone(),
+                                                        "reject".to_string(),
+                                                        sym.clone(),
+                                                        tf.clone(),
+                                                    );
+                                                }
+                                                let accept = Button::icon(crate::ui_kit::icons::Icon::CHECK)
+                                                    .size(KitSize::Xs)
+                                                    .fg(green)
+                                                    .show(ui, t)
+                                                    .on_hover_text("Accept — confirm this line is good");
+                                                if accept.clicked() {
+                                                    crate::chart_renderer::gpu::post_drawing_feedback(
+                                                        id.clone(),
+                                                        "accept".to_string(),
+                                                        sym.clone(),
+                                                        tf.clone(),
+                                                    );
+                                                }
+                                            });
+                                        });
+                                    }
                                 });
+
+                            if Button::small_action("Clear all rejections").show(ui, t).clicked() {
+                                cfg.rejected_drawings.clear();
                             }
                         });
-
-                    if ui.small_button("Clear all rejections").clicked() {
-                        cfg.rejected_drawings.clear();
-                    }
                 }
             }
 

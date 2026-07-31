@@ -170,7 +170,7 @@ impl<'a> SelectableRow<'a> {
             text_color,
         );
 
-        crate::chart_renderer::bug_anchor::mark(bug_loc, "row", response.rect);
+        crate::ui_kit::inspect::mark(bug_loc, "row", response.rect);
         response
     }
 }

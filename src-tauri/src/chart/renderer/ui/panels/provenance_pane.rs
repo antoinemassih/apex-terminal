@@ -353,13 +353,15 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     let active = watchlist.provenance.active_lineage.clone();
 
     let Some(active_id) = active else {
-        ui.add_space(gap_lg());
-        ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new("No signal selected")
-                .monospace().size(FONT_SM).color(t.dim));
-            ui.label(egui::RichText::new(format!("Click {} next to any signal to trace its evidence.", crate::ui_kit::icons::Icon::MAGNIFYING_GLASS))
-                .monospace().size(FONT_XS).color(color_subtle(t.dim)));
-        });
+        // Canonical empty state — was a hand-rolled `vertical_centered` title +
+        // hint pair, which is precisely what `PanelEmpty` is.
+        let hint = format!(
+            "Click {} next to any signal to trace its evidence.",
+            crate::ui_kit::icons::Icon::MAGNIFYING_GLASS
+        );
+        crate::ui_kit::widgets::PanelEmpty::new("No signal selected")
+            .hint(&hint)
+            .show(ui, t);
         return;
     };
 
@@ -475,26 +477,28 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             let focused_id = runtime().state.lock().ok().and_then(|s| s.focused.clone());
             if let Some(fid) = focused_id {
                 if let Some(node) = find_node(&root, &fid) {
-                    ui.painter().line_segment(
-                        [egui::pos2(ui.min_rect().left(), ui.cursor().min.y),
-                         egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
-                        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_faint())));
-                    ui.add_space(gap_xs());
-                    ui.label(egui::RichText::new("FOCUSED NODE").monospace()
-                        .size(FONT_XS).color(t.dim));
-                    ui.label(egui::RichText::new(format!("{} · {}", node.kind, node.source_engine))
-                        .monospace().size(FONT_XS).color(t.text));
-                    if let Some(p) = &node.payload {
-                        let pretty = serde_json::to_string_pretty(p)
-                            .unwrap_or_else(|_| "(payload not displayable)".into());
-                        egui::ScrollArea::vertical()
-                            .id_salt("provenance_detail")
-                            .max_height(120.0)
-                            .show(ui, |ui| {
-                                ui.label(egui::RichText::new(pretty)
-                                    .monospace().size(FONT_XS).color(t.dim));
-                            });
-                    }
+                    // `PanelSection` is the app's section header: uppercase
+                    // strong title + one hairline rule + an inset body. The
+                    // hand-painted `line_segment` above the old label is gone —
+                    // the section's own rule is the boundary now, and stacking
+                    // both would bracket the body top-and-bottom (the
+                    // "box-in-box" treatment `PanelSection` exists to avoid).
+                    crate::ui_kit::widgets::PanelSection::new("FOCUSED NODE")
+                        .show(ui, t, |ui, _t| {
+                            ui.label(egui::RichText::new(format!("{} · {}", node.kind, node.source_engine))
+                                .monospace().size(FONT_XS).color(t.text));
+                            if let Some(p) = &node.payload {
+                                let pretty = serde_json::to_string_pretty(p)
+                                    .unwrap_or_else(|_| "(payload not displayable)".into());
+                                egui::ScrollArea::vertical()
+                                    .id_salt("provenance_detail")
+                                    .max_height(120.0)
+                                    .show(ui, |ui| {
+                                        ui.label(egui::RichText::new(pretty)
+                                            .monospace().size(FONT_XS).color(t.dim));
+                                    });
+                            }
+                        });
                 }
             }
         }

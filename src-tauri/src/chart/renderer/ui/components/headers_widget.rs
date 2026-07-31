@@ -164,39 +164,43 @@ impl<'a> PanelHeaderWithClose<'a> {
 // ─── DialogHeaderWithClose ───────────────────────────────────────────────────
 
 /// Builder for a dialog header bar with close button. Returns `true` if close clicked.
-/// Mirrors `style::dialog_header(ui, title, dim)`.
+///
+/// ### Legacy shim (P6 dependency inversion)
+/// The implementation now lives in `ui_kit::widgets::DialogHeader`. This type
+/// is a thin delegating wrapper kept so existing chart-app call sites compile
+/// unchanged; it adds only the chart-specific conveniences the ui_kit type
+/// deliberately does not carry — a `theme(&gpu::Theme)` setter and resolving
+/// the chart-app's ambient `gpu::Theme` in `show`.
+///
+/// Prefer `ui_kit::widgets::DialogHeader` in new code.
 ///
 /// ```ignore
 /// if DialogHeaderWithClose::new("Settings").theme(t).show(ui) { open = false; }
 /// ```
 #[must_use]
 pub struct DialogHeaderWithClose<'a> {
-    title: &'a str,
-    /// `None` = resolve from the ambient theme at render time.
-    dim:   Option<Color32>,
+    inner: crate::ui_kit::widgets::DialogHeader<'a>,
 }
 
 impl<'a> DialogHeaderWithClose<'a> {
     pub fn new(title: &'a str) -> Self {
-        Self {
-            title,
-            dim: None,
-        }
+        Self { inner: crate::ui_kit::widgets::DialogHeader::new(title) }
     }
-    pub fn dim(mut self, c: Color32) -> Self { self.dim = Some(c); self }
+    pub fn dim(self, c: Color32) -> Self { Self { inner: self.inner.dim(c) } }
     pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
-        self.dim(t.dim)
+        // `Theme: ComponentTheme` (see `chart_renderer::theme_impl`), so the
+        // ui_kit builder takes it directly through the portability bridge.
+        Self { inner: self.inner.theme(t) }
     }
 
     /// Render the header. Returns `true` if the close button was clicked.
+    ///
+    /// Resolves the chart-app's ambient `gpu::Theme` (not the portable
+    /// `PortableTheme`) so chart call sites keep the exact palette they had
+    /// before the inversion.
     pub fn show(self, ui: &mut Ui) -> bool {
         let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
-        // Resolved at render time; `Header::dialog` colors itself from `theme`.
-        let _dim = self.dim.unwrap_or(theme.dim);
-        crate::ui_kit::widgets::Header::dialog(self.title)
-            .closable(true)
-            .show(ui, &theme)
-            .close_clicked
+        self.inner.show_with(ui, &theme)
     }
 }
 

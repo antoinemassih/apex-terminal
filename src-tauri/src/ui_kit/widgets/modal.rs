@@ -28,8 +28,9 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::motion;
 
+use crate::ui_kit::widgets::DialogHeader;
 use crate::ui_kit::widgets::frames::{
-    DialogHeaderWithClose, PaneHeaderWithClose, PanelHeaderWithClose, PopupFrame,
+    PaneHeaderWithClose, PanelHeaderWithClose, PopupFrame,
 };
 use crate::ui_kit::widgets::frames::SectionLabelSize;
 use crate::ui_kit::tokens::{self, alpha_line, color_alpha, gap_sm, r_lg_cr};
@@ -331,7 +332,12 @@ impl<'a> Modal<'a> {
                     }
                     HeaderStyle::Dialog => {
                         let d = header_color.unwrap_or(dim);
-                        DialogHeaderWithClose::new(title).dim(d).show(ui)
+                        // P6 inversion: was the legacy
+                        // `chart_renderer::…::DialogHeaderWithClose`, which
+                        // re-resolved the chart-app's ambient Theme internally.
+                        // The ui_kit builder takes the modal's own
+                        // `&dyn ComponentTheme` — same palette, no chart import.
+                        DialogHeader::new(title).dim(d).show_with(ui, t)
                     }
                     HeaderStyle::Panel {
                         title_size,
@@ -563,8 +569,8 @@ impl<'a> Modal<'a> {
         }
 
         // Bug-report anchor for the whole dialog (no-op unless Inspect is on).
-        crate::chart_renderer::bug_anchor::register(
-            &format!("dialog/{}", crate::chart_renderer::bug_anchor::slug(title)),
+        crate::ui_kit::inspect::register(
+            &format!("dialog/{}", crate::ui_kit::inspect::slug(title)),
             modal_rect,
             file!(),
             line!(),

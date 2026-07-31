@@ -201,7 +201,7 @@ impl<'a> Tabs<'a> {
     #[track_caller]
     pub fn show_ctx(self, ui: &mut Ui, ctx: &super::ctx::StyleCtx<'_>) -> TabsResponse {
         let r = paint_tabs(self, ui, ctx.theme());
-        crate::chart_renderer::bug_anchor::mark(std::panic::Location::caller(), "tabs", r.response.rect);
+        crate::ui_kit::inspect::mark(std::panic::Location::caller(), "tabs", r.response.rect);
         r
     }
 }

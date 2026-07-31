@@ -572,12 +572,12 @@ fn show_styled_impl<'a, S: ButtonStyle>(
     style: &S,
     placed: Option<(Rect, &egui::Painter)>,
 ) -> Response {
-    let bug_key = crate::chart_renderer::bug_anchor::button_key(
+    let bug_key = crate::ui_kit::inspect::button_key(
         btn.label,
         btn.leading_icon.or(btn.trailing_icon),
     );
     let resp = show_styled_impl_inner(ui, theme, btn, style, placed);
-    crate::chart_renderer::bug_anchor::register(&bug_key, resp.rect, file!(), line!());
+    crate::ui_kit::inspect::register(&bug_key, resp.rect, file!(), line!());
     resp
 }
 

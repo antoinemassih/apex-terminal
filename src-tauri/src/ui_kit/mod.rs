@@ -16,6 +16,15 @@ pub mod scale;
 pub mod cursor;
 #[allow(dead_code)]
 pub mod sx;
+/// Bug-Inspect anchor registry. Portable (egui + std only) — owned here so
+/// widgets no longer reach into `chart_renderer::bug_anchor` to instrument
+/// themselves. The chart-app's `bug_anchor` re-exports these items.
+#[allow(dead_code)]
+pub mod inspect;
+/// Tests only — asserts the `chart_renderer -> ui_kit` dependency direction
+/// never flips back. See `KNOWN_VIOLATIONS` there for what is still pending.
+#[cfg(test)]
+mod layer_guard;
 
 // S7: Themable assets — fonts, icons, imagery
 #[allow(dead_code)]

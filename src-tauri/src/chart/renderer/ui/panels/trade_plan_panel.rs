@@ -34,8 +34,12 @@ use crate::data::apex_data::types::{CalibrationTier, TradePlanV2};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::widgets::PanelEmpty;
 use crate::ui_kit::widgets::PanelKeyValueRow;
 use crate::ui_kit::widgets::PanelTone;
+use crate::ui_kit::layout::{Align as FlexAlign, Item, Surface};
+use crate::ui_kit::scale::Space;
+use crate::ui_kit::style::measure_mono;
 use crate::ui_kit::widgets::{MetricRow, MetricTone};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 
@@ -111,14 +115,11 @@ pub(crate) fn close(_w: &mut Watchlist)  { if let Ok(mut g) = open_flag().lock()
 pub(crate) fn toggle(_w: &mut Watchlist) { if let Ok(mut g) = open_flag().lock() { *g = !*g; } }
 
 fn draw_empty(ui: &mut egui::Ui, sym: &str, t: &Theme) {
-    ui.add_space(gap_md());
-    ui.vertical_centered(|ui| {
-        ui.label(egui::RichText::new("NO TRADE PLAN").monospace()
-            .size(FONT_SM).color(color_dim(t.dim)));
-        ui.add_space(gap_xs());
-        ui.label(egui::RichText::new(format!("for {sym}")).monospace()
-            .size(FONT_XS).color(color_half(t.dim)));
-    });
+    // The canonical empty state — was a hand-rolled `vertical_centered` pair.
+    // `PanelEmpty` supplies the same centred title + hint stack (and its own
+    // leading `gap_md`), so the panel stops carrying its own version of it.
+    let hint = format!("for {sym}");
+    PanelEmpty::new("NO TRADE PLAN").hint(&hint).show(ui, t);
 }
 
 fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
@@ -147,25 +148,52 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     let is_long = plan.direction.eq_ignore_ascii_case("long");
     let dir_col = if is_long { t.bull } else { t.bear };
     let dir_label = if is_long { "LONG" } else { "SHORT" };
-    ui.horizontal(|ui| {
-        crate::ui_kit::widgets::OutlinedBox::new()
-            .fill(color_alpha(dir_col, alpha_ghost()))
-            .border(color_alpha(dir_col, alpha_muted()))
-            .hairline()
-            .radius_sm()
-            .padding_margin(egui::Margin { left: 8, right: 8, top: 3, bottom: 3 })
-            .show(ui, t, |ui| {
-                ui.label(egui::RichText::new(dir_label).monospace().strong()
-                    .size(FONT_SM).color(dir_col));
+    // ONE flex row. The `with_layout(right_to_left)` child existed for exactly
+    // one reason — to shove the CI badge against the right edge — and that is a
+    // `grow` item here. The direction pill + symbol keep their natural
+    // left-to-right flow inside the growing slot, so nothing about them moves.
+    let cov_label = (plan.conformal_coverage > 0.0)
+        .then(|| format!("{:.0}% CI", plan.conformal_coverage * 100.0));
+    let cov_sz = cov_label.as_deref().map(|s| measure_mono(ui, s, FONT_2XS));
+    // `OutlinedBox` is an `egui::Frame`: its height is the label galley plus the
+    // 3px top/bottom inner margin below.
+    let row_h = measure_mono(ui, dir_label, FONT_SM).y + 6.0;
+    let (_row_id, row_rect) = ui.allocate_space(egui::vec2(ui.available_width(), row_h));
+    let mut row = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(row_rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    let mut strip = Surface::row()
+        .gap(Space::Sm)
+        .align(FlexAlign::Center)
+        .item(Item::grow(1.0).cross(row_h));
+    if let Some(sz) = cov_sz {
+        strip = strip.item(Item::fixed(sz.x).cross(sz.y));
+    }
+    strip.show(&mut row, t, |idx, ui| {
+        if idx == 0 {
+            ui.horizontal(|ui| {
+                crate::ui_kit::widgets::OutlinedBox::new()
+                    .fill(color_alpha(dir_col, alpha_ghost()))
+                    .border(color_alpha(dir_col, alpha_muted()))
+                    .hairline()
+                    .radius_sm()
+                    .padding_margin(egui::Margin { left: 8, right: 8, top: 3, bottom: 3 })
+                    .show(ui, t, |ui| {
+                        ui.label(egui::RichText::new(dir_label).monospace().strong()
+                            .size(FONT_SM).color(dir_col));
+                    });
+                ui.label(egui::RichText::new(&plan.symbol).monospace()
+                    .size(FONT_SM).color(t.text));
             });
-        ui.label(egui::RichText::new(&plan.symbol).monospace()
-            .size(FONT_SM).color(t.text));
-        if plan.conformal_coverage > 0.0 {
-            let cov_label = format!("{:.0}% CI", plan.conformal_coverage * 100.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(cov_label).monospace()
-                    .size(FONT_2XS).color(t.dim));
-            });
+        } else if let Some(c) = cov_label.as_deref() {
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(c).monospace().size(FONT_2XS).color(t.dim),
+                )
+                .wrap_mode(egui::TextWrapMode::Extend),
+            );
         }
     });
     ui.add_space(gap_sm());
@@ -193,12 +221,11 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     if let Some(dt) = plan.day_type.as_deref() {
         let conf = plan.day_type_confidence.unwrap_or(0.0);
         let chip = format!("{dt} {:.0}%", conf * 100.0);
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("DAY TYPE").monospace()
-                .size(FONT_2XS).color(color_half(t.dim)));
-            ui.label(egui::RichText::new(chip).monospace()
-                .size(FONT_XS).color(t.accent));
-        });
+        // A label/value pair — exactly what `PanelKeyValueRow` is, and the same
+        // primitive the ENTRY/TARGET/STOP ladder above already uses.
+        PanelKeyValueRow::new("DAY TYPE", chip)
+            .tone(PanelTone::Accent)
+            .show(ui, t);
         ui.add_space(gap_sm());
     }
 

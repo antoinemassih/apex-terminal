@@ -60,6 +60,11 @@ pub mod form_section;
 pub mod form_field;
 pub mod input_group;
 pub mod header;
+// P6 dependency inversion: the dialog title bar previously lived in
+// `chart_renderer::ui::components::headers_widget::DialogHeaderWithClose` and
+// was consumed by ui_kit's Modal — a canonical -> legacy edge. It now lives
+// here; the legacy name is a delegating wrapper around this type.
+pub mod dialog_header;
 // Outer side-panel chrome (Agent J) — physically moved to
 // `chart_renderer::ui::panels` because these shells pull chart-app
 // composites (Watchlist, pane_tabs_header_h, kit::PanelHeader*) that
@@ -130,6 +135,7 @@ pub use segmented_control::SegmentedControl;
 
 // ─── Panel Ecosystem ─────────────────────────────────────────────────
 pub use header::{Header, HeaderVariant, HeaderResponse};
+pub use dialog_header::DialogHeader;
 // Chart-app panel composites (SidePanelShell, SplitSectionPanel) live in
 // chart_renderer::ui::panels — the ui_kit re-export was removed in P4 to
 // progress the workspace-crate extraction. Import from the canonical path:

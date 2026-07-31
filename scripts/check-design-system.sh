@@ -71,6 +71,9 @@ ALLOWED_BASENAMES=(
                              # — Radius::cr() must build a CornerRadius, that is
                              # its whole job. Exempt for the same reason style.rs
                              # is: it is the front door, not a consumer.
+  "inspect.rs"               # Ctrl+Shift+D debug OVERLAY -- its highlight must
+                             # NOT follow the theme; dev chrome has to contrast
+                             # with whatever palette is active to stay usable.
   "design_inspector.rs"      # the token editor itself
   "theme_studio.rs"          # live theme editor
   "widget_gallery.rs"        # component demo surface
@@ -91,6 +94,28 @@ EXCLUDE_DIR_ARGS=(
 )
 
 # ── Collect per-file violation counts ───────────────────────────────────────
+# Drop hits inside a `#[cfg(test)]` module. Test fixtures legitimately use
+# literal colours/fonts (Color32::from_rgb(1,2,3) as a sentinel), and counting
+# those as drift trains people to ignore the gate. Relies on the Rust
+# convention -- already relied upon by dev/quality_gate.py -- that test modules
+# sit at the END of a file.
+drop_test_module_hits() {
+  awk -F: '
+    {
+      f = $1; ln = $2 + 0
+      if (!(f in cut)) {
+        cut[f] = 0; n = 0
+        while ((getline l < f) > 0) {
+          n++
+          if (l ~ /^[ 	]*#\[cfg\(test\)\]/) { cut[f] = n; break }
+        }
+        close(f)
+      }
+      if (cut[f] == 0 || ln < cut[f]) print
+    }
+  '
+}
+
 collect() {
   for pat in "${PATTERNS[@]}"; do
     grep -rn \
@@ -100,6 +125,7 @@ collect() {
       "$SRC_DIR" 2>/dev/null || true
   done \
   | grep -v -E ':[0-9]+:[[:space:]]*//' \
+  | drop_test_module_hits \
   | sed "s|^$REPO_ROOT/||" \
   | cut -d: -f1 \
   | grep -v -E "$ALLOWED_RE" \

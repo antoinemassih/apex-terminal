@@ -396,7 +396,7 @@ impl<'a> PanelSection<'a> {
     ) -> SectionResponse<R> {
         // Bug-report anchor key + call-site source (no-op unless Inspect is on).
         let bug_loc = std::panic::Location::caller();
-        let bug_key = format!("section/{}", crate::chart_renderer::bug_anchor::slug(self.title));
+        let bug_key = format!("section/{}", crate::ui_kit::inspect::slug(self.title));
         let title_color = self.title_color.unwrap_or(palette_ct(t).base(SxTone::Dim));
         let mut action_clicked = false;
         let mut delete_clicked = false;
@@ -617,7 +617,7 @@ impl<'a> PanelSection<'a> {
         // We re-interact on the header rect with a stable id so the
         // child label widgets above don't swallow the click.
         let header_rect = header_resp.response.rect;
-        crate::chart_renderer::bug_anchor::register(&bug_key, header_rect, bug_loc.file(), bug_loc.line());
+        crate::ui_kit::inspect::register(&bug_key, header_rect, bug_loc.file(), bug_loc.line());
         // Only sense clicks on the whole header when it's collapsible — otherwise
         // this overlay steals clicks from the action/delete button laid out above
         // (egui hit-tests later widgets first). Hover-sense still produces a

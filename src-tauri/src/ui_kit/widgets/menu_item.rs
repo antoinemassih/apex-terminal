@@ -147,7 +147,7 @@ impl<'a> MenuItem<'a> {
         if self.enabled && resp.hovered() {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
-        crate::chart_renderer::bug_anchor::mark(std::panic::Location::caller(), "menuitem", resp.rect);
+        crate::ui_kit::inspect::mark(std::panic::Location::caller(), "menuitem", resp.rect);
         resp
     }
 

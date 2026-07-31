@@ -13,6 +13,9 @@ use super::super::super::gpu::{Watchlist, Theme};
 use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use crate::ui_kit::widgets::{Alert, PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone, Progress};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::layout::{Align as FlexAlign, Item, Surface};
+use crate::ui_kit::scale::Space;
+use crate::ui_kit::style::measure_mono;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     if !watchlist.apex_diag_open { return; }
@@ -53,14 +56,99 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
 // ────────────────────────────────────────────────────────────────────────────
 
+/// Status-pill geometry — unchanged from the hand-rolled rows this module used
+/// to build; named so the flex spec and the painter agree on one number.
+const PILL_W: f32 = 72.0;
+const PILL_H: f32 = 14.0;
+
 /// Inline status pill — small tinted rounded rectangle. Kept local since the
 /// shared `Tag` widget renders too large for these dense diagnostics rows.
 fn pill(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(72.0, 14.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(PILL_W, PILL_H), egui::Sense::hover());
     ui.painter().rect_filled(rect, current().r_md, color_alpha(color, 50));
     ui.painter().rect_stroke(rect, current().r_md, egui::Stroke::new(current().stroke_std, color), egui::StrokeKind::Inside);
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
         text, egui::FontId::proportional(font_xs()), color);
+}
+
+// ── Row layout ───────────────────────────────────────────────────────────────
+//
+// Every non-`PanelKeyValueRow` row in this panel used to be
+// `ui.horizontal { add_space(gap_md); label; add_space(gap_sm); …; }` — a
+// leading indent and a gutter, both hand-written, both drifting between
+// sections. They are now `Surface` rows: the indent is the first item's
+// `margin_start(Space::Md)` and every gutter is the container `gap(Space::Sm)`.
+//
+// Each row reserves its own strip first. `Surface` solves inside whatever box
+// it is handed, and inside this modal's `ScrollArea` that box is the entire
+// remaining panel height — so a `Center`-aligned row would float its children
+// down the middle of the panel. Allocating the strip up front is the same thing
+// `PanelSection`'s own header does, for the same reason.
+
+/// Reserve a full-width strip `h` tall and return a `Ui` scoped to it.
+fn strip(ui: &mut egui::Ui, h: f32) -> egui::Ui {
+    let (_id, rect) = ui.allocate_space(egui::vec2(ui.available_width(), h));
+    ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    )
+}
+
+/// A `mono_xs` cell rendered into its own solved rect. `Extend` because the
+/// rect was sized from this exact galley — wrapping would be a rounding
+/// artefact, and it reproduces `ui.horizontal`'s no-wrap behaviour.
+fn cell(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(text).monospace().size(font_xs()).color(color),
+        )
+        .wrap_mode(egui::TextWrapMode::Extend),
+    );
+}
+
+/// One `label · pill · note` status row.
+fn status_row(
+    ui: &mut egui::Ui,
+    t: &Theme,
+    label: &str,
+    pill_text: &str,
+    pill_color: egui::Color32,
+    note: Option<String>,
+) {
+    let label_sz = measure_mono(ui, label, font_xs());
+    let note_sz = note.as_deref().map(|n| measure_mono(ui, n, font_xs()));
+    let h = label_sz.y.max(PILL_H).max(note_sz.map(|s| s.y).unwrap_or(0.0));
+    let mut row = strip(ui, h);
+
+    let mut s = Surface::row()
+        .gap(Space::Sm)
+        .align(FlexAlign::Center)
+        .item(Item::fixed(label_sz.x).cross(label_sz.y).margin_start(Space::Md.px()))
+        .item(Item::fixed(PILL_W).cross(PILL_H));
+    if let Some(sz) = note_sz {
+        s = s.item(Item::grow(1.0).cross(sz.y));
+    }
+    s.show(&mut row, t, |idx, ui| match idx {
+        0 => cell(ui, label, color_muted(t.dim)),
+        1 => pill(ui, pill_text, pill_color),
+        _ => {
+            if let Some(n) = note.as_deref() {
+                cell(ui, n, t.dim);
+            }
+        }
+    });
+}
+
+/// A single indented note line — the `gap_md` indent is the item's
+/// `margin_start`, not an `add_space`.
+fn note_row(ui: &mut egui::Ui, t: &Theme, text: &str) {
+    let sz = measure_mono(ui, text, font_xs());
+    let mut row = strip(ui, sz.y);
+    Surface::row()
+        .align(FlexAlign::Center)
+        .item(Item::grow(1.0).cross(sz.y).margin_start(Space::Md.px()))
+        .show(&mut row, t, |_idx, ui| cell(ui, text, color_muted(t.dim)));
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -86,25 +174,18 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
     let ws = crate::apex_data::ws::is_connected();
     let (fails, cooldown) = crate::apex_data::rest::breaker_snapshot();
 
-    ui.horizontal(|ui| {
-        ui.add_space(gap_md());
-        ui.label(egui::RichText::new("WS").monospace().size(font_xs()).color(color_muted(t.dim)));
-        ui.add_space(gap_sm());
-        pill(ui, if ws { "connected" } else { "disconnected" },
-             if ws { t.bull } else { t.bear });
-    });
-    ui.horizontal(|ui| {
-        ui.add_space(gap_md());
-        ui.label(egui::RichText::new("breaker").monospace().size(font_xs()).color(color_muted(t.dim)));
-        ui.add_space(gap_sm());
-        if cooldown.is_some() {
-            pill(ui, "open", t.bear);
-        } else {
-            pill(ui, "closed", t.bull);
-        }
-        ui.add_space(gap_sm());
-        ui.label(egui::RichText::new(format!("fails={fails}")).monospace().size(font_xs()).color(t.dim));
-    });
+    status_row(
+        ui, t, "WS",
+        if ws { "connected" } else { "disconnected" },
+        if ws { t.bull } else { t.bear },
+        None,
+    );
+    let (breaker_text, breaker_col) = if cooldown.is_some() {
+        ("open", t.bear)
+    } else {
+        ("closed", t.bull)
+    };
+    status_row(ui, t, "breaker", breaker_text, breaker_col, Some(format!("fails={fails}")));
 
     if let Some(remaining) = cooldown {
         const COOLDOWN_SECS: f32 = 30.0;
@@ -123,17 +204,10 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
 
     if let Some(h) = crate::apex_data::live_state::get_health() {
         if h.ready {
-            ui.horizontal(|ui| {
-                ui.add_space(gap_md());
-                ui.label(egui::RichText::new("health").monospace().size(font_xs()).color(color_muted(t.dim)));
-                ui.add_space(gap_sm());
-                pill(ui, "ready", t.bull);
-                ui.add_space(gap_sm());
-                ui.label(egui::RichText::new(format!(
-                    "tick age {}ms, redis={} questdb={} feeds {}/{}",
-                    h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total
-                )).monospace().size(font_xs()).color(t.dim));
-            });
+            status_row(ui, t, "health", "ready", t.bull, Some(format!(
+                "tick age {}ms, redis={} questdb={} feeds {}/{}",
+                h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total
+            )));
         } else {
             Alert::warn(format!(
                 "tick age {}ms, redis={} questdb={} feeds {}/{}",
@@ -163,22 +237,31 @@ fn section_rest_stats(ui: &mut egui::Ui, t: &Theme) {
 
     if total > 0 {
         ui.add_space(gap_xs());
-        ui.horizontal(|ui| {
-            ui.add_space(gap_md());
-            ui.label(egui::RichText::new("ok rate").monospace().size(font_xs()).color(color_muted(t.dim)));
-            ui.add_space(gap_sm());
-            Progress::linear((pct(ok) / 100.0) as f32).size(KitSize::Sm).show(ui, t);
-        });
+        // `label · bar` — the bar takes the slack instead of being pushed by an
+        // `add_space`. Progress::linear(Sm) paints a 4px-tall track.
+        const BAR_H: f32 = 4.0;
+        let label_sz = measure_mono(ui, "ok rate", font_xs());
+        let mut row = strip(ui, label_sz.y.max(BAR_H));
+        Surface::row()
+            .gap(Space::Sm)
+            .align(FlexAlign::Center)
+            .item(Item::fixed(label_sz.x).cross(label_sz.y).margin_start(Space::Md.px()))
+            .item(Item::grow(1.0).cross(BAR_H))
+            .show(&mut row, t, |idx, ui| {
+                if idx == 0 {
+                    cell(ui, "ok rate", color_muted(t.dim));
+                } else {
+                    Progress::linear((pct(ok) / 100.0) as f32).size(KitSize::Sm).show(ui, t);
+                }
+            });
     }
 }
 
 fn section_ws_subs(ui: &mut egui::Ui, t: &Theme) {
-    ui.horizontal(|ui| {
-        ui.add_space(gap_md());
-        ui.label(egui::RichText::new(
-            "(subscription counts tracked client-side; see 'chain cache' below for live state)"
-        ).monospace().size(font_xs()).color(color_muted(t.dim)));
-    });
+    note_row(
+        ui, t,
+        "(subscription counts tracked client-side; see 'chain cache' below for live state)",
+    );
 }
 
 fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
@@ -200,6 +283,12 @@ fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
     }
 }
 
+/// NOT migrated to `Surface` on purpose: this is a repeating table body (up to
+/// 25 rows, re-rendered every frame the modal is open), and the flex engine
+/// builds and solves one `TaffyTree` per `show()`. `ui_kit::layout::flex`'s
+/// module docs draw the line exactly here — flexbox is for panel chrome and
+/// forms, not row loops. The row carries no cross-row alignment requirement
+/// either: it is a painter-placed pill plus two trailing labels.
 fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
     let (_, _, _, _, _, recent) = crate::apex_data::rest::stats_snapshot();
     if recent.is_empty() {
