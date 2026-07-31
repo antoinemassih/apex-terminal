@@ -67,6 +67,10 @@ ALLOWED_BASENAMES=(
   "builtin.rs"               # palette + style-system literals
   "color_scheme.rs"
   "design_tokens.rs"
+  "scale.rs"                 # DEFINES the typed Space/Radius/Weight/Level scales
+                             # — Radius::cr() must build a CornerRadius, that is
+                             # its whole job. Exempt for the same reason style.rs
+                             # is: it is the front door, not a consumer.
   "design_inspector.rs"      # the token editor itself
   "theme_studio.rs"          # live theme editor
   "widget_gallery.rs"        # component demo surface
