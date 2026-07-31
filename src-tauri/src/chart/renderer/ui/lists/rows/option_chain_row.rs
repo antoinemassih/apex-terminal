@@ -11,6 +11,7 @@ use crate::chart::renderer::ui::foundation::{
     interaction::InteractionState,
     shell::RowShell,
 };
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::ui_kit::widgets::RowVariant;
 use crate::ui_kit::widgets::tokens::Size;
 
@@ -103,9 +104,11 @@ impl<'a> OptionChainRow<'a> {
                 if call.itm { ui.painter().rect_filled(call_rect, 0.0, color_alpha(bull, alpha_ghost())); }
                 if put.itm  { ui.painter().rect_filled(put_rect,  0.0, color_alpha(bear, alpha_ghost())); }
 
+                // One cascade lookup per row, cloned per cell — every cell here is
+                // tabular financial data, so they all share the Numeric tier.
+                let f = TextStyle::Numeric.font_id_in(ui);
                 let painter = ui.painter();
                 let cy = rect.center().y;
-                let f = mono_sm();
 
                 painter.text(egui::pos2(call_rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
                     &format!("{:.2}", call.bid), f.clone(), bull);
@@ -117,7 +120,7 @@ impl<'a> OptionChainRow<'a> {
                 let strike_x = rect.center().x;
                 painter.text(egui::pos2(strike_x, cy), egui::Align2::CENTER_CENTER,
                     &format!("{:.2}", strike),
-                    mono_sm(), accent);
+                    f.clone(), accent);
 
                 painter.text(egui::pos2(put_rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
                     &format!("{}", put.volume), f.clone(), dim);
@@ -130,7 +133,7 @@ impl<'a> OptionChainRow<'a> {
                     painter.text(egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0),
                         egui::Align2::RIGHT_BOTTOM,
                         &format!("Δ{:+.2}", call.delta),
-                        mono_sm(), dim);
+                        f.clone(), dim);
                 }
             })
             .show(ui);

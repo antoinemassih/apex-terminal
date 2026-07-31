@@ -232,6 +232,36 @@ pub fn frame_tokens() -> TokenSnapshot {
 #[inline] pub fn mono_md()  -> egui::FontId { egui::FontId::new(font_md(),  egui::FontFamily::Monospace) }
 #[inline] pub fn mono_md_plus() -> egui::FontId { egui::FontId::new(font_md_plus(), egui::FontFamily::Monospace) }
 #[inline] pub fn mono_lg()  -> egui::FontId { egui::FontId::new(font_lg(),  egui::FontFamily::Monospace) }
+#[inline] pub fn mono_xl()  -> egui::FontId { egui::FontId::new(font_xl(),  egui::FontFamily::Monospace) }
+
+/// Monospace at an arbitrary (computed) size — for the handful of call sites
+/// that derive a size from a caller-supplied base (`base - 1.0`, `base * 1.1`)
+/// rather than picking a rung on the ladder. Prefer the named tiers above.
+#[inline] pub fn mono_at(size: f32) -> egui::FontId { egui::FontId::new(size, egui::FontFamily::Monospace) }
+
+// ─── Proportional font helpers ───────────────────────────────────────────────
+// The mirror of the `mono_*` family for UI chrome (labels, buttons, headings,
+// hero numbers). Returns FontId so the family is explicit at the call site and
+// the SIZE routes through the live token ladder instead of a frozen literal.
+#[inline] pub fn prop_4xs() -> egui::FontId { egui::FontId::new(font_4xs(), egui::FontFamily::Proportional) }
+#[inline] pub fn prop_3xs() -> egui::FontId { egui::FontId::new(font_3xs(), egui::FontFamily::Proportional) }
+#[inline] pub fn prop_2xs() -> egui::FontId { egui::FontId::new(font_2xs(), egui::FontFamily::Proportional) }
+#[inline] pub fn prop_xs()  -> egui::FontId { egui::FontId::new(font_xs(),  egui::FontFamily::Proportional) }
+#[inline] pub fn prop_xs_plus() -> egui::FontId { egui::FontId::new(font_xs_plus(), egui::FontFamily::Proportional) }
+#[inline] pub fn prop_sm()  -> egui::FontId { egui::FontId::new(font_sm(),  egui::FontFamily::Proportional) }
+#[inline] pub fn prop_md()  -> egui::FontId { egui::FontId::new(font_md(),  egui::FontFamily::Proportional) }
+#[inline] pub fn prop_md_plus() -> egui::FontId { egui::FontId::new(font_md_plus(), egui::FontFamily::Proportional) }
+#[inline] pub fn prop_lg()  -> egui::FontId { egui::FontId::new(font_lg(),  egui::FontFamily::Proportional) }
+#[inline] pub fn prop_xl()  -> egui::FontId { egui::FontId::new(font_xl(),  egui::FontFamily::Proportional) }
+
+// Display tier — hero numbers / KPI digits.
+#[inline] pub fn prop_display_sm() -> egui::FontId { egui::FontId::new(font_display_sm(), egui::FontFamily::Proportional) }
+#[inline] pub fn prop_display_md() -> egui::FontId { egui::FontId::new(font_display_md(), egui::FontFamily::Proportional) }
+#[inline] pub fn prop_display_lg() -> egui::FontId { egui::FontId::new(font_display_lg(), egui::FontFamily::Proportional) }
+#[inline] pub fn prop_display_xl() -> egui::FontId { egui::FontId::new(font_display_xl(), egui::FontFamily::Proportional) }
+
+/// Proportional at an arbitrary (computed) size — see `mono_at`.
+#[inline] pub fn prop_at(size: f32) -> egui::FontId { egui::FontId::new(size, egui::FontFamily::Proportional) }
 
 // ─── Contrast / readability helpers ──────────────────────────────────────────
 

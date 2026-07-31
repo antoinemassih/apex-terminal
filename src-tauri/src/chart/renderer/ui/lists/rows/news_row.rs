@@ -13,6 +13,7 @@ use crate::chart::renderer::ui::foundation::{
 };
 use crate::ui_kit::widgets::RowVariant;
 use crate::ui_kit::widgets::tokens::Size;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -81,11 +82,14 @@ impl<'a> NewsRow<'a> {
             .painter_height(self.height)
             .painter_body(move |ui, rect| {
                 let m = 8.0;
+                // Hot path: every string in this row is the same tier — resolve it
+                // through the cascade ONCE and clone per paint.
+                let f = TextStyle::MonoSm.font_id_in(ui);
                 let painter = ui.painter();
 
                 let headline_pos = egui::pos2(rect.min.x + m, rect.min.y + 4.0);
                 painter.text(headline_pos, egui::Align2::LEFT_TOP,
-                    headline, mono_sm(),
+                    headline, f.clone(),
                     headline_fg);
 
                 let meta_y = rect.min.y + 30.0;
@@ -101,17 +105,17 @@ impl<'a> NewsRow<'a> {
                     egui::pos2(rect.min.x + m, meta_y), egui::vec2(50.0, 14.0));
                 painter.rect_filled(source_rect, 2.0, color_alpha(source_col, alpha_subtle()));
                 painter.text(source_rect.center(), egui::Align2::CENTER_CENTER,
-                    source, mono_sm(), source_col);
+                    source, f.clone(), source_col);
 
                 painter.text(egui::pos2(rect.min.x + m + 55.0, meta_y + 7.0),
                     egui::Align2::LEFT_CENTER, timestamp,
-                    mono_sm(), color_half(dim));
+                    f.clone(), color_half(dim));
 
                 let sym_rect = egui::Rect::from_min_size(
                     egui::pos2(rect.min.x + m + 95.0, meta_y), egui::vec2(36.0, 14.0));
                 painter.rect_filled(sym_rect, 2.0, color_alpha(accent, alpha_ghost()));
                 painter.text(sym_rect.center(), egui::Align2::CENTER_CENTER,
-                    symbol, mono_sm(), accent);
+                    symbol, f.clone(), accent);
 
                 let mut chip_x = sym_rect.right() + 4.0;
                 for tag in tags.iter() {
@@ -120,7 +124,7 @@ impl<'a> NewsRow<'a> {
                     if tr.right() > rect.right() - 16.0 { break; }
                     painter.rect_filled(tr, 2.0, color_alpha(dim, alpha_ghost()));
                     painter.text(tr.center(), egui::Align2::CENTER_CENTER,
-                        tag, mono_sm(), dim);
+                        tag, f.clone(), dim);
                     chip_x = tr.right() + 3.0;
                 }
 

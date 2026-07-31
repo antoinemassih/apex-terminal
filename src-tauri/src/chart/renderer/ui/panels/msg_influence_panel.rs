@@ -170,7 +170,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
 
     // Selector row.
     ui.horizontal(|ui| {
-        ui.label(TextStyle::Caption.as_rich("BASKET", t.dim));
+        ui.label(TextStyle::Caption.as_rich_cascading("BASKET", t.dim));
         egui::ComboBox::from_id_salt("msg_inf_parent")
             .selected_text(parent.as_str())
             .width(60.0)
@@ -182,7 +182,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
                     }
                 }
             });
-        ui.label(TextStyle::Caption.as_rich("WIN", t.dim));
+        ui.label(TextStyle::Caption.as_rich_cascading("WIN", t.dim));
         egui::ComboBox::from_id_salt("msg_inf_window")
             .selected_text(window.as_str())
             .width(40.0)
@@ -196,7 +196,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
             });
         if is_sample {
             ui.label(
-                TextStyle::Caption.as_rich("SAMPLE DATA", tint(t, Tone::Warn, alpha_active())),
+                TextStyle::Caption.as_rich_cascading("SAMPLE DATA", tint(t, Tone::Warn, alpha_active())),
             );
         }
     });

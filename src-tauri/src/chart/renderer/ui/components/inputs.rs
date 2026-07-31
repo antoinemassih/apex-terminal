@@ -45,7 +45,7 @@ pub fn search_input(
         })
         .show(ui, &ambient_theme(ui.ctx()), |ui| {
             ui.horizontal(|ui| {
-                ui.label(TextStyle::BodySm.as_rich("\u{1F50D}", dim));
+                ui.label(TextStyle::BodySm.as_rich_cascading("\u{1F50D}", dim));
                 let r = Input::new(buffer)
                     .frameless(true)
                     .text_color(accent)

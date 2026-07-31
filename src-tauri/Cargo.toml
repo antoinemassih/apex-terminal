@@ -78,6 +78,7 @@ sha2 = "0.10"
 rfd = "0.15"
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu"] }
 rhai = { version = "1.25.1", features = ["sync"] }
+taffy = { version = "0.12.2", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "content_size"] }
 
 [target.'cfg(windows)'.dependencies]
 # W1-04: Win32_System_Diagnostics_Debug added for `MessageBeep` (windows-sys

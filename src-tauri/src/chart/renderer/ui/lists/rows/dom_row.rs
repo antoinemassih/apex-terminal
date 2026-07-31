@@ -28,6 +28,7 @@ use crate::chart::renderer::ui::foundation::{
 };
 use crate::ui_kit::widgets::RowVariant;
 use crate::ui_kit::widgets::tokens::Size;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 /// Pre-computed column geometry shared across all rows in a ladder.
 /// Captured once at the top of `dom_panel::draw` and passed in via
@@ -277,7 +278,10 @@ impl<'a> DomRow<'a> {
                 let find = |k: DomColumn| col_rects.iter().find(|(kk, _)| *kk == k).map(|(_, r)| *r);
 
                 let f_lg = mono_md();
-                let f_sm = mono_sm();
+                // Hot path (a ladder paints ~40 rungs/frame): one cascade lookup,
+                // cloned per string. `f_lg` stays on mono_md() — see the module
+                // note; no tier sits within 1px of 14px monospace.
+                let f_sm = TextStyle::MonoSm.font_id_in(ui);
                 let dark = theme_ref.overlay_text;
                 let cy = rect.center().y;
 
@@ -479,7 +483,8 @@ impl<'a> DomRow<'a> {
         let cy = rr.center().y;
 
         let font = mono_md();
-        let font_sm = mono_sm();
+        // Hot path: hoisted once per row, cloned per painted string.
+        let font_sm = TextStyle::MonoSm.font_id_in(ui);
         let dark = theme_ref.overlay_text;
 
         // Backgrounds: selected / current / hovered
@@ -615,7 +620,7 @@ impl<'a> DomRow<'a> {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 let xr = Rect::from_min_size(egui::pos2(br.right() - 12.0, br.top()), egui::vec2(12.0, br.height()));
                 painter.rect_filled(xr, radius_xs(), color_alpha(bear, alpha_dim()));
-                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", mono_sm(), contrast_fg(bear));
+                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", font_sm.clone(), contrast_fg(bear));
                 let label_rect = Rect::from_min_max(br.min, egui::pos2(br.right() - 12.0, br.max.y));
                 draw_order_chip_label(painter, label_rect, side_ch, qty, theme_ref.overlay_text);
                 if drag_resp.clicked() {

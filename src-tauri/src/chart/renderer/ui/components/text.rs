@@ -29,15 +29,60 @@ fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
     crate::chart_renderer::theme_impl::active_theme(ctx)
 }
 
+// ─── Cascade plumbing ────────────────────────────────────────────────────────
+//
+// These widgets used to bake a `font_*()` constant into every `RichText`. They
+// now take their size from the tier table that `TextStyle::install` writes into
+// `Style::text_styles` each frame, so a subtree can retune a whole family with
+//   ui.style_mut().text_styles.insert(TextStyle::Body.egui(), smaller);
+// and these ~235 call sites follow without being touched.
+
+/// Cascade-aware `RichText` for `tier`, safe on hosts without the table.
+///
+/// `TextStyle::as_rich_cascading` reaches for `RichText::text_style(..)`, and
+/// egui's `TextStyle::resolve` **panics** when the `Name` key is missing. Any
+/// host that spins up a bare `egui::Context` and never runs `setup_theme`
+/// (`chart/renderer/inspector_window.rs`, `foundation/design_inspector.rs`)
+/// has no `apex.*` keys at all, so probe the inherited table first — exactly
+/// what `TextStyle::font_id_in` does — and bake a `FontId` only as the
+/// fallback.
+fn tier_rich(tier: TextStyle, ui: &Ui, text: &str, color: Color32) -> RichText {
+    let spec = tier.spec();
+    let key = tier.egui();
+    let mut rt = RichText::new(text).color(color);
+    rt = if ui.style().text_styles.contains_key(&key) {
+        rt.text_style(key)                 // true cascade: resolved at layout time
+    } else {
+        rt.font(tier.font_id())            // no table installed — fall back safely
+    };
+    if spec.line_height_factor > 0.0 {
+        rt = rt.line_height(Some(spec.size * spec.line_height_factor));
+    }
+    if spec.strong { rt = rt.strong(); }
+    rt
+}
+
+/// [`tier_rich`] with the monospace family forced, keeping the tier's size.
+///
+/// `RichText::monospace()` cannot be used for this: in egui it is literally
+/// `text_style(TextStyle::Monospace)`, i.e. it *replaces* the tier and drops the
+/// cascade. `family()` only overrides the family, leaving the resolved size in
+/// place.
+fn tier_rich_mono(tier: TextStyle, ui: &Ui, text: &str, color: Color32) -> RichText {
+    tier_rich(tier, ui, text, color).family(FontFamily::Monospace)
+}
+
 // ─── Size enums (moved from labels.rs) ───────────────────────────────────────
 
 /// Size variants for [`MonospaceCode`].
+///
+/// Each variant names a tier, not a pixel size — see the `Widget` impl.
 pub enum MonoSize {
-    /// `font_xs()` — column headers, supplemental info.
+    /// [`TextStyle::Caption`] (mono) — column headers, supplemental info.
     Xs,
-    /// `font_sm()` — default mono text.
+    /// [`TextStyle::MonoSm`] — default mono text.
     Sm,
-    /// `font_md()` — emphasized mono.
+    /// [`TextStyle::BodyLg`] (mono) — emphasized mono.
     Md,
 }
 
@@ -71,8 +116,11 @@ impl Overrides {
         if let Some(b) = self.strong    { if b { rt = rt.strong(); } }
         if let Some(i) = self.italics   { if i { rt = rt.italics(); } }
         if let Some(m) = self.monospace {
-            if m { rt = rt.monospace(); }
-            else { rt = rt.family(FontFamily::Proportional); }
+            // `RichText::monospace()` is `text_style(TextStyle::Monospace)` in
+            // egui — it would replace the tier and throw away the cascaded
+            // size. `family()` overrides only the family, so an explicit
+            // `.monospace(true)` from a call site still inherits its size.
+            rt = rt.family(if m { FontFamily::Monospace } else { FontFamily::Proportional });
         }
         if let Some(g) = self.gamma     { color = color.gamma_multiply(g); }
         (rt, color)
@@ -108,7 +156,7 @@ impl<'a> Subheader<'a> {
 impl<'a> Widget for Subheader<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let resolved = self.color.unwrap_or(ambient(ui.ctx()).dim);
-        let rt = TextStyle::Eyebrow.as_rich(&style_label_case(self.text), resolved);
+        let rt = tier_rich(TextStyle::Eyebrow, ui, &style_label_case(self.text), resolved);
         let (rt, color) = self.overrides.apply(rt, resolved);
         ui.label(rt.color(color))
     }
@@ -143,7 +191,7 @@ impl<'a> BodyLabel<'a> {
 impl<'a> Widget for BodyLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let resolved = self.color.unwrap_or(ambient(ui.ctx()).text);
-        let rt = TextStyle::Body.as_rich(self.text, resolved);
+        let rt = tier_rich(TextStyle::Body, ui, self.text, resolved);
         let (rt, color) = self.overrides.apply(rt, resolved);
         ui.label(rt.color(color))
     }
@@ -181,7 +229,7 @@ impl<'a> Widget for CaptionLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let base = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let c = color_alpha(base, alpha_dim());
-        let rt = TextStyle::Caption.as_rich(self.text, c);
+        let rt = tier_rich(TextStyle::Caption, ui, self.text, c);
         let (rt, color) = self.overrides.apply(rt, c);
         ui.label(rt.color(color))
     }
@@ -226,16 +274,18 @@ impl<'a> MonospaceCode<'a> {
 impl<'a> Widget for MonospaceCode<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let resolved = self.color.unwrap_or(ambient(ui.ctx()).text);
-        let style = match self.size {
-            MonoSize::Xs => TextStyle::MonoSm,  // font_sm — Xs widget intent maps to small mono
-            MonoSize::Sm => TextStyle::MonoSm,
-            MonoSize::Md => TextStyle::Mono,
+        // Sizes come from the tier table; the family is forced monospace because
+        // Caption/BodyLg are proportional tiers borrowed purely for their step
+        // on the scale. The three tiers are strictly ordered under every
+        // StyleSystem (font_caption ≤ 9 < font_sm 12 < font_lg 16), unlike
+        // Mono (= st.font_body, 10–13) which can overtake MonoSm and invert the
+        // xs/sm/md ladder.
+        let tier = match self.size {
+            MonoSize::Xs => TextStyle::Caption,  // legacy font_xs 10 → font_caption 9
+            MonoSize::Sm => TextStyle::MonoSm,   // legacy font_sm 12 → font_sm 12
+            MonoSize::Md => TextStyle::BodyLg,   // legacy font_md 14 → font_lg 16
         };
-        // For MonoSize::Xs preserve original font_xs by overriding size.
-        let mut rt = style.as_rich(self.text, resolved);
-        if matches!(self.size, MonoSize::Xs) {
-            rt = RichText::new(self.text).monospace().size(font_xs()).color(resolved);
-        }
+        let rt = tier_rich_mono(tier, ui, self.text, resolved);
         let (rt, color) = self.overrides.apply(rt, resolved);
         ui.label(rt.color(color))
     }
@@ -246,15 +296,15 @@ impl<'a> Widget for MonospaceCode<'a> {
 /// Size variant for [`SectionLabel`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SectionLabelSize {
-    /// `7.0` — matches legacy `style::section_label` (sub-`font_xs`).
+    /// [`TextStyle::Caption`] — matches legacy `style::section_label` (`font_2xs`).
     Tiny,
-    /// `font_xs()` — tightest, for dense column headers.
+    /// [`TextStyle::Caption`] — tightest, for dense column headers.
     Xs,
-    /// `font_sm()` — default (matches `section_label_widget`).
+    /// [`TextStyle::Label`] — default (matches `section_label_widget`).
     Sm,
-    /// `font_md()` — slightly emphasised group title.
+    /// [`TextStyle::MonoSm`] — slightly emphasised group title.
     Md,
-    /// `font_lg()` — large section divider.
+    /// [`TextStyle::BodyLg`] — large section divider.
     Lg,
 }
 
@@ -298,15 +348,19 @@ impl<'a> Widget for SectionLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let resolved = self.color.unwrap_or(ambient(ui.ctx()).dim);
         let s = style_label_case(self.text);
-        // Sm maps to TextStyle::Label (font_sm + strong + non-monospace per mapping).
-        // Other sizes preserve legacy monospace look via explicit RichText.
-        let rt = match self.size {
-            SectionLabelSize::Sm => TextStyle::Label.as_rich(&s, resolved),
-            SectionLabelSize::Tiny => RichText::new(s).monospace().size(crate::ui_kit::style::font_2xs()).strong().color(resolved),
-            SectionLabelSize::Xs   => RichText::new(s).monospace().size(font_xs()).strong().color(resolved),
-            SectionLabelSize::Md   => RichText::new(s).monospace().size(font_md()).strong().color(resolved),
-            SectionLabelSize::Lg   => RichText::new(s).monospace().size(font_lg()).strong().color(resolved),
+        // Every variant now takes its size from a tier; the monospace family and
+        // `.strong()` (the legacy look) are re-applied on top, since only the
+        // Label tier is `strong` and none of these tiers is monospace.
+        // Resulting ladder is monotonic under every StyleSystem:
+        //   Caption(8–9) ≤ Label(8–11) ≤ MonoSm(12) < BodyLg(16).
+        let tier = match self.size {
+            SectionLabelSize::Tiny => TextStyle::Caption,  // legacy font_2xs 9 → font_caption 9
+            SectionLabelSize::Xs   => TextStyle::Caption,  // legacy font_xs 10 → font_caption 9
+            SectionLabelSize::Sm   => TextStyle::Label,    // legacy font_sm 12 → font_section_label 10
+            SectionLabelSize::Md   => TextStyle::MonoSm,   // legacy font_md 14 → font_sm 12
+            SectionLabelSize::Lg   => TextStyle::BodyLg,   // legacy font_lg 16 → font_lg 16
         };
+        let rt = tier_rich_mono(tier, ui, &s, resolved).strong();
         let (rt, color) = self.overrides.apply(rt, resolved);
         ui.label(rt.color(color))
     }
@@ -316,8 +370,8 @@ impl<'a> Widget for SectionLabel<'a> {
 
 /// Free-fn adapter for the legacy `style::section_label(ui, text, color)`.
 /// Calls `ui.add(SectionLabel::new(text).tiny().color(color))` — the legacy
-/// helper renders at literal size `7.0` (sub-`font_xs`), so this uses the
-/// `Tiny` variant to match byte-for-byte.
+/// helper renders at `font_2xs()`, which the `Tiny` variant now sources from
+/// the [`TextStyle::Caption`] tier.
 #[inline]
 pub fn section_label(ui: &mut Ui, text: &str, color: Color32) -> Response {
     ui.add(SectionLabel::new(text).tiny().color(color))
@@ -327,8 +381,8 @@ pub fn section_label(ui: &mut Ui, text: &str, color: Color32) -> Response {
 
 /// Builder for a dim info label. Replaces `style::dim_label(ui, text, color)`.
 ///
-/// Renders `RichText::new(text).monospace().size(font_sm()).color(color)` —
-/// no alpha applied (the caller passes the dim color directly).
+/// Monospace at the [`TextStyle::MonoSm`] tier (= `font_sm()`, the legacy
+/// size) — no alpha applied (the caller passes the dim color directly).
 ///
 /// ```ignore
 /// ui.add(DimLabel::new("Last updated").color(theme.dim));
@@ -355,7 +409,10 @@ impl<'a> DimLabel<'a> {
 impl<'a> Widget for DimLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let resolved = self.color.unwrap_or(ambient(ui.ctx()).dim);
-        let rt = TextStyle::BodySm.as_rich(self.text, resolved);
+        // MonoSm, not BodySm: both resolve to `font_sm()` so the size is
+        // unchanged, but MonoSm restores the monospace family this widget
+        // documents (and that `style::dim_label` renders with).
+        let rt = tier_rich(TextStyle::MonoSm, ui, self.text, resolved);
         let (rt, color) = self.overrides.apply(rt, resolved);
         ui.label(rt.color(color))
     }

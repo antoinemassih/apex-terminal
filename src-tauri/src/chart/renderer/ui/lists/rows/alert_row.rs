@@ -16,6 +16,7 @@ use crate::chart::renderer::ui::foundation::{
 };
 use crate::ui_kit::widgets::RowVariant;
 use crate::ui_kit::widgets::tokens::Size;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -100,6 +101,9 @@ impl<'a> AlertRow<'a> {
             .painter_mode(true)
             .painter_height(self.height)
             .painter_body(|ui, rect| {
+                // Hot path: one cascade lookup per tier per row, cloned per string.
+                let f_txt = TextStyle::MonoSm.font_id_in(ui);   // symbol / note
+                let f_num = TextStyle::Numeric.font_id_in(ui);  // comparator + target price
                 let painter = ui.painter();
                 let cy = rect.center().y;
 
@@ -114,19 +118,19 @@ impl<'a> AlertRow<'a> {
                     glyph, egui::FontId::proportional(font_xl()), gcol);
 
                 painter.text(egui::pos2(rect.left() + 22.0, cy), egui::Align2::LEFT_CENTER,
-                    symbol, mono_sm(), fg);
+                    symbol, f_txt.clone(), fg);
 
                 let cmp_col = match cmp {
                     AlertCmp::Above => bull, AlertCmp::Below => bear, AlertCmp::Crosses => accent,
                 };
                 let main = format!("{} {:.2}", cmp.glyph(), target);
                 painter.text(egui::pos2(rect.left() + 80.0, cy), egui::Align2::LEFT_CENTER,
-                    &main, mono_sm(), cmp_col);
+                    &main, f_num, cmp_col);
 
                 if let Some(n) = note {
                     ui.painter().text(egui::pos2(rect.center().x + 30.0, cy),
                         egui::Align2::LEFT_CENTER,
-                        n, mono_sm(), dim);
+                        n, f_txt.clone(), dim);
                 }
 
                 // Embedded delete button.

@@ -141,7 +141,7 @@ pub(crate) fn draw(
                                         PanelListRow::new(&id_salt)
                                             .leading(move |ui, _t| {
                                                 ui.label(
-                                                    TextStyle::Body.as_rich(Icon::CHART_BAR, accent),
+                                                    TextStyle::Body.as_rich_cascading(Icon::CHART_BAR, accent),
                                                 );
                                             })
                                             .primary(name)

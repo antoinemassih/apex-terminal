@@ -20,6 +20,14 @@ pub enum TextStyle {
     Caption,
     Mono,
     MonoSm,
+    /// Smallest mono rung (font_xs). Added to make the mono ladder monotonic:
+    /// MonoXs(10) < MonoSm(12) < MonoMd(14).
+    MonoXs,
+    /// 14px mono — the TABULAR DATA rung. Matches the watchlist/DOM price
+    /// ladder, which previously had no tier within 2-3px and therefore could
+    /// not join the cascade at all. Distinct from `Numeric`, which stays tied
+    /// to the per-style `font_body` for the surfaces already tuned around it.
+    MonoMd,
     Numeric,
     NumericLg,
     NumericHero,
@@ -53,6 +61,8 @@ impl TextStyle {
             TextStyle::Caption    => TextSpec { size: st.font_caption,   strong: false, monospace: false, line_height_factor: line_dense()   },
             TextStyle::Mono       => TextSpec { size: st.font_body,      strong: false, monospace: true,  line_height_factor: line_compact() },
             TextStyle::MonoSm     => TextSpec { size: font_sm(),         strong: false, monospace: true,  line_height_factor: line_dense()   },
+            TextStyle::MonoXs     => TextSpec { size: font_xs(),         strong: false, monospace: true,  line_height_factor: line_dense()   },
+            TextStyle::MonoMd     => TextSpec { size: font_md(),         strong: false, monospace: true,  line_height_factor: line_dense()   },
             TextStyle::Numeric    => TextSpec { size: st.font_body,      strong: true,  monospace: true,  line_height_factor: line_dense()   },
             TextStyle::NumericLg  => TextSpec { size: font_xl(),         strong: true,  monospace: true,  line_height_factor: line_heading() },
             TextStyle::NumericHero => TextSpec { size: font_display_sm() + 2.0, strong: true, monospace: true, line_height_factor: line_tight() },
@@ -101,6 +111,8 @@ impl TextStyle {
             TextStyle::Caption => "apex.Caption",
             TextStyle::Mono => "apex.Mono",
             TextStyle::MonoSm => "apex.MonoSm",
+            TextStyle::MonoXs => "apex.MonoXs",
+            TextStyle::MonoMd => "apex.MonoMd",
             TextStyle::Numeric => "apex.Numeric",
             TextStyle::NumericLg => "apex.NumericLg",
             TextStyle::NumericHero => "apex.NumericHero",
@@ -115,14 +127,34 @@ impl TextStyle {
     }
 
     /// Every tier — the single list `install` and tests iterate.
-    pub fn all() -> [TextStyle; 14] {
+    pub fn all() -> [TextStyle; 16] {
         [
             TextStyle::Display, TextStyle::HeadingLg, TextStyle::HeadingMd,
             TextStyle::BodyLg, TextStyle::Body, TextStyle::BodySm,
             TextStyle::Caption, TextStyle::Mono, TextStyle::MonoSm,
+            TextStyle::MonoXs, TextStyle::MonoMd,
             TextStyle::Numeric, TextStyle::NumericLg, TextStyle::NumericHero,
             TextStyle::Label, TextStyle::Eyebrow,
         ]
+    }
+
+    /// The `FontId` for this tier **resolved through the inherited style** —
+    /// the cascade-aware form of [`Self::font_id`].
+    ///
+    /// `RichText::text_style()` only cascades for widget text. A huge amount of
+    /// this app paints directly (`painter.text(.., FontId, ..)`), and those
+    /// sites cannot use `text_style` at all — which is why they all ended up
+    /// hardcoding sizes. This reads the tier out of `ui.style().text_styles`,
+    /// so a subtree override
+    /// (`ui.style_mut().text_styles.insert(TextStyle::Body.egui(), f)`)
+    /// reaches painter-drawn text too. Falls back to the global spec when the
+    /// host never called [`Self::install`] (portable/headless hosts).
+    pub fn font_id_in(self, ui: &Ui) -> egui::FontId {
+        ui.style()
+            .text_styles
+            .get(&self.egui())
+            .cloned()
+            .unwrap_or_else(|| self.font_id())
     }
 
     /// The `FontId` this tier resolves to right now (per-style tokens applied).
@@ -164,5 +196,78 @@ impl TextStyle {
         let color = ui.style().visuals.override_text_color
             .unwrap_or_else(|| crate::chart_renderer::theme_impl::active_theme(ui.ctx()).text);
         ui.label(self.as_rich(text, color))
+    }
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod cascade_tests {
+    use super::*;
+
+    /// `install()` iterates `all()`, and `RichText::text_style()` resolves via
+    /// `egui::TextStyle::resolve`, which **panics** on a Name key that is not in
+    /// the table. So a variant missing from `all()` is not a cosmetic slip — it
+    /// is a runtime panic the moment anything renders that tier. (This actually
+    /// happened while adding MonoXs/MonoMd.) Enumerate exhaustively so the
+    /// compiler forces this list to stay complete.
+    #[test]
+    fn all_contains_every_variant() {
+        let all = TextStyle::all();
+        for tier in [
+            TextStyle::Display, TextStyle::HeadingLg, TextStyle::HeadingMd,
+            TextStyle::BodyLg, TextStyle::Body, TextStyle::BodySm,
+            TextStyle::Caption, TextStyle::Mono, TextStyle::MonoSm,
+            TextStyle::MonoXs, TextStyle::MonoMd, TextStyle::Numeric,
+            TextStyle::NumericLg, TextStyle::NumericHero, TextStyle::Label,
+            TextStyle::Eyebrow,
+        ] {
+            assert!(all.contains(&tier), "{tier:?} missing from TextStyle::all() — install() would skip it and text_style() would panic on resolve");
+        }
+    }
+
+    /// Names must be unique, or two tiers collide in the table and one silently
+    /// wins.
+    #[test]
+    fn egui_names_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for tier in TextStyle::all() {
+            assert!(seen.insert(tier.egui_name()), "duplicate egui_name: {}", tier.egui_name());
+        }
+    }
+
+    /// The mono ladder must be strictly ordered. It was NOT: `Mono` resolved to
+    /// the per-style `font_body` (10-13) while `MonoSm` was the fixed 12px
+    /// token, so "Sm" rendered LARGER than the base tier under the default
+    /// style, and the ordering flipped between StyleSystems. Both migration
+    /// agents independently tripped over this.
+    #[test]
+    fn mono_ladder_is_monotonic() {
+        let xs = TextStyle::MonoXs.spec().size;
+        let sm = TextStyle::MonoSm.spec().size;
+        let md = TextStyle::MonoMd.spec().size;
+        assert!(xs < sm, "MonoXs ({xs}) must be smaller than MonoSm ({sm})");
+        assert!(sm < md, "MonoSm ({sm}) must be smaller than MonoMd ({md})");
+    }
+
+    /// Heading tiers must descend. `font_2xl` was once aliased to `font_lg`
+    /// (16), which is SMALLER than `font_xl` (22) — that inverted the ladder so
+    /// switching HeadingMd -> HeadingLg made text shrink.
+    #[test]
+    fn heading_ladder_descends() {
+        let d = TextStyle::Display.spec().size;
+        let lg = TextStyle::HeadingLg.spec().size;
+        let md = TextStyle::HeadingMd.spec().size;
+        assert!(d > lg, "Display ({d}) must exceed HeadingLg ({lg})");
+        assert!(lg > md, "HeadingLg ({lg}) must exceed HeadingMd ({md})");
+    }
+
+    /// Every tier must produce a usable size — a 0.0 renders invisibly.
+    #[test]
+    fn every_tier_has_a_sane_size() {
+        for tier in TextStyle::all() {
+            let s = tier.spec().size;
+            assert!(s >= 6.0 && s <= 80.0, "{tier:?} size {s} out of range");
+        }
     }
 }

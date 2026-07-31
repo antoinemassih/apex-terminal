@@ -805,6 +805,23 @@ pub fn drawing_palette() -> [Color32; 4] {
     ]
 }
 
+/// Eight identity colors cycled when the user creates a new chart link group.
+///
+/// The first four ARE `drawing_palette()` — the link-group and drawing-tool
+/// swatches were independently maintained copies of the same blue/green/orange/
+/// purple ramp, which drifted. Sourcing them here keeps the two in sync and
+/// means a DesignTokens override of `drawing.palette` reaches both.
+pub fn link_group_palette() -> [Color32; 8] {
+    let d = drawing_palette();
+    [
+        d[0], d[1], d[2], d[3],
+        Color32::from_rgb(255,  80, 100),
+        Color32::from_rgb(  0, 200, 220),
+        Color32::from_rgb(255, 220,  50),
+        Color32::from_rgb(255, 130, 200),
+    ]
+}
+
 // ─── Semantic accent colors (design-system tokens) ───────────────────────────
 /// Amber — used for "Active" status, R:R ≥ 1 indicator, and warning states.
 pub const COLOR_AMBER: Color32 = Color32::from_rgb(255, 191, 0);
@@ -823,6 +840,24 @@ pub const COLOR_PROFIT_GREEN: Color32 = Color32::from_rgb( 46, 204, 113);
 pub const COLOR_LOSS_RED:     Color32 = Color32::from_rgb(231,  76,  60);
 /// Purple accent for special-tier indicators / category-specific tints.
 pub const COLOR_PURPLE:       Color32 = Color32::from_rgb(180, 100, 255);
+/// Warm coral — categorical identity for "theta / decay" and the new-lows
+/// breadth row. Deliberately NOT `t.bear`: it marks a category, not a
+/// direction, and sits next to `t.bear` in the same widget.
+pub const COLOR_CORAL:        Color32 = Color32::from_rgb(255, 140, 100);
+/// Cool mint — categorical identity for "vega / volatility". Same rule as
+/// `COLOR_CORAL`: a category tint, not a bull signal.
+pub const COLOR_MINT:         Color32 = Color32::from_rgb(100, 230, 180);
+
+/// Option-greek identity colors, in Δ / Γ / Θ / ν order.
+///
+/// A CATEGORICAL palette (the sibling of `drawing_palette`), not a semantic
+/// one — the four greeks need to be told apart at a glance, so they must stay
+/// mutually distinct rather than follow bull/bear. Centralised here so the set
+/// is defined once and can later be driven from DesignTokens like
+/// `drawing_palette` already is.
+pub fn greeks_palette() -> [Color32; 4] {
+    [status_info(), COLOR_PURPLE, COLOR_CORAL, COLOR_MINT]
+}
 
 // ─── Raw text helpers ─────────────────────────────────────────────────────────
 
@@ -1210,6 +1245,43 @@ pub fn darken(c: Color32, amount: f32) -> Color32 {
         (c.b() as f32 * amt) as u8,
         c.a(),
     )
+}
+
+/// Shift each channel of `c` by a fixed amount, clamped to 0..=255. Alpha is
+/// preserved.
+///
+/// The ADDITIVE counterpart to `lighten`/`darken`, which are multiplicative and
+/// therefore can't move a near-white surface at all (`lighten(rgb(250,250,250),
+/// 0.05)` is a no-op). Pane-header active/inactive fills need a fixed
+/// perceptual step regardless of how light the base surface already is, and the
+/// per-channel deltas let the lift carry a slight warm/cool tint.
+///
+/// Prefer `color_layer_up` for ordinary surface nesting; reach for this only
+/// where the base is `t.bg` rather than `t.toolbar_bg`.
+#[inline]
+pub fn color_shift(c: Color32, dr: i16, dg: i16, db: i16) -> Color32 {
+    let ch = |v: i16| -> u8 { v.clamp(0, 255) as u8 };
+    Color32::from_rgba_premultiplied(
+        ch(c.r() as i16 + dr),
+        ch(c.g() as i16 + dg),
+        ch(c.b() as i16 + db),
+        c.a(),
+    )
+}
+
+/// Scale a color's RGB channels by `factor` (hue preserved, brightness moved)
+/// and stamp `alpha` on the result.
+///
+/// The building block for intensity-shaded fills — gradient/violin candle
+/// bodies, badge foregrounds derived from their own fill — where the base is a
+/// theme role (`t.bull` / `t.bear` / a price color) and only the shade encodes
+/// magnitude. Keeping it here means those fills stay theme-following instead of
+/// each call site open-coding `Color32::from_rgb(c.r() as f32 * k, …)`.
+#[inline]
+pub fn color_shade(c: Color32, factor: f32, alpha: u8) -> Color32 {
+    let k = factor.max(0.0);
+    let ch = |v: u8| -> u8 { (v as f32 * k).clamp(0.0, 255.0) as u8 };
+    Color32::from_rgba_unmultiplied(ch(c.r()), ch(c.g()), ch(c.b()), alpha)
 }
 
 // ─── Semantic interaction-state colors ───────────────────────────────────────

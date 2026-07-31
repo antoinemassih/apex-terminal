@@ -10,6 +10,7 @@ use crate::ui_kit::widgets::{Button, Select};
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 /// Add a design-system widget at an absolute pixel rect inside the DOM panel.
 /// The DOM panel uses hand-positioned rects (not flowed egui layouts), so we
@@ -273,7 +274,9 @@ pub(crate) fn draw(
     // real depth — show a green LIVE badge. Otherwise it's `generate_mock_levels`
     // (fabricated) — show a warn SIMULATED badge so a trader is never misled.
     {
-        let badge_font = egui::FontId::monospace(font_sm());
+        // Cascade-resolved. This same FontId lays out every galley below AND
+        // sizes the badge box — measure and paint must not diverge.
+        let badge_font = TextStyle::MonoSm.font_id_in(ui);
         let (badge_text, badge_fg, badge_bg) = if is_live {
             ("LIVE", t.bull, tint(t, Tone::Bull, 28))
         } else {
@@ -536,9 +539,11 @@ pub(crate) fn draw(
     // DOM Phase 2: reserve a bottom band for the reconstructed time & sales
     // strip when live prints are available. `tape_row_h` per print + a header
     // row; capped so it never starves the ladder on a short pane.
-    // Deliberately dense streaming strip, but tall enough that the `mono_sm()`
-    // print text actually fits (13px flat clipped a 12px glyph box).
-    let tape_row_h: f32 = mono_sm().size + 2.0;
+    // Deliberately dense streaming strip, but tall enough that the print text
+    // actually fits (13px flat clipped a 12px glyph box). Derived from the SAME
+    // tier `tsf` paints the prints with (below), so the strip's row pitch always
+    // tracks the cascade — including a subtree override of `apex.MonoSm`.
+    let tape_row_h: f32 = TextStyle::MonoSm.font_id_in(ui).size + 2.0;
     let tape_rows = if dom_tape.is_empty() { 0 } else {
         dom_tape.len().min(8).min(((ctrl_top - body_top - 60.0) / tape_row_h) as usize)
     };
@@ -585,6 +590,12 @@ pub(crate) fn draw(
 
     // Resolve the drop-target row index from the live drag y, if any.
     let drop_target_rit: Option<i32> = dom_dragging.map(|(_, dy)| ((dy - body_top) / ROW_H).round() as i32);
+
+    // Ladder-overlay fonts, hoisted OUT of the per-rung loop (this loop runs
+    // once per visible price level, every frame) — one cascade lookup each,
+    // cloned at the paint site.
+    let f_ovl = TextStyle::MonoSm.font_id_in(ui);   // L/S position tag
+    let f_pnl = TextStyle::Numeric.font_id_in(ui);  // PnL-at-price
 
     for ri in (-half..=half).rev() {
         let price = sc + ri as f32 * tick_size * -1.0;
@@ -730,7 +741,7 @@ pub(crate) fn draw(
                     [egui::pos2(rr.left(), ry + ROW_H * 0.5), egui::pos2(rr.right(), ry + ROW_H * 0.5)],
                     egui::Stroke::new(1.0, color_alpha(pc, 110)));
                 let tag = format!("{}{}", if long { "L" } else { "S" }, pos_qty.unsigned_abs());
-                lp.text(egui::pos2(rr.left() + 5.0, ry + ROW_H * 0.5), egui::Align2::LEFT_CENTER, &tag, mono_sm(), pc);
+                lp.text(egui::pos2(rr.left() + 5.0, ry + ROW_H * 0.5), egui::Align2::LEFT_CENTER, &tag, f_ovl.clone(), pc);
             }
             // DOM Phase 3: PnL-at-price. With an open position, show the $ this
             // position would be worth if the market printed at this row's price —
@@ -745,7 +756,7 @@ pub(crate) fn draw(
                     lp.text(
                         egui::pos2(rr.right() - 4.0, ry + ROW_H * 0.5),
                         egui::Align2::RIGHT_CENTER,
-                        &format!("{:+.0}", pnl), mono_sm(), color_alpha(pc, 205),
+                        &format!("{:+.0}", pnl), f_pnl.clone(), color_alpha(pc, 205),
                     );
                 }
             }
@@ -801,7 +812,8 @@ pub(crate) fn draw(
             [egui::pos2(inner.left(), ts_top), egui::pos2(inner.right(), ts_top)],
             egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())),
         );
-        let tsf = mono_sm();
+        // Same tier `tape_row_h` was derived from — see above.
+        let tsf = TextStyle::MonoSm.font_id_in(ui);
         let hy_ts = ts_top + tape_row_h * 0.5 + 1.0;
         // Three-zone header: label (left) · session CVD (center) · speed (right).
         painter.text(

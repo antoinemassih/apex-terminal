@@ -78,7 +78,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 if let Some(ref opt) = c.opt_sym {
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        ui.label(TextStyle::Body.as_rich(Icon::LIGHTNING, c.t.accent));
+                        ui.label(TextStyle::Body.as_rich_cascading(Icon::LIGHTNING, c.t.accent));
                         ui.label(egui::RichText::new(opt).monospace().size(font_md()).strong().color(c.t.text));
                     });
                     ui.add_space(gap_xs());

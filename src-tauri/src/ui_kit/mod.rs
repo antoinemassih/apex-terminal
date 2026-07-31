@@ -9,6 +9,8 @@ pub mod widgets;
 pub mod symbols;
 pub mod tokens;
 pub mod style;
+/// Taffy-backed flexbox layout (geometry only; styling stays in the tokens).
+pub mod layout;
 pub mod cursor;
 #[allow(dead_code)]
 pub mod sx;

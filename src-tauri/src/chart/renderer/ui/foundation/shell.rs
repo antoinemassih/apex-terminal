@@ -171,9 +171,9 @@ impl<'a> RowShell<'a> {
             .show(ui, self.theme, |ui| {
                 ui.horizontal(|ui| {
                     if let Some(leading) = self.leading { leading(ui); }
-                    ui.label(TextStyle::Body.as_rich(self.primary, fg));
+                    ui.label(TextStyle::Body.as_rich_cascading(self.primary, fg));
                     if let Some(sec) = self.secondary {
-                        ui.label(TextStyle::BodySm.as_rich(sec, self.theme.dim));
+                        ui.label(TextStyle::BodySm.as_rich_cascading(sec, self.theme.dim));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if let Some(trailing) = self.trailing { trailing(ui); }
@@ -277,10 +277,10 @@ impl<'a> CardShell<'a> {
         let title_style = self.title_style.unwrap_or(TextStyle::HeadingMd);
         frame.show(ui, |ui| {
             if let Some(title) = self.title {
-                ui.label(title_style.as_rich(title, fg));
+                ui.label(title_style.as_rich_cascading(title, fg));
             }
             if let Some(sub) = self.subtitle {
-                ui.label(TextStyle::BodySm.as_rich(sub, dim_color));
+                ui.label(TextStyle::BodySm.as_rich_cascading(sub, dim_color));
             }
             if let Some(body) = self.body { body(ui); }
             if let Some(footer) = self.footer {

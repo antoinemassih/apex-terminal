@@ -13,7 +13,7 @@ use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, pal_w: f32) {
     ui.horizontal(|ui| {
-        ui.label(TextStyle::BodyLg.as_rich(&format!("{} Ask Apex", crate::ui_kit::icons::Icon::SPARKLE), t.text).strong());
+        ui.label(TextStyle::BodyLg.as_rich_cascading(&format!("{} Ask Apex", crate::ui_kit::icons::Icon::SPARKLE), t.text).strong());
         ui.add_space(gap_lg());
         let (badge_rect, _) = ui.allocate_exact_size(egui::vec2(68.0, 18.0), egui::Sense::hover());
         let painter = ui.painter();
@@ -119,19 +119,19 @@ pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(Stri
     };
 
     let cat_col = super::matcher::cat_from_label(cat_label).map(|c| c.color(t)).unwrap_or(t.dim);
-    ui.label(TextStyle::BodySm.as_rich(cat_label, cat_col).strong());
+    ui.label(TextStyle::BodySm.as_rich_cascading(cat_label, cat_col).strong());
     ui.add_space(gap_sm());
-    ui.label(TextStyle::Body.as_rich(label, t.text).strong());
+    ui.label(TextStyle::Body.as_rich_cascading(label, t.text).strong());
     ui.add_space(gap_lg());
 
     if let Some(sym) = id.strip_prefix("sym:") {
         draw_symbol_preview(ui, t, sym, panes, ap);
     } else if id == "ai:chat" {
-        ui.label(TextStyle::BodySm.as_rich("Conversational assistant\npowered by fine-tuned Gemma 4.", color_subtle(t.text)));
+        ui.label(TextStyle::BodySm.as_rich_cascading("Conversational assistant\npowered by fine-tuned Gemma 4.", color_subtle(t.text)));
         ui.add_space(gap_sm());
-        ui.label(TextStyle::BodySm.as_rich("• scanners in plain English\n• alert creation\n• context-aware answers", t.dim));
+        ui.label(TextStyle::BodySm.as_rich_cascading("• scanners in plain English\n• alert creation\n• context-aware answers", t.dim));
     } else if id == "dyn:reorganize" {
-        ui.label(TextStyle::BodySm.as_rich("Dynamic UI (Gemma 2B)", Category::Dynamic.color(t)).strong());
+        ui.label(TextStyle::BodySm.as_rich_cascading("Dynamic UI (Gemma 2B)", Category::Dynamic.color(t)).strong());
         preview_hint(ui, "LLM-driven layout reorganization.\nPlaceholder — see docs/dynamic-gemma-ui.md.", t);
     } else if id.starts_with("theme:") {
         let name = id.trim_start_matches("theme:");

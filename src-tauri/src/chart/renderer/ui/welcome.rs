@@ -248,7 +248,7 @@ fn draw_step_welcome(ui: &mut egui::Ui, theme: &Theme) {
 
     ui.add_space(st::gap_sm());
     ui.horizontal_centered(|ui| {
-        ui.label(TextStyle::Body.as_rich("A pro-grade trading terminal built for speed", theme.dim));
+        ui.label(TextStyle::Body.as_rich_cascading("A pro-grade trading terminal built for speed", theme.dim));
     });
 
     ui.add_space(st::gap_lg());
@@ -263,9 +263,9 @@ fn draw_step_welcome(ui: &mut egui::Ui, theme: &Theme) {
     for bullet in bullets {
         ui.horizontal(|ui| {
             ui.add_space(st::gap_md());
-            ui.label(TextStyle::Body.as_rich("•", theme.accent));
+            ui.label(TextStyle::Body.as_rich_cascading("•", theme.accent));
             ui.add_space(st::gap_xs());
-            ui.label(TextStyle::Body.as_rich(bullet, theme.text));  // bullet: &&str → &str via deref coercion
+            ui.label(TextStyle::Body.as_rich_cascading(bullet, theme.text));  // bullet: &&str → &str via deref coercion
         });
         ui.add_space(st::gap_xs());
     }
@@ -280,9 +280,9 @@ fn draw_step_broker(
     advance: &mut bool,
 ) {
     ui.add_space(st::gap_md());
-    ui.label(TextStyle::BodyLg.as_rich("Connect a broker", theme.text).strong());
+    ui.label(TextStyle::BodyLg.as_rich_cascading("Connect a broker", theme.text).strong());
     ui.add_space(st::gap_sm());
-    ui.label(TextStyle::Body.as_rich("Connect your brokerage account to enable live trading.", theme.dim));
+    ui.label(TextStyle::Body.as_rich_cascading("Connect your brokerage account to enable live trading.", theme.dim));
     ui.add_space(st::gap_lg());
 
     // Two side-by-side broker cards
@@ -299,9 +299,9 @@ fn draw_step_broker(
                 .padding(st::gap_md())
                 .show(ui, theme, |ui| {
                 ui.set_width(card_w - st::gap_md() * 2.0);
-                ui.label(TextStyle::Body.as_rich("Interactive Brokers", theme.text).strong());
+                ui.label(TextStyle::Body.as_rich_cascading("Interactive Brokers", theme.text).strong());
                 ui.add_space(st::gap_xs());
-                ui.label(TextStyle::BodySm.as_rich("Connect via TWS or IB Gateway", theme.dim));
+                ui.label(TextStyle::BodySm.as_rich_cascading("Connect via TWS or IB Gateway", theme.dim));
                 ui.add_space(st::gap_sm());
                 if Button::new("Open connection panel")
                     .variant(Variant::Primary)
@@ -328,9 +328,9 @@ fn draw_step_broker(
                 .padding(st::gap_md())
                 .show(ui, theme, |ui| {
                 ui.set_width(card_w - st::gap_md() * 2.0);
-                ui.label(TextStyle::Body.as_rich("Skip for now", theme.text).strong());
+                ui.label(TextStyle::Body.as_rich_cascading("Skip for now", theme.text).strong());
                 ui.add_space(st::gap_xs());
-                ui.label(TextStyle::BodySm.as_rich("Continue in paper-trading mode", theme.dim));
+                ui.label(TextStyle::BodySm.as_rich_cascading("Continue in paper-trading mode", theme.dim));
                 ui.add_space(st::gap_sm());
                 if Button::new("I'll do this later")
                     .variant(Variant::Ghost)
@@ -354,9 +354,9 @@ fn draw_step_risk(
     max_position_pct: &mut f32,
 ) {
     ui.add_space(st::gap_md());
-    ui.label(TextStyle::BodyLg.as_rich("Set your risk limits", theme.text).strong());
+    ui.label(TextStyle::BodyLg.as_rich_cascading("Set your risk limits", theme.text).strong());
     ui.add_space(st::gap_sm());
-    ui.label(TextStyle::Body.as_rich(
+    ui.label(TextStyle::Body.as_rich_cascading(
         "These limits help protect your account. You can change them later in Settings → Trading.",
         theme.dim,
     ));
@@ -366,7 +366,7 @@ fn draw_step_risk(
     ui.horizontal(|ui| {
         ui.allocate_ui(Vec2::new(220.0, 24.0), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(TextStyle::BodySm.as_rich("Daily loss cap (USD)", st::tint(theme, Tone::Text, 180)));
+                ui.label(TextStyle::BodySm.as_rich_cascading("Daily loss cap (USD)", st::tint(theme, Tone::Text, 180)));
             });
         });
         ui.add_space(st::gap_md());
@@ -381,7 +381,7 @@ fn draw_step_risk(
     ui.add_space(st::gap_xs());
     ui.horizontal(|ui| {
         ui.add_space(220.0 + st::gap_md());
-        ui.label(TextStyle::BodySm.as_rich(
+        ui.label(TextStyle::BodySm.as_rich_cascading(
             "Apex halts new trades when your loss (realized + unrealized) reaches this in a day.",
             theme.dim,
         ));
@@ -393,7 +393,7 @@ fn draw_step_risk(
     ui.horizontal(|ui| {
         ui.allocate_ui(Vec2::new(220.0, 24.0), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(TextStyle::BodySm.as_rich("Max position size (% of account)", st::tint(theme, Tone::Text, 180)));
+                ui.label(TextStyle::BodySm.as_rich_cascading("Max position size (% of account)", st::tint(theme, Tone::Text, 180)));
             });
         });
         ui.add_space(st::gap_md());
@@ -412,7 +412,7 @@ fn draw_step_risk(
             // W0-09: honest disclosure — this % is not enforced from here (no
             // account-size-aware conversion at first run). Position sizing lives
             // in Settings → Trading once an account is connected.
-            TextStyle::BodySm.as_rich(
+            TextStyle::BodySm.as_rich_cascading(
                 "Set your position-size limit in Settings → Trading once your account is connected.",
                 theme.dim,
             ),
@@ -433,14 +433,14 @@ fn draw_step_done(ui: &mut egui::Ui, theme: &Theme) {
     });
     ui.add_space(st::gap_md());
     ui.horizontal_centered(|ui| {
-        ui.label(TextStyle::Body.as_rich(
+        ui.label(TextStyle::Body.as_rich_cascading(
             "Apex is pre-seeded with SPY, QQQ, AAPL, MSFT, NVDA, TSLA and 6 more symbols.",
             theme.text,
         ));
     });
     ui.add_space(st::gap_sm());
     ui.horizontal_centered(|ui| {
-        ui.label(TextStyle::Body.as_rich("Run /help anytime to see available commands.", theme.dim));
+        ui.label(TextStyle::Body.as_rich_cascading("Run /help anytime to see available commands.", theme.dim));
     });
     ui.add_space(st::gap_lg());
 }

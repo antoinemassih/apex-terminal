@@ -346,7 +346,7 @@ pub(crate) fn render(
                 .show(ctx, |ui| {
                     let fg = crate::chart_renderer::ui::style::contrast_fg(fill);
                     ui.horizontal_centered(|ui| {
-                        ui.label(TextStyle::Body.as_rich(msg, fg).strong());
+                        ui.label(TextStyle::Body.as_rich_cascading(msg, fg).strong());
                     });
                 });
         }
@@ -668,7 +668,7 @@ pub(crate) fn render(
                         ui.horizontal(|ui| {
                             // Active dot
                             if is_active {
-                                ui.label(TextStyle::Caption.as_rich(Icon::CIRCLE_FILL, t.accent));
+                                ui.label(TextStyle::Caption.as_rich_cascading(Icon::CIRCLE_FILL, t.accent));
                             } else {
                                 ui.label(egui::RichText::new("  ").size(font_xs()));
                             }
@@ -730,8 +730,8 @@ pub(crate) fn render(
                     use crate::ui_kit::widgets::Tooltip;
                     let active_ws = watchlist.workspace.active.clone();
                     Tooltip::rich(move |ui, theme| {
-                        ui.label(TextStyle::BodySm.as_rich("Workspaces", theme.text()).strong());
-                        ui.label(TextStyle::Caption.as_rich(&format!("Active: {}", active_ws), theme.dim()));
+                        ui.label(TextStyle::BodySm.as_rich_cascading("Workspaces", theme.text()).strong());
+                        ui.label(TextStyle::Caption.as_rich_cascading(&format!("Active: {}", active_ws), theme.dim()));
                     }).show(ui, &ws_menu.response, t);
                 }
                 #[cfg(debug_assertions)]
@@ -927,8 +927,8 @@ pub(crate) fn render(
                     crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);
                     let tip_detail_clone = tip_detail.clone();
                     Tooltip::rich(move |ui, theme| {
-                        ui.label(TextStyle::Caption.as_rich(&tip_detail_clone, theme.text()));
-                        ui.label(TextStyle::Caption.as_rich("Click to open Connection panel", theme.dim()));
+                        ui.label(TextStyle::Caption.as_rich_cascading(&tip_detail_clone, theme.text()));
+                        ui.label(TextStyle::Caption.as_rich_cascading("Click to open Connection panel", theme.dim()));
                     }).show(ui, &resp, t);
                     if resp.clicked() { *conn_panel_open = !*conn_panel_open; }
                     #[cfg(debug_assertions)]
@@ -953,11 +953,11 @@ pub(crate) fn render(
                 // appear.
                 if !crate::drawing_db::is_persisting() {
                     let chip = ui.label(
-                        TextStyle::Caption.as_rich(&format!("{} drawings not saving", Icon::WARNING), t.warn),
+                        TextStyle::Caption.as_rich_cascading(&format!("{} drawings not saving", Icon::WARNING), t.warn),
                     );
                     Tooltip::rich(move |ui, theme| {
-                        ui.label(TextStyle::Caption.as_rich("Postgres is unavailable", theme.text()));
-                        ui.label(TextStyle::Caption.as_rich(
+                        ui.label(TextStyle::Caption.as_rich_cascading("Postgres is unavailable", theme.text()));
+                        ui.label(TextStyle::Caption.as_rich_cascading(
                             "Drawings are being buffered to disk and will be saved \
                              automatically when the database returns.", theme.dim()));
                     }).show(ui, &chip, t);
@@ -1043,8 +1043,8 @@ pub(crate) fn render(
                             .with_style("toolbar")
                     );
                     Tooltip::rich(|ui, theme| {
-                        ui.label(TextStyle::BodySm.as_rich("Search", theme.text()).strong());
-                        ui.label(TextStyle::Caption.as_rich("Search & command palette", theme.dim()));
+                        ui.label(TextStyle::BodySm.as_rich_cascading("Search", theme.text()).strong());
+                        ui.label(TextStyle::Caption.as_rich_cascading("Search & command palette", theme.dim()));
                         ui.add(Kbd::new("Cmd+K"));
                     }).show(ui, &search_resp, t);
                     if search_resp.clicked() {
@@ -1673,11 +1673,11 @@ pub(crate) fn render(
                         .show(ui, |ui| {
                             // ── Top row: icon + message + close button ──────
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(TextStyle::Body.as_rich(icon, icon_col));
+                                ui.label(TextStyle::Body.as_rich_cascading(icon, icon_col));
                                 ui.add_space(gap_xs());
                                 // Message — wraps at TOAST_W boundary.
                                 ui.label(
-                                    TextStyle::BodySm.as_rich(display_msg, text_col)
+                                    TextStyle::BodySm.as_rich_cascading(display_msg, text_col)
                                 );
                             });
 
@@ -1688,7 +1688,7 @@ pub(crate) fn render(
                                 } else {
                                     "1m+ ago".to_string()
                                 };
-                                ui.label(TextStyle::Caption.as_rich(&age_str, dim_col));
+                                ui.label(TextStyle::Caption.as_rich_cascading(&age_str, dim_col));
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     // Close button — always dismisses (even if pinned).
@@ -1935,16 +1935,16 @@ pub(crate) fn render(
                     .stroke(egui::Stroke::new(wl_tip_stroke_w, wl_tip_border))
                     .inner_margin(crate::chart_renderer::ui::style::gap_lg()).corner_radius(wl_tip_cr).show(ui, |ui| {
                     ui.set_max_width(tip_w);
-                    ui.label(TextStyle::NumericLg.as_rich(&tip.sym, t.text));
+                    ui.label(TextStyle::NumericLg.as_rich_cascading(&tip.sym, t.text));
                     ui.horizontal(|ui| {
-                        ui.label(TextStyle::Numeric.as_rich(&format!("${:.2}", tip.price), tint(t, Tone::Text, 220)));
-                        ui.label(TextStyle::Numeric.as_rich(&format!("{:+.2}%", change_pct), chg_col));
+                        ui.label(TextStyle::Numeric.as_rich_cascading(&format!("${:.2}", tip.price), tint(t, Tone::Text, 220)));
+                        ui.label(TextStyle::Numeric.as_rich_cascading(&format!("{:+.2}%", change_pct), chg_col));
                     });
                     ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
                     if tip.day_high > tip.day_low {
                         ui.horizontal(|ui| {
-                            ui.label(TextStyle::Caption.as_rich("Day", dim));
-                            ui.label(TextStyle::MonoSm.as_rich(&format!("{:.2}", tip.day_low), dim));
+                            ui.label(TextStyle::Caption.as_rich_cascading("Day", dim));
+                            ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{:.2}", tip.day_low), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
                             ui.painter().rect_filled(bar_rect, 2.0, tint(t, Tone::Text, 15));
@@ -1953,13 +1953,13 @@ pub(crate) fn render(
                                 let pos = ((tip.price - tip.day_low) / range).clamp(0.0, 1.0);
                                 ui.painter().circle_filled(egui::pos2(bar_rect.left() + pos * bar_w, bar_rect.center().y), 3.0, chg_col);
                             }
-                            ui.label(TextStyle::MonoSm.as_rich(&format!("{:.2}", tip.day_high), dim));
+                            ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{:.2}", tip.day_high), dim));
                         });
                     }
                     if tip.high_52wk > tip.low_52wk {
                         ui.horizontal(|ui| {
-                            ui.label(TextStyle::Caption.as_rich("52w", dim));
-                            ui.label(TextStyle::MonoSm.as_rich(&format!("{:.0}", tip.low_52wk), dim));
+                            ui.label(TextStyle::Caption.as_rich_cascading("52w", dim));
+                            ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{:.0}", tip.low_52wk), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
                             ui.painter().rect_filled(bar_rect, 2.0, tint(t, Tone::Text, 15));
@@ -1968,28 +1968,28 @@ pub(crate) fn render(
                                 let pos = ((tip.price - tip.low_52wk) / range).clamp(0.0, 1.0);
                                 ui.painter().circle_filled(egui::pos2(bar_rect.left() + pos * bar_w, bar_rect.center().y), 3.0, t.accent);
                             }
-                            ui.label(TextStyle::MonoSm.as_rich(&format!("{:.0}", tip.high_52wk), dim));
+                            ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{:.0}", tip.high_52wk), dim));
                         });
                     }
                     ui.add_space(gap_xs());
                     ui.horizontal(|ui| {
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("ATR {:.2}", tip.atr), dim));
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("RVOL {:.1}x", tip.rvol),
+                        ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("ATR {:.2}", tip.atr), dim));
+                        ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("RVOL {:.1}x", tip.rvol),
                             if tip.rvol > 2.0 { t.warn } else { dim }));
                     });
                     if change_pct.abs() > tip.avg_range * 1.5 {
-                        ui.label(TextStyle::Caption.as_rich("EXTREME MOVE", chg_col));
+                        ui.label(TextStyle::Caption.as_rich_cascading("EXTREME MOVE", chg_col));
                     }
                     if tip.earnings_days >= 0 && tip.earnings_days <= 14 {
                         ui.add_space(gap_xs());
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), tint(t, Tone::Accent, alpha_heavy())));
+                        ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), tint(t, Tone::Accent, alpha_heavy())));
                     }
                     if !tip.tags.is_empty() {
                         ui.add_space(gap_xs());
-                        ui.horizontal_wrapped(|ui| { for tag in &tip.tags { ui.label(TextStyle::Caption.as_rich(tag, t.accent)); } });
+                        ui.horizontal_wrapped(|ui| { for tag in &tip.tags { ui.label(TextStyle::Caption.as_rich_cascading(tag, t.accent)); } });
                     }
                     if tip.alert_triggered {
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Alert triggered", Icon::LIGHTNING), t.bear));
+                        ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{} Alert triggered", Icon::LIGHTNING), t.bear));
                     }
                 });
             });

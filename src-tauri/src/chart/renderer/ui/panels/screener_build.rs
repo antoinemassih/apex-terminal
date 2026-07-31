@@ -586,7 +586,7 @@ fn draw_meta_header(ui: &mut Ui, t: &Theme, panel_w: f32) {
     // Name.
     ui.horizontal(|ui| {
         ui.add(egui::Label::new(
-            TextStyle::Caption.as_rich("Name", t.dim),
+            TextStyle::Caption.as_rich_cascading("Name", t.dim),
         ));
         ui.add_space(gap_xs());
         Input::new(&mut m.name)
@@ -600,7 +600,7 @@ fn draw_meta_header(ui: &mut Ui, t: &Theme, panel_w: f32) {
 
     // TF / Class / Universe row — compact combo boxes.
     ui.horizontal_wrapped(|ui| {
-        ui.add(egui::Label::new(TextStyle::Caption.as_rich("TF", t.dim)));
+        ui.add(egui::Label::new(TextStyle::Caption.as_rich_cascading("TF", t.dim)));
         egui::ComboBox::from_id_salt("sb_tf")
             .selected_text(egui::RichText::new(&m.tf).monospace().size(font_xs()))
             .width(54.0)
@@ -612,7 +612,7 @@ fn draw_meta_header(ui: &mut Ui, t: &Theme, panel_w: f32) {
             });
 
         ui.add_space(gap_xs());
-        ui.add(egui::Label::new(TextStyle::Caption.as_rich("Class", t.dim)));
+        ui.add(egui::Label::new(TextStyle::Caption.as_rich_cascading("Class", t.dim)));
         egui::ComboBox::from_id_salt("sb_class")
             .selected_text(egui::RichText::new(&m.class).size(font_xs()))
             .width(70.0)
@@ -624,7 +624,7 @@ fn draw_meta_header(ui: &mut Ui, t: &Theme, panel_w: f32) {
             });
 
         ui.add_space(gap_xs());
-        ui.add(egui::Label::new(TextStyle::Caption.as_rich("Univ", t.dim)));
+        ui.add(egui::Label::new(TextStyle::Caption.as_rich_cascading("Univ", t.dim)));
         let universes = ["SP500", "QQQ100", "Dow30", "$universe", "All"];
         egui::ComboBox::from_id_salt("sb_univ")
             .selected_text(egui::RichText::new(&m.universe).size(font_xs()))
@@ -677,7 +677,7 @@ fn draw_visual_body(ui: &mut Ui, t: &Theme, panel_w: f32) {
                 ui.horizontal(|ui| {
                     Spinner::new().size(KitSize::Sm).show(ui, t);
                     ui.add(egui::Label::new(
-                        TextStyle::Caption.as_rich("Loading catalog…", t.dim),
+                        TextStyle::Caption.as_rich_cascading("Loading catalog…", t.dim),
                     ));
                 });
             }
@@ -715,7 +715,7 @@ fn draw_visual_body(ui: &mut Ui, t: &Theme, panel_w: f32) {
                     .collect();
                 for (k, l) in matches {
                     let r = ui.add(egui::Label::new(
-                        TextStyle::Caption.as_rich(l.as_str(), t.accent),
+                        TextStyle::Caption.as_rich_cascading(l.as_str(), t.accent),
                     ).sense(egui::Sense::click()));
                     if r.clicked() { m.rank_by = k.clone(); }
                 }
@@ -732,7 +732,7 @@ fn draw_visual_body(ui: &mut Ui, t: &Theme, panel_w: f32) {
             let mut m = screen_meta().lock().unwrap();
             ui.horizontal(|ui| {
                 ui.add(egui::Label::new(
-                    TextStyle::Caption.as_rich("Limit", t.dim),
+                    TextStyle::Caption.as_rich_cascading("Limit", t.dim),
                 ));
                 let mut limit_str = m.limit.to_string();
                 if Input::new(&mut limit_str)
@@ -745,7 +745,7 @@ fn draw_visual_body(ui: &mut Ui, t: &Theme, panel_w: f32) {
                 }
                 ui.add_space(gap_md());
                 ui.add(egui::Label::new(
-                    TextStyle::Caption.as_rich("Alert on entry", t.dim),
+                    TextStyle::Caption.as_rich_cascading("Alert on entry", t.dim),
                 ));
                 Checkbox::new(&mut m.alert_on_entry).show(ui, t);
             });
@@ -866,7 +866,7 @@ fn render_predicate_card(
                     .take(6).collect();
                 for (k, l) in &hits {
                     let sr = ui.add(egui::Label::new(
-                        TextStyle::Caption.as_rich(&format!("  {}", l), t.accent),
+                        TextStyle::Caption.as_rich_cascading(&format!("  {}", l), t.accent),
                     ).sense(egui::Sense::click()));
                     if sr.clicked() {
                         node.left_op = k.to_string();
@@ -946,13 +946,13 @@ fn draw_dsl_body(ui: &mut Ui, t: &Theme, panel_w: f32) {
         ui.horizontal(|ui| {
             Spinner::new().size(KitSize::Sm).show(ui, t);
             ui.add(egui::Label::new(
-                TextStyle::Caption.as_rich("Parsing DSL…", t.dim),
+                TextStyle::Caption.as_rich_cascading("Parsing DSL…", t.dim),
             ));
         });
     } else if pr.errors.is_empty() {
         if pr.condition.is_some() {
             ui.add(egui::Label::new(
-                TextStyle::Caption.as_rich("Valid", t.bull),
+                TextStyle::Caption.as_rich_cascading("Valid", t.bull),
             ));
         }
     } else {

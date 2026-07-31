@@ -266,7 +266,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
 
     // Selector + scenario header.
     ui.horizontal(|ui| {
-        ui.label(TextStyle::Caption.as_rich("BASKET", t.dim));
+        ui.label(TextStyle::Caption.as_rich_cascading("BASKET", t.dim));
         egui::ComboBox::from_id_salt("msg_ten_parent")
             .selected_text(parent.as_str())
             .width(58.0)
@@ -278,7 +278,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
                     }
                 }
             });
-        ui.label(TextStyle::Caption.as_rich("THEME", t.dim));
+        ui.label(TextStyle::Caption.as_rich_cascading("THEME", t.dim));
         egui::ComboBox::from_id_salt("msg_ten_theme")
             .selected_text(theme.replace('_', " ").to_uppercase())
             .width(110.0)
@@ -293,7 +293,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
             });
         if is_sample {
             ui.label(
-                TextStyle::Caption.as_rich("SAMPLE DATA", tint(t, Tone::Warn, alpha_active())),
+                TextStyle::Caption.as_rich_cascading("SAMPLE DATA", tint(t, Tone::Warn, alpha_active())),
             );
         }
     });
@@ -301,11 +301,11 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
     // Scenario headline.
     ui.horizontal(|ui| {
         let pton = path_tone(&sc.path);
-        ui.label(TextStyle::Body.as_rich(&sc.path, tint(t, pton, alpha_near_opaque())).strong());
-        ui.label(TextStyle::Caption.as_rich(&format!("conf {:.0}%", sc.confidence * 100.0), t.dim));
+        ui.label(TextStyle::Body.as_rich_cascading(&sc.path, tint(t, pton, alpha_near_opaque())).strong());
+        ui.label(TextStyle::Caption.as_rich_cascading(&format!("conf {:.0}%", sc.confidence * 100.0), t.dim));
         if sc.invalidation > 0.0 {
             let above = if sc.inval_is_above { "↑" } else { "↓" };
-            ui.label(TextStyle::Caption.as_rich(&format!("inval {above}{:.1}", sc.invalidation), tint(t, Tone::Bear, alpha_active())));
+            ui.label(TextStyle::Caption.as_rich_cascading(&format!("inval {above}{:.1}", sc.invalidation), tint(t, Tone::Bear, alpha_active())));
         }
     });
     ui.add_space(gap_xs());

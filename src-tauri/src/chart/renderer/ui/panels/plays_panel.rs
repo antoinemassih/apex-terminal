@@ -755,7 +755,7 @@ fn render_play_card(
                 let mut stat = |ui: &mut egui::Ui, label: &str, val: String, col: egui::Color32| {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
-                        ui.label(TextStyle::Caption.as_rich(label, color_half(t.dim)));
+                        ui.label(TextStyle::Caption.as_rich_cascading(label, color_half(t.dim)));
                         ui.label(egui::RichText::new(val).monospace().size(font_sm()).strong().color(col));
                     });
                 };

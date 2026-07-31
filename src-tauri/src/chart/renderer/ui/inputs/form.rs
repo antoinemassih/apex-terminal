@@ -444,6 +444,7 @@ impl<'a> MeridienOrderTicket<'a> {
         let label_color = color_subtle(self.dim);
         let card_bg     = color_alpha(self.border, alpha_subtle());
         let card_radius = radius_md() as u8;
+        let card_radius_cr = r_md_cr();
 
         // ── Layout constants — unified rhythm ─────────────────────────
         let outer_pad      = gap_sm();          // card outer margin from pane edges
@@ -504,7 +505,7 @@ impl<'a> MeridienOrderTicket<'a> {
         let strip_rect = egui::Rect::from_min_size(strip_top, Vec2::new(inner_w, strip_h));
 
         ui.painter().rect_filled(strip_rect,
-            egui::CornerRadius::same(card_radius), card_bg);
+            card_radius_cr, card_bg);
 
         let bid_rect = egui::Rect::from_min_size(strip_top, Vec2::new(bid_w, strip_h));
         let ask_rect = egui::Rect::from_min_size(
@@ -558,11 +559,11 @@ impl<'a> MeridienOrderTicket<'a> {
         ui.painter().text(
             egui::pos2(bid_rect.left() + inner_pad, bid_rect.center().y - 9.0),
             egui::Align2::LEFT_CENTER, "BID",
-            egui::FontId::monospace(font_xs()), self.bear);
+            mono_xs(), self.bear);
         ui.painter().text(
             egui::pos2(bid_rect.left() + inner_pad, bid_rect.center().y + 7.0),
             egui::Align2::LEFT_CENTER, &format!("{:.2}", s.bid),
-            egui::FontId::proportional(font_lg()), self.text);
+            prop_lg(), self.text);
 
         // SPREAD
         let spread_cx = strip_top.x + bid_w + spread_w * 0.5;
@@ -570,21 +571,21 @@ impl<'a> MeridienOrderTicket<'a> {
             egui::pos2(spread_cx, strip_rect.center().y - 5.0),
             egui::Align2::CENTER_CENTER,
             &format!("{:.2}", (s.ask - s.bid).abs()),
-            egui::FontId::monospace(font_sm()), self.text);
+            mono_sm(), self.text);
         ui.painter().text(
             egui::pos2(spread_cx, strip_rect.center().y + 8.0),
             egui::Align2::CENTER_CENTER, "SPREAD",
-            egui::FontId::monospace(font_xs()), label_color);
+            mono_xs(), label_color);
 
         // ASK
         ui.painter().text(
             egui::pos2(ask_rect.right() - inner_pad, ask_rect.center().y - 9.0),
             egui::Align2::RIGHT_CENTER, "ASK",
-            egui::FontId::monospace(font_xs()), self.bull);
+            mono_xs(), self.bull);
         ui.painter().text(
             egui::pos2(ask_rect.right() - inner_pad, ask_rect.center().y + 7.0),
             egui::Align2::RIGHT_CENTER, &format!("{:.2}", s.ask),
-            egui::FontId::proportional(font_lg()), self.text);
+            prop_lg(), self.text);
 
         ui.allocate_exact_size(Vec2::new(panel_w, strip_h), egui::Sense::hover());
 
@@ -628,15 +629,15 @@ impl<'a> MeridienOrderTicket<'a> {
                         Vec2::new(ui.available_width(), stepper_h),
                         egui::Sense::hover());
                     ui.painter().rect_filled(rect,
-                        egui::CornerRadius::same(radius_sm() as u8),
+                        r_sm_cr(),
                         color_alpha(self.border, alpha_subtle()));
                     ui.painter().rect_stroke(rect,
-                        egui::CornerRadius::same(radius_sm() as u8),
+                        r_sm_cr(),
                         Stroke::new(stroke_std(), color_alpha(self.border, alpha_line())),
                         egui::StrokeKind::Inside);
                     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
                         "AT MARKET",
-                        egui::FontId::monospace(font_sm()),
+                        mono_sm(),
                         label_color);
                 } else {
                     let mut stepper = NumericStepper::new(s.limit_price)
@@ -754,7 +755,7 @@ impl<'a> MeridienOrderTicket<'a> {
         let cost_top = egui::pos2(ui.cursor().min.x + outer_pad, ui.cursor().min.y);
         let cost_rect = egui::Rect::from_min_size(cost_top, Vec2::new(inner_w, cost_card_h));
         ui.painter().rect_filled(cost_rect,
-            egui::CornerRadius::same(card_radius), card_bg);
+            card_radius_cr, card_bg);
 
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
@@ -1125,6 +1126,7 @@ impl ApertureOrderTicket {
         // Build a minimal theme stub so sub-widgets that accept &Theme can be
         // called without the caller threading a full Theme reference here.
         let t_stub  = aperture_stub_theme_full(
+            ui.ctx(),
             self.text, self.dim, self.bull, self.bear, self.accent,
             self.toolbar_bg, self.toolbar_border);
 
@@ -1474,11 +1476,20 @@ impl Default for ApertureOrderTicket {
 /// from the color fields the Aperture ticket carries. `text` was added to the
 /// signature in the post-Phase-2 light-theme sweep so the stub respects the
 /// actual palette's text colour instead of a baked dark-theme cream.
+///
+/// Design-system sweep: the fields the ticket does NOT carry (gold, rrg_*,
+/// hud_*, overlay_text, text_muted, notification_red, cmd_palette) used to be
+/// frozen dark-theme literals here, so a light palette got a dark HUD and a
+/// dark-tuned RRG quadrant ramp. They now inherit from the ambient/active
+/// Theme via struct-update syntax — only the seven ticket-supplied roles are
+/// overridden. Same values on the default dark palette; correct everywhere else.
 fn aperture_stub_theme_full(
+    ctx: &egui::Context,
     text: Color32,
     dim: Color32, bull: Color32, bear: Color32, accent: Color32,
     toolbar_bg: Color32, toolbar_border: Color32,
 ) -> Theme {
+    let base = crate::chart_renderer::theme_impl::active_theme(ctx);
     Theme {
         name:           "aperture-stub",
         bg:             toolbar_bg,
@@ -1490,27 +1501,6 @@ fn aperture_stub_theme_full(
         border_variant: crate::chart_renderer::gpu::hairline_border_variant(toolbar_bg),
         accent,
         text:           text,
-        warn:               crate::chart_renderer::ui::style::COLOR_AMBER,
-        notification_red:   COLOR_LOSS_RED,
-        gold:               Color32::from_rgb(255, 193, 37),
-        // Shadow tint follows the active palette (light themes use gray, dark
-        // themes near-black) — derived from toolbar_bg luminance so the stub
-        // theme respects the outer Theme passed via .theme(t).
-        shadow_color:       if (toolbar_bg.r() as u16 + toolbar_bg.g() as u16 + toolbar_bg.b() as u16) > 400 {
-            Color32::from_rgb(60, 60, 60)
-        } else {
-            Color32::from_rgb(0, 0, 0)
-        },
-        overlay_text:       Color32::from_rgb(240, 240, 250),
-        rrg_leading:        Color32::from_rgb(56, 203, 137),
-        rrg_improving:      COLOR_INFO_CYAN,
-        rrg_weakening:      Color32::from_rgb(230, 200, 50),
-        rrg_lagging:        Color32::from_rgb(224, 82, 82),
-        cmd_palette:        crate::chart_renderer::gpu::CMD_PALETTE_DEFAULT,
-        pinned_row_tint:    Color32::from_rgba_premultiplied(3, 5, 9, 12),
-        text_muted:         Color32::from_rgb(180, 180, 195),
-        hud_bg:             Color32::from_rgba_premultiplied(12, 12, 18, 230),
-        hud_border:         Color32::from_rgb(50, 52, 64),
-        // P12: overlay fields removed — see theme_impl.rs for derivation.
+        ..base
     }
 }

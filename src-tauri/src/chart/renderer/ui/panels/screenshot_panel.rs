@@ -178,7 +178,7 @@ pub(crate) fn draw_content(
                         PanelListRow::new(&id_salt)
                             .leading(move |ui, _t| {
                                 ui.label(
-                                    TextStyle::Body.as_rich(Icon::CAMERA, accent_col),
+                                    TextStyle::Body.as_rich_cascading(Icon::CAMERA, accent_col),
                                 );
                             })
                             .primary(&primary)

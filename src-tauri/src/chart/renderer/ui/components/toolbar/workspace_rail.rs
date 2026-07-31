@@ -176,8 +176,8 @@ pub(crate) fn render_workspace_rail(
                         // including an unsaved "Untitled" that has no list row yet.
                         if !active.trim().is_empty() {
                             ui.horizontal(|ui| {
-                                ui.label(TextStyle::Caption.as_rich(Icon::CIRCLE_FILL, t.accent));
-                                ui.label(TextStyle::BodySm.as_rich(active.as_str(), t.text).strong());
+                                ui.label(TextStyle::Caption.as_rich_cascading(Icon::CIRCLE_FILL, t.accent));
+                                ui.label(TextStyle::BodySm.as_rich_cascading(active.as_str(), t.text).strong());
                                 if !active_is_saved {
                                     ui.label(egui::RichText::new("·unsaved").monospace().size(font_xs()).color(t.warn));
                                 }

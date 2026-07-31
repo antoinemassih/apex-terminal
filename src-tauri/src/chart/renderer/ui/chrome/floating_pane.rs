@@ -188,7 +188,7 @@ impl<'a> FloatingPaneChrome<'a> {
                                 .size(font_xs())
                                 .color(color_subtle(dim)));
                         }
-                        ui.label(TextStyle::Caption.as_rich(Icon::CARET_DOWN, color_half(dim)));
+                        ui.label(TextStyle::Caption.as_rich_cascading(Icon::CARET_DOWN, color_half(dim)));
                     }).response.interact(egui::Sense::click());
                     if title_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if title_resp.clicked() { title_clicked = true; }

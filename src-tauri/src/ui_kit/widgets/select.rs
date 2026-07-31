@@ -21,7 +21,7 @@
 //!       .show(ui, theme);
 
 use egui::{
-    Color32, CornerRadius, FontId, Id, Key, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui,
+    Color32, Id, Key, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     Vec2,
 };
 
@@ -378,7 +378,7 @@ fn paint_select<'a, T: 'a>(
     let icon_gap = st::gap_2xs();
 
     // Measure the widest label once (used for both trigger and popup widths).
-    let label_font = FontId::proportional(font_size);
+    let label_font = st::prop_at(font_size);
     let mut widest_label: f32 = 0.0;
     // layout-only galleys in this block: only `.rect.width()` is read.
     for i in 0..display.len() {
@@ -458,7 +458,7 @@ fn paint_select<'a, T: 'a>(
     let open_tint = st::color_alpha(palette_ct(theme).base(Tone::Text), 14);
     let bg_fill = motion::lerp_color(surface_bg, open_tint, open_t);
 
-    let radius = CornerRadius::same(st::radius_sm() as u8);
+    let radius = st::r_sm_cr();
 
     if ui.is_rect_visible(rect) {
         let painter = ui.painter_at(rect);
@@ -482,7 +482,7 @@ fn paint_select<'a, T: 'a>(
             chev_center,
             egui::Align2::CENTER_CENTER,
             glyph,
-            FontId::proportional(chev_size * 0.8),
+            st::prop_at(chev_size * 0.8),
             chev_color,
         );
     }
@@ -536,7 +536,7 @@ fn paint_select<'a, T: 'a>(
                         label_pos,
                         egui::Align2::LEFT_CENTER,
                         label,
-                        FontId::monospace(font_size),
+                        st::mono_at(font_size),
                         text_col,
                     );
                 } else if let Some(ph) = &placeholder {
@@ -544,7 +544,7 @@ fn paint_select<'a, T: 'a>(
                         label_pos,
                         egui::Align2::LEFT_CENTER,
                         ph,
-                        FontId::monospace(font_size),
+                        st::mono_at(font_size),
                         muted_ph,
                     );
                 }
@@ -558,7 +558,7 @@ fn paint_select<'a, T: 'a>(
                         Pos2::new(left_x, cy),
                         egui::Align2::LEFT_CENTER,
                         ph,
-                        FontId::monospace(font_size),
+                        st::mono_at(font_size),
                         muted_ph,
                     );
                 }
@@ -595,7 +595,7 @@ fn paint_select<'a, T: 'a>(
                         Pos2::new(left_x, cy),
                         egui::Align2::LEFT_CENTER,
                         extra,
-                        FontId::monospace(font_size - 1.0),
+                        st::mono_at(font_size - 1.0),
                         palette_ct(theme).base(Tone::Dim),
                     );
                 }
@@ -699,7 +699,7 @@ fn chip_paint(
     let galley = ui.fonts(|f| {
         f.layout_no_wrap(
             label.to_string(),
-            FontId::monospace(font_size - 1.0),
+            st::mono_at(font_size - 1.0),
             palette_ct(theme).base(Tone::Text),
         )
     });
@@ -718,14 +718,14 @@ fn chip_paint(
     let painter = ui.painter_at(chip_rect);
     painter.rect_filled(
         chip_rect,
-        CornerRadius::same(st::radius_sm() as u8),
+        st::r_sm_cr(),
         st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_ghost() + 10),
     );
     painter.text(
         Pos2::new(chip_rect.left() + pad, cy),
         egui::Align2::LEFT_CENTER,
         label,
-        FontId::monospace(font_size - 1.0),
+        st::mono_at(font_size - 1.0),
         palette_ct(theme).base(Tone::Text),
     );
 
@@ -742,7 +742,7 @@ fn chip_paint(
         close_center,
         egui::Align2::CENTER_CENTER,
         Icon::X,
-        FontId::proportional(close_size),
+        st::prop_at(close_size),
         col,
     );
 
@@ -862,12 +862,12 @@ fn render_panel<'a, T>(
                 let painter = ui.painter_at(s_rect);
                 painter.rect_filled(
                     s_rect,
-                    CornerRadius::same(st::radius_sm() as u8),
+                    st::r_sm_cr(),
                     st::color_alpha(palette_ct(theme).base(Tone::Bg), 200),
                 );
                 painter.rect_stroke(
                     s_rect,
-                    CornerRadius::same(st::radius_sm() as u8),
+                    st::r_sm_cr(),
                     Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_line())),
                     StrokeKind::Inside,
                 );
@@ -877,7 +877,7 @@ fn render_panel<'a, T>(
                     Pos2::new(s_rect.left() + pad, cy),
                     egui::Align2::LEFT_CENTER,
                     Icon::MAGNIFYING_GLASS,
-                    FontId::proportional(st::font_md()),
+                    st::prop_md(),
                     palette_ct(theme).base(Tone::Dim),
                 );
                 let edit_id = id.with("filter_edit");
@@ -898,7 +898,7 @@ fn render_panel<'a, T>(
                     .margin(egui::Margin::ZERO)
                     .frame(false)
                     .text_color(palette_ct(theme).base(Tone::Text))
-                    .font(egui::FontSelection::FontId(FontId::monospace(st::font_sm())));
+                    .font(egui::FontSelection::FontId(st::mono_sm()));
                 let _ = child.add(te);
                 if s_resp.clicked() {
                     ui.memory_mut(|m| m.request_focus(edit_id));
@@ -1026,23 +1026,23 @@ fn render_row<'a, T>(
     let bg_sel = st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_ghost());
     let mut bg = motion::lerp_color(Color32::TRANSPARENT, bg_hover, hover_t);
     bg = motion::lerp_color(bg, bg_sel, sel_t);
-    painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), bg);
+    painter.rect_filled(rect, st::r_sm_cr(), bg);
 
     let cy = rect.center().y;
     let pad = st::gap_xs();
     let mut left_x = rect.left() + pad;
     let right_x = rect.right() - pad;
-    let font_size = 12.0;
+    let font_size = st::font_sm(); // was a frozen 12.0 literal; font_sm() == 12.0
 
     if matches!(mode, Mode::Multi(_)) {
         let bs = 12.0;
         let bx = Rect::from_min_size(Pos2::new(left_x, cy - bs * 0.5), Vec2::splat(bs));
         let border = motion::lerp_color(palette_ct(theme).base(Tone::Border), palette_ct(theme).base(Tone::Accent), sel_t);
         let fill = motion::lerp_color(Color32::TRANSPARENT, palette_ct(theme).base(Tone::Accent), sel_t);
-        painter.rect_filled(bx, CornerRadius::same(st::radius_xs() as u8), fill);
+        painter.rect_filled(bx, st::r_xs_cr(), fill);
         painter.rect_stroke(
             bx,
-            CornerRadius::same(st::radius_xs() as u8),
+            st::r_xs_cr(),
             Stroke::new(st::stroke_std(), border),
             StrokeKind::Inside,
         );
@@ -1072,7 +1072,7 @@ fn render_row<'a, T>(
             Pos2::new(left_x, cy),
             egui::Align2::LEFT_CENTER,
             label,
-            FontId::monospace(font_size),
+            st::mono_at(font_size),
             palette_ct(theme).base(Tone::Text),
         );
     }
@@ -1082,7 +1082,7 @@ fn render_row<'a, T>(
             Pos2::new(right_x, cy),
             egui::Align2::RIGHT_CENTER,
             Icon::CHECK,
-            FontId::proportional(font_size * 1.1),
+            st::prop_at(font_size * 1.1),
             palette_ct(theme).base(Tone::Accent),
         );
     }

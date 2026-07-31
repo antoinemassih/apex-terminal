@@ -255,7 +255,7 @@ fn alert_row(
     PanelListRow::new(&id_salt)
         .leading(move |ui, _t| {
             ui.label(
-                TextStyle::Body.as_rich(Icon::CIRCLE, dot_col),
+                TextStyle::Body.as_rich_cascading(Icon::CIRCLE, dot_col),
             );
         })
         .primary(symbol)
@@ -294,7 +294,7 @@ fn draft_row(
     PanelListRow::new(&id_salt)
         .leading(move |ui, _t| {
             ui.label(
-                TextStyle::Body.as_rich(Icon::CIRCLE, dot_col),
+                TextStyle::Body.as_rich_cascading(Icon::CIRCLE, dot_col),
             );
         })
         .primary(&alert.symbol)
@@ -354,7 +354,7 @@ fn playbook_alert_row(
     PanelListRow::new(&id_salt)
         .leading(move |ui, _t| {
             ui.label(
-                TextStyle::Body.as_rich(Icon::CIRCLE, dot_col),
+                TextStyle::Body.as_rich_cascading(Icon::CIRCLE, dot_col),
             );
         })
         .primary(&primary)

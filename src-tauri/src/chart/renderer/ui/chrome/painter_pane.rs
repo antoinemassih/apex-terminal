@@ -46,11 +46,13 @@ use crate::ui_kit::sx::Tone;
 
 use super::super::style::{
     alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
-    color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_md_plus, font_sm, gap_md, gap_sm, gap_xs,
+    color_alpha, color_shift, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_md_plus, font_sm, gap_md, gap_sm, gap_xs,
+    mono_2xs, mono_4xs, mono_at, mono_lg, mono_sm, prop_at, prop_md_plus, prop_xs_plus,
     paint_bevel, paint_gradient_highlight, current_style_bevel_hi,
     radius_sm, radius_md, stroke_hair, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 type Theme = super::super::super::gpu::Theme;
 
@@ -112,10 +114,10 @@ const ICON_BTN_W_LAYERS: f32 = 60.0;
 const BADGE_HEIGHT_MAX: f32 = 16.0;
 /// Vertical inset reserved around badges (top + bottom combined).
 const BADGE_INSET_V: f32 = 6.0;
-/// Font size used inside option badges (C/P pill, DTE text).
-const BADGE_FONT_SIZE: f32 = 9.5;
-/// Font size for the small labels under the icon buttons (ORDER, DOM).
-const ICON_BTN_LABEL_SIZE: f32 = 5.5;
+// Option-badge text (C/P pill, DTE) was a frozen 9.5px literal and the small
+// icon-button sub-labels (ORDER, DOM) a frozen 5.5px one. Both now use the
+// nearest token rung — `mono_2xs()` (9.0, -0.5px) and `mono_4xs()` (6.0,
+// +0.5px) — so they track the live type scale.
 /// Maximum height for indicator chips. Chips inset by `BADGE_INSET_V` from header.
 const CHIP_HEIGHT_MAX: f32 = 18.0;
 /// Tab-strip vertical inset (1px gap from header top, height = h - TAB_HEIGHT_INSET).
@@ -172,7 +174,7 @@ pub(crate) fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bo
     }
     painter.text(
         rect.center(), Align2::CENTER_CENTER,
-        "\u{00D7}", FontId::proportional(font_md() + font_size_offset), col,
+        "\u{00D7}", prop_at(font_md() + font_size_offset), col,
     );
 }
 
@@ -194,7 +196,7 @@ pub(crate) fn paint_option_badges(
 ) -> f32 {
     let bh = (h_avail - BADGE_INSET_V).min(BADGE_HEIGHT_MAX);
     let by = center_y - bh / 2.0;
-    let badge_font = FontId::monospace(BADGE_FONT_SIZE);
+    let badge_font = mono_2xs();
     let dark_fg = badge_fg(theme);
     let mut consumed = 0.0_f32;
 
@@ -245,7 +247,7 @@ fn paint_icon_label_btn(
         painter.text(pos2(rect.center().x, icon_y), Align2::CENTER_CENTER, icon, icon_font, fg);
         painter.text(
             pos2(rect.center().x, label_y), Align2::CENTER_CENTER, label,
-            FontId::monospace(ICON_BTN_LABEL_SIZE), fg,
+            mono_4xs(), fg,
         );
     }
 }
@@ -544,12 +546,7 @@ impl<'a> PainterPaneHeader<'a> {
                             color_subtle(t.bg)
                         } else {
                             // Light theme: slightly lighter = lifted/elevated.
-                            let ch = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
-                            Color32::from_rgb(
-                                ch(t.bg.r() as i16 + 12),
-                                ch(t.bg.g() as i16 + 10),
-                                ch(t.bg.b() as i16 +  8),
-                            )
+                            color_shift(t.bg, 12, 10, 8)
                         };
                         painter.rect_filled(rect, 0.0, active_bg);
                     }
@@ -559,12 +556,7 @@ impl<'a> PainterPaneHeader<'a> {
                         t.bg.gamma_multiply(st.inactive_header_fill_multiply)
                     } else {
                         // Light theme: slightly darker for inactive = recessed.
-                        let ch = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
-                        Color32::from_rgb(
-                            ch(t.bg.r() as i16 - 10),
-                            ch(t.bg.g() as i16 - 10),
-                            ch(t.bg.b() as i16 - 10),
-                        )
+                        color_shift(t.bg, -10, -10, -10)
                     };
                     painter.rect_filled(rect, 0.0, inactive_bg);
                 }
@@ -660,7 +652,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let (bg, fg) = nav_colors(self.can_go_back, resp.hovered(), t, ui);
                 painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_LEFT,
-                    FontId::proportional(font_md_plus()), fg);
+                    prop_md_plus(), fg);
                 if resp.clicked() && self.can_go_back { out.clicked_back = true; }
                 cx += NAV_BTN_SIZE + gap_xs();
             }
@@ -671,7 +663,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let (bg, fg) = nav_colors(self.can_go_fwd, resp.hovered(), t, ui);
                 painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_RIGHT,
-                    FontId::proportional(font_md_plus()), fg);
+                    prop_md_plus(), fg);
                 if resp.clicked() && self.can_go_fwd { out.clicked_fwd = true; }
                 cx += NAV_BTN_SIZE + gap_sm();
             }
@@ -680,7 +672,7 @@ impl<'a> PainterPaneHeader<'a> {
         }
 
         // ── Tab strip OR simple symbol label ──
-        let title_font = FontId::monospace(self.title_font_size);
+        let title_font = mono_at(self.title_font_size);
 
         if !self.tabs.is_empty() {
             // Tab bar
@@ -692,7 +684,7 @@ impl<'a> PainterPaneHeader<'a> {
             for (ti, (sym, price_text, _chg)) in self.tabs.iter().enumerate() {
                 let is_active_tab = ti == self.active_tab;
                 let sym_galley = painter.layout_no_wrap(sym.to_string(), title_font.clone(), h_dim);
-                let price_font = FontId::monospace((self.title_font_size - 1.0).max(font_sm()));
+                let price_font = mono_at((self.title_font_size - 1.0).max(font_sm()));
                 let price_galley = painter.layout_no_wrap(
                     price_text.to_string(), price_font.clone(), t.dim);
                 let tab_w = tab_pad + sym_galley.size().x + gap_between
@@ -817,7 +809,8 @@ impl<'a> PainterPaneHeader<'a> {
                     if accent_header {
                         let col = if resp.hovered() { h_text } else { h_dim };
                         painter.text(close_rect.center(), egui::Align2::CENTER_CENTER,
-                            "×", FontId::proportional(10.0), col);
+                            // was a frozen 10.0 literal; font_xs_plus() == 10.0
+                            "×", prop_xs_plus(), col);
                     } else {
                         paint_close_glyph(&painter, close_rect, resp.hovered(), t, 2.0);
                     }
@@ -839,7 +832,7 @@ impl<'a> PainterPaneHeader<'a> {
             // chip text). Keep the tab-strip path on title_font so dense tab
             // rows don't grow.
             let label_color = if accent_header { h_text } else if self.is_active { t.bull } else { t.text };
-            let sym_font = FontId::monospace(crate::chart_renderer::ui::style::font_lg());
+            let sym_font = mono_lg();
             let sym_galley = painter.layout_no_wrap(sym.to_string(), sym_font.clone(), label_color);
             // Allocate a click rect for the symbol label so callers can anchor pickers.
             let sym_label_rect = Rect::from_min_size(
@@ -890,7 +883,9 @@ impl<'a> PainterPaneHeader<'a> {
             }
 
             if let Some(tf) = self.timeframe {
-                let tf_font = FontId::monospace(font_sm());
+                // Cascade-resolved. Measured AND painted with the same FontId —
+                // `cx` advances by the galley width, so these must never diverge.
+                let tf_font = TextStyle::MonoSm.font_id_in(ui);
                 let g = painter.layout_no_wrap(tf.to_string(), tf_font.clone(), h_dim);
                 painter.text(pos2(cx, rect.center().y), Align2::LEFT_CENTER, tf,
                     tf_font, h_dim);
@@ -898,7 +893,7 @@ impl<'a> PainterPaneHeader<'a> {
             }
 
             if let (Some(price_text), price_color) = (self.price_text, self.price_color.unwrap_or(t.dim)) {
-                let price_font = FontId::monospace(self.title_font_size - 1.0);
+                let price_font = mono_at(self.title_font_size - 1.0);
                 let g = painter.layout_no_wrap(price_text.to_string(), price_font.clone(), price_color);
                 painter.text(pos2(cx, rect.center().y), Align2::LEFT_CENTER,
                     price_text, price_font, price_color);
@@ -916,7 +911,9 @@ impl<'a> PainterPaneHeader<'a> {
         // ── Indicator chips with painted ✕ ──
         const CHIP_X_W: f32 = 12.0;
         for (i, ind) in self.indicators.iter().enumerate() {
-            let chip_font = FontId::monospace(font_sm());
+            // Cascade-resolved. Same FontId measures the chip (chip_w) and paints
+            // the label — keep them in sync or the chip box mis-fits its text.
+            let chip_font = TextStyle::MonoSm.font_id_in(ui);
             let g = painter.layout_no_wrap(ind.to_string(), chip_font.clone(), h_dim);
             let chip_pad = gap_md();
             let chip_w = chip_pad + g.size().x + gap_sm() + CHIP_X_W + chip_pad;
@@ -974,7 +971,7 @@ impl<'a> PainterPaneHeader<'a> {
                 Stroke::new(stroke_thin(), border), StrokeKind::Outside);
             painter.text(plus_rect.center(), Align2::CENTER_CENTER,
                 "+ Tab",
-                FontId::monospace((self.title_font_size - 2.0).max(font_sm())), fg);
+                mono_at((self.title_font_size - 2.0).max(font_sm())), fg);
             if resp.clicked() { out.clicked_plus = true; }
             out.plus_tab_rect = Some(plus_rect);
             cx += PLUS_TAB_W + gap_sm();
@@ -1080,7 +1077,7 @@ impl<'a> PainterPaneHeader<'a> {
                 }
                 painter.text(
                     cp_rect.center(), Align2::CENTER_CENTER,
-                    Icon::X, FontId::proportional(font_md_plus()), col,
+                    Icon::X, prop_md_plus(), col,
                 );
                 if resp.clicked() { out.clicked_button = Some(PaneBtn::ClosePane); }
                 px += CLOSE_PANE_BTN_W;
@@ -1104,7 +1101,7 @@ impl<'a> PainterPaneHeader<'a> {
                 }
                 painter.text(
                     split_rect.center(), Align2::CENTER_CENTER,
-                    Icon::BROWSERS, FontId::proportional(font_md_plus()), col,
+                    Icon::BROWSERS, prop_md_plus(), col,
                 );
                 if resp.clicked() { out.clicked_button = Some(PaneBtn::Split); }
                 out.split_btn_rect = Some(split_rect);
@@ -1129,7 +1126,7 @@ impl<'a> PainterPaneHeader<'a> {
                 }
                 painter.text(
                     expand_rect.center(), Align2::CENTER_CENTER,
-                    Icon::ARROWS_OUT_SIMPLE, FontId::proportional(font_md_plus()), col,
+                    Icon::ARROWS_OUT_SIMPLE, prop_md_plus(), col,
                 );
                 if resp.clicked() { out.clicked_button = Some(PaneBtn::Expand); }
             }

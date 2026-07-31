@@ -532,8 +532,13 @@ impl<'a> WatchlistRow<'a> {
                 if let Some(days) = earnings_days {
                     if days <= 14 {
                         let e_text = format!("E:{}", days);
+                        // ONE cascade lookup, used to BOTH measure (pill width) and
+                        // paint. These two must never diverge or the pill mis-fits.
+                        // Resolved inside the rarely-taken branch so the common row
+                        // pays nothing.
+                        let e_font = TextStyle::MonoSm.font_id_in(ui);
                         let e_galley = painter.layout_no_wrap(e_text.clone(),
-                            mono_sm(), Color32::BLACK);
+                            e_font.clone(), Color32::BLACK);
                         let pw = e_galley.size().x + 6.0;
                         let pill_rect = egui::Rect::from_min_size(
                             egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0));
@@ -543,7 +548,7 @@ impl<'a> WatchlistRow<'a> {
                         // WHITE on a dark one — so the pill reads on every theme
                         // (Bauhaus orange, Newsprint dark green, Tokyo Night blue).
                         painter.text(egui::pos2(ind_x + pw / 2.0, cy), egui::Align2::CENTER_CENTER,
-                            &e_text, mono_sm(), crate::ui_kit::style::contrast_fg(theme_ref.accent));
+                            &e_text, e_font, crate::ui_kit::style::contrast_fg(theme_ref.accent));
                         zones_body.borrow_mut().earnings = Some(pill_rect);
                         ind_x += pw + 3.0;
                     }
@@ -785,7 +790,7 @@ impl<'a> WatchlistRow<'a> {
                     ) {
                         ui.horizontal(|ui| {
                             ui.label(
-                                TextStyle::BodySm.as_rich(label, label_col),
+                                TextStyle::BodySm.as_rich_cascading(label, label_col),
                             );
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),

@@ -169,7 +169,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     let alerts: Vec<AlertItem> = notification::badges_snapshot();
     if alerts.is_empty() {
         ui.label(
-            TextStyle::BodySm.as_rich("No alerts", tint(t, Tone::Dim, ALPHA_SECONDARY_TEXT)),
+            TextStyle::BodySm.as_rich_cascading("No alerts", tint(t, Tone::Dim, ALPHA_SECONDARY_TEXT)),
         );
         return;
     }
@@ -422,7 +422,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("NOTIFICATIONS").monospace().size(font_sm()).strong().color(t.accent));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(TextStyle::BodySm.as_rich("Clear all", t.dim))
+                            if ui.add(egui::Button::new(TextStyle::BodySm.as_rich_cascading("Clear all", t.dim))
                                 .fill(egui::Color32::TRANSPARENT)).clicked() {
                                 clear_all_clicked = true;
                             }
@@ -436,7 +436,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                             let msg    = summarize(&a.message);
                             ui.horizontal_wrapped(|ui| {
                                 ui.spacing_mut().item_spacing.x = gap_xs();
-                                ui.label(TextStyle::Body.as_rich(kind_icon(a.kind), accent));
+                                ui.label(TextStyle::Body.as_rich_cascading(kind_icon(a.kind), accent));
                                 ui.label(egui::RichText::new(tag).monospace().size(font_sm()).strong().color(accent));
                                 if let Some(s) = a.symbol.as_deref().filter(|s| !s.is_empty()) {
                                     ui.label(egui::RichText::new(s).monospace().size(font_sm()).color(t.text));

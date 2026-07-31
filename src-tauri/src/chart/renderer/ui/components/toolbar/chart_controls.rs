@@ -204,8 +204,8 @@ pub(crate) fn render(
                 });
                 {
                     Tooltip::rich(|ui, theme| {
-                        ui.label(TextStyle::BodySm.as_rich("Drawing Tools", theme.text()).strong());
-                        ui.label(TextStyle::Caption.as_rich("Lines, channels, fibs, patterns", theme.dim()));
+                        ui.label(TextStyle::BodySm.as_rich_cascading("Drawing Tools", theme.text()).strong());
+                        ui.label(TextStyle::Caption.as_rich_cascading("Lines, channels, fibs, patterns", theme.dim()));
                     }).show(ui, &drawing_menu.response, t);
                 }
                 if let Some(tool) = new_tool {
@@ -741,8 +741,8 @@ pub(crate) fn render(
             }); // end Indicators outer dropdown
             {
                 Tooltip::rich(|ui, theme| {
-                    ui.label(TextStyle::BodySm.as_rich("Indicators", theme.text()).strong());
-                    ui.label(TextStyle::Caption.as_rich("MAs, Oscillators, Volume, Overlays, Tools, Suites", theme.dim()));
+                    ui.label(TextStyle::BodySm.as_rich_cascading("Indicators", theme.text()).strong());
+                    ui.label(TextStyle::Caption.as_rich_cascading("MAs, Oscillators, Volume, Overlays, Tools, Suites", theme.dim()));
                 }).show(ui, &indicators_menu.response, t);
             }
             #[cfg(debug_assertions)]
@@ -870,8 +870,8 @@ pub(crate) fn render(
             });
             {
                 Tooltip::rich(|ui, theme| {
-                    ui.label(TextStyle::BodySm.as_rich("Widgets", theme.text()).strong());
-                    ui.label(TextStyle::Caption.as_rich("Add live data tiles to the chart", theme.dim()));
+                    ui.label(TextStyle::BodySm.as_rich_cascading("Widgets", theme.text()).strong());
+                    ui.label(TextStyle::Caption.as_rich_cascading("Add live data tiles to the chart", theme.dim()));
                 }).show(ui, &widgets_menu.response, t);
             }
             #[cfg(debug_assertions)]

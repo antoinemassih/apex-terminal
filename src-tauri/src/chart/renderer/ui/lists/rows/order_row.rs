@@ -14,6 +14,7 @@ use crate::chart::renderer::ui::foundation::{
 };
 use crate::ui_kit::widgets::RowVariant;
 use crate::ui_kit::widgets::tokens::Size;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -91,6 +92,10 @@ impl<'a> OrderRow<'a> {
             .painter_mode(true)
             .painter_height(self.height)
             .painter_body(|ui, rect| {
+                // Hot path (one row per order, many rows per frame): resolve each
+                // tier through the cascade ONCE and clone per string.
+                let f_txt = TextStyle::MonoSm.font_id_in(ui);   // symbol / status / age / side pill
+                let f_num = TextStyle::Numeric.font_id_in(ui);  // qty @ price
                 let painter = ui.painter();
                 let cy = rect.center().y;
                 let side_col = match side { OrderSideTag::Buy => bull, OrderSideTag::Sell => bear };
@@ -102,27 +107,27 @@ impl<'a> OrderRow<'a> {
                     egui::vec2(14.0, 14.0));
                 painter.rect_filled(pill, 2.0, color_alpha(side_col, alpha_subtle()));
                 painter.text(pill.center(), egui::Align2::CENTER_CENTER,
-                    side_lbl, mono_sm(), side_col);
+                    side_lbl, f_txt.clone(), side_col);
 
                 // Symbol — clip to prevent long option tickers bleeding into qty@price column.
                 let sym_x = pill.right() + 6.0;
                 painter.with_clip_rect(painter.clip_rect().intersect(
                     egui::Rect::from_x_y_ranges(sym_x..=(rect.center().x - 4.0), rect.y_range())
-                )).text(egui::pos2(sym_x, cy), egui::Align2::LEFT_CENTER, symbol, mono_sm(), fg);
+                )).text(egui::pos2(sym_x, cy), egui::Align2::LEFT_CENTER, symbol, f_txt.clone(), fg);
 
                 // Qty @ price — clip between symbol and status columns.
                 painter.with_clip_rect(painter.clip_rect().intersect(
                     egui::Rect::from_x_y_ranges((rect.left() + 30.0)..=(rect.right() - 84.0), rect.y_range())
                 )).text(egui::pos2(rect.center().x, cy), egui::Align2::CENTER_CENTER,
-                    &format!("{} @ {:.2}", qty, price), mono_sm(), fg);
+                    &format!("{} @ {:.2}", qty, price), f_num, fg);
 
                 painter.text(egui::pos2(rect.right() - 80.0, cy), egui::Align2::RIGHT_CENTER,
-                    status, mono_sm(), dim);
+                    status, f_txt.clone(), dim);
 
                 if let Some(a) = age {
                     let x = if show_cancel { rect.right() - 28.0 } else { rect.right() - 6.0 };
                     ui.painter().text(egui::pos2(x, cy), egui::Align2::RIGHT_CENTER,
-                        a, mono_sm(), color_subtle(dim));
+                        a, f_txt.clone(), color_subtle(dim));
                 }
 
                 // Embedded cancel button.

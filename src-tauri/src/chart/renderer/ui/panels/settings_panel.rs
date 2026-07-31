@@ -516,7 +516,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
     PanelSection::new("THEME STUDIO").show(ui, t, |ui, t| {
         ui.horizontal(|ui| {
             ui.label(
-                TextStyle::Caption.as_rich("Visual component storybook and live theme editor.", t.dim),
+                TextStyle::Caption.as_rich_cascading("Visual component storybook and live theme editor.", t.dim),
             );
         });
         ui.add_space(gap_xs());
@@ -1054,7 +1054,7 @@ fn draw_themes_section(
             if !err.is_empty() {
                 ui.add_space(gap_xs());
                 ui.label(
-                    TextStyle::Caption.as_rich(err.as_str(), t.bear),
+                    TextStyle::Caption.as_rich_cascading(err.as_str(), t.bear),
                 );
             }
         });

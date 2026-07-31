@@ -610,7 +610,7 @@ fn draw_screen_rows(
                 // keeps its accent color (warn tone) and isn't plain dim text.
                 if eff_clone.decay_alert {
                     ui.add(egui::Label::new(
-                        TextStyle::Caption.as_rich(crate::ui_kit::icons::Icon::WARNING, t.warn)
+                        TextStyle::Caption.as_rich_cascading(crate::ui_kit::icons::Icon::WARNING, t.warn)
                     ));
                 }
             })
