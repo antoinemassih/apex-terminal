@@ -94,14 +94,29 @@ def kill_app():
     # every subsequent scenario fails with connection-refused, cascading a whole
     # run into a false red. Fix: POLL until no same-named process remains (up to
     # ~24s) so the driver has time to release the handle before we respawn.
-    subprocess.run(["taskkill", "/F", "/IM", _PROT_NAME], capture_output=True)
+    # GOTCHA (2026-08-01): `taskkill /F` DOES NOT KILL THIS APP. It reports
+    # "no running instance" (and Stop-Process reports "cannot find a process
+    # with that identifier") while tasklist still enumerates the process — so
+    # the old loop below "succeeded" instantly, we respawned into a live
+    # instance still holding the port, and every scenario came back
+    # connection-refused. That reads as a mass test failure but is the harness
+    # leaking processes.
+    #
+    # .NET Process.Kill($true) DOES reap them. Use PowerShell for the kill and
+    # keep tasklist only for the wait loop.
+    _ps_kill = (
+        f"Get-Process -ErrorAction SilentlyContinue "
+        f"| Where-Object {{ $_.ProcessName -eq '{_PROT_NAME[:-4]}' }} "
+        f"| ForEach-Object {{ try {{ $_.Kill($true) }} catch {{}} }}"
+    )
+    subprocess.run(["powershell", "-NoProfile", "-Command", _ps_kill], capture_output=True)
     for _ in range(24):
         out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {_PROT_NAME}", "/NH"],
                              capture_output=True, text=True).stdout
         if _PROT_NAME.lower() not in out.lower():
             time.sleep(0.5)  # small grace for port teardown after the handle drops
             return
-        subprocess.run(["taskkill", "/F", "/IM", _PROT_NAME], capture_output=True)
+        subprocess.run(["powershell", "-NoProfile", "-Command", _ps_kill], capture_output=True)
         time.sleep(1.0)
     # Fell through — a stubborn zombie. Leave a breadcrumb; start_app's health
     # loop will surface the failure loudly rather than silently cascading.
@@ -117,9 +132,29 @@ def start_app():
     # supermodel process holding 7892 doesn't block the run.
     _env = dict(os.environ)
     _env["APEX_DEV_INSPECTOR_PORT"] = str(CORPUS_PORT)
+    # CREATE_NO_WINDOW rather than DETACHED_PROCESS.
+    #
+    # UNRESOLVED (2026-08-01) — read this before trusting a red corpus run.
+    # The app's dev-inspector binds its port successfully ("HTTP server on
+    # 127.0.0.1:PORT") and its accept loop is then killed by
+    # WSACancelBlockingCall (10004); every later accept fails "WSAStartup
+    # failed" (10093). The driver reports connection-refused for all 1067
+    # scenarios, which LOOKS like a mass test failure but is the app losing
+    # winsock, not the scenarios failing. Launching the same exe from
+    # PowerShell (Start-Process -RedirectStandardOutput) never shows this.
+    #
+    # Ruled OUT by experiment: stale/leftover processes (verified none held the
+    # port or the log), a stale exe copy (the copy is byte-fresh), the chosen
+    # port, and DETACHED_PROCESS itself — switching to CREATE_NO_WINDOW did NOT
+    # fix it. Remaining suspects: the stdout/stderr file handle Popen inherits,
+    # or something about process creation from Python specifically.
+    #
+    # CREATE_NO_WINDOW is kept because it is strictly better than
+    # DETACHED_PROCESS for cleanup (the child stays in the parent's job/console
+    # tree so kills propagate), not because it fixed the bug.
     subprocess.Popen([EXE], cwd=REPO, env=_env,
                      stdout=_applog, stderr=_applog,
-                     creationflags=0x00000008)  # DETACHED_PROCESS
+                     creationflags=0x08000000)  # CREATE_NO_WINDOW
     for _ in range(60):
         if health(): return True
         time.sleep(1.0)
