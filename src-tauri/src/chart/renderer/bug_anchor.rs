@@ -82,6 +82,40 @@ pub fn set_inspect(on: bool) { INSPECT.with(|c| c.set(on)); }
 pub fn toggle_inspect() { INSPECT.with(|c| c.set(!c.get())); }
 pub fn inspect() -> bool { INSPECT.with(|c| c.get()) }
 
+// ── UI DEBUG mode (Ctrl+Shift+D) — egui's built-in widget inspector ──────────
+//
+// egui ships a DevTools-grade overlay (`Style::debug`) that draws every widget's
+// allocated rect, the widget that would be hit at the cursor, and expansion
+// warnings. It was never switched on in this app, which is why "what is drawing
+// this line?" has historically meant a colored-stroke probe + a 3-minute
+// rebuild instead of a hover. Distinct from `INSPECT` above: that one is the
+// *bug-report* anchor picker (registered regions only); this one is egui's
+// own view of EVERY widget, including ones nothing registered.
+thread_local! {
+    static UI_DEBUG: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn set_ui_debug(on: bool) { UI_DEBUG.with(|c| c.set(on)); }
+pub fn toggle_ui_debug() { UI_DEBUG.with(|c| c.set(!c.get())); }
+pub fn ui_debug() -> bool { UI_DEBUG.with(|c| c.get()) }
+
+/// Push the UI-debug flags into egui's style. Call once per frame, early
+/// (before widgets are laid out) so the overlay matches this frame's geometry.
+pub fn apply_ui_debug(ctx: &egui::Context) {
+    let on = ui_debug();
+    // Avoid a style write (which clones the Arc<Style>) on the common path.
+    let already = ctx.style().debug.debug_on_hover;
+    if on == already && !on { return; }
+    ctx.style_mut(|s| {
+        s.debug.debug_on_hover = on;
+        s.debug.show_widget_hits = on;
+        s.debug.show_interactive_widgets = on;
+        s.debug.show_expand_width = on;
+        s.debug.show_expand_height = on;
+        s.debug.show_resize = on;
+    });
+}
+
 /// Clear the per-frame region list. Call once before rendering the shell.
 pub fn begin_frame() { FRAME.with(|f| f.borrow_mut().clear()); }
 

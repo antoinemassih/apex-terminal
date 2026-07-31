@@ -307,17 +307,14 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
                 );
             }
 
-            // Edge-to-edge top + bottom hairline rules — always,
-            // expanded or collapsed. Bracket the header band.
-            // Border matches chart pane header: palette_ct(t).base(Tone::Text) @ 38.
-            let rule_col = t.header_border();
-            painter.line_segment(
-                [Pos2::new(rect.left(), rect.top() + 0.5), Pos2::new(rect.right(), rect.top() + 0.5)],
-                Stroke::new(stroke_thin(), rule_col),
-            );
+            // ONE bottom hairline — matching PanelSection. The former
+            // treatment bracketed the band with BOTH a top and a bottom rule
+            // (plus the 6px shadow below), which stacked 4 separators within
+            // ~20px when a sub-section sat under a section header. A single
+            // rule delimits it just as clearly, without the boxed-in look.
             painter.line_segment(
                 [Pos2::new(rect.left(), rect.bottom() - 0.5), Pos2::new(rect.right(), rect.bottom() - 0.5)],
-                Stroke::new(stroke_thin(), rule_col),
+                Stroke::new(stroke_thin(), t.header_border()),
             );
         }
 
@@ -341,29 +338,11 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
             return None;
         }
 
-        // Inset drop-shadow under the header bottom rule, falling into
-        // the body. Matches the treatment under PanelSection and the
-        // chart pane header. Painted on the Foreground layer so it
-        // doesn't shift widget layer-ids mid-frame.
-        let shadow_h = 6.0_f32;
-        {
-            let layer = egui::LayerId::new(
-                egui::Order::Foreground,
-                ui.id().with(("panel_sub_section_shadow", id_salt)),
-            );
-            let painter = ui.ctx().layer_painter(layer);
-            for i in 0..shadow_h as i32 {
-                let frac = 1.0 - (i as f32 / shadow_h);
-                let a = (38.0 * frac) as u8;
-                if a == 0 { continue; }
-                let y = rect.bottom() + i as f32 + 0.5;
-                painter.line_segment(
-                    [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-                    Stroke::new(stroke_thin(), t.shadow_color_alpha(a)),
-                );
-            }
-        }
-        ui.add_space(shadow_h);
+        // The 6px inset drop-shadow that used to fall from the header rule
+        // into the body is gone (PanelSection dropped the identical block):
+        // a fill-step + a rule + a shadow all marking the same boundary is
+        // exactly the "many borders for everything" noise. The single rule
+        // above carries it; keep just an even gap into the body.
         ui.add_space(gap_2xs());
         let out = egui::Frame::NONE
             .inner_margin(egui::Margin {

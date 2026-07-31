@@ -121,6 +121,34 @@ pub trait ComponentTheme {
     /// The chart Theme overrides from `region_gap > 0`. Default true.
     fn cards_float(&self) -> bool { true }
 
+    // ── Per-style ROW treatment ─────────────────────────────────────────────
+    // Mirror the chart-layer StyleSystem `wl_row_*` tokens through the trait
+    // boundary (same pattern as `cards_float`) so the generic `PanelListRow`
+    // renders rows the SAME way the RowShell-based `WatchlistRow` does on each
+    // style — pill-inset capsules on tiled styles (Aperture/Glass), a per-row
+    // hairline on editorial styles (Alto/Mariner/Relay/Lucid). Defaults are the
+    // flush/no-inset values so a bare PortableTheme is unchanged; the chart
+    // Theme overrides all three from the active StyleSystem.
+
+    /// Horizontal inset (px) applied to a row's interactive background so it
+    /// reads as an inset capsule rather than a full-bleed band. 0 = flush.
+    fn row_side_margin(&self) -> f32 { 0.0 }
+
+    /// Corner radius (px) of a row's interactive background. 0 = sharp (falls
+    /// back to the caller's recipe radius).
+    fn row_corner_radius(&self) -> u8 { 0 }
+
+    /// Alpha (over `surface_border()`) of a per-row bottom hairline drawn under
+    /// EVERY row on editorial "ledger" styles. 0 = no per-style divider (the
+    /// opt-in `.divided(true)` path still works independently).
+    fn row_divider_alpha(&self) -> u8 { 0 }
+
+    /// Standard list-row height (px) for this style — the SAME value the
+    /// watchlist/option-chain rows use, so a generic `PanelListRow` is as tall
+    /// and readable as those (not scrunched). Default 26; the chart Theme
+    /// overrides from the active StyleSystem's density-scaled `row_height_px`.
+    fn row_height(&self) -> f32 { 26.0 }
+
     /// Header divider/border colour. 38α over `text()`.
     fn header_border(&self) -> Color32 {
         let t = self.text();
@@ -349,6 +377,19 @@ impl ComponentTheme for PortableTheme {
     fn icon_disabled(&self) -> Color32 { self.icon_disabled }
     fn icon_accent(&self) -> Color32 { self.icon_accent }
     fn shadow_color(&self) -> Color32 { self.shadow_color }
+    // ── Per-style row treatment, sourced from the per-frame TokenSnapshot ────
+    // `PortableTheme` is what the render loop ambient-stashes, so the ~40
+    // parameter-less ui_kit widgets (Button, Checkbox, Switch, Slider, Tag,
+    // Toast, Progress, Separator, …) resolve their theme through THIS impl.
+    // It previously inherited the trait defaults for every per-style method,
+    // which made those widgets structurally blind to `style_idx` — they always
+    // rendered as if the style were flush/unrounded. The chart layer already
+    // pushes the `wl_row_*` treatment into `TokenSnapshot` each frame
+    // (ui_kit/style.rs), so read it here. Hosts that never push tokens get the
+    // snapshot defaults (0/0/0), i.e. the previous behaviour — still portable.
+    fn row_side_margin(&self) -> f32 { crate::ui_kit::style::frame_tokens().wl_row_side_margin }
+    fn row_corner_radius(&self) -> u8 { crate::ui_kit::style::frame_tokens().wl_row_corner_radius }
+    fn row_divider_alpha(&self) -> u8 { crate::ui_kit::style::frame_tokens().wl_row_divider_alpha }
 }
 
 /// Read the active theme index stashed in egui memory by the render loop.
@@ -468,4 +509,25 @@ impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {
     fn icon_disabled(&self) -> Color32 { (**self).icon_disabled() }
     fn icon_accent(&self) -> Color32 { (**self).icon_accent() }
     fn shadow_color(&self) -> Color32 { (**self).shadow_color() }
+    // ── Defaulted methods MUST be forwarded too ─────────────────────────────
+    // Without these, any generic instantiation where `T = &Theme` silently
+    // reverts the app's per-style overrides to the ui_kit trait DEFAULTS —
+    // with no compile-time signal (the blanket impl just inherits the
+    // defaults). That made per-style row/card/header treatment vanish for
+    // double-referenced themes. Forward every overridable method.
+    fn section_header_mono(&self) -> bool { (**self).section_header_mono() }
+    fn cards_float(&self) -> bool { (**self).cards_float() }
+    fn row_side_margin(&self) -> f32 { (**self).row_side_margin() }
+    fn row_corner_radius(&self) -> u8 { (**self).row_corner_radius() }
+    fn row_divider_alpha(&self) -> u8 { (**self).row_divider_alpha() }
+    fn row_height(&self) -> f32 { (**self).row_height() }
+    fn surface_raised(&self) -> Color32 { (**self).surface_raised() }
+    fn shadow_card(&self) -> egui::Shadow { (**self).shadow_card() }
+    fn header_surface(&self) -> Color32 { (**self).header_surface() }
+    fn section_header_surface(&self) -> Color32 { (**self).section_header_surface() }
+    fn panel_surface(&self) -> Color32 { (**self).panel_surface() }
+    fn header_border(&self) -> Color32 { (**self).header_border() }
+    fn surface_border(&self) -> Color32 { (**self).surface_border() }
+    fn color_layer_up(&self, n: u8) -> Color32 { (**self).color_layer_up(n) }
+    fn shadow_color_alpha(&self, a: u8) -> Color32 { (**self).shadow_color_alpha(a) }
 }

@@ -164,79 +164,13 @@ pub(crate) fn publish_swing_leg_mode(
     );
 }
 
-/// Paint a full-toolbar-height column tint behind a `menu_button` (or any
-/// other widget) when hovered or active. Mirrors the column-fill hover/active
-/// treatment baked into `style::tb_btn` for the right-side panel toggles, so
-/// every header element — icon buttons, dropdowns, panel toggles — shares the
-/// same hover/active pixel signature regardless of which widget primitive it
-/// uses underneath.
-pub(crate) fn paint_nav_col_tint(
-    ui: &egui::Ui,
-    tb_rect: egui::Rect,
-    btn_rect: egui::Rect,
-    theme: &crate::chart_renderer::gpu::Theme,
-    hovered: bool,
-    active: bool,
-    label_id: &str,
-) {
-    // DISABLED (2026-07-30): this column-tint overlay stacked ON TOP of the
-    // Button's own Ghost hover/active fill, giving nav items two mismatched
-    // highlights. The unified Button is now the single, consistent highlight,
-    // so this bespoke overlay is disabled (callers left; delete in cleanup).
-    if true { let _ = (tb_rect, btn_rect, hovered, active, label_id); return; }
-    use crate::chart::renderer::ui::components::motion;
-    let active_id = egui::Id::new(("nav_col_active", label_id));
-    let hover_id  = egui::Id::new(("nav_col_hover",  label_id));
-    let active_t = motion::ease_bool(ui.ctx(), active_id, active, motion::MED);
-    let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  hovered && !active, motion::FAST);
-    if active_t < 0.001 && hover_t < 0.001 { return; }
-
-    let active_target = tint(theme, Tone::Border, alpha_strong());
-    let hover_target  = tint(theme, Tone::Dim, alpha_ghost());
-    let mut tint = motion::lerp_color(egui::Color32::TRANSPARENT, hover_target, hover_t);
-    tint = motion::lerp_color(tint, active_target, active_t);
-    if tint.a() == 0 { return; }
-
-    // Enclosed styles (Aperture/Glass/Lucid) nest a rounded, vertically-inset
-    // hover/active chip inside the group box instead of a full-height square
-    // column — so the highlight reads as "inside the section", not a full bleed.
-    let (col_rect, col_radius) = if crate::chart_renderer::ui::style::button_group_enclosed() {
-        let inset = 5.0;
-        (
-            egui::Rect::from_min_max(
-                egui::pos2(btn_rect.left(),  tb_rect.top() + inset),
-                egui::pos2(btn_rect.right(), tb_rect.bottom() - inset),
-            ),
-            egui::CornerRadius::same(style_current().r_sm as u8),
-        )
-    } else {
-        (
-            egui::Rect::from_min_max(
-                egui::pos2(btn_rect.left(),  tb_rect.top()),
-                egui::pos2(btn_rect.right(), tb_rect.bottom()),
-            ),
-            egui::CornerRadius::ZERO,
-        )
-    };
-    let bg_painter = ui.ctx().layer_painter(
-        egui::LayerId::new(egui::Order::Background, egui::Id::new(("nav_col_bg", label_id)))
-    );
-    bg_painter.rect_filled(col_rect, col_radius, tint);
-
-    if active_t > 0.001 {
-        let st = style_current();
-        // Only draw the underline when the style requests it AND has a positive
-        // thickness. Aperture uses pill/inverted active state (no underline line).
-        if st.show_active_tab_underline && st.tab_underline_thickness > 0.0 {
-            let underline_y = tb_rect.bottom() - 1.0;
-            let ul_color = motion::fade_in(theme.accent, active_t);
-            bg_painter.line_segment(
-                [egui::pos2(btn_rect.left(),  underline_y),
-                 egui::pos2(btn_rect.right(), underline_y)],
-                egui::Stroke::new(st.tab_underline_thickness, ul_color));
-        }
-    }
-}
+// REMOVED (2026-07-31): `paint_nav_col_tint` — a bespoke full-toolbar-height
+// column tint that was painted *behind* nav menu buttons on hover/active. It
+// stacked on top of the unified `Button`'s own Ghost hover/active fill, so
+// every nav item rendered two mismatched highlights for the same state. It was
+// neutered by an `if true { return; }` guard on 2026-07-30; the function and
+// all of its call sites are now deleted. The unified Button's Ghost
+// hover/active fill is the single nav highlight.
 
 /// All supported timeframes — `(label, seconds_per_bar, group)`. Group is for
 /// the dropdown's section headers ("Seconds", "Minutes", "Hours", "Days+").
@@ -298,8 +232,8 @@ pub(crate) fn row_text_color(is_current: bool, hovered: bool, t: &Theme) -> egui
 /// Chart controls cluster — interval / drawing tools / object-tree / indicators
 /// / widgets (+ alt-bar settings). Lives in the toolbar (toolnav) when it is
 /// visible, else falls back inline in the top-nav row so it stays reachable
-/// when the toolbar is toggled off. `tb_rect` is the host row's rect, used by
-/// `paint_nav_col_tint` for the column-hover treatment.
+/// when the toolbar is toggled off. `tb_rect` is the host row's rect, used to
+/// bound the button-group enclosure boxes.
 /// Delegates to [`super::chart_controls::render`] — the body was extracted
 /// to keep `top_nav.rs` focused on the toolbar chrome and dropdowns.
 pub(crate) fn render_chart_controls(
@@ -525,11 +459,18 @@ pub(crate) fn render(
             let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
             if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
         }
-        // Bottom border line
-        ui.painter().line_segment(
-            [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
-            egui::Stroke::new(stroke_std(), t.toolbar_border),
-        );
+        // Bottom border line — ONLY for flush styles. When `region_gap > 0` the
+        // toolbar is a floating card and `style::region_frame` already strokes
+        // the whole card, bottom edge included; painting this line too put two
+        // strokes on the same pixel row. `region_frame` does NOT stroke when
+        // `region_gap <= 0` (it degrades to `Frame::NONE.fill(..)`), so flush
+        // styles still need this manual line to separate nav from the chart.
+        if rgap <= 0.0 {
+            ui.painter().line_segment(
+                [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
+                egui::Stroke::new(stroke_std(), t.toolbar_border),
+            );
+        }
 
         // Paper-mode bottom line removed — the $ badge in the toolbar (below)
         // is now the canonical "live vs paper" affordance.
@@ -684,9 +625,9 @@ pub(crate) fn render(
 
             // ── Strip the egui-default button bg / border so menu_button and
             //    plain Button widgets paint transparently. The visible
-            //    hover/active fill comes from `paint_nav_col_tint` (full
-            //    toolbar-height column treatment, matching the right-side panel
-            //    toggles). Without this, the dropdowns paint *both* treatments.
+            //    hover/active fill comes from the unified `ui_kit` Button's
+            //    Ghost treatment. Without this, the dropdowns paint *both* the
+            //    egui-default chrome and the Ghost fill.
             {
                 let v = &mut ui.style_mut().visuals.widgets;
                 v.inactive.bg_fill        = egui::Color32::TRANSPARENT;
@@ -785,8 +726,6 @@ pub(crate) fn render(
                     ui.add_space(gap_sm());
                     ui.label(egui::RichText::new("Auto-saves every 30s").monospace().size(font_xs()).color(color_very_dim(t.dim)));
                 });
-                paint_nav_col_tint(ui, tb_rect, ws_menu.response.rect, t,
-                    ws_menu.response.hovered(), false, "workspace");
                 {
                     use crate::ui_kit::widgets::Tooltip;
                     let active_ws = watchlist.workspace.active.clone();
@@ -1090,7 +1029,6 @@ pub(crate) fn render(
                             .with_style("toolbar")
                     );
                     Tooltip::new("Settings (Cmd+,)").show(ui, &settings_resp, t);
-                    paint_nav_col_tint(ui, tb_rect, settings_resp.rect, t, settings_resp.hovered(), watchlist.settings_open, "right_settings");
                     actions_rect = Some(settings_resp.rect);
                     if settings_resp.clicked() { watchlist.update_sidebar_state(|s| s.settings_open = !s.settings_open); }
                 }
@@ -1104,7 +1042,6 @@ pub(crate) fn render(
                         crate::dev_inspector::WidgetRecord::from_response("toolbar.search_btn", "button", "Search", &search_resp, ui)
                             .with_style("toolbar")
                     );
-                    paint_nav_col_tint(ui, tb_rect, search_resp.rect, t, search_resp.hovered(), watchlist.cmd_palette.open, "right_search");
                     Tooltip::rich(|ui, theme| {
                         ui.label(TextStyle::BodySm.as_rich("Search", theme.text()).strong());
                         ui.label(TextStyle::Caption.as_rich("Search & command palette", theme.dim()));
@@ -1136,7 +1073,6 @@ pub(crate) fn render(
                         crate::dev_inspector::WidgetRecord::from_response("toolbar.toolnav_toggle", "button", "Toolbar toggle", &resp, ui)
                             .with_style("toolbar")
                     );
-                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), tn_on, "right_toolnav");
                     crate::ui_kit::widgets::Tooltip::new("Toolbar").show(ui, &resp, t);
                     if resp.clicked() {
                         crate::chart_renderer::ui::style::set_toolnav_override(Some(!tn_on));
@@ -1198,23 +1134,24 @@ pub(crate) fn render(
                 }
 
                 // ── Panel toggle helper macro ─────────────────────────────────
-                // Renders a toolbar button + tooltip + column-tint + click handler
-                // + divider for panels that follow the standard sidebar-toggle pattern.
+                // Renders a toolbar button + tooltip + click handler + divider for
+                // panels that follow the standard sidebar-toggle pattern. The
+                // button's own Ghost hover/active fill is the only highlight (the
+                // old bespoke column tint is gone — see the note at the top of
+                // this file).
                 macro_rules! panel_toggle {
-                    ($icon:expr, $lbl:expr, $field:ident, $tip:expr, $tint:expr) => {{
+                    ($icon:expr, $lbl:expr, $field:ident, $tip:expr) => {{
                         let resp = toolbar_btn(ui, &nav_label($icon, $lbl), watchlist.$field, t);
                         Tooltip::new($tip).show(ui, &resp, t);
-                        paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.$field, $tint);
                         if resp.clicked() { watchlist.update_sidebar_state(|s| s.$field = !s.$field); }
                         nav_divider!(ui, resp);
                     }};
                     // WS-E E3: variant for fields moved into a Watchlist sub-struct — the
                     // display value ($wl expr, e.g. `watchlist.analysis.open`) differs from
                     // the still-flat SidebarState field ($sfield ident, e.g. `analysis_open`).
-                    ($icon:expr, $lbl:expr, $wl:expr, $sfield:ident, $tip:expr, $tint:expr) => {{
+                    ($icon:expr, $lbl:expr, $wl:expr, $sfield:ident, $tip:expr) => {{
                         let resp = toolbar_btn(ui, &nav_label($icon, $lbl), $wl, t);
                         Tooltip::new($tip).show(ui, &resp, t);
-                        paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), $wl, $tint);
                         if resp.clicked() { watchlist.update_sidebar_state(|s| s.$sfield = !s.$sfield); }
                         nav_divider!(ui, resp);
                     }};
@@ -1225,7 +1162,6 @@ pub(crate) fn render(
                     let screener_open = watchlist.sidebar_state_snapshot().screener_panel_open;
                     let resp = toolbar_btn(ui, &nav_label(Icon::FUNNEL, "Screener"), screener_open, t); // FUNNEL = filter/screen (was MAGNIFYING_GLASS, collided with Search)
                     crate::ui_kit::widgets::Tooltip::new("Screener (Ctrl+Shift+S)").show(ui, &resp, t);
-                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), screener_open, "right_screener");
                     if resp.clicked() {
                         crate::chart_renderer::commands::push(
                             crate::chart_renderer::commands::AppCommand::OpenScreenerPanel { open: !screener_open }
@@ -1234,14 +1170,13 @@ pub(crate) fn render(
                     nav_divider!(ui, resp);
                 }
 
-                panel_toggle!(Icon::NEWSPAPER,      "Feed",       watchlist.feed_panel.open, feed_panel_open, "Feed (News, Discord, Screenshots)",           "right_feed");
-                panel_toggle!(Icon::STAR,            "Playbook",   playbook_panel_open,   "Playbook (Trade Ideas)",                      "right_playbook");
+                panel_toggle!(Icon::NEWSPAPER,      "Feed",       watchlist.feed_panel.open, feed_panel_open, "Feed (News, Discord, Screenshots)");
+                panel_toggle!(Icon::STAR,            "Playbook",   playbook_panel_open,   "Playbook (Trade Ideas)");
 
                 // Chart Library uses direct assignment (not update_sidebar_state)
                 {
                     let resp = toolbar_btn(ui, &nav_label(Icon::FOLDER, "Charts"), watchlist.charts_library_open, t);
                     Tooltip::new("Chart Library (saved layouts)").show(ui, &resp, t);
-                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.charts_library_open, "right_charts");
                     if resp.clicked() { watchlist.charts_library_open = !watchlist.charts_library_open; }
                     nav_divider!(ui, resp);
                 }
@@ -1257,14 +1192,13 @@ pub(crate) fn render(
                             .with_style("toolbar")
                     );
                     Tooltip::new("Watchlist").show(ui, &resp, t);
-                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
                     if resp.clicked() { watchlist.update_sidebar_state(|s| s.watchlist_open = !s.watchlist_open); }
                     nav_divider!(ui, resp);
                 }
-                panel_toggle!(Icon::CURRENCY_DOLLAR, "Orders",     orders_panel_open,     "Orders Panel",                                "right_orders");
-                panel_toggle!(Icon::CHART_LINE,      "Analysis",   watchlist.analysis.open, analysis_open, "Analysis Sidebar",              "right_analysis");
-                panel_toggle!(Icon::SPARKLE,         "Auto-Chart", auto_chart_open,       "Auto-Charting (lines, levels, patterns, tuning)", "right_autochart"); // SPARKLE = auto/AI (was CHART_LINE, collided with Analysis)
-                panel_toggle!(Icon::PULSE,           "Indicators", watchlist.indicators.panel_open, indicators_panel_open, "Indicators (Active + Library + Tools)",       "right_indicators");
+                panel_toggle!(Icon::CURRENCY_DOLLAR, "Orders",     orders_panel_open,     "Orders Panel");
+                panel_toggle!(Icon::CHART_LINE,      "Analysis",   watchlist.analysis.open, analysis_open, "Analysis Sidebar");
+                panel_toggle!(Icon::SPARKLE,         "Auto-Chart", auto_chart_open,       "Auto-Charting (lines, levels, patterns, tuning)"); // SPARKLE = auto/AI (was CHART_LINE, collided with Analysis)
+                panel_toggle!(Icon::PULSE,           "Indicators", watchlist.indicators.panel_open, indicators_panel_open, "Indicators (Active + Library + Tools)");
 
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
                 {
@@ -1272,7 +1206,6 @@ pub(crate) fn render(
                         + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
                     let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel.open, t);
                     Tooltip::new("Signals (Alerts + Signals)").show(ui, &signals_resp, t);
-                    paint_nav_col_tint(ui, tb_rect, signals_resp.rect, t, signals_resp.hovered(), watchlist.signals_panel.open, "right_signals");
                     sidebar_rect = Some(sidebar_rect.map_or(signals_resp.rect, |r: egui::Rect| r.union(signals_resp.rect)));
                     if active_count > 0 {
                         // Overlay a Badge at the top-right corner of the Signals button.

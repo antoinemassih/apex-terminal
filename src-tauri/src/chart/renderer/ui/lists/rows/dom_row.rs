@@ -157,7 +157,12 @@ impl<'a> DomRow<'a> {
             volume: 0, volume_fill: 0.0, delta: 0,
             is_inside: false, selected: false, current_price: false,
             imbalance: 0.0,
-            height: 18.0, price_fmt: "{:.2}",
+            // Density-aware default row height, floored so the `mono_sm()`
+            // text the row paints always fits inside the rung (the old
+            // hardcoded 18px clipped 12–13px glyphs).
+            height: crate::chart_renderer::ui::style::style_row_height()
+                .max(mono_sm().size + 4.0),
+            price_fmt: "{:.2}",
             columns: None, orders: &[],
             show_numbers: true,
             theme: None,
@@ -294,7 +299,7 @@ impl<'a> DomRow<'a> {
                             egui::pos2(br.right() - bw - 1.0, br.min.y + 1.0),
                             egui::vec2(bw, br.height() - 2.0),
                         );
-                        painter.rect_filled(bar, 1.5, color_alpha(bull, (60.0 + bid_fill * 140.0) as u8));
+                        painter.rect_filled(bar, radius_xs(), color_alpha(bull, (60.0 + bid_fill * 140.0) as u8));
                         bar_rect_opt = Some(bar);
                     }
                     if show_numbers && bid_size > 0 {
@@ -329,7 +334,7 @@ impl<'a> DomRow<'a> {
                             egui::pos2(ar.min.x + 1.0, ar.min.y + 1.0),
                             egui::vec2(bw, ar.height() - 2.0),
                         );
-                        painter.rect_filled(bar, 1.5, color_alpha(bear, (60.0 + ask_fill * 140.0) as u8));
+                        painter.rect_filled(bar, radius_xs(), color_alpha(bear, (60.0 + ask_fill * 140.0) as u8));
                         bar_rect_opt = Some(bar);
                     }
                     if show_numbers && ask_size > 0 {
@@ -354,7 +359,7 @@ impl<'a> DomRow<'a> {
                             egui::pos2(vr.min.x + 1.0, vr.min.y + 1.0),
                             egui::vec2(bw, vr.height() - 2.0),
                         );
-                        painter.rect_filled(bar, 1.0, color_alpha(dim, alpha_subtle()));
+                        painter.rect_filled(bar, radius_xs(), color_alpha(dim, alpha_subtle()));
                         let s = if volume >= 1_000_000 { format!("{:.1}M", volume as f64/1e6) }
                             else if volume >= 1_000 { format!("{:.0}K", volume as f64/1e3) }
                             else { format!("{}", volume) };
@@ -515,7 +520,7 @@ impl<'a> DomRow<'a> {
                 egui::pos2(xb + cb - bw - 1.0, ry + 1.0),
                 egui::vec2(bw, row_h - 2.0),
             );
-            painter.rect_filled(bar_rect, 1.5, color_alpha(bull, (60.0 + fr * 140.0) as u8));
+            painter.rect_filled(bar_rect, radius_xs(), color_alpha(bull, (60.0 + fr * 140.0) as u8));
             if layout.show_numbers {
                 let txt = fmt_size(self.bid_size);
                 let pos = egui::pos2(xb + cb * 0.5, cy);
@@ -553,7 +558,7 @@ impl<'a> DomRow<'a> {
                 egui::pos2(xa + 1.0, ry + 1.0),
                 egui::vec2(bw, row_h - 2.0),
             );
-            painter.rect_filled(bar_rect, 1.5, color_alpha(bear, (60.0 + fr * 140.0) as u8));
+            painter.rect_filled(bar_rect, radius_xs(), color_alpha(bear, (60.0 + fr * 140.0) as u8));
             if layout.show_numbers {
                 let txt = fmt_size(self.ask_size);
                 let pos = egui::pos2(xa + ca * 0.5, cy);
@@ -574,7 +579,7 @@ impl<'a> DomRow<'a> {
                 egui::pos2(xv + 1.0, ry + 1.0),
                 egui::vec2(vw, row_h - 2.0),
             );
-            painter.rect_filled(vol_bar, 1.0, color_alpha(dim, alpha_subtle()));
+            painter.rect_filled(vol_bar, radius_xs(), color_alpha(dim, alpha_subtle()));
             let vs = if self.volume >= 1_000_000 { format!("{:.1}M", self.volume as f64 / 1e6) }
                 else if self.volume >= 1_000 { format!("{:.0}K", self.volume as f64 / 1e3) }
                 else { format!("{}", self.volume) };
@@ -609,7 +614,7 @@ impl<'a> DomRow<'a> {
             if ord_hovered {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 let xr = Rect::from_min_size(egui::pos2(br.right() - 12.0, br.top()), egui::vec2(12.0, br.height()));
-                painter.rect_filled(xr, 1.0, color_alpha(bear, alpha_dim()));
+                painter.rect_filled(xr, radius_xs(), color_alpha(bear, alpha_dim()));
                 painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", mono_sm(), contrast_fg(bear));
                 let label_rect = Rect::from_min_max(br.min, egui::pos2(br.right() - 12.0, br.max.y));
                 draw_order_chip_label(painter, label_rect, side_ch, qty, theme_ref.overlay_text);

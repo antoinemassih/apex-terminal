@@ -448,7 +448,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         let (rect, _) = ui.allocate_exact_size(
             egui::vec2(galley.size().x + pad_x * 2.0, galley.size().y + pad_y * 2.0),
             egui::Sense::hover());
-        ui.painter().rect_filled(rect, 2.0, tint(t, Tone::Warn, 28));
+        ui.painter().rect_filled(rect, radius_xs(), tint(t, Tone::Warn, 28));
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
             "SIMULATED \u{2014} mock data, not a real backtest", badge_font, t.warn);
     });
@@ -469,8 +469,8 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         let card_w = (w - m * 2.0 - 8.0) / stats.len() as f32;
         for (label, value, color) in &stats {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(card_w, 38.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 3.0, tint(t, Tone::Border, alpha_tint()));
-            ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())), egui::StrokeKind::Outside);
+            ui.painter().rect_filled(rect, radius_sm(), tint(t, Tone::Border, alpha_tint()));
+            ui.painter().rect_stroke(rect, radius_sm(), egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())), egui::StrokeKind::Outside);
 
             ui.painter().text(
                 egui::pos2(rect.center().x, rect.min.y + 10.0),
@@ -532,7 +532,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         );
         let resp = ui.allocate_rect(row_rect, egui::Sense::hover());
         if resp.hovered() {
-            ui.painter().rect_filled(row_rect, 1.0, tint(t, Tone::Border, alpha_subtle()));
+            ui.painter().rect_filled(row_rect, radius_xs(), tint(t, Tone::Border, alpha_subtle()));
         }
 
         let base_x = ui.cursor().min.x;
@@ -544,7 +544,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[0], row_y + 1.0),
             egui::vec2(32.0, 14.0),
         );
-        ui.painter().rect_filled(side_rect, 2.0, color_alpha(side_col, alpha_soft()));
+        ui.painter().rect_filled(side_rect, radius_xs(), color_alpha(side_col, alpha_soft()));
         ui.painter().text(
             side_rect.center(),
             egui::Align2::CENTER_CENTER,

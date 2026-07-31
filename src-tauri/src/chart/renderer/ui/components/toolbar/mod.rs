@@ -59,10 +59,9 @@ pub fn toolbar_btn(
     });
 
     // Nav/toolbar buttons are GHOST (transparent) so there is exactly ONE
-    // highlight system: `paint_nav_col_tint` for nav items (the designed,
-    // per-style, animated column/chip highlight) and Ghost's own subtle hover
-    // for standalone toolbar buttons. Previously this stacked status-mode bg +
-    // an accent-pill fill + col_tint = the "multiple/weird" highlights.
+    // highlight system: the Ghost variant's own hover/active fill. Previously
+    // this stacked status-mode bg + an accent-pill fill + a bespoke nav column
+    // tint = the "multiple/weird" highlights.
     // Active = accent FOREGROUND only (no competing bg fill).
     let mut btn = if is_icon_only {
         Button::icon(label).glyph_size(16.0).placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Toolbar)

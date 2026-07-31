@@ -117,10 +117,17 @@ pub fn begin_frame() {
 
     let snap = TokenSnapshot {
         // Fonts — pulled from DesignTokens so design-mode font sliders propagate.
-        font_2xs:      crate::dt_f32!(font.xxs,      8.0),
-        font_xs:       crate::dt_f32!(font.xs,       9.0),
-        font_sm:       crate::dt_f32!(font.sm,      11.0),
-        font_md:       crate::dt_f32!(font.md,      13.0),
+        // TYPE SCALE LIFT: the body tiers were 9/11px, and ~70% of all text in
+        // the app rendered at one of those two sizes — that is what read as
+        // "scrunched up and unreadable" everywhere except the watchlist /
+        // option chain, whose rows hardcode 14-15px. Raising the TOKENS lifts
+        // every call site at once (and keeps the scale as the single source of
+        // truth) instead of touching 400+ sites. Steps kept ≥1px apart so the
+        // tiers stay visually distinct.
+        font_2xs:      crate::dt_f32!(font.xxs,      9.0),   // was 8
+        font_xs:       crate::dt_f32!(font.xs,      10.0),   // was 9
+        font_sm:       crate::dt_f32!(font.sm,      12.0),   // was 11
+        font_md:       crate::dt_f32!(font.md,      14.0),   // was 13 — matches watchlist row
         font_lg:       crate::dt_f32!(font.lg,      16.0),
         font_xl:       crate::dt_f32!(font.xl,      22.0),
         // Spacing.
@@ -244,7 +251,10 @@ pub fn begin_frame() {
 // ─── Legacy aliases (DEPRECATED) ──────────────────────────────────────────────
 // Kept compiling existing call sites; new code must use the named tier above.
 #[doc(hidden)] pub fn font_sm_tight() -> f32 { font_xs() }
-#[doc(hidden)] pub fn font_2xl()      -> f32 { font_lg() }
+// 2xl must sit ABOVE xl. It was aliased to `font_lg()` (16), which is SMALLER
+// than `font_xl()` (22) — that inverted the heading ladder for every consumer
+// (TextStyle::Display/HeadingLg read this, so HeadingMd(22) outranked both).
+#[doc(hidden)] pub fn font_2xl()      -> f32 { font_xl() + 6.0 }
 
 // Const aliases — kept so any const-context call sites compile. Values match
 // the active scale (4xs=6, 3xs=7, 2xs=8, xs=9, xs+=10, sm=11, md=13, md+=14, lg=16, xl=22).
@@ -760,10 +770,14 @@ pub fn order_state_ctrl() -> Color32 {
     crate::dt_rgba!(semantic.order_state_ctrl, [255, 100, 100, 255])
 }
 
-// ─── Fixed text colors (fallback for code without Theme access) ──────────────
-// Prefer `t.text` when Theme is in scope — these are dark-theme defaults.
-pub static TEXT_PRIMARY: Color32 = Color32::from_rgb(220, 220, 230);
-pub static TEXT_SECONDARY: Color32 = Color32::from_rgb(200, 200, 210);
+// ─── Fixed text colors — DELETED ─────────────────────────────────────────────
+// `TEXT_PRIMARY` / `TEXT_SECONDARY` were literal dark-theme greys used as
+// "fallbacks for code without Theme access". They rendered near-white text on
+// the light palettes (Bauhaus / Peach / Ivory / Newsprint / Lucid). Both had
+// their last call sites replaced with the live theme's `t.text` / `t.dim`
+// (via `theme_impl::active_theme(ui.ctx())` where no `&Theme` was in scope),
+// leaving zero callers. There is no theme-blind text color any more — read the
+// theme.
 
 // ─── Status color tokens ─────────────────────────────────────────────────────
 /// Green — active / live / filled (status_ok).
@@ -873,7 +887,8 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
         .corner_radius(egui::CornerRadius { nw: rlg, ne: rlg, sw: 0, se: 0 })
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                let text_col = ui.style().visuals.override_text_color.unwrap_or(TEXT_PRIMARY);
+                let text_col = ui.style().visuals.override_text_color
+                    .unwrap_or_else(|| crate::chart_renderer::theme_impl::active_theme(ui.ctx()).text);
                 ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(text_col));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
@@ -3098,18 +3113,463 @@ mod s2_equivalence_tests {
         check_style_equal(2, &new, &legacy);
     }
 
-    /// Smoke-test: styles 3-8 must produce non-default StyleSettings
-    /// (sanity check that the adapter produces distinct outputs for each entry).
+    // ── Style ids 3-8 snapshot + invariant coverage ─────────────────────────
+    //
+    // Ids 3-8 (Cadence/Alto/Mariner/Lucid/Relay/Glass) have no
+    // `style_defaults_legacy` master to diff against, so `check_style_equal`
+    // cannot be used.  Instead we pin the load-bearing per-style tokens as an
+    // explicit golden snapshot (transcribed from the values
+    // `style_system_to_style_settings(builtin_style_systems()[i])` actually
+    // produces today) and assert cross-style structural invariants.
+    //
+    // Ids 0-2 are included in the snapshot too: it costs nothing and catches
+    // drift that would otherwise only surface as a legacy-diff failure.
+
+    /// One row of the golden style-token snapshot.
+    struct StyleGolden {
+        id:                       &'static str,
+        region_gap:               f32,
+        region_radius:            f32,
+        region_border_alpha:      u8,
+        row_height_px:            f32,
+        wl_row_side_margin:       f32,
+        wl_row_corner_radius:     u8,
+        wl_row_divider_alpha:     u8,
+        wl_symbol_mono:           bool,
+        section_header_mono:      bool,
+        section_header_tracking:  f32,
+        r_xs:                     u8,
+        r_sm:                     u8,
+        r_md:                     u8,
+        r_lg:                     u8,
+        r_pill:                   u8,
+        r_chip:                   u8,
+        density:                  u8,
+        pane_gap:                 f32,
+        shadows_enabled:          bool,
+        shadow_blur:              f32,
+        shadow_offset_y:          f32,
+        shadow_alpha:             u8,
+        hairline_borders:         bool,
+        solid_active_fills:       bool,
+        uppercase_section_labels: bool,
+        panel_tab_treatment:      u8,
+        panel_header_treatment:   u8,
+        pane_active_indicator:    u8,
+        nav_cluster_radius:       f32,
+        nav_cluster_padding:      f32,
+        toolnav_height:           f32,
+        panel_footer_radius:      f32,
+        panel_footer_card:        bool,
+        footer_default_open:      bool,
+        button_group:             &'static str, // Debug repr of GroupEnclosure
+        font_body:                f32,
+        font_caption:             f32,
+        font_hero:                f32,
+        font_section_label:       f32,
+    }
+
+    /// Golden values for all 9 built-in styles, read from the live
+    /// `style_system_to_style_settings()` output (2026-07 snapshot).
+    ///
+    /// Any change here must be a *deliberate* design edit — an accidental
+    /// tweak to `builtin_style_systems()` will fail this test with the
+    /// exact token and both values named.
+    const STYLE_GOLDENS: &[StyleGolden] = &[
+        StyleGolden { id: "meridien",
+            region_gap: 0.0, region_radius: 0.0,  region_border_alpha: 40,
+            row_height_px: 22.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
+            wl_row_divider_alpha: 0,  wl_symbol_mono: false, section_header_mono: false,
+            section_header_tracking: 0.0,
+            r_xs: 2, r_sm: 4, r_md: 6, r_lg: 12, r_pill: 0, r_chip: 0,
+            density: 1, pane_gap: 0.0,
+            shadows_enabled: true, shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
+            hairline_borders: true, solid_active_fills: true, uppercase_section_labels: true,
+            panel_tab_treatment: 0, panel_header_treatment: 0, pane_active_indicator: 1,
+            nav_cluster_radius: 0.0, nav_cluster_padding: 6.0, toolnav_height: 0.0,
+            panel_footer_radius: 0.0, panel_footer_card: false, footer_default_open: false,
+            button_group: "None",
+            font_body: 10.0, font_caption: 8.0, font_hero: 36.0, font_section_label: 8.0 },
+
+        StyleGolden { id: "aperture",
+            region_gap: 8.0, region_radius: 12.0, region_border_alpha: 40,
+            row_height_px: 26.0, wl_row_side_margin: 6.0, wl_row_corner_radius: 8,
+            wl_row_divider_alpha: 0,  wl_symbol_mono: true,  section_header_mono: false,
+            section_header_tracking: 0.8,
+            r_xs: 8, r_sm: 10, r_md: 14, r_lg: 20, r_pill: 99, r_chip: 0,
+            density: 2, pane_gap: 8.0,
+            shadows_enabled: true, shadow_blur: 24.0, shadow_offset_y: 8.0, shadow_alpha: 40,
+            hairline_borders: false, solid_active_fills: false, uppercase_section_labels: false,
+            panel_tab_treatment: 2, panel_header_treatment: 2, pane_active_indicator: 2,
+            nav_cluster_radius: 99.0, nav_cluster_padding: 8.0, toolnav_height: 30.0,
+            panel_footer_radius: 10.0, panel_footer_card: true, footer_default_open: true,
+            button_group: "Bordered",
+            font_body: 11.0, font_caption: 9.0, font_hero: 22.0, font_section_label: 10.0 },
+
+        StyleGolden { id: "octave",
+            region_gap: 0.0, region_radius: 0.0,  region_border_alpha: 40,
+            row_height_px: 20.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
+            wl_row_divider_alpha: 0,  wl_symbol_mono: false, section_header_mono: false,
+            section_header_tracking: 0.0,
+            r_xs: 1, r_sm: 2, r_md: 3, r_lg: 4, r_pill: 99, r_chip: 0,
+            density: 0, pane_gap: 2.0,
+            shadows_enabled: false, shadow_blur: 8.0, shadow_offset_y: 4.0, shadow_alpha: 20,
+            hairline_borders: true, solid_active_fills: true, uppercase_section_labels: true,
+            panel_tab_treatment: 0, panel_header_treatment: 0, pane_active_indicator: 3,
+            nav_cluster_radius: 2.0, nav_cluster_padding: 4.0, toolnav_height: 0.0,
+            panel_footer_radius: 0.0, panel_footer_card: false, footer_default_open: true,
+            button_group: "None",
+            font_body: 10.0, font_caption: 8.0, font_hero: 22.0, font_section_label: 8.0 },
+
+        // ── id 3: Cadence — Spotify-ish tiled cards, vivid green ──────────
+        StyleGolden { id: "cadence",
+            region_gap: 8.0, region_radius: 12.0, region_border_alpha: 40,
+            row_height_px: 26.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
+            wl_row_divider_alpha: 0,  wl_symbol_mono: false, section_header_mono: false,
+            section_header_tracking: 0.6,
+            r_xs: 4, r_sm: 6, r_md: 10, r_lg: 14, r_pill: 99, r_chip: 99,
+            density: 1, pane_gap: 0.0,
+            shadows_enabled: true, shadow_blur: 8.0, shadow_offset_y: 2.0, shadow_alpha: 90,
+            hairline_borders: true, solid_active_fills: false, uppercase_section_labels: true,
+            panel_tab_treatment: 2, panel_header_treatment: 0, pane_active_indicator: 2,
+            nav_cluster_radius: 8.0, nav_cluster_padding: 6.0, toolnav_height: 0.0,
+            panel_footer_radius: 10.0, panel_footer_card: false, footer_default_open: false,
+            button_group: "None",
+            font_body: 13.0, font_caption: 9.0, font_hero: 22.0, font_section_label: 11.0 },
+
+        // ── id 4: Alto — Zed-inspired flush editor chrome, mono eyebrows ──
+        StyleGolden { id: "alto",
+            region_gap: 0.0, region_radius: 12.0, region_border_alpha: 40,
+            row_height_px: 24.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
+            wl_row_divider_alpha: 22, wl_symbol_mono: true,  section_header_mono: true,
+            section_header_tracking: 0.0,
+            r_xs: 2, r_sm: 4, r_md: 6, r_lg: 8, r_pill: 99, r_chip: 0,
+            density: 1, pane_gap: 0.0,
+            shadows_enabled: true, shadow_blur: 8.0, shadow_offset_y: 2.0, shadow_alpha: 80,
+            hairline_borders: false, solid_active_fills: false, uppercase_section_labels: true,
+            panel_tab_treatment: 0, panel_header_treatment: 0, pane_active_indicator: 2,
+            nav_cluster_radius: 8.0, nav_cluster_padding: 6.0, toolnav_height: 0.0,
+            panel_footer_radius: 10.0, panel_footer_card: false, footer_default_open: false,
+            button_group: "None",
+            font_body: 11.0, font_caption: 9.0, font_hero: 22.0, font_section_label: 9.0 },
+
+        // ── id 5: Mariner — Alto geometry, steel-blue personality ─────────
+        StyleGolden { id: "mariner",
+            region_gap: 0.0, region_radius: 12.0, region_border_alpha: 40,
+            row_height_px: 22.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
+            wl_row_divider_alpha: 28, wl_symbol_mono: true,  section_header_mono: true,
+            section_header_tracking: 0.0,
+            r_xs: 2, r_sm: 4, r_md: 6, r_lg: 8, r_pill: 99, r_chip: 0,
+            density: 1, pane_gap: 0.0,
+            shadows_enabled: true, shadow_blur: 8.0, shadow_offset_y: 2.0, shadow_alpha: 80,
+            hairline_borders: false, solid_active_fills: false, uppercase_section_labels: true,
+            panel_tab_treatment: 0, panel_header_treatment: 0, pane_active_indicator: 1,
+            nav_cluster_radius: 8.0, nav_cluster_padding: 6.0, toolnav_height: 0.0,
+            panel_footer_radius: 10.0, panel_footer_card: false, footer_default_open: true,
+            button_group: "None",
+            font_body: 11.0, font_caption: 9.0, font_hero: 22.0, font_section_label: 9.0 },
+
+        // ── id 6: Lucid — editorial light, no shadows, sharp button group ─
+        StyleGolden { id: "lucid",
+            region_gap: 0.0, region_radius: 12.0, region_border_alpha: 40,
+            row_height_px: 26.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
+            wl_row_divider_alpha: 12, wl_symbol_mono: false, section_header_mono: false,
+            section_header_tracking: 0.4,
+            r_xs: 2, r_sm: 3, r_md: 5, r_lg: 8, r_pill: 99, r_chip: 0,
+            density: 1, pane_gap: 0.0,
+            shadows_enabled: false, shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
+            hairline_borders: false, solid_active_fills: true, uppercase_section_labels: true,
+            panel_tab_treatment: 0, panel_header_treatment: 0, pane_active_indicator: 1,
+            nav_cluster_radius: 8.0, nav_cluster_padding: 6.0, toolnav_height: 0.0,
+            panel_footer_radius: 10.0, panel_footer_card: false, footer_default_open: false,
+            button_group: "Sharp",
+            font_body: 11.0, font_caption: 9.0, font_hero: 28.0, font_section_label: 9.0 },
+
+        // ── id 7: Relay — brutalist, zero radii, wide tracking, huge hero ─
+        StyleGolden { id: "relay",
+            region_gap: 0.0, region_radius: 12.0, region_border_alpha: 40,
+            row_height_px: 24.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
+            wl_row_divider_alpha: 30, wl_symbol_mono: true,  section_header_mono: true,
+            section_header_tracking: 1.2,
+            r_xs: 0, r_sm: 0, r_md: 2, r_lg: 4, r_pill: 0, r_chip: 0,
+            density: 1, pane_gap: 0.0,
+            shadows_enabled: true, shadow_blur: 12.0, shadow_offset_y: 4.0, shadow_alpha: 80,
+            hairline_borders: true, solid_active_fills: true, uppercase_section_labels: true,
+            panel_tab_treatment: 0, panel_header_treatment: 0, pane_active_indicator: 1,
+            nav_cluster_radius: 8.0, nav_cluster_padding: 6.0, toolnav_height: 0.0,
+            panel_footer_radius: 10.0, panel_footer_card: false, footer_default_open: true,
+            button_group: "None",
+            font_body: 11.0, font_caption: 9.0, font_hero: 48.0, font_section_label: 9.0 },
+
+        // ── id 8: Glass — frosted, most generous radii/gaps in the set ────
+        StyleGolden { id: "glass",
+            region_gap: 8.0, region_radius: 16.0, region_border_alpha: 30,
+            row_height_px: 30.0, wl_row_side_margin: 4.0, wl_row_corner_radius: 10,
+            wl_row_divider_alpha: 0,  wl_symbol_mono: false, section_header_mono: false,
+            section_header_tracking: 0.0,
+            r_xs: 6, r_sm: 10, r_md: 16, r_lg: 24, r_pill: 99, r_chip: 99,
+            density: 2, pane_gap: 0.0,
+            shadows_enabled: true, shadow_blur: 32.0, shadow_offset_y: 8.0, shadow_alpha: 30,
+            hairline_borders: false, solid_active_fills: false, uppercase_section_labels: false,
+            panel_tab_treatment: 2, panel_header_treatment: 2, pane_active_indicator: 2,
+            nav_cluster_radius: 99.0, nav_cluster_padding: 10.0, toolnav_height: 32.0,
+            panel_footer_radius: 16.0, panel_footer_card: true, footer_default_open: false,
+            button_group: "Frosted",
+            font_body: 13.0, font_caption: 9.0, font_hero: 28.0, font_section_label: 9.0 },
+    ];
+
+    /// Golden-snapshot every load-bearing style token for all 9 built-in
+    /// styles — the coverage `check_style_equal` cannot provide for ids 3-8
+    /// (no legacy master exists for them).
+    ///
+    /// Collects every mismatch before failing so a whole-file drift reports
+    /// once, not one assert at a time.
     #[test]
-    fn styles_3_to_8_produce_settings() {
+    fn styles_0_to_8_token_snapshot() {
         use crate::design_system::builtin_style_systems;
+
         let systems = builtin_style_systems();
-        assert_eq!(systems.len(), 9, "expected 9 style systems");
-        for i in 3..9usize {
-            let ss = &systems[i];
-            let result = style_system_to_style_settings(ss);
-            // Each style must have a valid density value (0, 1, or 2)
-            assert!(result.density <= 2, "id={} density out of range: {}", i, result.density);
+        assert_eq!(systems.len(), 9, "expected 9 built-in style systems");
+        assert_eq!(STYLE_GOLDENS.len(), 9, "golden table must cover all 9 styles");
+
+        let mut deltas: Vec<String> = Vec::new();
+
+        for (i, (ss, g)) in systems.iter().zip(STYLE_GOLDENS.iter()).enumerate() {
+            assert_eq!(
+                ss.meta.id, g.id,
+                "style order changed: index {} is '{}' but golden expects '{}'",
+                i, ss.meta.id, g.id
+            );
+            let r = style_system_to_style_settings(ss);
+
+            macro_rules! chk_f32 {
+                ($field:ident) => {
+                    if !f32_eq(r.$field, g.$field) {
+                        deltas.push(format!(
+                            "[{}][{}] {}: actual={} golden={}",
+                            i, g.id, stringify!($field), r.$field, g.$field));
+                    }
+                };
+            }
+            macro_rules! chk_eq {
+                ($field:ident) => {
+                    if r.$field != g.$field {
+                        deltas.push(format!(
+                            "[{}][{}] {}: actual={:?} golden={:?}",
+                            i, g.id, stringify!($field), r.$field, g.$field));
+                    }
+                };
+            }
+
+            // ── Shell region layout (the ids 3-8 differentiators) ─────────
+            chk_f32!(region_gap);
+            chk_f32!(region_radius);
+            chk_eq!(region_border_alpha);
+
+            // ── Watchlist row shape ──────────────────────────────────────
+            chk_f32!(row_height_px);
+            chk_f32!(wl_row_side_margin);
+            chk_eq!(wl_row_corner_radius);
+            chk_eq!(wl_row_divider_alpha);
+            chk_eq!(wl_symbol_mono);
+
+            // ── Section headers ──────────────────────────────────────────
+            chk_eq!(section_header_mono);
+            chk_f32!(section_header_tracking);
+
+            // ── Radii ────────────────────────────────────────────────────
+            chk_eq!(r_xs);
+            chk_eq!(r_sm);
+            chk_eq!(r_md);
+            chk_eq!(r_lg);
+            chk_eq!(r_pill);
+            chk_eq!(r_chip);
+
+            // ── Density / spacing ────────────────────────────────────────
+            chk_eq!(density);
+            chk_f32!(pane_gap);
+
+            // ── Shadows ──────────────────────────────────────────────────
+            chk_eq!(shadows_enabled);
+            chk_f32!(shadow_blur);
+            chk_f32!(shadow_offset_y);
+            chk_eq!(shadow_alpha);
+
+            // ── Treatments ───────────────────────────────────────────────
+            chk_eq!(hairline_borders);
+            chk_eq!(solid_active_fills);
+            chk_eq!(uppercase_section_labels);
+            chk_eq!(panel_tab_treatment);
+            chk_eq!(panel_header_treatment);
+            chk_eq!(pane_active_indicator);
+
+            // ── Toolbar / footer chrome ──────────────────────────────────
+            chk_f32!(nav_cluster_radius);
+            chk_f32!(nav_cluster_padding);
+            chk_f32!(toolnav_height);
+            chk_f32!(panel_footer_radius);
+            chk_eq!(panel_footer_card);
+            chk_eq!(footer_default_open);
+
+            // `GroupEnclosure` has no Display impl — compare Debug reprs.
+            let bg_actual = format!("{:?}", r.button_group);
+            if bg_actual != g.button_group {
+                deltas.push(format!(
+                    "[{}][{}] button_group: actual={} golden={}",
+                    i, g.id, bg_actual, g.button_group));
+            }
+
+            // ── Typography ───────────────────────────────────────────────
+            chk_f32!(font_body);
+            chk_f32!(font_caption);
+            chk_f32!(font_hero);
+            chk_f32!(font_section_label);
+        }
+
+        assert!(
+            deltas.is_empty(),
+            "{} style-token snapshot drift(s):\n  {}",
+            deltas.len(),
+            deltas.join("\n  ")
+        );
+    }
+
+    /// Structural invariants every built-in style must satisfy, independent of
+    /// the pinned values above.
+    ///
+    /// # Verified invariants
+    /// * `region_gap > 0` ⟹ `region_radius > 0` — a *tiled* shell floats each
+    ///   region as a rounded card; a tiled style with square corners would be
+    ///   a broken personality.  Holds for all 9 styles (aperture 8/12,
+    ///   cadence 8/12, glass 8/16).
+    /// * `density` ∈ {0,1,2}; `row_height_px` > 0; font sizes > 0; radii
+    ///   monotonically non-decreasing xs ≤ sm ≤ md ≤ lg.
+    /// * `wl_row_corner_radius > 0` ⟹ `wl_row_side_margin > 0` — a rounded
+    ///   watchlist row only reads as a pill when it is inset from the edge.
+    ///
+    /// # NOT asserted — two plausible invariants that do NOT hold today
+    ///
+    /// 1. "`region_gap == 0` ⟹ `region_radius == 0`" (the converse of the
+    ///    tiled⟹rounded rule) is FALSE: alto, mariner, lucid and relay are
+    ///    flush (`region_gap == 0`) yet carry `region_radius == 12.0`,
+    ///    inherited from `Chrome::default_region_radius()` because their
+    ///    presets never set the field.  Every consumer of `region_radius`
+    ///    (`paint_region_bg` here, `side_panel_shell::rail_slot_ui`,
+    ///    `side_panel_shell::show`, `bottom_dock`) is gated on
+    ///    `region_gap > 0`, so the value is inert rather than mis-rendered.
+    ///
+    /// 2. "`!shadows_enabled && !card_floating_shadow` ⟹ `shadow_alpha == 0`"
+    ///    is FALSE: octave (id 2) has `shadows_enabled = false`,
+    ///    `card_floating_shadow = false` and `shadow_alpha = 20`.  Every
+    ///    `shadow_alpha` consumer (`frames_widget`, `apply_style_to_egui`)
+    ///    is gated on `shadows_enabled`, so this is likewise inert.
+    ///
+    /// Both are dead-but-misleading token values, not rendering defects.
+    /// Asserting them would be asserting a wish, not reality, so they are
+    /// documented here instead.
+    #[test]
+    fn styles_structural_invariants() {
+        use crate::design_system::builtin_style_systems;
+
+        let systems = builtin_style_systems();
+        let mut problems: Vec<String> = Vec::new();
+
+        for (i, ss) in systems.iter().enumerate() {
+            let id = &ss.meta.id;
+            let r  = style_system_to_style_settings(ss);
+
+            // Tiled ⟹ rounded.
+            if r.region_gap > 0.0 && r.region_radius <= 0.0 {
+                problems.push(format!(
+                    "[{i}][{id}] tiled shell (region_gap={}) must have region_radius > 0, got {}",
+                    r.region_gap, r.region_radius));
+            }
+
+            // Density enum range.
+            if r.density > 2 {
+                problems.push(format!("[{i}][{id}] density out of range: {}", r.density));
+            }
+
+            // Positive-size sanity.
+            if r.row_height_px <= 0.0 {
+                problems.push(format!("[{i}][{id}] row_height_px must be > 0, got {}", r.row_height_px));
+            }
+            for (label, v) in [
+                ("font_body", r.font_body), ("font_caption", r.font_caption),
+                ("font_hero", r.font_hero), ("font_section_label", r.font_section_label),
+            ] {
+                if v <= 0.0 {
+                    problems.push(format!("[{i}][{id}] {label} must be > 0, got {v}"));
+                }
+            }
+
+            // Radii scale must be non-decreasing.
+            if !(r.r_xs <= r.r_sm && r.r_sm <= r.r_md && r.r_md <= r.r_lg) {
+                problems.push(format!(
+                    "[{i}][{id}] radii not monotonic: xs={} sm={} md={} lg={}",
+                    r.r_xs, r.r_sm, r.r_md, r.r_lg));
+            }
+
+            // Rounded watchlist rows need an inset to read as pills.
+            if r.wl_row_corner_radius > 0 && r.wl_row_side_margin <= 0.0 {
+                problems.push(format!(
+                    "[{i}][{id}] wl_row_corner_radius={} but wl_row_side_margin={} (rows would clip flush)",
+                    r.wl_row_corner_radius, r.wl_row_side_margin));
+            }
+
+            // Shadow geometry must be coherent when shadows ARE enabled:
+            // a blur/offset with zero alpha paints nothing.
+            if r.shadows_enabled && (r.shadow_blur > 0.0 || r.shadow_offset_y > 0.0)
+                && r.shadow_alpha == 0
+            {
+                problems.push(format!(
+                    "[{i}][{id}] shadows enabled with blur={} offset_y={} but shadow_alpha=0",
+                    r.shadow_blur, r.shadow_offset_y));
+            }
+        }
+
+        assert!(
+            problems.is_empty(),
+            "{} structural invariant violation(s):\n  {}",
+            problems.len(),
+            problems.join("\n  ")
+        );
+    }
+
+    /// Ids 3-8 must be genuinely distinct personalities, not clones of each
+    /// other or of the three legacy styles.  Guards against a copy-paste
+    /// preset that silently duplicates an existing look.
+    #[test]
+    fn styles_3_to_8_are_distinct_personalities() {
+        use crate::design_system::builtin_style_systems;
+
+        let systems = builtin_style_systems();
+        let fingerprints: Vec<(String, String)> = systems
+            .iter()
+            .map(|ss| {
+                let r = style_system_to_style_settings(ss);
+                (
+                    ss.meta.id.clone(),
+                    format!(
+                        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+                        r.region_gap, r.region_radius, r.row_height_px,
+                        r.wl_row_divider_alpha, r.section_header_mono,
+                        r.r_xs, r.r_sm, r.r_md, r.r_lg,
+                        r.density, r.shadow_alpha, r.font_hero,
+                        r.section_header_tracking,
+                    ),
+                )
+            })
+            .collect();
+
+        for a in 0..fingerprints.len() {
+            for b in (a + 1)..fingerprints.len() {
+                assert_ne!(
+                    fingerprints[a].1, fingerprints[b].1,
+                    "styles '{}' (id {}) and '{}' (id {}) are token-identical",
+                    fingerprints[a].0, a, fingerprints[b].0, b
+                );
+            }
         }
     }
 }

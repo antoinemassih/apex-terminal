@@ -65,15 +65,104 @@ impl TextStyle {
     pub fn as_rich(self, text: &str, color: Color32) -> RichText {
         let s = self.spec();
         let mut rt = RichText::new(text).size(s.size).color(color);
+        // Apply the tier's line height. `line_height_factor` was computed for
+        // all 14 tiers and then NEVER read — the whole vertical-rhythm half of
+        // the type system was dead code, which is why line spacing felt
+        // arbitrary even in files that adopted TextStyle. Now wired.
+        if s.line_height_factor > 0.0 {
+            rt = rt.line_height(Some(s.size * s.line_height_factor));
+        }
         if s.monospace { rt = rt.monospace(); }
         if s.strong    { rt = rt.strong(); }
+        rt
+    }
+
+    // ── egui text_styles CASCADE ────────────────────────────────────────────
+    //
+    // egui's `Style::text_styles` is a semantic-name → FontId table that child
+    // `Ui`s INHERIT (egui clones the parent's Arc<Style>). That is a real CSS-
+    // style cascade, and this app never used it: every one of ~626 text sites
+    // re-specified its own size, which is exactly how 70% of the UI drifted onto
+    // 9-11px. Registering the tiers here means:
+    //   * one table defines the scale (edit it once, the app follows), and
+    //   * any subtree can override a tier for its children —
+    //     `ui.style_mut().text_styles.insert(TextStyle::Body.egui(), smaller)` —
+    //     which is the thing hand-passed `FontId`s can never do.
+
+    /// Stable name for this tier in egui's `text_styles` table.
+    pub fn egui_name(self) -> &'static str {
+        match self {
+            TextStyle::Display => "apex.Display",
+            TextStyle::HeadingLg => "apex.HeadingLg",
+            TextStyle::HeadingMd => "apex.HeadingMd",
+            TextStyle::BodyLg => "apex.BodyLg",
+            TextStyle::Body => "apex.Body",
+            TextStyle::BodySm => "apex.BodySm",
+            TextStyle::Caption => "apex.Caption",
+            TextStyle::Mono => "apex.Mono",
+            TextStyle::MonoSm => "apex.MonoSm",
+            TextStyle::Numeric => "apex.Numeric",
+            TextStyle::NumericLg => "apex.NumericLg",
+            TextStyle::NumericHero => "apex.NumericHero",
+            TextStyle::Label => "apex.Label",
+            TextStyle::Eyebrow => "apex.Eyebrow",
+        }
+    }
+
+    /// This tier as an `egui::TextStyle` key (for `RichText::text_style`).
+    pub fn egui(self) -> egui::TextStyle {
+        egui::TextStyle::Name(self.egui_name().into())
+    }
+
+    /// Every tier — the single list `install` and tests iterate.
+    pub fn all() -> [TextStyle; 14] {
+        [
+            TextStyle::Display, TextStyle::HeadingLg, TextStyle::HeadingMd,
+            TextStyle::BodyLg, TextStyle::Body, TextStyle::BodySm,
+            TextStyle::Caption, TextStyle::Mono, TextStyle::MonoSm,
+            TextStyle::Numeric, TextStyle::NumericLg, TextStyle::NumericHero,
+            TextStyle::Label, TextStyle::Eyebrow,
+        ]
+    }
+
+    /// The `FontId` this tier resolves to right now (per-style tokens applied).
+    pub fn font_id(self) -> egui::FontId {
+        let s = self.spec();
+        if s.monospace {
+            egui::FontId::monospace(s.size)
+        } else {
+            egui::FontId::proportional(s.size)
+        }
+    }
+
+    /// Register all 14 tiers into an `egui::Style`'s inherited `text_styles`
+    /// table. Called once per frame from `setup_theme` so the tiers track the
+    /// active StyleSystem (font_body/font_caption/font_section_label are
+    /// per-style) and any live token edit.
+    pub fn install(style: &mut egui::Style) {
+        for tier in Self::all() {
+            style.text_styles.insert(tier.egui(), tier.font_id());
+        }
+    }
+
+    /// Build `RichText` that reads its size from the INHERITED table rather
+    /// than baking one in — the cascading counterpart to [`Self::as_rich`].
+    /// Prefer this at new call sites; `as_rich` stays for the sites that have
+    /// not been migrated (and for hosts that never called `install`).
+    pub fn as_rich_cascading(self, text: &str, color: Color32) -> RichText {
+        let s = self.spec();
+        let mut rt = RichText::new(text).text_style(self.egui()).color(color);
+        if s.line_height_factor > 0.0 {
+            rt = rt.line_height(Some(s.size * s.line_height_factor));
+        }
+        if s.strong { rt = rt.strong(); }
         rt
     }
 
     /// Convenience: emit a label using the default text color hint.
     pub fn apply(self, ui: &mut Ui, text: &str) -> Response {
         let color = ui.style().visuals.override_text_color
-            .unwrap_or(TEXT_PRIMARY);
+            .unwrap_or_else(|| crate::chart_renderer::theme_impl::active_theme(ui.ctx()).text);
         ui.label(self.as_rich(text, color))
     }
 }

@@ -222,7 +222,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
             let ir_color = if row.ir > 0.2 { t.bull } else if row.ir < -0.2 { t.bear } else { t.dim };
 
             // Draw a painter-based heatmap bar behind the row.
-            let row_h = 20.0_f32;
+            let row_h = crate::chart_renderer::ui::style::style_row_height();
             let (bar_resp, bar_painter) =
                 ui.allocate_painter(egui::vec2(ui.available_width(), row_h), egui::Sense::hover());
             let bar_rect = bar_resp.rect;

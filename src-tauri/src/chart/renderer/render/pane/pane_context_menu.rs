@@ -13,7 +13,6 @@ use crate::chart_renderer::ui::style::{
     color_alpha, mono_xs,
     font_2xs, font_xs, font_sm,
     COLOR_AMBER,
-    TEXT_PRIMARY,
 };
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::MenuItem;

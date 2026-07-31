@@ -155,7 +155,7 @@ fn render_rail_size_control(ui: &mut Ui, t: &Theme, height: RailHeight) {
     let col = if resp.hovered() || split { t.accent } else { t.dim };
     let stroke = egui::Stroke::new(1.2, col);
     let r = rect.shrink2(egui::vec2(3.0, 2.0));
-    ui.painter().rect_stroke(r, egui::CornerRadius::same(2), stroke, egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(r, crate::chart_renderer::ui::style::radius_xs(), stroke, egui::StrokeKind::Inside);
     // Horizontal divider → two stacked halves (the rail splits vertically).
     let y = r.center().y;
     ui.painter().line_segment([egui::pos2(r.left(), y), egui::pos2(r.right(), y)], stroke);
@@ -577,25 +577,11 @@ fn paint_header_underline_and_shadow(ui: &mut Ui, t: &Theme, hr: egui::Rect, pan
         ],
         egui::Stroke::new(stroke_thin(), t.header_border()),
     );
-    // Inset drop shadow falling into the body. 6px gradient, fading
-    // alpha 38 → 0 over the height. Foreground layer keeps it from
-    // shifting widget layer-ids during interaction.
-    let shadow_h = 6.0_f32;
-    let layer = egui::LayerId::new(
-        egui::Order::Foreground,
-        ui.id().with(("side_panel_shell_shadow", panel_id)),
-    );
-    let painter = ui.ctx().layer_painter(layer);
-    for i in 0..shadow_h as i32 {
-        let frac = 1.0 - (i as f32 / shadow_h);
-        let a = (38.0 * frac) as u8;
-        if a == 0 { continue; }
-        let y = hr.bottom() + i as f32 + 0.5;
-        painter.line_segment(
-            [egui::Pos2::new(hr.left(), y), egui::Pos2::new(hr.right(), y)],
-            egui::Stroke::new(stroke_thin(), shadow_color_alpha(t, a)),
-        );
-    }
+    // The 6px inset drop shadow that used to fall into the body is gone.
+    // The header band already carries a fill-step AND this hairline; adding
+    // a shadow made three treatments mark one boundary, at 6 call sites.
+    // One hairline is enough — same reasoning as PanelSection/PanelSubSection.
+    let _ = (panel_id, shadow_color_alpha);
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────

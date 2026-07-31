@@ -177,7 +177,8 @@ pub struct Table<'a, T: Clone> {
     columns: &'a [Column<'a>],
     rows: &'a [T],
     state: &'a mut TableState,
-    row_height: f32,
+    /// `None` = inherit the theme's density-aware `row_height()` token.
+    row_height: Option<f32>,
     header_height: f32,
     alternate_rows: bool,
     hover_row: bool,
@@ -195,7 +196,7 @@ impl<'a, T: Clone> Table<'a, T> {
             columns,
             rows,
             state,
-            row_height: 22.0,
+            row_height: None,
             header_height: 28.0,
             alternate_rows: false,
             hover_row: true,
@@ -209,7 +210,7 @@ impl<'a, T: Clone> Table<'a, T> {
     }
 
     pub fn row_height(mut self, h: f32) -> Self {
-        self.row_height = h;
+        self.row_height = Some(h);
         self
     }
     pub fn header_height(mut self, h: f32) -> Self {
@@ -509,7 +510,9 @@ impl<'a, T: Clone> Table<'a, T> {
         let prev_hovered = self.state.hovered_row.take();
         let _ = prev_hovered;
 
-        let row_h = self.row_height;
+        // Density-aware row height from the active style, unless the caller
+        // pinned one explicitly via `.row_height(..)`.
+        let row_h = self.row_height.unwrap_or_else(|| theme.row_height());
         let total_w: f32 = widths.iter().sum();
 
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body_rect));

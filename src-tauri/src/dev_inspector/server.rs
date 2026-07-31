@@ -2287,6 +2287,10 @@ fn parse_app_command(
             let open = body["open"].as_bool().unwrap_or(true);
             Ok(AppCommand::SetAutoChartPanel { open })
         }
+        "SetUiDebug" | "set_ui_debug" | "ui_debug" => {
+            let on = body["on"].as_bool().unwrap_or(true);
+            Ok(AppCommand::SetUiDebug { on })
+        }
         "SetObjectTree" | "set_object_tree" => {
             let open = body["open"].as_bool().unwrap_or(true);
             Ok(AppCommand::SetObjectTree { open })

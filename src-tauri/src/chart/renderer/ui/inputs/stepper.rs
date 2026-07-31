@@ -113,7 +113,11 @@ impl<'a, V: NumericValue> NumericStepper<'a, V> {
             let minus = ui.add(Button::new("\u{2212}")
                 .variant(Variant::Secondary)
                 .min_size(btn_size)
-                .corner_radius(0.0));
+                // Left cap of the [-][input][+] group: round the outer edge only,
+                // so the group stays visually joined while still following the
+                // active StyleSystem's corner tokens (square on Meridien/Mariner).
+                .corner_radius_asymmetric(egui::CornerRadius {
+                    nw: radius_sm() as u8, sw: radius_sm() as u8, ne: 0, se: 0 }));
             if minus.clicked() {
                 self.value.add(-self.step, self.decimals, self.min, self.max);
                 buf = self.value.editable_buf();
@@ -165,7 +169,9 @@ impl<'a, V: NumericValue> NumericStepper<'a, V> {
             let plus = ui.add(Button::new("+")
                 .variant(Variant::Secondary)
                 .min_size(btn_size)
-                .corner_radius(0.0));
+                // Right cap of the group - mirror of the [-] button.
+                .corner_radius_asymmetric(egui::CornerRadius {
+                    nw: 0, sw: 0, ne: radius_sm() as u8, se: radius_sm() as u8 }));
             if plus.clicked() {
                 self.value.add(self.step, self.decimals, self.min, self.max);
             }

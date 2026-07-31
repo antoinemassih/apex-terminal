@@ -15,17 +15,27 @@ use crate::ui_kit::widgets::{Indicator, PanelSection};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
+///
+/// These are deliberately theme-INDEPENDENT: a sector's colour is an identity
+/// (XLK is always blue), like a brand colour, so it must stay stable across
+/// palettes for the chart to stay readable.
+///
+/// ⚠ Four of these blue channels previously read `ALPHA_MUTED` / `ALPHA_STRONG`
+/// / `ALPHA_LINE` / `ALPHA_DIM` — *alpha* tokens substituted into an RGB tuple
+/// by an over-eager magic-number codemod. It compiled and looked correct only
+/// because those tokens happen to equal 60/80/80/60 today; retuning any alpha
+/// token would have silently changed sector hues. Restored to plain literals.
 const SECTOR_COLORS: &[(&str, &str, (u8, u8, u8))] = &[
     ("XLK", "Technology",      (74, 158, 255)),
     ("XLF", "Financials",      (56, 203, 137)),
-    ("XLE", "Energy",          (230, 160, ALPHA_MUTED)),
+    ("XLE", "Energy",          (230, 160, 60)),
     ("XLV", "Healthcare",      (0, 190, 190)),
     ("XLI", "Industrials",     (160, 160, 170)),
-    ("XLP", "Staples",         (165, 120, ALPHA_STRONG)),
-    ("XLU", "Utilities",       (230, 200, ALPHA_LINE)),
+    ("XLP", "Staples",         (165, 120, 80)),
+    ("XLU", "Utilities",       (230, 200, 80)),
     ("XLY", "Consumer Disc",   (200, 80, 200)),
     ("XLC", "Communications",  (0, 200, 220)),
-    ("XLRE", "Real Estate",    (140, 160, ALPHA_DIM)),
+    ("XLRE", "Real Estate",    (140, 160, 60)),
     ("XLB", "Materials",       (224, 82, 82)),
 ];
 
@@ -180,13 +190,15 @@ pub(crate) fn demo_sectors_at_time(time_offset: f32, tail_length: usize) -> Vec<
 }
 
 /// Look up sector color by symbol.
-fn sector_color(symbol: &str) -> egui::Color32 {
+/// Sector identity colour, with a THEME-AWARE fallback for unknown symbols
+/// (was a hardcoded grey that washed out on the light palettes).
+fn sector_color(t: &Theme, symbol: &str) -> egui::Color32 {
     for (sym, _, (r, g, b)) in SECTOR_COLORS {
         if *sym == symbol {
             return egui::Color32::from_rgb(*r, *g, *b);
         }
     }
-    egui::Color32::from_rgb(180, 180, 180)
+    t.dim
 }
 
 /// Draw the RRG panel content into `ui` (used by analysis_panel as a tab).
@@ -253,13 +265,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 for s in legend_sectors.iter().take(half) {
-                    let c = sector_color(&s.symbol);
+                    let c = sector_color(t, &s.symbol);
                     ui.add(Indicator::dot().custom_color(c).label(&s.symbol));
                 }
             });
             ui.vertical(|ui| {
                 for s in legend_sectors.iter().skip(half) {
-                    let c = sector_color(&s.symbol);
+                    let c = sector_color(t, &s.symbol);
                     ui.add(Indicator::dot().custom_color(c).label(&s.symbol));
                 }
             });
@@ -503,7 +515,7 @@ fn draw_rrg_content(
 
     // ── Draw sector tails and dots ──
     for sector in sectors {
-        let color = sector_color(&sector.symbol);
+        let color = sector_color(t, &sector.symbol);
 
         // Draw trailing tail (polyline from oldest to newest, fading alpha)
         if sector.history.len() >= 2 {
@@ -536,7 +548,7 @@ fn draw_rrg_content(
         painter.circle_filled(
             egui::pos2(pos.x - 1.0, pos.y - 1.0),
             dot_radius * 0.35,
-            egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha_line()),
+            crate::chart_renderer::ui::style::color_alpha(t.text, alpha_line()),
         );
 
         // Label next to dot

@@ -140,7 +140,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     use egui::{Id, Rect, Align2, CornerRadius, Stroke, StrokeKind, LayerId, pos2, vec2};
     use crate::chart_renderer::ui::style::{
         font_sm, font_md, gap_sm, gap_xs, color_alpha, contrast_fg,
-        ALPHA_SECONDARY_TEXT, ALPHA_INTERACTIVE,
+        ALPHA_SECONDARY_TEXT, ALPHA_INTERACTIVE, radius_md, r_pill,
     };
     use crate::ui_kit::icons::Icon;
 
@@ -278,7 +278,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let (_, more) = vital_part(&summary);
         let full    = truncate_ellipsis(&summary, FULL_CAP);
         let p = ui.painter().with_clip_rect(badge_clip);
-        let r  = (BADGE_H * 0.5) as u8;
+        let r  = r_pill().nw.min((BADGE_H * 0.5) as u8);
         let cy = rect.center().y;
         p.rect_filled(rect, CornerRadius::same(r), color_alpha(accent, PILL_TINT_A).gamma_multiply(app_e));
         let bar = Rect::from_min_size(rect.min, vec2(ACCENT_W, rect.height()));
@@ -344,7 +344,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         box_rect = Rect::from_min_size(pos2(box_left, pill.top()), vec2(box_w, box_h));
 
         let fp = ctx.layer_painter(LayerId::new(egui::Order::Foreground, Id::new(("alert_box_layer", id))));
-        let r = (BADGE_H * 0.5) as u8;
+        let r = r_pill().nw.min((BADGE_H * 0.5) as u8);
         let cr = CornerRadius::same(r);
         // Soft shadow + solid card + border + accent bar (all fade in with the morph).
         fp.rect_filled(box_rect.translate(vec2(0.0, 2.0)).expand(1.0), cr,
@@ -387,7 +387,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
             let cf  = FontId::proportional(font_sm() - 1.0);
             let cw  = (text_w(ui, &lbl, &cf, t.text) + 6.0).max(13.0);
             let cnt = Rect::from_min_size(pos2(bell_rect.center().x + 2.0, bell_rect.top()), vec2(cw, 13.0));
-            p.rect_filled(cnt, CornerRadius::same(6), t.accent);
+            p.rect_filled(cnt, CornerRadius::same(radius_md() as u8), t.accent);
             p.text(cnt.center(), Align2::CENTER_CENTER, &lbl, cf, contrast_fg(t.accent));
         }
         if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -411,7 +411,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let frame = egui::Frame::popup(&ctx.style())
             .fill(tint(t, Tone::Surface, 255))
             .stroke(Stroke::new(1.0, tint(t, Tone::Border, 150)))
-            .corner_radius(CornerRadius::same(8))
+            .corner_radius(CornerRadius::same(radius_md() as u8))
             .inner_margin(egui::Margin::same(gap_sm() as i8));
         let area = egui::Area::new(Id::new("alert_history_pop"))
             .order(egui::Order::Foreground)

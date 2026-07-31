@@ -12,7 +12,9 @@
 //!   ui.add(SelectableRow::new("RSI", on).leading_icon(Icon::CHART_LINE));
 //!
 //! Behavior:
-//! - Row height scales with `Size` (defaults to ~24px / `gap_2xl()`).
+//! - Row height derives from the theme's density-aware `row_height()` token
+//!   and is nudged per `Size` (previously it was hardcoded off `gap_2xl()`,
+//!   a SPACING token, which ignored the active style's density).
 //! - Idle: transparent background, `pal.base(Tone::Text)` label.
 //! - Selected: `color_alpha(pal.base(Tone::Accent), alpha_soft())` background,
 //!   `pal.base(Tone::Accent)` label.
@@ -61,7 +63,9 @@ impl<'a> SelectableRow<'a> {
         let bug_loc = std::panic::Location::caller();
         let SelectableRow { label, selected, disabled, leading_icon, size } = self;
 
-        // Sizing. Row height ~gap_2xl() (24px) at default Sm; scales modestly.
+        // Sizing. Row height comes from the per-style, density-aware
+        // `row_height()` token; Size nudges it a tier up/down.
+        let base_row_h = theme.row_height();
         let pad_x = st::gap_sm();
         let pad_y = st::gap_2xs();
         let icon_gap = st::gap_xs();
@@ -74,11 +78,11 @@ impl<'a> SelectableRow<'a> {
             Size::Xl => st::font_md(),
         };
         let row_h = match size {
-            Size::Xs => 18.0,
-            Size::Sm => st::gap_2xl(),     // 24
-            Size::Md => st::gap_2xl(),     // 24
-            Size::Lg => 28.0,
-            Size::Xl => 28.0,
+            Size::Xs => (base_row_h - 6.0).max(16.0),
+            Size::Sm => base_row_h,
+            Size::Md => base_row_h,
+            Size::Lg => base_row_h + 4.0,
+            Size::Xl => base_row_h + 4.0,
         };
 
         // Resolve colors.

@@ -58,7 +58,7 @@ pub(crate) fn render(
     tb_rect: egui::Rect,
 ) {
     use super::top_nav::{
-        apply_menu_style, paint_nav_col_tint, publish_swing_leg_mode,
+        apply_menu_style, publish_swing_leg_mode,
         publish_toggle, ALL_TIMEFRAMES, tf_to_secs,
     };
     use super::toolbar_btn;
@@ -202,8 +202,6 @@ pub(crate) fn render(
                         }
                     }
                 });
-                paint_nav_col_tint(ui, tb_rect, drawing_menu.response.rect, t,
-                    drawing_menu.response.hovered(), has_tool, "drawing");
                 {
                     Tooltip::rich(|ui, theme| {
                         ui.label(TextStyle::BodySm.as_rich("Drawing Tools", theme.text()).strong());
@@ -741,8 +739,6 @@ pub(crate) fn render(
             });
 
             }); // end Indicators outer dropdown
-            paint_nav_col_tint(ui, tb_rect, indicators_menu.response.rect, t,
-                indicators_menu.response.hovered(), false, "indicators");
             {
                 Tooltip::rich(|ui, theme| {
                     ui.label(TextStyle::BodySm.as_rich("Indicators", theme.text()).strong());
@@ -857,9 +853,12 @@ pub(crate) fn render(
                     });
                 }
 
-                ui.add_space(gap_sm());
-                ui.separator();
+                // Divider only when there is actually a row below it to divide
+                // from — otherwise this painted a trailing hairline at the very
+                // bottom of the menu, separating nothing.
                 if !panes[ap].chart_widgets.is_empty() {
+                    ui.add_space(gap_sm());
+                    ui.separator();
                     if ui.add(SelectableRow::new("Remove All Widgets", false).leading_icon(Icon::TRASH)).clicked() {
                         // U0-6: defer to a confirmation modal (removes every widget
                         // on the pane at once). Pending state lives in egui temp
@@ -869,8 +868,6 @@ pub(crate) fn render(
                     }
                 }
             });
-            paint_nav_col_tint(ui, tb_rect, widgets_menu.response.rect, t,
-                widgets_menu.response.hovered(), false, "widgets");
             {
                 Tooltip::rich(|ui, theme| {
                     ui.label(TextStyle::BodySm.as_rich("Widgets", theme.text()).strong());

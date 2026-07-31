@@ -74,7 +74,8 @@ type IconForFn<'a, T> = dyn Fn(&T) -> Option<&'static str> + 'a;
 pub struct Tree<'a, T: TreeNode> {
     state: &'a mut TreeState,
     items: &'a [T],
-    row_height: f32,
+    /// `None` = inherit the theme's density-aware `row_height()` token.
+    row_height: Option<f32>,
     indent_size: f32,
     show_indent_guides: bool,
     checkable: bool,
@@ -97,7 +98,7 @@ impl<'a, T: TreeNode> Tree<'a, T> {
         Self {
             state,
             items,
-            row_height: 22.0,
+            row_height: None,
             indent_size: 16.0,
             show_indent_guides: true,
             checkable: false,
@@ -106,7 +107,7 @@ impl<'a, T: TreeNode> Tree<'a, T> {
         }
     }
 
-    pub fn row_height(mut self, h: f32) -> Self { self.row_height = h; self }
+    pub fn row_height(mut self, h: f32) -> Self { self.row_height = Some(h); self }
     pub fn indent_size(mut self, px: f32) -> Self { self.indent_size = px; self }
     pub fn show_indent_guides(mut self, v: bool) -> Self { self.show_indent_guides = v; self }
     pub fn checkable(mut self, v: bool) -> Self { self.checkable = v; self }
@@ -155,6 +156,10 @@ impl<'a, T: TreeNode> Tree<'a, T> {
             state, items, row_height, indent_size, show_indent_guides,
             checkable, item_render, icon_for, ..
         } = self;
+
+        // Density-aware row height from the active style, unless the caller
+        // pinned one explicitly via `.row_height(..)`.
+        let row_height = row_height.unwrap_or_else(|| theme.row_height());
 
         let cfg = Cfg {
             row_h: row_height,

@@ -61,7 +61,17 @@ pub fn color_scheme_to_theme(cs: &ColorScheme) -> Theme {
     let shadow_color = egui::Color32::from_rgb(cs.shadow[0], cs.shadow[1], cs.shadow[2]);
 
     // ── Derived fields (same formulas as gpu.rs THEMES const) ────────────────
-    let toolbar_border   = hairline_border(bg);
+    // `ColorScheme.border` is AUTHORED by every palette but used to be dropped
+    // on the floor here — the border was always re-derived from `bg`. For the
+    // 16 legacy palettes the two agree (the colour equivalence test proves it),
+    // but the 5 React ports (Aperture/Cadence/Alto/Mariner/Lucid) hand-author a
+    // border that was silently discarded, e.g. Aperture's rgba(255,255,255,.12)
+    // collapsed to (13,13,13) derived from its near-black bg. Since borders are
+    // exactly what the app's chrome is made of, honour the authored value and
+    // fall back to the derived hairline only when a palette leaves it unset
+    // (fully transparent).
+    let authored_border = c32(cs.border);
+    let toolbar_border   = if authored_border.a() > 0 { authored_border } else { hairline_border(bg) };
     let border_variant   = hairline_border_variant(bg);
     // P12: 10 Zed-style overlay derivations (element_*, ghost_*, icon_*) were
     // formerly stored on Theme. They now live in theme_impl.rs at the

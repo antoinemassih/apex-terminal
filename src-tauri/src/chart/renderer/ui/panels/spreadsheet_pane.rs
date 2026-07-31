@@ -22,7 +22,10 @@ use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::Input;
 
 const HEADER_H: f32 = 18.0;
-const ROW_H: f32 = 22.0;
+/// Grid row height — the per-style, density-aware row-height token (was a
+/// hardcoded 22px const, which ignored the active style's density).
+#[inline]
+fn row_h() -> f32 { crate::chart_renderer::ui::style::style_row_height() }
 const GUTTER_W: f32 = 32.0;
 const DEFAULT_CELL_W: f32 = 96.0;
 const MIN_CELL_W: f32 = 32.0;
@@ -614,7 +617,7 @@ pub(crate) fn render(
 
     let total_w: f32 = GUTTER_W + (0..chart.spreadsheet_cols)
         .map(|c| col_w(&state, c, DEFAULT_CELL_W)).sum::<f32>();
-    let total_h = (chart.spreadsheet_rows as f32) * ROW_H;
+    let total_h = (chart.spreadsheet_rows as f32) * row_h();
 
     // Draw column headers (with resize handles)
     {
@@ -676,25 +679,25 @@ pub(crate) fn render(
             p.rect_filled(gutter_rect, 0.0, tint(t, Tone::Border, alpha_tint()));
 
             for r in 0..chart.spreadsheet_rows {
-                let y = resp_rect.top() + (r as f32) * ROW_H;
+                let y = resp_rect.top() + (r as f32) * row_h();
                 let num_rect = egui::Rect::from_min_size(
-                    egui::pos2(resp_rect.left(), y), egui::vec2(GUTTER_W, ROW_H));
+                    egui::pos2(resp_rect.left(), y), egui::vec2(GUTTER_W, row_h()));
                 p.text(num_rect.center(), egui::Align2::CENTER_CENTER,
                     format!("{}", r + 1),
                     mono_xs(), color_muted(t.dim));
                 p.line_segment([
-                    egui::pos2(resp_rect.left(), y + ROW_H),
-                    egui::pos2(resp_rect.left() + total_w, y + ROW_H)],
+                    egui::pos2(resp_rect.left(), y + row_h()),
+                    egui::pos2(resp_rect.left() + total_w, y + row_h())],
                     stroke_grid);
 
                 let mut x = resp_rect.left() + GUTTER_W;
                 for c in 0..chart.spreadsheet_cols {
                     let cw = col_w(&state, c, DEFAULT_CELL_W);
                     let cell_rect = egui::Rect::from_min_size(
-                        egui::pos2(x, y), egui::vec2(cw, ROW_H));
+                        egui::pos2(x, y), egui::vec2(cw, row_h()));
                     p.line_segment([
                         egui::pos2(x + cw, y),
-                        egui::pos2(x + cw, y + ROW_H)],
+                        egui::pos2(x + cw, y + row_h())],
                         stroke_grid);
 
                     // Range highlight

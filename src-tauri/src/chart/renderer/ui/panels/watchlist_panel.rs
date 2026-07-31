@@ -1188,8 +1188,8 @@ if is_spawn || watchlist.open {
                                     let drag_sym = &watchlist.sections[src_sec].items[src_idx].symbol;
                                     let float_rect = egui::Rect::from_min_size(
                                         egui::pos2(mouse.x - 30.0, mouse.y - 10.0), egui::vec2(80.0, 20.0));
-                                    ui.painter().rect_filled(float_rect, 4.0, tint(t, Tone::Accent, alpha_muted()));
-                                    ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(stroke_std(), t.accent), egui::StrokeKind::Outside);
+                                    ui.painter().rect_filled(float_rect, radius_sm(), tint(t, Tone::Accent, alpha_muted()));
+                                    ui.painter().rect_stroke(float_rect, radius_sm(), egui::Stroke::new(stroke_std(), t.accent), egui::StrokeKind::Outside);
                                     ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
                                         drag_sym, mono_md(), t.text);
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -1923,8 +1923,8 @@ if is_spawn || watchlist.open {
                                 egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())));
                             // Badge background
                             let badge_rect = egui::Rect::from_center_size(egui::pos2(center_x, y + 10.0), egui::vec2(badge_w, 18.0));
-                            ui.painter().rect_filled(badge_rect, 9.0, tint(t, Tone::Border, alpha_muted()));
-                            ui.painter().rect_stroke(badge_rect, 9.0, egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_strong())), egui::StrokeKind::Outside);
+                            ui.painter().rect_filled(badge_rect, r_pill(), tint(t, Tone::Border, alpha_muted()));
+                            ui.painter().rect_stroke(badge_rect, r_pill(), egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_strong())), egui::StrokeKind::Outside);
                             // Price text
                             let badge_text = if center_offset != 0 {
                                 format!("${:.2} ({:+})", price, center_offset)

@@ -131,7 +131,11 @@ pub struct TokenSnapshot {
 /// identical values.
 pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     // Fonts.
-    font_2xs: 8.0, font_xs: 9.0, font_sm: 11.0, font_md: 13.0, font_lg: 16.0, font_xl: 22.0,
+    // Type scale lift — see the matching comment in chart/renderer/ui/style.rs.
+    // These are the fallbacks used when no host pushes tokens; they must track
+    // the chart-layer values or a headless/portable host renders a different
+    // (smaller) scale than the app.
+    font_2xs: 9.0, font_xs: 10.0, font_sm: 12.0, font_md: 14.0, font_lg: 16.0, font_xl: 22.0,
     // Spacing.
     gap_xs: 4.0, gap_xs_mid: 6.0, gap_sm: 8.0, gap_md: 12.0,
     gap_lg: 16.0, gap_xl: 20.0, gap_2xl: 24.0, gap_3xl: 32.0,
@@ -334,7 +338,10 @@ pub fn shadow_color_alpha_of(shadow_color: Color32, alpha: u8) -> Color32 {
 // DesignTokens font set doesn't expose those tiers (yet).
 
 #[inline] pub fn font_4xs()    -> f32 { 6.0 }
-#[inline] pub fn font_3xs()    -> f32 { 8.0 } // legibility floor (was 7.0 — too small to read)
+// 3xs sits one step under 2xs. It was pinned at 8.0 while `font_2xs` was ALSO
+// 8.0, so the two tiers were indistinguishable (a duplicate rung on the ladder).
+// Now derived: always exactly 1px under 2xs, with an 8px legibility floor.
+#[inline] pub fn font_3xs()    -> f32 { (font_2xs() - 1.0).max(8.0) }
 #[inline] pub fn font_2xs()    -> f32 { frame_tokens().font_2xs }
 #[inline] pub fn font_xs()     -> f32 { frame_tokens().font_xs }
 #[inline] pub fn font_xs_plus() -> f32 { 10.0 }

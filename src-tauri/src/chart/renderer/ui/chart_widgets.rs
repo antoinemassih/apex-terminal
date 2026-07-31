@@ -1318,7 +1318,7 @@ fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         let badge_w = 24.0;
         let badge_rect = egui::Rect::from_min_size(
             egui::pos2(left, y - 8.0), egui::vec2(badge_w, 16.0));
-        p.rect_filled(badge_rect, 3.0, color_alpha(level_color, alpha_tint()));
+        p.rect_filled(badge_rect, radius_sm(), color_alpha(level_color, alpha_tint()));
         p.text(badge_rect.center(), egui::Align2::CENTER_CENTER,
             *label, egui::FontId::monospace(FONT_XS), level_color);
 
@@ -1398,9 +1398,9 @@ fn draw_risk_reward(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &T
 
     let risk_w = bar_w * (risk / total);
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(risk_w, bar_h)),
-        egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, tint(t, Tone::Bear, alpha_strong()));
+        egui::CornerRadius { nw: radius_sm() as u8, sw: radius_sm() as u8, ne: 0, se: 0 }, tint(t, Tone::Bear, alpha_strong()));
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + risk_w, bar_y), egui::vec2(bar_w - risk_w, bar_h)),
-        egui::CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 }, tint(t, Tone::Bull, alpha_strong()));
+        egui::CornerRadius { nw: 0, sw: 0, ne: radius_sm() as u8, se: radius_sm() as u8 }, tint(t, Tone::Bull, alpha_strong()));
     p.circle_filled(egui::pos2(bar_x + risk_w, bar_y + bar_h / 2.0), 4.0, t.text);
 
     let rr_str = format!("{:.1} : 1", reward);
@@ -1881,7 +1881,7 @@ fn draw_earnings_mom(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &
         let y = body.top() + row as f32 * hh;
         let cell = egui::Rect::from_min_size(egui::pos2(x + 2.0, y + 2.0), egui::vec2(hw - 4.0, hh - 4.0));
 
-        p.rect_filled(cell, 3.0, color_alpha(*color, alpha_faint()));
+        p.rect_filled(cell, radius_sm(), color_alpha(*color, alpha_faint()));
         p.text(egui::pos2(cell.left() + 6.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
             label, mono_4xs(), color_half(t.dim));
         p.text(egui::pos2(cell.center().x, cell.center().y + 4.0), egui::Align2::CENTER_CENTER,
@@ -2069,12 +2069,12 @@ fn draw_fundamentals(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let buy_w = bar_w * wd.analyst_buy as f32 / total;
         let hold_w = bar_w * wd.analyst_hold as f32 / total;
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0, bar_y), egui::vec2(buy_w, 6.0)),
-            2.0, t.bull);
+            radius_xs(), t.bull);
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0 + buy_w, bar_y), egui::vec2(hold_w, 6.0)),
             0.0, t.warn);
         let sell_w = bar_w - buy_w - hold_w;
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0 + buy_w + hold_w, bar_y), egui::vec2(sell_w, 6.0)),
-            2.0, t.bear);
+            radius_xs(), t.bear);
         p.text(egui::pos2(body.left() + 6.0, bar_y - 4.0), egui::Align2::LEFT_BOTTOM,
             &format!("{}B {}H {}S  PT ${:.0}", wd.analyst_buy, wd.analyst_hold, wd.analyst_sell, wd.analyst_target),
             mono_4xs(), color_dim(t.dim));
@@ -2210,7 +2210,7 @@ fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         // Side pill
         let pill_w = 28.0;
         let pill_rect = egui::Rect::from_min_size(egui::pos2(body.left() + 6.0, y + 2.0), egui::vec2(pill_w, row_h - 4.0));
-        p.rect_filled(pill_rect, 2.0, color_alpha(col, alpha_tint()));
+        p.rect_filled(pill_rect, radius_xs(), color_alpha(col, alpha_tint()));
         p.text(pill_rect.center(), egui::Align2::CENTER_CENTER,
             side, mono_4xs(), col);
 
@@ -2268,8 +2268,8 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     let btn_rect = egui::Rect::from_min_size(
         egui::pos2(right - btn_w, y), egui::vec2(btn_w, 14.0));
     let btn_hov = hover.map(|p| btn_rect.contains(p)).unwrap_or(false);
-    p.rect_filled(btn_rect, 3.0, tint(t, Tone::Bear, if btn_hov { 80 } else { 40 }));
-    p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(if btn_hov { 1.0 } else { 0.5 }, if btn_hov { color_subtle(t.bear) } else { color_half(t.bear) }),
+    p.rect_filled(btn_rect, radius_sm(), tint(t, Tone::Bear, if btn_hov { 80 } else { 40 }));
+    p.rect_stroke(btn_rect, radius_sm(), egui::Stroke::new(if btn_hov { 1.0 } else { 0.5 }, if btn_hov { color_subtle(t.bear) } else { color_half(t.bear) }),
         egui::StrokeKind::Outside);
     p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
         "Close All", egui::FontId::monospace(FONT_2XS), if btn_hov { contrast_fg(t.bear) } else { t.bear });
@@ -2292,7 +2292,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     y += 12.0;
 
     // ── Position rows ──
-    let row_h = 20.0;
+    let row_h = crate::chart_renderer::ui::style::style_row_height();
     for (pos_idx, pos) in wd.all_positions.iter().enumerate() {
         if y + row_h > body.bottom() - 2.0 { break; } // clip to body
 
@@ -2328,7 +2328,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
             egui::pos2(right - 6.0, y + row_h * 0.5), egui::vec2(icon_xs(), icon_xs()));
         let close_hov = hover.map(|p| close_rect.contains(p)).unwrap_or(false);
         if close_hov {
-            p.rect_filled(close_rect, 2.0, tint(t, Tone::Bear, 60));
+            p.rect_filled(close_rect, radius_xs(), tint(t, Tone::Bear, 60));
         }
         // TODO: migrate row to PanelListRow; entire fn is pure-painter (no Ui) so
         // Button::close() cannot be used here until the dispatch chain gains a &mut Ui param.
@@ -2368,8 +2368,8 @@ fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     let btn_hovered = hover.map(|p| btn_rect.contains(p)).unwrap_or(false);
     let btn_bg = if btn_hovered { tint(t, Tone::Bear, 100) } else { tint(t, Tone::Bear, 50) };
     let btn_border = if btn_hovered { t.bear } else { color_muted(t.bear) };
-    p.rect_filled(btn_rect, 4.0, btn_bg);
-    p.rect_stroke(btn_rect, 4.0, egui::Stroke::new(if btn_hovered { 1.0 } else { 0.5 }, btn_border),
+    p.rect_filled(btn_rect, radius_sm(), btn_bg);
+    p.rect_stroke(btn_rect, radius_sm(), egui::Stroke::new(if btn_hovered { 1.0 } else { 0.5 }, btn_border),
         egui::StrokeKind::Outside);
     p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
         "Close All", egui::FontId::monospace(FONT_SM), if btn_hovered { contrast_fg(t.bear) } else { t.bear });
@@ -2547,12 +2547,12 @@ fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
         let bar_x = body.left() + 12.0;
         let bar_w = body.width() - 24.0;
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, 4.0)),
-            2.0, tint(t, Tone::Border, alpha_muted()));
+            radius_xs(), tint(t, Tone::Border, alpha_muted()));
         // Show expected range centered
         let range_w = (bar_w * (implied_move_pct / 10.0).clamp(0.0, 1.0)).max(8.0);
         let range_x = bar_x + (bar_w - range_w) * 0.5;
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(range_x, bar_y), egui::vec2(range_w, 4.0)),
-            2.0, urgency_col);
+            radius_xs(), urgency_col);
         p.text(egui::pos2(cx, bar_y - 4.0), egui::Align2::CENTER_BOTTOM,
             &format!("\u{00B1}{:.1}%", implied_move_pct), egui::FontId::monospace(FONT_2XS), urgency_col);
     }
@@ -2771,13 +2771,13 @@ fn draw_exit_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
 
     // Track
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, bar_h)),
-        4.0, tint(t, Tone::Border, alpha_muted()));
+        radius_sm(), tint(t, Tone::Border, alpha_muted()));
 
     // Fill from bottom
     let fill_h = bar_h * (score / 100.0).clamp(0.0, 1.0);
     p.rect_filled(egui::Rect::from_min_size(
         egui::pos2(bar_x, bar_y + bar_h - fill_h), egui::vec2(bar_w, fill_h)),
-        4.0, color);
+        radius_sm(), color);
 
     // Score
     hero_number(p, egui::pos2(cx + 30.0, body.top() + 20.0), &format!("{:.0}", score), color);
@@ -2864,10 +2864,10 @@ fn draw_trade_plan(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     let bar_x = left + 40.0;
     let bar_w = right - bar_x;
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y + 2.0), egui::vec2(bar_w, 6.0)),
-        2.0, tint(t, Tone::Border, alpha_muted()));
+        radius_xs(), tint(t, Tone::Border, alpha_muted()));
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y + 2.0),
         egui::vec2(bar_w * (conviction / 100.0).clamp(0.0, 1.0), 6.0)),
-        2.0, dir_col);
+        radius_xs(), dir_col);
     p.text(egui::pos2(right, y + 14.0), egui::Align2::RIGHT_CENTER,
         &format!("{:.0}% conviction", conviction), egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
 }
@@ -2925,11 +2925,11 @@ fn draw_zone_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     let bar_x = left + 56.0;
     let bar_w = right - bar_x;
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y - 2.0), egui::vec2(bar_w, 6.0)),
-        2.0, tint(t, Tone::Border, alpha_muted()));
+        radius_xs(), tint(t, Tone::Border, alpha_muted()));
     let fill = (wd.zone_avg_strength / 10.0).clamp(0.0, 1.0);
     let str_col = if fill > 0.7 { t.bull } else if fill > 0.4 { t.warn } else { t.bear };
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y - 2.0), egui::vec2(bar_w * fill, 6.0)),
-        2.0, str_col);
+        radius_xs(), str_col);
 }
 
 fn draw_pattern_scanner(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -2953,9 +2953,9 @@ fn draw_pattern_scanner(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     let bar_x = body.left() + 12.0;
     let bar_w = body.width() - 24.0;
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, 6.0)),
-        2.0, tint(t, Tone::Border, alpha_muted()));
+        radius_xs(), tint(t, Tone::Border, alpha_muted()));
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y),
-        egui::vec2(bar_w * wd.pattern_latest_conf, 6.0)), 2.0, pat_col);
+        egui::vec2(bar_w * wd.pattern_latest_conf, 6.0)), radius_xs(), pat_col);
     p.text(egui::pos2(cx, bar_y + 14.0), egui::Align2::CENTER_CENTER,
         &format!("{:.0}% confidence", wd.pattern_latest_conf * 100.0),
         egui::FontId::monospace(FONT_XS), pat_col);

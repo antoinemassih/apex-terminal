@@ -8,13 +8,12 @@ use super::super::style::*;
 use super::super::components::pane_header_bar;
 use super::text::{SectionLabel, SectionLabelSize};
 
-// Fallback colors used when no Theme is supplied via `.theme(t)`. Every concrete
-// panel passes a Theme, but these keep the builders usable in isolation (tests,
-// previews, headless rendering) without crashing the design-token resolver.
-const FALLBACK_ACCENT:      Color32 = Color32::from_rgb(120, 140, 220);
-const FALLBACK_DIM:         Color32 = Color32::from_rgb(120, 120, 130);
-const FALLBACK_PANE_BG:     Color32 = Color32::from_rgb( 20,  20,  28);
-const FALLBACK_PANE_BORDER: Color32 = Color32::from_rgb( 50,  50,  60);
+// NO fallback palette lives here. Colors are `Option<Color32>`: `None` means
+// "resolve from the ambient Theme at RENDER time"
+// (`chart_renderer::theme_impl::active_theme(ui.ctx())`). The old FALLBACK_*
+// consts were dark-only literals baked in at CONSTRUCTION time, so any builder
+// used without an explicit `.theme(t)` rendered off-palette on the light
+// themes (Bauhaus / Peach / Ivory / Newsprint / Lucid).
 
 // ─── PanelHeaderWithClose ────────────────────────────────────────────────────
 
@@ -28,8 +27,10 @@ const FALLBACK_PANE_BORDER: Color32 = Color32::from_rgb( 50,  50,  60);
 pub struct PanelHeaderWithClose<'a> {
     title:           &'a str,
     subtitle:        Option<&'a str>,
-    accent:          Color32,
-    dim:             Color32,
+    /// `None` = resolve from the ambient theme at render time.
+    accent:          Option<Color32>,
+    /// `None` = resolve from the ambient theme at render time.
+    dim:             Option<Color32>,
     title_size:      SectionLabelSize,
     title_size_px:   Option<f32>,
     title_monospace: Option<bool>,
@@ -46,8 +47,8 @@ impl<'a> PanelHeaderWithClose<'a> {
         Self {
             title,
             subtitle:        None,
-            accent:          FALLBACK_ACCENT,
-            dim:             FALLBACK_DIM,
+            accent:          None,
+            dim:             None,
             title_size:      SectionLabelSize::Sm,
             title_size_px:   None,
             title_monospace: None,
@@ -71,8 +72,8 @@ impl<'a> PanelHeaderWithClose<'a> {
     /// Override title font size directly. Pair with `.height()` to pre-resolve
     /// pane-header metrics outside a borrow conflict.
     pub fn font_size(mut self, px: f32) -> Self { self.font_size_override = Some(px); self }
-    pub fn accent(mut self, c: Color32) -> Self { self.accent = c; self }
-    pub fn dim(mut self, c: Color32) -> Self { self.dim = c; self }
+    pub fn accent(mut self, c: Color32) -> Self { self.accent = Some(c); self }
+    pub fn dim(mut self, c: Color32) -> Self { self.dim = Some(c); self }
     pub fn subtitle(mut self, s: &'a str) -> Self { self.subtitle = Some(s); self }
     /// Override the title's `SectionLabel` size variant (default: `Sm`).
     pub fn title_size(mut self, s: SectionLabelSize) -> Self { self.title_size = s; self }
@@ -90,8 +91,8 @@ impl<'a> PanelHeaderWithClose<'a> {
     /// Pixels of horizontal space inserted after the close button (right edge).
     pub fn trailing_space(mut self, px: f32) -> Self { self.trailing_space = px; self }
     pub fn theme(mut self, t: &'a super::super::super::gpu::Theme) -> Self {
-        self.accent = t.accent;
-        self.dim = t.dim;
+        self.accent = Some(t.accent);
+        self.dim = Some(t.dim);
         self.theme_ref = Some(t);
         self
     }
@@ -144,6 +145,12 @@ impl<'a> PanelHeaderWithClose<'a> {
             Some(t) => t,
             None => { _theme_fallback = crate::chart_renderer::theme_impl::active_theme(ui.ctx()); &_theme_fallback }
         };
+        // Resolve the optional color overrides against the live theme. The
+        // unified `panels::kit::PanelHeader` derives its own chrome from
+        // `theme`, so these stay unread — but they are resolved here (never at
+        // construction) so no dark-only literal can survive into a light palette.
+        let _accent = self.accent.unwrap_or(theme.accent);
+        let _dim    = self.dim.unwrap_or(theme.dim);
         let mut h = super::super::super::ui::panels::kit::PanelHeader::new(self.title);
         if let Some(w) = self.watchlist_ref {
             h = h.watchlist(w);
@@ -165,17 +172,18 @@ impl<'a> PanelHeaderWithClose<'a> {
 #[must_use]
 pub struct DialogHeaderWithClose<'a> {
     title: &'a str,
-    dim:   Color32,
+    /// `None` = resolve from the ambient theme at render time.
+    dim:   Option<Color32>,
 }
 
 impl<'a> DialogHeaderWithClose<'a> {
     pub fn new(title: &'a str) -> Self {
         Self {
             title,
-            dim: FALLBACK_DIM,
+            dim: None,
         }
     }
-    pub fn dim(mut self, c: Color32) -> Self { self.dim = c; self }
+    pub fn dim(mut self, c: Color32) -> Self { self.dim = Some(c); self }
     pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
         self.dim(t.dim)
     }
@@ -183,6 +191,8 @@ impl<'a> DialogHeaderWithClose<'a> {
     /// Render the header. Returns `true` if the close button was clicked.
     pub fn show(self, ui: &mut Ui) -> bool {
         let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
+        // Resolved at render time; `Header::dialog` colors itself from `theme`.
+        let _dim = self.dim.unwrap_or(theme.dim);
         crate::ui_kit::widgets::Header::dialog(self.title)
             .closable(true)
             .show(ui, &theme)
@@ -201,9 +211,12 @@ impl<'a> DialogHeaderWithClose<'a> {
 #[must_use = "PaneHeader must be added with `ui.add(...)` to render"]
 pub struct PaneHeader<'a> {
     title:        &'a str,
-    title_color:  Color32,
-    bg:           Color32,
-    border:       Color32,
+    /// `None` = resolve from the ambient theme at render time.
+    title_color:  Option<Color32>,
+    /// `None` = resolve from the ambient theme at render time.
+    bg:           Option<Color32>,
+    /// `None` = resolve from the ambient theme at render time.
+    border:       Option<Color32>,
     height:       f32,
 }
 
@@ -211,15 +224,15 @@ impl<'a> PaneHeader<'a> {
     pub fn new(title: &'a str) -> Self {
         Self {
             title,
-            title_color: FALLBACK_ACCENT,
-            bg:          FALLBACK_PANE_BG,
-            border:      FALLBACK_PANE_BORDER,
+            title_color: None,
+            bg:          None,
+            border:      None,
             height:      28.0,
         }
     }
-    pub fn title_color(mut self, c: Color32) -> Self { self.title_color = c; self }
-    pub fn bg(mut self, c: Color32) -> Self { self.bg = c; self }
-    pub fn border(mut self, c: Color32) -> Self { self.border = c; self }
+    pub fn title_color(mut self, c: Color32) -> Self { self.title_color = Some(c); self }
+    pub fn bg(mut self, c: Color32) -> Self { self.bg = Some(c); self }
+    pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
     pub fn height(mut self, h: f32) -> Self { self.height = h; self }
     pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
         self.title_color(t.accent).bg(t.toolbar_bg).border(t.toolbar_border)
@@ -229,8 +242,12 @@ impl<'a> PaneHeader<'a> {
 impl<'a> Widget for PaneHeader<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let title = self.title;
-        let title_color = self.title_color;
-        pane_header_bar(ui, self.height, self.bg, self.border, |ui| {
+        // Unset colors follow the live theme (same mapping `.theme(t)` applies).
+        let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
+        let title_color = self.title_color.unwrap_or(theme.accent);
+        let bg          = self.bg.unwrap_or(theme.toolbar_bg);
+        let border      = self.border.unwrap_or(theme.toolbar_border);
+        pane_header_bar(ui, self.height, bg, border, |ui| {
             ui.add(SectionLabel::new(title).color(title_color));
         });
         // Return an invisible response covering the allocated area.
@@ -249,23 +266,27 @@ impl<'a> Widget for PaneHeader<'a> {
 #[must_use]
 pub struct PaneHeaderWithClose<'a> {
     title:       &'a str,
-    title_color: Color32,
+    /// `None` = resolve from the ambient theme at render time.
+    title_color: Option<Color32>,
 }
 
 impl<'a> PaneHeaderWithClose<'a> {
     pub fn new(title: &'a str) -> Self {
         Self {
             title,
-            title_color: FALLBACK_ACCENT,
+            title_color: None,
         }
     }
-    pub fn title_color(mut self, c: Color32) -> Self { self.title_color = c; self }
+    pub fn title_color(mut self, c: Color32) -> Self { self.title_color = Some(c); self }
     pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
         self.title_color(t.accent)
     }
 
     /// Render the header. Returns `true` if the close button was clicked.
     pub fn show(self, ui: &mut Ui, open: &mut bool) -> bool {
-        super::super::components::panel_header(ui, self.title, self.title_color, open)
+        let title_color = self.title_color.unwrap_or_else(|| {
+            crate::chart_renderer::theme_impl::active_theme(ui.ctx()).accent
+        });
+        super::super::components::panel_header(ui, self.title, title_color, open)
     }
 }

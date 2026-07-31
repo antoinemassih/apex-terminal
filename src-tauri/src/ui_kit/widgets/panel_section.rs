@@ -294,15 +294,20 @@ impl<'a> PanelSection<'a> {
         // actions; the FILL + rules cover the full strip width.
 
         // ── Recipe adoption (section.header) ────────────────────────────────
-        // Default Sx: solid fill from t.section_header_surface() — the
-        // historical value. When the ambient RecipeSet is empty, resolve
-        // returns the default Sx unchanged — zero visual change.
+        // Default fill now matches the PANEL BODY surface (was the lighter
+        // `section_header_surface`). The lighter band read as a raised chrome
+        // strip, and the luminance step between that band and the darker body
+        // was exactly what made each section look like a boxed-in region
+        // ("boxes-within-boxes"). Blending the header into the body removes the
+        // band edges; the section is now delimited by its label + one hairline
+        // only — calm, not boxed. A theme-pack can still opt back into a band
+        // via the `section.header` recipe (the resolve path is unchanged).
         let recipes = get_ambient_recipes(ui.ctx());
         let default_header_sx = Sx::new()
-            .bg_color(t.section_header_surface());
+            .bg_color(t.panel_surface());
         let header_sx = recipes.resolve("section.header", default_header_sx, t);
         let header_delta = header_sx.resolved(StyleState::Normal);
-        // Resolve the fill Color32 from the Sx delta (falls back to section_header_surface).
+        // Resolve the fill Color32 from the Sx delta (falls back to panel_surface).
         let resolved_header_fill = header_delta.fill
             .map(|fill| {
                 let pal = palette_ct(t);
@@ -315,7 +320,7 @@ impl<'a> PanelSection<'a> {
                     }
                 }
             })
-            .unwrap_or_else(|| t.section_header_surface());
+            .unwrap_or_else(|| t.panel_surface());
 
         let prev_pad = ui.spacing().item_spacing;
         let header_resp = egui::Frame::NONE
@@ -447,44 +452,22 @@ impl<'a> PanelSection<'a> {
         // Re-read expanded after potential toggle so the body decision
         // below uses the up-to-date value.
         let is_expanded = expanded.as_deref().copied().unwrap_or(true);
-        // Edge-to-edge top + bottom rules bracketing the recessed strip.
-        // Border color matches the chart pane header — palette_ct(t).base(SxTone::Text) @ 38 alpha.
+        // ONE calm hairline UNDER the section header — not a box. The former
+        // treatment stacked THREE separators per header (a top rule + a bottom
+        // rule + a 6px inset drop-shadow); bracketing every body top-and-bottom
+        // is what read as "box-in-box" chrome. We keep a single subtle bottom
+        // rule (matches the chart pane header, t.header_border() = text @ ~38a),
+        // still gated by `rule_enabled` so `.rule(false)` yields no divider.
         let hr = header_resp.response.rect;
-        let rule_col = t.header_border();
-        ui.painter().line_segment(
-            [Pos2::new(hr.left(), hr.top() + 0.5), Pos2::new(hr.right(), hr.top() + 0.5)],
-            Stroke::new(stroke_thin(), rule_col),
-        );
         if rule_enabled {
             ui.painter().line_segment(
                 [Pos2::new(hr.left(), hr.bottom() - 0.5), Pos2::new(hr.right(), hr.bottom() - 0.5)],
-                Stroke::new(stroke_thin(), rule_col),
+                Stroke::new(stroke_thin(), t.header_border()),
             );
         }
-        // Inset drop-shadow falling down from the bottom rule — 6px
-        // tall gradient painted into a stable layer above the body,
-        // fading from alpha 38 at the top to 0 at the bottom.
-        // Painted on the FOREGROUND layer (not ui.painter) so it
-        // doesn't shift widget layer-ids mid-frame.
-        let shadow_h = 6.0_f32;
-        {
-            let layer = egui::LayerId::new(
-                egui::Order::Foreground,
-                ui.id().with(("panel_section_shadow", title_str)),
-            );
-            let painter = ui.ctx().layer_painter(layer);
-            for i in 0..shadow_h as i32 {
-                let frac = 1.0 - (i as f32 / shadow_h);
-                let a = (38.0 * frac) as u8;
-                if a == 0 { continue; }
-                let y = hr.bottom() + i as f32 + 0.5;
-                painter.line_segment(
-                    [Pos2::new(hr.left(), y), Pos2::new(hr.right(), y)],
-                    Stroke::new(stroke_thin(), t.shadow_color_alpha(a)),
-                );
-            }
-        }
-        ui.add_space(shadow_h + 2.0);
+        // Small, even gap into the body (replaces the removed shadow band's
+        // reserved height) so section spacing stays consistent.
+        ui.add_space(gap_xs());
 
         // Body — natural flow on the panel surface. Inset by gap_lg so
         // body content's left edge aligns with the header's title text

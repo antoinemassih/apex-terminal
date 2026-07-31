@@ -88,7 +88,8 @@ pub(crate) fn render(
     // These read cached projector outputs from live_state (None → row hidden,
     // so the rest of the layout stays identical when the backend isn't up).
     const BREADTH_STRIP_H: f32 = 18.0;
-    const SECTOR_ROW_H: f32 = 22.0;
+    // Density-aware row height (was a hardcoded 22px).
+    let sector_row_h: f32 = crate::chart_renderer::ui::style::style_row_height();
 
     let mut extra_h = 0.0f32;
     let breadth = crate::apex_data::live_state::get_breadth("us");
@@ -99,7 +100,7 @@ pub(crate) fn render(
             egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
             egui::pos2(rect.right() - 8.0, rect.top() + header_h + extra_h + BREADTH_STRIP_H),
         );
-        painter.rect_filled(strip_rect, 2.0, tint(t, Tone::Surface, alpha_muted()));
+        painter.rect_filled(strip_rect, radius_xs(), tint(t, Tone::Surface, alpha_muted()));
         let txt = format!(
             "Adv {} / Dec {} · NH {} / NL {} · {:.0}% > SMA50 · {:.0}% > SMA200",
             b.advancers, b.decliners, b.new_highs, b.new_lows,
@@ -116,7 +117,7 @@ pub(crate) fn render(
     if let Some(r) = rotation.as_ref() {
         let row_rect = egui::Rect::from_min_max(
             egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
-            egui::pos2(rect.right() - 8.0, rect.top() + header_h + extra_h + SECTOR_ROW_H),
+            egui::pos2(rect.right() - 8.0, rect.top() + header_h + extra_h + sector_row_h),
         );
         let rows = &r.rows;
         if !rows.is_empty() {
@@ -127,11 +128,11 @@ pub(crate) fn render(
                     egui::vec2(cell_w - 1.0, row_rect.height()),
                 );
                 let color = quadrant_color(row.quadrant, t);
-                painter.rect_filled(cr, 2.0, color);
+                painter.rect_filled(cr, radius_xs(), color);
                 painter.text(cr.center(), egui::Align2::CENTER_CENTER,
                     &row.symbol, egui::FontId::monospace(font_xs()), t.text);
             }
-            extra_h += SECTOR_ROW_H + 2.0;
+            extra_h += sector_row_h + 2.0;
         }
     }
 
@@ -204,9 +205,9 @@ pub(crate) fn render(
             egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(),
                 (alpha as u16 + 40).min(255) as u8)
         } else { bg };
-        painter.rect_filled(inset, 2.0, draw_bg);
+        painter.rect_filled(inset, radius_xs(), draw_bg);
         if cell_hovered {
-            painter.rect_stroke(inset, 2.0, egui::Stroke::new(stroke_bold(), t.text), egui::StrokeKind::Outside);
+            painter.rect_stroke(inset, radius_xs(), egui::Stroke::new(stroke_bold(), t.text), egui::StrokeKind::Outside);
         }
         // Focus ring for keyboard navigation (egui Sense::click() already
         // fires clicked() on Enter/Space when focused).

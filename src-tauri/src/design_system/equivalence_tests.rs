@@ -570,6 +570,227 @@ pub(crate) mod equivalence {
         assert_eq!(parsed.resolved_info(),    blue,   "resolved_info returns explicit value");
     }
 
+    // ── React-port palette coverage (no legacy THEMES counterpart) ────────────
+    //
+    // `colour_axis_equivalence` / `adapter_lossless_equivalence` zip against
+    // `gpu::THEMES` (16 entries), so the 5 React-port palettes (Aperture,
+    // Cadence, Alto, Mariner, Lucid) fall off the end of the zip and are
+    // covered by nothing.  The two tests below close that hole with
+    // (a) hard invariants that any usable palette must satisfy and
+    // (b) an exact-value snapshot so an accidental edit fails loudly.
+
+    /// The 5 palettes ported from the React `ApexTerminalThemes` mockup that
+    /// have no `gpu::THEMES` entry to diff against.
+    const REACT_PORT_PALETTE_IDS: [&str; 5] =
+        ["aperture", "cadence", "alto", "mariner", "lucid"];
+
+    /// sRGB → linear for one channel (WCAG 2.x transfer function).
+    fn srgb_to_linear(c: u8) -> f32 {
+        let s = c as f32 / 255.0;
+        if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+    }
+
+    /// WCAG relative luminance of an opaque colour, in `0.0..=1.0`.
+    fn relative_luminance(c: egui::Color32) -> f32 {
+        0.2126 * srgb_to_linear(c.r())
+            + 0.7152 * srgb_to_linear(c.g())
+            + 0.0722 * srgb_to_linear(c.b())
+    }
+
+    /// WCAG contrast ratio between two opaque colours, in `1.0..=21.0`.
+    fn contrast_ratio(a: egui::Color32, b: egui::Color32) -> f32 {
+        let (la, lb) = (relative_luminance(a), relative_luminance(b));
+        let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    /// Invariants every React-port palette must satisfy after adaptation.
+    ///
+    /// These are the properties that make a palette *usable*, independent of
+    /// which exact hues were chosen — so they stay meaningful even if the
+    /// palette is deliberately retuned.
+    ///
+    /// # Thresholds
+    /// * **bg/text contrast ≥ 7.0** — WCAG 2.1 AAA for normal-size body text.
+    ///   Chosen (rather than the AA 4.5 floor) because this is a dense trading
+    ///   terminal read for hours at small point sizes, and because all five
+    ///   palettes clear it by a wide margin today; 7.0 catches a real
+    ///   regression without being a hair-trigger.
+    /// * **bg/dim contrast ≥ 4.5** — WCAG 2.1 AA for the secondary text tone.
+    /// * **`meta.is_dark` vs bg luminance 0.5** — the midpoint of the
+    ///   luminance range; a palette whose flag disagrees with its own
+    ///   background would pick the wrong contrast_fg / bevel direction
+    ///   everywhere.
+    #[test]
+    fn react_port_palettes_invariants() {
+        let schemes = builtin_color_schemes();
+        let mut problems: Vec<String> = Vec::new();
+
+        for id in REACT_PORT_PALETTE_IDS {
+            let scheme = schemes
+                .iter()
+                .find(|s| s.meta.id == id)
+                .unwrap_or_else(|| panic!("built-in colour scheme '{id}' is missing"));
+            let t = color_scheme_to_theme(scheme);
+
+            // ── 1. Every required colour must be fully opaque ─────────────
+            // These fields are painted as solid fills / text; a transparent
+            // value would render as an invisible or ghosted element.
+            let opaque_fields: [(&str, egui::Color32); 13] = [
+                ("bg",             t.bg),
+                ("toolbar_bg",     t.toolbar_bg),
+                ("text",           t.text),
+                ("dim",            t.dim),
+                ("accent",         t.accent),
+                ("bull",           t.bull),
+                ("bear",           t.bear),
+                ("warn",           t.warn),
+                ("rrg_leading",    t.rrg_leading),
+                ("rrg_improving",  t.rrg_improving),
+                ("rrg_weakening",  t.rrg_weakening),
+                ("rrg_lagging",    t.rrg_lagging),
+                ("overlay_text",   t.overlay_text),
+            ];
+            for (label, c) in opaque_fields {
+                if c.a() != 255 {
+                    problems.push(format!("[{id}] {label} must be opaque, got alpha={}", c.a()));
+                }
+            }
+            // Overlay surfaces are translucent by design, but must still be
+            // visible at all (alpha > 0).
+            for (label, c) in [("shadow_color", t.shadow_color), ("hud_bg", t.hud_bg),
+                               ("pinned_row_tint", t.pinned_row_tint)] {
+                if c.a() == 0 {
+                    problems.push(format!("[{id}] {label} is fully transparent (alpha=0)"));
+                }
+            }
+
+            // ── 2. bg/text and bg/dim contrast ───────────────────────────
+            let text_cr = contrast_ratio(t.bg, t.text);
+            if text_cr < 7.0 {
+                problems.push(format!(
+                    "[{id}] bg/text contrast {text_cr:.2} < 7.0 (WCAG AAA body text)"));
+            }
+            let dim_cr = contrast_ratio(t.bg, t.dim);
+            if dim_cr < 4.5 {
+                problems.push(format!(
+                    "[{id}] bg/dim contrast {dim_cr:.2} < 4.5 (WCAG AA secondary text)"));
+            }
+
+            // ── 3. meta.is_dark agrees with the actual bg luminance ──────
+            let bg_lum = relative_luminance(t.bg);
+            let measured_dark = bg_lum < 0.5;
+            if measured_dark != scheme.meta.is_dark {
+                problems.push(format!(
+                    "[{id}] meta.is_dark={} but bg luminance is {bg_lum:.3} (measured dark={measured_dark})",
+                    scheme.meta.is_dark));
+            }
+
+            // ── 4. The 4 RRG quadrant colours must be mutually distinct ──
+            let rrg: [(&str, egui::Color32); 4] = [
+                ("rrg_leading",   t.rrg_leading),
+                ("rrg_improving", t.rrg_improving),
+                ("rrg_weakening", t.rrg_weakening),
+                ("rrg_lagging",   t.rrg_lagging),
+            ];
+            for a in 0..4 {
+                for b in (a + 1)..4 {
+                    if rrg[a].1 == rrg[b].1 {
+                        problems.push(format!(
+                            "[{id}] {} and {} are identical ({}) — RRG quadrants indistinguishable",
+                            rrg[a].0, rrg[b].0, fmt_c32(rrg[a].1)));
+                    }
+                }
+            }
+
+            // ── 5. bull != bear (direction must be readable) ─────────────
+            if t.bull == t.bear {
+                problems.push(format!(
+                    "[{id}] bull == bear ({}) — up/down indistinguishable", fmt_c32(t.bull)));
+            }
+        }
+
+        assert!(
+            problems.is_empty(),
+            "{} React-port palette invariant violation(s):\n  {}",
+            problems.len(),
+            problems.join("\n  ")
+        );
+    }
+
+    /// Exact-value snapshot of the key tokens for each React-port palette,
+    /// read from the live `color_scheme_to_theme()` output (2026-07 snapshot).
+    ///
+    /// Catches accidental edits to `builtin.rs` that the invariant test above
+    /// would let through (e.g. nudging an accent hue by a few units).
+    ///
+    /// ## Known adapter behaviour, deliberately NOT snapshotted here
+    /// `Theme::toolbar_border` is *derived* (`hairline_border(bg)`), so the
+    /// hand-authored `ColorScheme::border` values these five palettes carry
+    /// (e.g. Aperture's `rgba(255,255,255,0.12)`, Lucid's `#bfb59a`) never
+    /// reach the rendered theme.  For the 16 legacy palettes the two happen to
+    /// coincide, which is why `colour_axis_equivalence` passes.  Pinning the
+    /// derived value here would cement behaviour that is arguably a bug, so
+    /// it is documented rather than asserted.
+    #[test]
+    fn react_port_palettes_snapshot() {
+        // (id, bg, accent, text, dim, bull, bear, surface)
+        type Rgb = (u8, u8, u8);
+        const SNAPSHOT: &[(&str, Rgb, Rgb, Rgb, Rgb, Rgb, Rgb, Rgb)] = &[
+            ("aperture",
+             (  0,   0,   0), (239,  91,  59), (244, 236, 224), (182, 173, 157),
+             ( 78, 192, 122), (216,  80,  62), ( 20,  19,  17)),
+            ("cadence",
+             (  0,   0,   0), ( 30, 215,  96), (255, 255, 255), (179, 179, 179),
+             ( 30, 215,  96), (241,  94, 108), ( 18,  18,  18)),
+            ("alto",
+             ( 21,  18,  14), (217, 152,  88), (239, 231, 216), (156, 147, 133),
+             (111, 191, 115), (226,  93,  93), ( 28,  24,  20)),
+            ("mariner",
+             ( 21,  18,  14), (110, 160, 200), (239, 231, 216), (156, 147, 133),
+             (111, 191, 115), (226,  93,  93), ( 28,  24,  20)),
+            ("lucid",
+             (241, 237, 228), (214,  85,  43), ( 20,  20,  15), (108, 105,  91),
+             ( 31, 111,  59), (196,  58,  31), (247, 243, 234)),
+        ];
+
+        let schemes = builtin_color_schemes();
+        let mut deltas: Vec<String> = Vec::new();
+
+        for (id, bg, accent, text, dim, bull, bear, surface) in SNAPSHOT {
+            let scheme = schemes
+                .iter()
+                .find(|s| &s.meta.id.as_str() == id)
+                .unwrap_or_else(|| panic!("built-in colour scheme '{id}' is missing"));
+            let t = color_scheme_to_theme(scheme);
+
+            let expected: [(&str, Rgb, egui::Color32); 7] = [
+                ("bg",         *bg,      t.bg),
+                ("accent",     *accent,  t.accent),
+                ("text",       *text,    t.text),
+                ("dim",        *dim,     t.dim),
+                ("bull",       *bull,    t.bull),
+                ("bear",       *bear,    t.bear),
+                ("toolbar_bg", *surface, t.toolbar_bg),
+            ];
+            for (label, (r, g, b), actual) in expected {
+                let want = egui::Color32::from_rgb(r, g, b);
+                if actual != want {
+                    deltas.push(format!(
+                        "[{id}] {label}: actual={} snapshot={}",
+                        fmt_c32(actual), fmt_c32(want)));
+                }
+            }
+        }
+
+        assert!(
+            deltas.is_empty(),
+            "{} React-port palette snapshot drift(s):\n  {}",
+            deltas.len(),
+            deltas.join("\n  ")
+        );
+    }
+
     // ── Style adapter losslessness ────────────────────────────────────────────
 
     /// Proves that `style_system_to_style_settings(&builtin_style_systems()[i], i as u8)`

@@ -35,6 +35,22 @@ impl ComponentTheme for Theme {
     fn cards_float(&self) -> bool {
         crate::chart_renderer::ui::style::current().region_gap > 0.0
     }
+    // Per-style row treatment — read the live StyleSystem `wl_row_*` tokens so
+    // the generic PanelListRow matches the RowShell-based WatchlistRow on every
+    // style (pill-inset capsules on Aperture/Glass, ledger hairlines on Alto/
+    // Mariner). Single source of truth: the same tokens WatchlistRow reads.
+    fn row_side_margin(&self) -> f32 {
+        crate::chart_renderer::ui::style::current().wl_row_side_margin
+    }
+    fn row_corner_radius(&self) -> u8 {
+        crate::chart_renderer::ui::style::current().wl_row_corner_radius
+    }
+    fn row_divider_alpha(&self) -> u8 {
+        crate::chart_renderer::ui::style::current().wl_row_divider_alpha
+    }
+    fn row_height(&self) -> f32 {
+        crate::chart_renderer::ui::style::style_row_height()
+    }
     // ── Derived overlays (Zed-style) ────────────────────────────────────
     // Source: gpu.rs Theme struct doc; previously stored as 10 redundant
     // fields on Theme + 15 initializer copies. Now derived from text/accent

@@ -687,7 +687,11 @@ impl<'a> MeridienOrderTicket<'a> {
                     let dflt = ui.add(Button::new(default_lbl)
                         .variant(Variant::Chip)
                         .active(is_default)
-                        .corner_radius(0.0)
+                        // Segmented group [default|other|caret]: only the outer
+                        // edges round, and they follow the active StyleSystem
+                        // (square on Meridien/Mariner, rounded on Aperture).
+                        .corner_radius_asymmetric(egui::CornerRadius {
+                            nw: radius_sm() as u8, sw: radius_sm() as u8, ne: 0, se: 0 })
                         .min_size(Vec2::new(pill_w, pill_h)));
                     if dflt.clicked() { *state = 0; }
                     let othr = ui.add(Button::new(other_lbl)
@@ -700,7 +704,9 @@ impl<'a> MeridienOrderTicket<'a> {
                         .variant(Variant::Chrome)
                         .glyph_size(9.0)
                         .min_size(Vec2::new(caret_w, pill_h))
-                        .corner_radius(0.0)
+                        // Right cap of the segmented group.
+                        .corner_radius_asymmetric(egui::CornerRadius {
+                            nw: 0, sw: 0, ne: radius_sm() as u8, se: radius_sm() as u8 })
                         .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::ListRow));
                     Tooltip::new("More options")
                         .show(ui, &caret, &ambient_theme(ui.ctx()));

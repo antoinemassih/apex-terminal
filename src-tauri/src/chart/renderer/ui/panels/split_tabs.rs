@@ -180,7 +180,7 @@ fn split_icon_button(ui: &mut Ui, t: &Theme, axis: SplitAxis) -> bool {
     let col = if resp.hovered() { t.accent } else { t.dim };
     let stroke = egui::Stroke::new(1.2, col);
     let r = rect.shrink2(egui::vec2(3.0, 2.0));
-    ui.painter().rect_stroke(r, egui::CornerRadius::same(2), stroke, egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(r, radius_xs(), stroke, egui::StrokeKind::Inside);
     match axis {
         SplitAxis::Horizontal => {
             let x = r.center().x;

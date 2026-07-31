@@ -9847,6 +9847,15 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             crate::chart_renderer::bug_anchor::close_draft();
         }
     }
+    // ── UI Debug mode (Ctrl+Shift+D) — egui's built-in widget inspector ──────
+    // Hover any pixel to see the widget rect + id that owns it. This is the
+    // "why is this line here?" tool; without it, tracking an unexplained
+    // border means a colored-stroke probe and a full rebuild.
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::D)) {
+        crate::chart_renderer::bug_anchor::toggle_ui_debug();
+    }
+    // Applied every frame (early) so the overlay matches this frame's layout.
+    crate::chart_renderer::bug_anchor::apply_ui_debug(ctx);
     crate::chart_renderer::bug_anchor::begin_frame();
 
     // ── Watchlist divider drag (handled at top level to avoid panel interference) ──

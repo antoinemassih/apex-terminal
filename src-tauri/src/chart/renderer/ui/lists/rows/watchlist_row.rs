@@ -340,12 +340,17 @@ impl<'a> WatchlistRow<'a> {
         let separator_on = self.separator;
         // Move FontId fields out of self (which is consumed by value) — avoids
         // cloning the String-backed family name inside each FontId.
+        //
+        // App-wide rule (see `ui_kit::widgets::panel_key_value_row`):
+        // label = PROPORTIONAL, numeric data = MONOSPACE. The symbol is a
+        // label; price and change% are numbers and must tabular-align down
+        // the column. This was inverted before.
         let sym_font_id = self.sym_font_id
-            .unwrap_or_else(|| egui::FontId::monospace(font_sz));
+            .unwrap_or_else(|| egui::FontId::proportional(font_sz));
         let chg_font_id = self.chg_font_id
-            .unwrap_or_else(|| egui::FontId::proportional(font_sz));
+            .unwrap_or_else(|| egui::FontId::monospace(font_sz));
         let price_font_id = self.price_font_id
-            .unwrap_or_else(|| egui::FontId::proportional(font_sz));
+            .unwrap_or_else(|| egui::FontId::monospace(font_sz));
         // Move out the price string override — no clone needed.
         let price_str_override = self.price_str_override;
         let price_right_inset = self.price_right_inset;

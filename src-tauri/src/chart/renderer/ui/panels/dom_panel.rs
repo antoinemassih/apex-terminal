@@ -534,13 +534,15 @@ pub(crate) fn draw(
     // ── Price ladder ──
     let body_top = sep_y+1.0;
     // DOM Phase 2: reserve a bottom band for the reconstructed time & sales
-    // strip when live prints are available. `TAPE_ROW_H` per print + a header
+    // strip when live prints are available. `tape_row_h` per print + a header
     // row; capped so it never starves the ladder on a short pane.
-    const TAPE_ROW_H: f32 = 13.0;
+    // Deliberately dense streaming strip, but tall enough that the `mono_sm()`
+    // print text actually fits (13px flat clipped a 12px glyph box).
+    let tape_row_h: f32 = mono_sm().size + 2.0;
     let tape_rows = if dom_tape.is_empty() { 0 } else {
-        dom_tape.len().min(8).min(((ctrl_top - body_top - 60.0) / TAPE_ROW_H) as usize)
+        dom_tape.len().min(8).min(((ctrl_top - body_top - 60.0) / tape_row_h) as usize)
     };
-    let tape_h = if tape_rows == 0 { 0.0 } else { TAPE_ROW_H * (tape_rows as f32 + 1.0) + 4.0 };
+    let tape_h = if tape_rows == 0 { 0.0 } else { tape_row_h * (tape_rows as f32 + 1.0) + 4.0 };
     let body_h = (ctrl_top - body_top - 2.0 - tape_h).max(60.0);
     let max_rows = (body_h / ROW_H) as i32;
     let half = max_rows / 2;
@@ -800,7 +802,7 @@ pub(crate) fn draw(
             egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())),
         );
         let tsf = mono_sm();
-        let hy_ts = ts_top + TAPE_ROW_H * 0.5 + 1.0;
+        let hy_ts = ts_top + tape_row_h * 0.5 + 1.0;
         // Three-zone header: label (left) · session CVD (center) · speed (right).
         painter.text(
             egui::pos2(inner.left() + 4.0, hy_ts),
@@ -826,18 +828,18 @@ pub(crate) fn draw(
             );
         }
         for (i, &(px, sz, is_buy)) in dom_tape.iter().take(tape_rows).enumerate() {
-            let ry = ts_top + TAPE_ROW_H * (i as f32 + 1.0) + 1.0;
+            let ry = ts_top + tape_row_h * (i as f32 + 1.0) + 1.0;
             let sidc = if is_buy { t.bull } else { t.bear };
             painter.rect_filled(
-                egui::Rect::from_min_size(egui::pos2(inner.left(), ry), egui::vec2(aw, TAPE_ROW_H)),
+                egui::Rect::from_min_size(egui::pos2(inner.left(), ry), egui::vec2(aw, tape_row_h)),
                 0.0, color_alpha(sidc, 14),
             );
             painter.text(
-                egui::pos2(inner.left() + 4.0, ry + TAPE_ROW_H * 0.5),
+                egui::pos2(inner.left() + 4.0, ry + tape_row_h * 0.5),
                 egui::Align2::LEFT_CENTER, &format!("{:.2}", px), tsf.clone(), sidc,
             );
             painter.text(
-                egui::pos2(inner.right() - 4.0, ry + TAPE_ROW_H * 0.5),
+                egui::pos2(inner.right() - 4.0, ry + tape_row_h * 0.5),
                 egui::Align2::RIGHT_CENTER, &fmt_size(sz as u32), tsf.clone(), color_muted(t.text),
             );
         }

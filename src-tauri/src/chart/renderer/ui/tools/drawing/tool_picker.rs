@@ -5,7 +5,7 @@ use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::Tooltip;
-use crate::chart_renderer::ui::style::{cursor, gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg, mono_sm, color_subtle, color_muted, color_half, color_very_dim};
+use crate::chart_renderer::ui::style::{cursor, gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg, mono_sm, color_subtle, color_muted, color_half, color_very_dim, radius_sm, radius_md};
 use crate::chart_renderer::ui::components::frames_widget::PopupFrame;
 
 /// Output from the picker.
@@ -189,8 +189,8 @@ pub fn show_drawing_tool_picker(
                                 let stroke_col = if is_cur || hov {
                                     if is_cur { color_subtle(t.accent) } else { color_half(t.accent) }
                                 } else { t.toolbar_border };
-                                ui.painter().rect_filled(cell, 5.0, bg);
-                                ui.painter().rect_stroke(cell, 5.0,
+                                ui.painter().rect_filled(cell, radius_md(), bg);
+                                ui.painter().rect_stroke(cell, radius_md(),
                                     egui::Stroke::new(if is_cur { 1.5 } else { 0.7 }, stroke_col),
                                     egui::StrokeKind::Inside);
                                 let txt_col = if is_cur { t.accent }
@@ -223,7 +223,7 @@ pub fn show_drawing_tool_picker(
                         let bg = if is_hovered_cat || resp.hovered() {
                             color_very_dim(t.accent)
                         } else { t.toolbar_bg };
-                        ui.painter().rect_filled(row_rect, 3.0, bg);
+                        ui.painter().rect_filled(row_rect, radius_sm(), bg);
                         ui.painter().text(
                             egui::pos2(row_rect.left() + gap_lg(), row_rect.center().y),
                             egui::Align2::LEFT_CENTER,
@@ -292,7 +292,7 @@ pub fn show_drawing_tool_picker(
                                 } else if hov {
                                     color_very_dim(t.accent)
                                 } else { t.toolbar_bg };
-                                ui.painter().rect_filled(row_rect, 3.0, bg);
+                                ui.painter().rect_filled(row_rect, radius_sm(), bg);
                                 let star_size = 18.0;
                                 let star_rect = egui::Rect::from_min_size(
                                     egui::pos2(row_rect.left() + 2.0, row_rect.top() + 2.0),

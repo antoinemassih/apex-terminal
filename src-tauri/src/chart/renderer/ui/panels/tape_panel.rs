@@ -38,7 +38,9 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
         separator(ui, t.toolbar_border);
 
         // Trade rows
-        let row_h = 14.0;
+        // Deliberately dense tape. Kept tight, but derived from the font the
+        // row actually paints (`font_sm()`) so the glyphs always fit.
+        let row_h = font_sm() + 2.0;
         egui::ScrollArea::vertical()
             .id_salt("tape_scroll")
             .stick_to_bottom(true)
@@ -81,7 +83,9 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                 let dim_color = color_muted(t.dim);
                 let qty_color = t.text;
                 for (idx, entry) in entries.iter().rev().take(200).collect::<Vec<_>>().into_iter().rev().enumerate() {
-                    let side_color = if entry.is_buy { COLOR_PROFIT_GREEN } else { COLOR_LOSS_RED };
+                    // Trade direction follows the theme's bull/bear pair, not the
+                    // theme-blind pastel sentiment constants (which are dark-only).
+                    let side_color = if entry.is_buy { t.bull } else { t.bear };
 
                     // Build strings before the row to avoid borrow issues.
                     let secs = entry.time / 1000;

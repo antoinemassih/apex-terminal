@@ -5112,6 +5112,16 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         ctx,
         crate::chart_renderer::theme_impl::theme_to_portable(t),
     );
+    // Also stash the FULL chart `Theme`. `theme_impl::active_theme(ctx)` prefers
+    // the ambient value and otherwise re-resolves through the theme registry by
+    // index — so without this every ambient lookup paid a registry hit and, more
+    // importantly, chart-layer code had no cheap way to obtain the theme without
+    // threading `&Theme` through every call. That threading is precisely why
+    // helpers like `msg_rrg_panel::member_color` ended up hardcoding colours:
+    // adding a parameter through three layers is work, typing an RGB literal is
+    // not. With the real Theme ambient, `active_theme(ui.ctx())` is the easy
+    // path, so the design system stops losing to the shortcut.
+    crate::ui_kit::widgets::theme::set_ambient_theme(ctx, _t_owned.clone());
     // Stream S5 — ADOPTION: stash the active RecipeSet so ui_kit widgets built
     // via `StyleCtx::from_ctx` pick up theme-pack overrides automatically.
     // S8 update: only fall back to the empty set when no ThemePack has stashed
@@ -5168,6 +5178,23 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
 
         // ── Widget styling ──
 
+        // Noninteractive — THE default egui paints for `ui.group()`,
+        // `ui.separator()` and indent v-lines. This was previously left
+        // UNSET, so it kept egui's `Visuals::dark()` default of
+        // `Stroke(1.0, gray-60)` — a flat off-theme grey hairline that
+        // `apply_ui_style()` then ROUNDED (it assigns corner_radius to
+        // `noninteractive` too). That stray rounded grey outline is what
+        // read as "boxes around everything" on every theme, and it painted
+        // at ~57 `ui.separator()` sites plus every group box.
+        // Now theme-wired: a faint border-tinted hairline instead of grey.
+        style.visuals.widgets.noninteractive.bg_fill     = egui::Color32::TRANSPARENT;
+        style.visuals.widgets.noninteractive.weak_bg_fill = egui::Color32::TRANSPARENT;
+        style.visuals.widgets.noninteractive.bg_stroke   = egui::Stroke::new(
+            style::stroke_thin(),
+            color_alpha(t.toolbar_border, if is_light { 40 } else { 28 }),
+        );
+        style.visuals.widgets.noninteractive.fg_stroke   = egui::Stroke::new(style::stroke_std(), t.dim);
+
         // Inactive — subtle fill, visible border
         style.visuals.widgets.inactive.bg_fill       = color_alpha(t.toolbar_border, if is_light { 12 } else { 18 });
         style.visuals.widgets.inactive.weak_bg_fill  = egui::Color32::TRANSPARENT;
@@ -5196,6 +5223,15 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         // Selection
         style.visuals.selection.bg_fill              = color_alpha(t.accent, if is_light { 25 } else { 35 });
         style.visuals.selection.stroke               = egui::Stroke::new(style::stroke_std(), t.accent);
+
+        // ── Semantic type scale into egui's INHERITED text_styles table ──────
+        // This is the app's cascade: child `Ui`s inherit `Style`, so a tier
+        // registered here resolves for every descendant, and any subtree can
+        // override one tier for its children without touching call sites.
+        // Re-installed each frame so the tiers track the active StyleSystem
+        // (font_body/font_caption/font_section_label vary per style) and pick
+        // up live token edits immediately.
+        crate::chart_renderer::ui::foundation::text_style::TextStyle::install(&mut style);
 
         // Popup/menu window — more visible border, reduced rounding.
         // Border width is a fixed 1.2 px (the v0.9.7 value) — deliberately

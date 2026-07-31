@@ -293,6 +293,9 @@ pub enum AppCommand {
     /// Open/close the OBJECTS (object tree) left panel. Added for dev-inspector
     /// view control (compose a deterministic layout for screenshot verification).
     SetObjectTree { open: bool },
+    /// Toggle egui's built-in widget-debug overlay (Ctrl+Shift+D equivalent),
+    /// so the UI inspector can be driven headlessly from the dev harness.
+    SetUiDebug { on: bool },
     /// Set a spreadsheet cell's raw text (grows the grid as needed).
     #[cfg(debug_assertions)]
     SetCell { pane: usize, row: usize, col: usize, text: String },
@@ -1114,6 +1117,10 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 cells.push((format!("HM{i:03}"), change_pct, 1.0e6 + (i as f64) * 5.0e5));
             }
             watchlist.heatmap.cells = cells;
+        }
+
+        AppCommand::SetUiDebug { on } => {
+            crate::chart_renderer::bug_anchor::set_ui_debug(on);
         }
 
         AppCommand::SetObjectTree { open } => {

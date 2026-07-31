@@ -22,7 +22,7 @@ use crate::chart_renderer::ui::style::{
     font_xs, font_sm,
     mono_sm, icon_sm,
     gap_xs, gap_sm, gap_md,
-    stroke_std, stroke_thin, r_md_cr,
+    stroke_std, stroke_thin, r_md_cr, radius_xs, radius_sm,
 };
 
 /// Render the timeframe-picker dropdown popup.
@@ -87,10 +87,10 @@ pub(crate) fn render_timeframe_dropdown(
 
                 if hovered || is_cur {
                     let bg = if is_cur { tint(t, Tone::Accent, 25) } else { tint(t, Tone::Border, 30) };
-                    ui.painter().rect_filled(row_rect, 3.0, bg);
+                    ui.painter().rect_filled(row_rect, radius_sm(), bg);
                 }
                 if is_cur {
-                    ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 24.0)), 1.0, t.accent);
+                    ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 24.0)), radius_xs(), t.accent);
                 }
 
                 let lc = row_text_color(is_cur, hovered, t);
@@ -208,10 +208,10 @@ pub(crate) fn render_layout_dropdown(
 
                 if hovered || is_cur {
                     let bg = if is_cur { tint(t, Tone::Accent, 25) } else { tint(t, Tone::Border, 30) };
-                    ui.painter().rect_filled(row_rect, 3.0, bg);
+                    ui.painter().rect_filled(row_rect, radius_sm(), bg);
                 }
                 if is_cur {
-                    ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 26.0)), 1.0, t.accent);
+                    ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 26.0)), radius_xs(), t.accent);
                 }
 
                 let gr = egui::Rect::from_min_size(egui::pos2(row_rect.left() + 6.0, row_rect.center().y - 9.5), egui::vec2(29.0, 19.0));
@@ -219,8 +219,8 @@ pub(crate) fn render_layout_dropdown(
                 let mini = ly.pane_rects(gr, ly.max_panes(), 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5);
                 for mr in &mini {
                     let s = egui::Rect::from_min_max(egui::pos2(mr.left() + 0.5, mr.top() + 0.5), egui::pos2(mr.right() - 0.5, mr.bottom() - 0.5));
-                    ui.painter().rect_filled(s, 1.0, color_alpha(gc, 80));
-                    ui.painter().rect_stroke(s, 1.0, egui::Stroke::new(stroke_thin(), color_alpha(gc, 150)), egui::StrokeKind::Outside);
+                    ui.painter().rect_filled(s, radius_xs(), color_alpha(gc, 80));
+                    ui.painter().rect_stroke(s, radius_xs(), egui::Stroke::new(stroke_thin(), color_alpha(gc, 150)), egui::StrokeKind::Outside);
                 }
 
                 let lc = row_text_color(is_cur, hovered, t);
@@ -267,7 +267,7 @@ pub(crate) fn render_layout_dropdown(
                     let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(236.0, 24.0));
                     let row_hover = hover_pos.map_or(false, |p| row_rect.contains(p));
                     if row_hover {
-                        ui.painter().rect_filled(row_rect, 3.0, tint(t, Tone::Border, 30));
+                        ui.painter().rect_filled(row_rect, radius_sm(), tint(t, Tone::Border, 30));
                     }
                     let lc = if row_hover { t.text } else { t.dim };
                     ui.painter().text(egui::pos2(row_rect.left() + 8.0, row_rect.center().y), egui::Align2::LEFT_CENTER, tpl_name.as_str(), mono_sm(), lc);
@@ -278,7 +278,7 @@ pub(crate) fn render_layout_dropdown(
                     );
                     let apply_hov = hover_pos.map_or(false, |p| apply_rect.contains(p));
                     let apply_fill = if apply_hov { tint(t, Tone::Accent, 40) } else { tint(t, Tone::Accent, 15) };
-                    ui.painter().rect_filled(apply_rect, 3.0, apply_fill);
+                    ui.painter().rect_filled(apply_rect, radius_sm(), apply_fill);
                     ui.painter().text(apply_rect.center(), egui::Align2::CENTER_CENTER, "Apply", mono_sm(),
                         if apply_hov { t.accent } else { tint(t, Tone::Accent, 180) });
                     if apply_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }

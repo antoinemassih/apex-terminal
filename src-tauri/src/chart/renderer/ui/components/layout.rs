@@ -20,6 +20,15 @@ use super::super::style::{
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
+/// Ambient theme accessor. Builders in this file store their colors as
+/// `Option<Color32>`: `None` means "resolve from the live theme at RENDER
+/// time" instead of freezing a literal at construction time. The previous
+/// `Color32::GRAY` defaults were a dark-only shadow palette that rendered
+/// off-theme on the light palettes (Bauhaus / Peach / Ivory / Newsprint / Lucid).
+fn ambient_theme(ui: &Ui) -> Theme {
+    crate::chart_renderer::theme_impl::active_theme(ui.ctx())
+}
+
 // ─── Splitter ─────────────────────────────────────────────────────────────────
 
 /// Orientation for `Splitter`.
@@ -37,7 +46,8 @@ pub enum SplitOrientation {
 /// ```
 pub struct Splitter<'a> {
     id_salt: &'a str,
-    dim: Color32,
+    /// `None` = resolve from the ambient theme at render time.
+    dim: Option<Color32>,
     orient: SplitOrientation,
 }
 
@@ -45,24 +55,25 @@ impl<'a> Splitter<'a> {
     pub fn new(id_salt: &'a str) -> Self {
         Self {
             id_salt,
-            dim: Color32::GRAY,
+            dim: None,
             orient: SplitOrientation::Horizontal,
         }
     }
 
-    pub fn dim(mut self, dim: Color32) -> Self { self.dim = dim; self }
-    pub fn theme(mut self, t: &Theme) -> Self { self.dim = t.dim; self }
+    pub fn dim(mut self, dim: Color32) -> Self { self.dim = Some(dim); self }
+    pub fn theme(mut self, t: &Theme) -> Self { self.dim = Some(t.dim); self }
     pub fn horizontal(mut self) -> Self { self.orient = SplitOrientation::Horizontal; self }
     pub fn vertical(mut self) -> Self { self.orient = SplitOrientation::Vertical; self }
     pub fn orientation(mut self, o: SplitOrientation) -> Self { self.orient = o; self }
 
     /// Run the splitter and return drag delta along the drag axis.
     pub fn show(self, ui: &mut Ui) -> f32 {
+        let dim = self.dim.unwrap_or_else(|| ambient_theme(ui).dim);
         match self.orient {
             // 1:1 with style::split_divider for the horizontal case.
-            SplitOrientation::Horizontal => split_divider(ui, self.id_salt, self.dim),
+            SplitOrientation::Horizontal => split_divider(ui, self.id_salt, dim),
             // Vertical variant: same look, rotated. Mirrors split_divider body.
-            SplitOrientation::Vertical => vertical_split_divider(ui, self.id_salt, self.dim),
+            SplitOrientation::Vertical => vertical_split_divider(ui, self.id_salt, dim),
         }
     }
 }
@@ -123,7 +134,8 @@ fn vertical_split_divider(ui: &mut Ui, _id_salt: &str, dim: Color32) -> f32 {
 pub struct ResizableSplit<'a> {
     frac: &'a mut f32,
     id_salt: &'a str,
-    dim: Color32,
+    /// `None` = resolve from the ambient theme at render time.
+    dim: Option<Color32>,
     orient: SplitOrientation,
     min_frac: f32,
     max_frac: f32,
@@ -133,7 +145,7 @@ impl<'a> ResizableSplit<'a> {
     pub fn horizontal(frac: &'a mut f32, id_salt: &'a str) -> Self {
         Self {
             frac, id_salt,
-            dim: Color32::GRAY,
+            dim: None,
             orient: SplitOrientation::Horizontal,
             min_frac: 0.05, max_frac: 0.95,
         }
@@ -141,14 +153,14 @@ impl<'a> ResizableSplit<'a> {
     pub fn vertical(frac: &'a mut f32, id_salt: &'a str) -> Self {
         Self {
             frac, id_salt,
-            dim: Color32::GRAY,
+            dim: None,
             orient: SplitOrientation::Vertical,
             min_frac: 0.05, max_frac: 0.95,
         }
     }
 
-    pub fn theme(mut self, t: &Theme) -> Self { self.dim = t.dim; self }
-    pub fn dim(mut self, dim: Color32) -> Self { self.dim = dim; self }
+    pub fn theme(mut self, t: &Theme) -> Self { self.dim = Some(t.dim); self }
+    pub fn dim(mut self, dim: Color32) -> Self { self.dim = Some(dim); self }
     pub fn clamp(mut self, lo: f32, hi: f32) -> Self {
         self.min_frac = lo; self.max_frac = hi; self
     }
@@ -159,12 +171,13 @@ impl<'a> ResizableSplit<'a> {
         F2: FnOnce(&mut Ui) -> R2,
     {
         let avail = ui.available_size_before_wrap();
+        let dim = self.dim.unwrap_or_else(|| ambient_theme(ui).dim);
         match self.orient {
             SplitOrientation::Horizontal => {
                 let total_h = avail.y.max(1.0);
                 let top_h = (total_h * *self.frac).clamp(8.0, total_h - 8.0);
                 let r1 = ui.allocate_ui(egui::vec2(avail.x, top_h), |ui| top(ui)).inner;
-                let d = split_divider(ui, self.id_salt, self.dim);
+                let d = split_divider(ui, self.id_salt, dim);
                 if d != 0.0 {
                     *self.frac = (*self.frac + d / total_h).clamp(self.min_frac, self.max_frac);
                 }
@@ -178,7 +191,7 @@ impl<'a> ResizableSplit<'a> {
                 let mut r2: Option<R2> = None;
                 ui.horizontal(|ui| {
                     r1 = Some(ui.allocate_ui(egui::vec2(left_w, avail.y), |ui| top(ui)).inner);
-                    let d = vertical_split_divider(ui, self.id_salt, self.dim);
+                    let d = vertical_split_divider(ui, self.id_salt, dim);
                     if d != 0.0 {
                         *self.frac = (*self.frac + d / total_w).clamp(self.min_frac, self.max_frac);
                     }
@@ -196,24 +209,29 @@ impl<'a> ResizableSplit<'a> {
 pub struct Collapsible<'a> {
     title: &'a str,
     expanded: &'a mut bool,
-    title_color: Color32,
-    rule_color: Color32,
+    /// `None` = resolve from the ambient theme at render time (`t.text`).
+    title_color: Option<Color32>,
+    /// `None` = resolve from the ambient theme at render time (`t.border`).
+    rule_color: Option<Color32>,
 }
 
 impl<'a> Collapsible<'a> {
     pub fn new(title: &'a str, expanded: &'a mut bool) -> Self {
-        Self { title, expanded, title_color: Color32::GRAY, rule_color: Color32::GRAY }
+        Self { title, expanded, title_color: None, rule_color: None }
     }
     pub fn theme(mut self, t: &Theme) -> Self {
-        self.title_color = t.text;
-        self.rule_color = t.dim;
+        self.title_color = Some(t.text);
+        self.rule_color = Some(t.dim);
         self
     }
     pub fn colors(mut self, title: Color32, rule: Color32) -> Self {
-        self.title_color = title; self.rule_color = rule; self
+        self.title_color = Some(title); self.rule_color = Some(rule); self
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<R> {
+        let title_color = self.title_color.unwrap_or_else(|| ambient_theme(ui).text);
+        // Hairline/rule under the header follows the theme's border token.
+        let _rule_color = self.rule_color.unwrap_or_else(|| ambient_theme(ui).toolbar_border);
         let chev = if *self.expanded { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
         let header = format!("{}  {}", chev, self.title);
         let resp = ui.add(
@@ -221,7 +239,7 @@ impl<'a> Collapsible<'a> {
                 RichText::new(header)
                     .monospace()
                     .strong()
-                    .color(self.title_color),
+                    .color(title_color),
             )
             .sense(Sense::click()),
         );
@@ -254,27 +272,32 @@ impl<'a, F> Section<'a, F> {
 
 /// List-of-sections accordion. Each section gets a chevron header.
 pub struct Accordion {
-    title_color: Color32,
-    rule_color: Color32,
+    /// `None` = resolve from the ambient theme at render time.
+    title_color: Option<Color32>,
+    /// `None` = resolve from the ambient theme at render time.
+    rule_color: Option<Color32>,
 }
 
 impl Accordion {
     pub fn new() -> Self {
-        Self { title_color: Color32::GRAY, rule_color: Color32::GRAY }
+        Self { title_color: None, rule_color: None }
     }
     pub fn theme(mut self, t: &Theme) -> Self {
-        self.title_color = t.text; self.rule_color = t.dim; self
+        self.title_color = Some(t.text); self.rule_color = Some(t.dim); self
     }
     pub fn colors(mut self, title: Color32, rule: Color32) -> Self {
-        self.title_color = title; self.rule_color = rule; self
+        self.title_color = Some(title); self.rule_color = Some(rule); self
     }
 
     /// Render a list of sections; each is collapsible independently.
     pub fn show<'a, F: FnOnce(&mut Ui)>(self, ui: &mut Ui, sections: Vec<Section<'a, F>>) {
         for s in sections {
-            Collapsible::new(s.title, s.expanded)
-                .colors(self.title_color, self.rule_color)
-                .show(ui, s.body);
+            // Forward the *unresolved* options so each Collapsible falls back to
+            // the live theme rather than to a frozen literal.
+            let mut c = Collapsible::new(s.title, s.expanded);
+            c.title_color = self.title_color;
+            c.rule_color  = self.rule_color;
+            c.show(ui, s.body);
             ui.add_space(gap_sm());
         }
     }
@@ -290,22 +313,23 @@ pub struct EmptyState<'a> {
     icon: &'a str,
     title: &'a str,
     subtitle: &'a str,
-    dim: Color32,
+    /// `None` = resolve from the ambient theme at render time.
+    dim: Option<Color32>,
     action: Option<&'a str>,
 }
 
 impl<'a> EmptyState<'a> {
     pub fn new(icon: &'a str, title: &'a str, subtitle: &'a str) -> Self {
-        Self { icon, title, subtitle, dim: Color32::GRAY, action: None }
+        Self { icon, title, subtitle, dim: None, action: None }
     }
-    pub fn theme(mut self, t: &Theme) -> Self { self.dim = t.dim; self }
-    pub fn dim(mut self, dim: Color32) -> Self { self.dim = dim; self }
+    pub fn theme(mut self, t: &Theme) -> Self { self.dim = Some(t.dim); self }
+    pub fn dim(mut self, dim: Color32) -> Self { self.dim = Some(dim); self }
     pub fn action(mut self, label: &'a str) -> Self { self.action = Some(label); self }
 
     /// Returns Some(true) if the action button was clicked, Some(false) if
     /// rendered but not clicked, None if no action button was configured.
     pub fn show(self, ui: &mut Ui) -> Option<bool> {
-        let dim = self.dim;
+        let dim = self.dim.unwrap_or_else(|| ambient_theme(ui).dim);
         ui.vertical_centered(|ui| {
             ui.add_space(gap_3xl());
             ui.label(RichText::new(self.icon).size(font_2xl() * 1.5).color(dim));

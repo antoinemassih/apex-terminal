@@ -12,7 +12,9 @@
 //! - Label: `mono_xs` in `color_muted(palette_ct(t).base(SxTone::Dim))`.
 //! - Value: `mono_sm` in `t.text` by default, or `tone.color(t)` when set.
 //! - Meta: optional very-muted `mono_xs` after the value (units, qualifier).
-//! - Row height: `gap_lg()` (16px).
+//! - Row height: `t.row_height()` — the per-style, density-aware row-height
+//!   token (the same one watchlist/option-chain rows use). Previously this was
+//!   `gap_lg()` (a SPACING token) which scrunched the row to 16px.
 //!
 //! When to use:
 //! - Inside a `PanelSection` body for label/value metric stacks ("Buying Power",
@@ -30,7 +32,7 @@ use egui::{Align, FontId, Layout, Pos2, Sense, Ui, Vec2};
 
 use super::panel_section::Tone;
 use crate::ui_kit::tokens::{
-    color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_xs,
+    color_alpha, color_muted, font_sm, font_xs, gap_xs,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
@@ -64,7 +66,7 @@ impl<'a> PanelKeyValueRow<'a> {
     }
 
     pub fn show<T: ComponentTheme>(self, ui: &mut Ui, t: &T) {
-        let h = gap_lg();
+        let h = t.row_height();
         let avail_w = ui.available_width();
         let (rect, _resp) = ui.allocate_exact_size(Vec2::new(avail_w, h), Sense::hover());
 

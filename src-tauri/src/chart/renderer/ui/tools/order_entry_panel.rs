@@ -222,7 +222,7 @@ fn render_dom_ladder(
         let has_buy = chart.orders.iter().any(|o| (o.price - price).abs() < tick * 0.5 && matches!(o.side, OrderSide::Buy));
         let has_sell = chart.orders.iter().any(|o| (o.price - price).abs() < tick * 0.5 && matches!(o.side, OrderSide::Sell));
         let is_entry = position_entry.map(|ep| (ep - price).abs() < tick * 0.5).unwrap_or(false);
-        let row_h = 20.0;
+        let row_h = crate::chart_renderer::ui::style::style_row_height();
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             let rs = ui.cursor().min;

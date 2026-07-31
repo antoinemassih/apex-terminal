@@ -102,7 +102,7 @@
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Ui, Vec2};
 
 use crate::ui_kit::tokens::{
-    self as st, alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs,
+    self as st, alpha_ghost, color_alpha, color_muted, font_md, font_sm, font_xs, gap_lg, gap_md, gap_xs,
     radius_sm,
 };
 use crate::ui_kit::widgets::theme::{ComponentTheme, get_ambient_recipes};
@@ -479,7 +479,13 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             row_tint,
         } = self;
 
-        let h = height_override.unwrap_or(if dense { 22.0 } else { 32.0 });
+        // Row height now tracks the per-STYLE row height (the same value the
+        // watchlist/option-chain rows use) so generic lists are just as tall and
+        // readable — not scrunched. `dense` still gives the tighter of the two
+        // (the style row height itself); non-dense adds breathing room. A caller
+        // can still force an exact height via `.height(px)`.
+        let base_h = t.row_height();
+        let h = height_override.unwrap_or(if dense { base_h } else { base_h + 8.0 });
         let avail_w = ui.available_width();
         let row_sense = if hoverable { Sense::click() } else { Sense::hover() };
         let (rect, resp) = ui.allocate_exact_size(
@@ -593,17 +599,47 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             })
             .unwrap_or(default_selected_color);
 
-        let cr = recipe_cr;
+        // ── Per-STYLE row treatment (parity with WatchlistRow/RowShell) ──────
+        // Tiled styles (Aperture/Glass) inset the interactive background so
+        // rows read as capsules; editorial styles stay flush. The inset touches
+        // ONLY the hover/selected/tint fill + accent stripe + per-style divider
+        // — content layout (leading/primary/trailing) is unchanged. The style's
+        // own corner radius wins over the recipe default when set.
+        let side_m = t.row_side_margin();
+        let bg_rect = if side_m > 0.0 {
+            Rect::from_min_max(
+                Pos2::new(rect.left() + side_m, rect.top() + 1.0),
+                Pos2::new(rect.right() - side_m, rect.bottom() - 1.0),
+            )
+        } else {
+            rect
+        };
+        let cr = if t.row_corner_radius() > 0 {
+            CornerRadius::same(t.row_corner_radius())
+        } else {
+            recipe_cr
+        };
 
         // Stable per-row animation id — same key used by ui.interact below,
         // so it is stable across frames as long as id_salt is stable.
         let row_id = ui.id().with(("panel_list_row", id_salt));
 
+        // Rest-state capsule — on tiled/pill styles (Aperture/Glass, where
+        // row_side_margin > 0) paint a whisper-faint rounded base fill behind
+        // every row, exactly as WatchlistRow does. This is what gives the
+        // watchlist its "list of capsules" read at rest; without it the generic
+        // lists looked flat and unlike the watchlist. Flush styles (margin 0)
+        // skip it and stay edge-to-edge. Painted first so tint/hover/selected
+        // still layer on top.
+        if side_m > 0.0 && t.row_corner_radius() > 0 {
+            painter.rect_filled(bg_rect, cr, color_alpha(t.surface_border(), 18));
+        }
+
         // Permanent row tint (buy/sell tape) — painted BEHIND hover/selected
         // so directional coloring stays visible but interactive states still
         // read clearly on top.
         if let Some((tint_color, tint_alpha)) = row_tint {
-            painter.rect_filled(rect, cr, color_alpha(tint_color, tint_alpha));
+            painter.rect_filled(bg_rect, cr, color_alpha(tint_color, tint_alpha));
         }
 
         // Hover background — animated when hoverable, suppressed entirely when not.
@@ -619,7 +655,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             );
             if hover_t > 0.0 {
                 let bg = color_alpha(pal.base(SxTone::Text), (alpha_ghost() as f32 * hover_t).round() as u8);
-                painter.rect_filled(rect, cr, bg);
+                painter.rect_filled(bg_rect, cr, bg);
             }
         }
 
@@ -636,16 +672,17 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             let base = resolved_selected_color;
             let animated_alpha = ((base.a() as f32) * selected_t).round() as u8;
             let sel_bg = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), animated_alpha);
-            painter.rect_filled(rect, cr, sel_bg);
+            painter.rect_filled(bg_rect, cr, sel_bg);
         }
 
         // Left accent stripe — eases with selected_t so it fades alongside the bg.
+        // Anchored to the (possibly inset) capsule edge so it hugs the fill.
         if selected_t > 0.0 {
             let stripe_alpha = (255.0_f32 * selected_t).round() as u8;
             let stripe_color = color_alpha(pal.base(SxTone::Accent), stripe_alpha);
             let stripe = Rect::from_min_max(
-                Pos2::new(rect.left(), rect.top()),
-                Pos2::new(rect.left() + SELECTED_STRIPE_W, rect.bottom()),
+                Pos2::new(bg_rect.left(), bg_rect.top()),
+                Pos2::new(bg_rect.left() + SELECTED_STRIPE_W, bg_rect.bottom()),
             );
             painter.rect_filled(stripe, 0.0, stripe_color);
         }
@@ -662,6 +699,21 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             painter.line_segment(
                 [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
                 egui::Stroke::new(crate::ui_kit::tokens::stroke_thin(), color_alpha(t.surface_border(), 60)),
+            );
+        }
+
+        // Per-STYLE row hairline — editorial "ledger" styles (Alto/Mariner/
+        // Relay/Lucid) set `row_divider_alpha > 0` to underline EVERY row, the
+        // same treatment WatchlistRow applies. Independent of the opt-in
+        // `.divided` flag above; both may fire (they draw the same line, so a
+        // caller that already opted in sees no double-draw difference). Inset to
+        // the capsule width so it doesn't run under the pill margins.
+        let style_div_a = t.row_divider_alpha();
+        if style_div_a > 0 && !suppress_divider && !(divided) {
+            let y = rect.bottom() - 0.5;
+            painter.line_segment(
+                [Pos2::new(bg_rect.left(), y), Pos2::new(bg_rect.right(), y)],
+                egui::Stroke::new(crate::ui_kit::tokens::stroke_thin(), color_alpha(t.surface_border(), style_div_a)),
             );
         }
 
@@ -713,7 +765,10 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
                     if let Some(p) = primary {
-                        let font = FontId::monospace(font_sm());
+                        // Primary label at font_md (was font_sm) — the small
+                        // 11px was the "unreadable" complaint; 13px matches the
+                        // watchlist row's readability.
+                        let font = FontId::monospace(font_md());
                         let galley = ui.fonts(|f| {
                             f.layout_no_wrap(p.to_string(), font.clone(), pal.base(SxTone::Text))
                         });
@@ -721,7 +776,8 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                         ui.painter().galley(r.min, galley, pal.base(SxTone::Text));
                     }
                     if let Some(s) = secondary {
-                        let font = FontId::monospace(font_xs());
+                        // Secondary line one tier up too (font_xs 9px → font_sm 11px).
+                        let font = FontId::monospace(font_sm());
                         let col = color_muted(pal.base(SxTone::Dim));
                         let galley = ui.fonts(|f| {
                             f.layout_no_wrap(s.to_string(), font.clone(), col)

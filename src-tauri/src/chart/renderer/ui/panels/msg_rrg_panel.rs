@@ -275,7 +275,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 for e in edges.iter().take(half) {
-                    let c = member_color(&e.symbol, e.quadrant());
+                    let c = member_color(t, &e.symbol, e.quadrant());
                     ui.horizontal(|ui| {
                         let (r, painter) = ui.allocate_painter(egui::vec2(8.0, 8.0), egui::Sense::hover());
                         painter.circle_filled(r.rect.center(), 3.5, c);
@@ -285,7 +285,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
             });
             ui.vertical(|ui| {
                 for e in edges.iter().skip(half) {
-                    let c = member_color(&e.symbol, e.quadrant());
+                    let c = member_color(t, &e.symbol, e.quadrant());
                     ui.horizontal(|ui| {
                         let (r, painter) = ui.allocate_painter(egui::vec2(8.0, 8.0), egui::Sense::hover());
                         painter.circle_filled(r.rect.center(), 3.5, c);
@@ -298,15 +298,20 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
 }
 
 /// Map quadrant to a theme-aware color tone.
-fn member_color(symbol: &str, quadrant: &str) -> egui::Color32 {
+///
+/// Now actually theme-aware: the four RRG quadrant colours live on `Theme`
+/// (`rrg_leading/improving/weakening/lagging`) and are tuned for every palette.
+/// This fn used to hardcode them, so the panel rendered identical colours on
+/// all ~19 themes — including the light ones, where they clashed.
+fn member_color(t: &Theme, symbol: &str, quadrant: &str) -> egui::Color32 {
     // Deterministic hue shift from symbol hash for easy visual discrimination.
     let h = symbol.bytes().fold(0u32, |a, b| a.wrapping_add(b as u32));
     let base = match quadrant {
-        "LEADING"   => egui::Color32::from_rgb(56, 200, 120),
-        "IMPROVING" => egui::Color32::from_rgb(80, 160, 240),
-        "WEAKENING" => egui::Color32::from_rgb(240, 180, 50),
-        "LAGGING"   => egui::Color32::from_rgb(220, 80, 80),
-        _           => egui::Color32::from_rgb(160, 160, 160),
+        "LEADING"   => t.rrg_leading,
+        "IMPROVING" => t.rrg_improving,
+        "WEAKENING" => t.rrg_weakening,
+        "LAGGING"   => t.rrg_lagging,
+        _           => t.dim,
     };
     // Slightly vary brightness by symbol hash to distinguish members.
     let shift = (h % 40) as i32 - 20;
@@ -386,7 +391,7 @@ fn draw_rrg_scatter(
     // Draw heading vectors then dots (heaviest weight on top).
     for edge in edges {
         let pos = to_screen(edge.ratio, edge.momentum);
-        let c   = member_color(&edge.symbol, edge.quadrant());
+        let c   = member_color(t, &edge.symbol, edge.quadrant());
         // Heading vector from previous position.
         if let Some((pr, pm)) = edge.prev {
             let prev_pos = to_screen(pr, pm);

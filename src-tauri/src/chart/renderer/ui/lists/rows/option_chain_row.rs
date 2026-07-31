@@ -53,7 +53,10 @@ impl<'a> OptionChainRow<'a> {
     pub fn new(strike: f32, call: ChainSide, put: ChainSide) -> Self {
         Self {
             strike, call, put,
-            show_greeks: false, selected: false, height: 20.0,
+            // Density-aware default row height (per-style `row_height_px` ×
+            // density scale) instead of a hardcoded 20px.
+            show_greeks: false, selected: false,
+            height: crate::chart_renderer::ui::style::style_row_height(),
             theme: None,
             theme_bg: None, theme_border: None, theme_accent: None,
             theme_bull: None, theme_bear: None, theme_dim: None, theme_fg: None,
