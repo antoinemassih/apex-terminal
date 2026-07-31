@@ -15,11 +15,8 @@ pub mod headers;
 pub mod hairlines;
 
 // From components_extra
-pub mod action_button;
 pub mod dom_action;
 pub mod header_buttons;
-pub mod inputs;
-pub mod sortable_headers;
 
 // From widgets
 pub mod menus;
@@ -38,10 +35,8 @@ pub mod motion;
 
 pub use headers::*;
 pub use hairlines::*;
-pub use action_button::*;
 pub use dom_action::*;
 pub use header_buttons::*;
-pub use sortable_headers::*;
 pub use menus::*;
 pub use layout::*;
 pub use frames_widget::*;

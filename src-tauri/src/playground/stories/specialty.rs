@@ -8,7 +8,7 @@
 //!   Sidebar: Panel style with 4 items (1)
 
 use _scaffold_lib::ui_kit::widgets::{
-    ColorPicker, Progress, Sidebar, SidebarItem, SidebarStyle, Size, ThemedScrollArea,
+    Progress, Size,
     ThemePreviewCard,
     theme::{ComponentTheme, PortableTheme},
 };
@@ -47,52 +47,6 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, state: &mut SpecialtyState)
     ui.add_space(12.0);
     rule(ui, theme);
 
-    // ── ColorPicker ───────────────────────────────────────────────────────────
-    story_heading(ui, theme, "ColorPicker");
-    ui.add_space(6.0);
-    ui.label(
-        egui::RichText::new("Compact swatch — click to open the full picker popover:")
-            .color(theme.dim())
-            .size(10.0),
-    );
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        ColorPicker::new(&mut state.color_a)
-            .label("Color A")
-            .compact(true)
-            .show(ui, theme);
-        ui.add_space(16.0);
-        ColorPicker::new(&mut state.color_b)
-            .label("Color B")
-            .compact(true)
-            .with_alpha(true)
-            .show(ui, theme);
-    });
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── ThemedScrollArea ──────────────────────────────────────────────────────
-    story_heading(ui, theme, "ScrollArea (50 rows)");
-    ui.add_space(6.0);
-
-    ThemedScrollArea::vertical()
-        .max_height(160.0)
-        .auto_shrink([false, true])
-        .show(ui, theme, |ui| {
-            for i in 1..=50_usize {
-                let color = if i % 2 == 0 { theme.dim() } else { theme.text() };
-                ui.label(
-                    egui::RichText::new(format!("Row {:02} — Some content label", i))
-                        .color(color)
-                        .size(11.0),
-                );
-            }
-        });
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
     // ── ThemePreviewCard ──────────────────────────────────────────────────────
     story_heading(ui, theme, "ThemePreviewCard");
     ui.add_space(6.0);
@@ -127,38 +81,6 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, state: &mut SpecialtyState)
             .show(ui, theme);
         if r2.clicked() { state.selected_theme = 2; }
     });
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── Sidebar ───────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "Sidebar");
-    ui.add_space(6.0);
-    ui.label(
-        egui::RichText::new("Panel-style sidebar with 4 nav items:")
-            .color(theme.dim())
-            .size(10.0),
-    );
-    ui.add_space(4.0);
-
-    use _scaffold_lib::ui_kit::icons::Icon;
-    let items = [
-        SidebarItem::new("Dashboard",  Icon::CHART_LINE),
-        SidebarItem::new("Watchlist",  Icon::LIST),
-        SidebarItem::new("Orders",     Icon::SHOPPING_CART).badge(3),
-        SidebarItem::new("Settings",   Icon::GEAR),
-    ];
-
-    ui.allocate_ui_with_layout(
-        egui::vec2(240.0, 160.0),
-        egui::Layout::top_down(egui::Align::LEFT),
-        |ui| {
-            Sidebar::new(&mut state.sidebar_active, &items)
-                .style(SidebarStyle::Panel)
-                .width(220.0)
-                .show(ui, theme);
-        },
-    );
 
     ui.add_space(8.0);
 }

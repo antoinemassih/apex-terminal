@@ -21,41 +21,6 @@ fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
 /// ```ignore
 /// ui.add(MenuTrigger::new("File").open(true).theme(t));
 /// ```
-#[must_use = "MenuTrigger must be added with `ui.add(...)` to render"]
-pub struct MenuTrigger<'a> {
-    label: &'a str,
-    open: bool,
-    accent: Option<Color32>,
-    dim: Option<Color32>,
-}
-
-impl<'a> MenuTrigger<'a> {
-    pub fn new(label: &'a str) -> Self {
-        Self {
-            label,
-            open: false,
-            accent: None,
-            dim: None,
-        }
-    }
-    pub fn open(mut self, o: bool) -> Self { self.open = o; self }
-    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
-        self.accent = Some(t.accent);
-        self.dim = Some(t.dim);
-        self
-    }
-}
-
-impl<'a> Widget for MenuTrigger<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let amb = ambient(ui.ctx());
-        let accent = self.accent.unwrap_or(amb.accent);
-        // Button::toolbar (status=true, Ghost, Sm) with active state matches open/closed toggle.
-        KitButton::toolbar(self.label).active(self.open).tint(accent)
-            .min_size(egui::vec2(0.0, row_height_compact()))
-            .show(ui, &amb)
-    }
-}
 
 // ─── MenuItem ────────────────────────────────────────────────────────────────
 

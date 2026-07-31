@@ -7,7 +7,7 @@
 //!   Bonus: Slider with label + step snap (1), RangeSlider full_width (1)
 
 use _scaffold_lib::ui_kit::widgets::{
-    OpacityPicker, RangeSlider, Slider, Variant,
+    OpacityPicker, Slider, Variant,
     theme::ComponentTheme,
 };
 use egui::Ui;
@@ -50,32 +50,6 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, state: &mut SlidersState) {
         .show_value(true)
         .label("Disabled")
         .disabled(true)
-        .full_width()
-        .show(ui, theme);
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── RangeSlider ───────────────────────────────────────────────────────────
-    story_heading(ui, theme, "RangeSlider");
-    ui.add_space(6.0);
-
-    ui.label(egui::RichText::new("Price range (step $5)").color(theme.dim()).size(10.0));
-    ui.add_space(4.0);
-    RangeSlider::new(&mut state.price_range, 0.0_f32..=200.0)
-        .step(5.0)
-        .show_value(true)
-        .label("Price Range")
-        .full_width()
-        .show(ui, theme);
-
-    ui.add_space(10.0);
-    ui.label(egui::RichText::new("Time range (minutes from midnight)").color(theme.dim()).size(10.0));
-    ui.add_space(4.0);
-    RangeSlider::new(&mut state.time_range, 0.0_f32..=1440.0)
-        .step(30.0)
-        .show_value(true)
-        .label("Session Window")
         .full_width()
         .show(ui, theme);
 

@@ -14,7 +14,6 @@ use _scaffold_lib::ui_kit::widgets::{
     StatusPill, PanelTone,
     theme::ComponentTheme,
 };
-use _scaffold_lib::ui_kit::widgets::toast::{Toast, ToastVariant};
 use egui::Ui;
 
 pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme) {
@@ -38,36 +37,6 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme) {
     ui.add_space(4.0);
     // Variants with variant() builder
     Alert::info("Info with closable=true").closable(true).show(ui, theme);
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── Toast ─────────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "Toast (static render — no lifecycle)");
-    ui.add_space(6.0);
-    ui.horizontal_wrapped(|ui| {
-        Toast::new("Info toast")
-            .variant(ToastVariant::Info)
-            .width(200.0)
-            .show(ui);
-        ui.add_space(8.0);
-        Toast::new("Success")
-            .success()
-            .width(200.0)
-            .show(ui);
-        ui.add_space(8.0);
-        Toast::new("Warning")
-            .warning()
-            .body("Something needs your attention.")
-            .width(200.0)
-            .show(ui);
-        ui.add_space(8.0);
-        Toast::new("Danger")
-            .danger()
-            .body("A critical error occurred.")
-            .width(200.0)
-            .show(ui);
-    });
 
     ui.add_space(12.0);
     rule(ui, theme);

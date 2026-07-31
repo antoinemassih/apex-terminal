@@ -8,7 +8,7 @@
 //!   SegmentedControl: connected + separated (2 × 3 segments = 6 renders, count as 2)
 
 use _scaffold_lib::ui_kit::widgets::{
-    Checkbox, Radio, Switch, ToggleGroup, SegmentedControl, Size,
+    Checkbox, Switch, SegmentedControl, Size,
     theme::ComponentTheme,
 };
 use egui::Ui;
@@ -32,25 +32,6 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, state: &mut SelectionState)
     ui.add_space(12.0);
     rule(ui, theme);
 
-    // ── Radio ─────────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "Radio");
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        Radio::new(&mut state.radio_val, 0).label("DAY").show(ui, theme);
-        ui.add_space(8.0);
-        Radio::new(&mut state.radio_val, 1).label("GTC").show(ui, theme);
-        ui.add_space(8.0);
-        Radio::new(&mut state.radio_val, 2).label("IOC").show(ui, theme);
-        ui.add_space(16.0);
-        // Small variant
-        Radio::new(&mut state.radio_val, 0).label("DAY Sm").size(Size::Sm).show(ui, theme);
-        ui.add_space(8.0);
-        Radio::new(&mut state.radio_val, 1).label("GTC Sm").size(Size::Sm).show(ui, theme);
-    });
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
     // ── Switch ────────────────────────────────────────────────────────────────
     story_heading(ui, theme, "Switch");
     ui.add_space(6.0);
@@ -67,29 +48,6 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, state: &mut SelectionState)
         ui.add_space(12.0);
         // Sm size
         Switch::new(&mut state.switch_a).label("Sm").size(Size::Sm).show(ui, theme);
-    });
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── ToggleGroup ───────────────────────────────────────────────────────────
-    story_heading(ui, theme, "ToggleGroup");
-    ui.add_space(6.0);
-    const TOGGLE_ITEMS: &[(usize, &str)] = &[(0, "Normal"), (1, "Margin"), (2, "Futures")];
-    ui.horizontal(|ui| {
-        ToggleGroup::new(&mut state.toggle_val, TOGGLE_ITEMS)
-            .size(Size::Sm)
-            .show(ui, theme);
-        ui.add_space(16.0);
-        // Xs
-        ToggleGroup::new(&mut state.toggle_val, TOGGLE_ITEMS)
-            .size(Size::Xs)
-            .show(ui, theme);
-        ui.add_space(16.0);
-        // Disabled
-        ToggleGroup::new(&mut state.toggle_val, TOGGLE_ITEMS)
-            .disabled(true)
-            .show(ui, theme);
     });
 
     ui.add_space(12.0);

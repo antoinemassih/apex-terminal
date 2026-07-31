@@ -28,15 +28,3 @@ pub fn hairline(ui: &mut Ui, color: Color32) {
     );
     ui.add_space(gap_xs());
 }
-
-/// Vertical hairline divider — for inline horizontal layouts.
-pub fn v_hairline(ui: &mut Ui, color: Color32, height: f32) {
-    let st = current();
-    let (rect, _resp) = ui.allocate_exact_size(Vec2::new(1.0, height), Sense::hover());
-    let ppp = ui.ctx().pixels_per_point();
-    let (x, w) = crisp(rect.center().x, st.stroke_std, ppp);
-    ui.painter().line_segment(
-        [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-        Stroke::new(w, color),
-    );
-}

@@ -13,7 +13,6 @@ pub mod motion;
 pub mod button;
 pub mod button_style;
 pub mod modal;
-pub mod toast;
 pub mod context_menu;
 pub mod placement;
 pub mod tooltip;
@@ -21,7 +20,6 @@ pub mod popover;
 pub mod hover_card;
 pub mod switch;
 pub mod checkbox;
-pub mod radio;
 pub mod input;
 pub mod label;
 pub mod polished_label;
@@ -31,7 +29,6 @@ pub mod tag;
 pub mod badge;
 pub mod kbd;
 pub mod separator;
-pub mod sheet;
 pub mod tabs;
 pub mod slider;
 pub mod progress;
@@ -40,21 +37,11 @@ pub mod skeleton;
 pub mod shadow;
 pub mod shadow_pipeline;
 pub mod select;
-pub mod table;
 pub mod pagination;
-pub mod breadcrumb;
-pub mod link;
 pub mod alert;
 pub mod stepper;
 pub mod number_stepper;
 pub mod metric_row;
-pub mod tree;
-pub mod sidebar;
-pub mod resizable;
-pub mod scroll_area;
-pub mod calendar;
-pub mod date_picker;
-pub mod color_picker;
 pub mod indicator;
 pub mod toggle_row;
 pub mod theme_preview_card;
@@ -67,17 +54,11 @@ pub mod guild_avatar_grid;
 pub mod text_area;
 pub mod search_input;
 pub mod segmented_control;
-pub mod toggle_group;
-pub mod time_picker;
-pub mod range_slider;
 pub mod form_row;
 pub mod form_section;
 // P2: forms foundation primitives
 pub mod form_field;
-pub mod form_action_bar;
 pub mod input_group;
-pub mod fieldset;
-pub mod panel;
 pub mod header;
 // Outer side-panel chrome (Agent J) — physically moved to
 // `chart_renderer::ui::panels` because these shells pull chart-app
@@ -102,7 +83,6 @@ pub mod tool_overlay; // Standardised chrome for floating tool panels
 pub mod tool_popover; // Anchored popover companion (click-outside dismisses)
 pub mod status_pill;
 pub mod panel_error;
-pub mod panel_toolbar;
 // P2: icon placement foundation (wire step)
 pub mod icon_placement;
 pub mod sparkline;
@@ -126,7 +106,6 @@ pub use placement::{Align, Placement, Side};
 // ─── Buttons & Links ─────────────────────────────────────────────────
 pub use button::{Button, show_button_gallery};
 pub use button_style::{ButtonStyle, ButtonState, DefaultButtonStyle};
-pub use link::Link;
 pub use menu_item::MenuItem;
 pub use toolbar_button::ToolBarButton;
 
@@ -135,30 +114,21 @@ pub use input::{Input, InputResponse};
 pub use text_area::TextArea;
 pub use search_input::SearchInput;
 pub use select::{Select, SelectResponse};
-pub use date_picker::{DatePicker, DatePickerResponse};
-pub use time_picker::TimePicker;
-pub use self::color_picker::ColorPicker;
 pub use opacity_picker::{OpacityPicker, OPACITY_LEVELS as PICKER_OPACITY_LEVELS};
 pub use number_stepper::NumberStepper;
 pub use slider::Slider;
-pub use range_slider::RangeSlider;
 pub use form_row::{FormRow, FormRowAlign, FormRowCx};
 pub use form_section::{FormSection, FieldSet, FormActions};
 pub use form_field::{FormField, FormFieldResponse};
-pub use form_action_bar::{FormActionBar, FormActionBarResponse, ActionBarPrimary};
 pub use input_group::InputGroup;
-pub use fieldset::Fieldset;
 
 // ─── Toggles ─────────────────────────────────────────────────────────
 pub use checkbox::{Checkbox, CheckState};
-pub use radio::Radio;
 pub use switch::Switch;
 pub use toggle_row::ToggleRow;
-pub use toggle_group::ToggleGroup;
 pub use segmented_control::SegmentedControl;
 
 // ─── Panel Ecosystem ─────────────────────────────────────────────────
-pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
 // Chart-app panel composites (SidePanelShell, SplitSectionPanel) live in
 // chart_renderer::ui::panels — the ui_kit re-export was removed in P4 to
@@ -177,7 +147,6 @@ pub use panel_list_row::{PanelListRow, PanelListRowResponse, TrailingBtn, Traili
 pub use panel_list_row::{Column as PanelColumn, ColAlign as PanelColAlign};
 pub use panel_key_value_row::PanelKeyValueRow;
 pub use metric_row::{MetricRow, Tone as MetricTone};
-pub use panel_toolbar::PanelToolbar;
 pub use outlined_box::OutlinedBox;
 pub use confirm_dialog::{ConfirmDialog, ConfirmDialogResponse, ConfirmOutcome, ConfirmTone};
 pub use tool_overlay::{ToolOverlay, ToolOverlayResponse};
@@ -186,20 +155,15 @@ pub use status_pill::StatusPill;
 
 // ─── Surfaces ────────────────────────────────────────────────────────
 pub use modal::Modal;
-pub use sheet::{Sheet, SheetSide, SheetSize};
 pub use popover::Popover;
 pub use hover_card::HoverCard;
 pub use tooltip::{Tooltip, PainterTooltip, paint_tooltip_card};
 pub use context_menu::ContextMenu;
 pub use alert::{Alert, AlertVariant, AlertResponse};
-pub use toast::Toast;
 
 // ─── Data / Display ──────────────────────────────────────────────────
-pub use table::{ColAlign, ColWidth, Column, SortDir, Table, TableResponse, TableState};
 pub use pagination::Pagination;
-pub use tree::{Tree, TreeNode, TreeState, TreeResponse};
 pub use tabs::{Tabs, TabsResponse, TabItem, TabTreatment, TabAlign};
-pub use breadcrumb::{Breadcrumb, BreadcrumbItem, BreadcrumbSep, BreadcrumbResponse};
 pub use progress::Progress;
 pub use spinner::Spinner;
 pub use skeleton::Skeleton;
@@ -211,7 +175,6 @@ pub use separator::Separator;
 pub use label::Label;
 pub use polished_label::{PolishedLabel, FontWeight as PolishedFontWeight};
 pub use stepper::Stepper;
-pub use calendar::{Calendar, CalendarResponse};
 
 // ─── Icons ───────────────────────────────────────────────────────────
 pub use icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
@@ -222,9 +185,6 @@ pub use heatmap_grid::{HeatmapGrid, HeatmapCell};
 pub use trade_card::{TradeCard, TradeCardData};
 pub use risk_reward_bar::RiskRewardBar;
 pub use sparkline::{Sparkline, SparkStyle};
-pub use sidebar::{Sidebar, SidebarStyle, SidebarItem, SidebarSection};
-pub use resizable::Resizable;
-pub use scroll_area::{ScrollDirection, ThemedScrollArea};
 pub use theme_preview_card::ThemePreviewCard;
 pub use selectable_row::SelectableRow;
 pub use pane_grid::{PaneGrid, PaneState, PaneId, SplitId, Axis as PaneAxis};

@@ -20,10 +20,9 @@ pub mod pane;
 pub mod welcome;
 pub mod theme_studio;
 
-// Backward-compat: keep widgets and components_extra declared so old import paths
-// that still exist in gpu.rs and others continue to resolve.
+// Backward-compat: `widgets` is a re-export shim kept alive solely because the
+// sacred `render/pane/core.rs` imports through it (see widgets/mod.rs).
 pub mod widgets;
-pub mod components_extra;
 
 // Re-export key items at ui level for ergonomics
 pub use style::*;

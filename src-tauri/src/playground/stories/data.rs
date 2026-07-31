@@ -10,8 +10,7 @@
 //!   TimePicker: trigger (1)
 
 use _scaffold_lib::ui_kit::widgets::{
-    Calendar, ColAlign, Column, DatePicker, HeatmapCell, HeatmapGrid, RiskRewardBar, Sparkline,
-    Table, TimePicker,
+    HeatmapCell, HeatmapGrid, RiskRewardBar, Sparkline,
     theme::ComponentTheme,
 };
 use egui::Ui;
@@ -19,24 +18,6 @@ use egui::Ui;
 use super::super::stories::DataState;
 
 // ── Sample data ───────────────────────────────────────────────────────────────
-
-#[derive(Clone)]
-struct MarketRow {
-    symbol: &'static str,
-    last: f32,
-    change: f32,
-    volume: &'static str,
-}
-
-fn sample_rows() -> Vec<MarketRow> {
-    vec![
-        MarketRow { symbol: "AAPL",  last: 182.45, change:  1.20, volume: "72.4M" },
-        MarketRow { symbol: "TSLA",  last: 248.10, change: -2.35, volume: "131.2M" },
-        MarketRow { symbol: "NVDA",  last: 875.62, change:  4.88, volume: "48.9M" },
-        MarketRow { symbol: "MSFT",  last: 415.33, change:  0.54, volume: "22.1M" },
-        MarketRow { symbol: "GOOGL", last: 171.80, change: -0.90, volume: "18.3M" },
-    ]
-}
 
 fn heatmap_cells() -> Vec<HeatmapCell> {
     let data = [
@@ -54,62 +35,7 @@ fn heatmap_cells() -> Vec<HeatmapCell> {
 
 // ── Story entry point ─────────────────────────────────────────────────────────
 
-pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, state: &mut DataState) {
-    // ── Table ─────────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "Table");
-    ui.add_space(6.0);
-
-    let rows = sample_rows();
-    let cols = [
-        Column::new("Symbol").min_width(70.0).sortable(true),
-        Column::new("Last").width(80.0).align(ColAlign::Right).sortable(true),
-        Column::new("Change").width(80.0).align(ColAlign::Right).sortable(true),
-        Column::new("Volume").width(80.0).align(ColAlign::Right),
-    ];
-
-    let bull = theme.bull();
-    let bear = theme.bear();
-    let text_col = theme.text();
-    let dim_col = theme.dim();
-
-    Table::new(&cols, &rows, &mut state.table_state)
-        .row_height(22.0)
-        .alternate_rows(true)
-        .hover_row(true)
-        .row_render(move |ui, _theme, row, col_idx, _rect| {
-            match col_idx {
-                0 => {
-                    ui.label(egui::RichText::new(row.symbol).color(text_col).size(11.0).monospace());
-                }
-                1 => {
-                    ui.label(
-                        egui::RichText::new(format!("${:.2}", row.last))
-                            .color(text_col)
-                            .size(11.0)
-                            .monospace(),
-                    );
-                }
-                2 => {
-                    let color = if row.change >= 0.0 { bull } else { bear };
-                    let sign  = if row.change >= 0.0 { "+" } else { "" };
-                    ui.label(
-                        egui::RichText::new(format!("{}{:.2}%", sign, row.change))
-                            .color(color)
-                            .size(11.0)
-                            .monospace(),
-                    );
-                }
-                3 => {
-                    ui.label(egui::RichText::new(row.volume).color(dim_col).size(11.0));
-                }
-                _ => {}
-            }
-        })
-        .show(ui, theme);
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
+pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, _state: &mut DataState) {
     // ── Sparkline ─────────────────────────────────────────────────────────────
     story_heading(ui, theme, "Sparkline");
     ui.add_space(6.0);
@@ -184,40 +110,6 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, state: &mut DataState) {
     ui.label(egui::RichText::new("1:3 ratio (risk $30 → reward $90)").color(theme.dim()).size(10.0));
     ui.add_space(4.0);
     RiskRewardBar::new(30.0, 90.0).width(avail).show_label(true).show(ui, theme);
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── Calendar ──────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "Calendar");
-    ui.add_space(6.0);
-    Calendar::new(&mut state.cal_date).show(ui, theme);
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── DatePicker ────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "DatePicker");
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new("Click the field below to open the calendar popover:").color(theme.dim()).size(10.0));
-    ui.add_space(4.0);
-    DatePicker::new(&mut state.date_val)
-        .placeholder("Pick a date…")
-        .show(ui, theme);
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── TimePicker ────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "TimePicker");
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new("Click the field below to open the time picker:").color(theme.dim()).size(10.0));
-    ui.add_space(4.0);
-    TimePicker::new(&mut state.time_val)
-        .placeholder("09:30")
-        .use_24h(true)
-        .id_salt("data_story_time")
-        .show(ui, theme);
 
     ui.add_space(8.0);
 }

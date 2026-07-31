@@ -15,7 +15,7 @@
 //!   Switch, Input, Select mixed in as form controls (~8 controls)
 
 use _scaffold_lib::ui_kit::widgets::{
-    Fieldset, FormActionBar, FormField, FormRow, FormSection, Input, InputGroup,
+    FormField, FormRow, FormSection, Input, InputGroup,
     NumberStepper, Select, Switch,
     theme::ComponentTheme,
 };
@@ -144,38 +144,7 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme, state: &mut FormsState) {
 
             ui.add_space(8.0);
 
-            // Fieldset — Advanced (collapsible)
-            Fieldset::new("Advanced Options")
-                .helper("Override broker-level execution settings")
-                .collapsible(&mut state.advanced_open)
-                .show(ui, theme, |ui| {
-                    ui.add_space(4.0);
-                    FormRow::new("Route").show(ui, theme, |ui| {
-                        let routes: &[&str] = &["AUTO", "EDGX", "NSDQ", "BATS"];
-                        Select::new(&mut state.route_idx, routes)
-                            .min_width(200.0)
-                            .show(ui, theme);
-                    });
-                    ui.add_space(4.0);
-                    FormRow::new("Pre-Market").show(ui, theme, |ui| {
-                        Switch::new(&mut state.premarket_on).show(ui, theme);
-                    });
-                });
         });
-
-    ui.add_space(16.0);
-
-    // ── FormActionBar ─────────────────────────────────────────────────────────
-    let action = FormActionBar::new("Save Changes")
-        .cancel("Cancel")
-        .show(ui, theme);
-
-    if action.secondary_clicked {
-        // Reset demo — just clear name for illustration.
-        state.name_buf.clear();
-    }
-    // primary_clicked: in a real app you would persist state here.
-    let _ = action.primary_clicked;
 
     ui.add_space(8.0);
 }

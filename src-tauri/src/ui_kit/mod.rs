@@ -11,6 +11,8 @@ pub mod tokens;
 pub mod style;
 /// Taffy-backed flexbox layout (geometry only; styling stays in the tokens).
 pub mod layout;
+/// Typed design scales (Space/Radius/Weight/Level) — the constraint layer.
+pub mod scale;
 pub mod cursor;
 #[allow(dead_code)]
 pub mod sx;

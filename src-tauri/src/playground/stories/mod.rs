@@ -27,10 +27,8 @@ pub struct SelectionState {
     pub check_b: bool,
     pub check_c: bool,
     pub tri_state: _scaffold_lib::ui_kit::widgets::CheckState,
-    pub radio_val: usize,
     pub switch_a: bool,
     pub switch_b: bool,
-    pub toggle_val: usize,
     pub seg_val: usize,
 }
 
@@ -60,7 +58,6 @@ pub struct DisclosureState {
     pub tab_filled:  usize,
     pub page_a:      usize,
     pub page_b:      usize,
-    pub tree_state:  _scaffold_lib::ui_kit::widgets::TreeState,
     pub panel_a_open: bool,
     pub panel_b_open: bool,
 }
@@ -73,7 +70,6 @@ impl Default for DisclosureState {
             tab_filled:  0,
             page_a:      0,
             page_b:      2,
-            tree_state:  Default::default(),
             panel_a_open: true,
             panel_b_open: false,
         }
@@ -84,7 +80,6 @@ impl Default for DisclosureState {
 #[derive(Default)]
 pub struct OverlaysState {
     pub modal_open:           bool,
-    pub sheet_open:           bool,
     pub popover_open:         bool,
     pub context_menu_open:    bool,
     pub confirm_dialog_open:  bool,
@@ -97,8 +92,6 @@ pub struct SlidersState {
     pub slider_a:    f32,
     pub slider_b:    f32,
     pub slider_c:    f32,
-    pub price_range: (f32, f32),
-    pub time_range:  (f32, f32),
     pub opacity_a:   f32,
     pub opacity_b:   f32,
 }
@@ -109,8 +102,6 @@ impl Default for SlidersState {
             slider_a:    25.0,
             slider_b:    60.0,
             slider_c:    90.0,
-            price_range: (10.0, 90.0),
-            time_range:  (570.0, 960.0), // 09:30 – 16:00 in minutes
             opacity_a:   0.70,
             opacity_b:   0.50,
         }
@@ -128,9 +119,6 @@ pub struct FormsState {
     pub order_type_idx: usize,
     pub slippage_val:   f64,
     pub pdt_mode:       bool,
-    pub advanced_open:  bool,
-    pub route_idx:      usize,
-    pub premarket_on:   bool,
 }
 
 impl Default for FormsState {
@@ -145,47 +133,30 @@ impl Default for FormsState {
             order_type_idx: 1,
             slippage_val:   5.0,
             pdt_mode:       true,
-            advanced_open:  false,
-            route_idx:      0,
-            premarket_on:   false,
         }
     }
 }
 
 /// Persistent state for the Data story.
 pub struct DataState {
-    pub table_state: _scaffold_lib::ui_kit::widgets::TableState,
-    pub cal_date:    Option<chrono::NaiveDate>,
-    pub date_val:    Option<chrono::NaiveDate>,
-    pub time_val:    Option<chrono::NaiveTime>,
 }
 
 impl Default for DataState {
     fn default() -> Self {
         Self {
-            table_state: Default::default(),
-            cal_date:    None,
-            date_val:    None,
-            time_val:    None,
         }
     }
 }
 
 /// Persistent state for the Specialty story.
 pub struct SpecialtyState {
-    pub color_a:        egui::Color32,
-    pub color_b:        egui::Color32,
     pub selected_theme: usize,
-    pub sidebar_active: usize,
 }
 
 impl Default for SpecialtyState {
     fn default() -> Self {
         Self {
-            color_a:        egui::Color32::from_rgb(88, 160, 255),
-            color_b:        egui::Color32::from_rgba_unmultiplied(200, 80, 30, 180),
             selected_theme: 0,
-            sidebar_active: 0,
         }
     }
 }

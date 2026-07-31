@@ -14,7 +14,7 @@
 
 use _scaffold_lib::ui_kit::widgets::{
     Button, ConfirmDialog, ConfirmOutcome, ConfirmTone,
-    ContextMenu, HoverCard, Modal, Popover, Sheet, SheetSide, SheetSize, Size, Tooltip,
+    ContextMenu, HoverCard, Modal, Popover, Size, Tooltip,
     Variant,
     theme::ComponentTheme,
 };
@@ -74,42 +74,6 @@ pub fn show<T: ComponentTheme>(ui: &mut Ui, theme: &T, state: &mut OverlaysState
             state.modal_open = false;
         }
     }
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── Sheet ─────────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "Sheet (Drawer)");
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        if Button::new("Open Sheet (Right)")
-            .variant(Variant::Secondary)
-            .size(Size::Sm)
-            .show(ui, theme)
-            .clicked()
-        {
-            state.sheet_open = true;
-        }
-        ui.label(
-            egui::RichText::new("→ slides in from the right edge")
-                .color(theme.dim())
-                .size(10.0),
-        );
-    });
-
-    Sheet::new()
-        .open(&mut state.sheet_open)
-        .side(SheetSide::Right)
-        .size(SheetSize::Fixed(320.0))
-        .title("Settings")
-        .close_on_backdrop(true)
-        .show(ui, theme, |ui| {
-            ui.label(
-                egui::RichText::new("Sheet content goes here.\nScroll or add controls.")
-                    .color(theme.dim())
-                    .size(11.0),
-            );
-        });
 
     ui.add_space(12.0);
     rule(ui, theme);

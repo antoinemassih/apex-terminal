@@ -6,7 +6,7 @@
 //!
 //! Don't put real trading workflows in here. It's a flat showcase.
 
-use egui::{Color32, Id};
+use egui::Id;
 use crate::chart::renderer::ui::style as st;
 
 use crate::chart_renderer::gpu::Theme;
@@ -14,12 +14,10 @@ use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::widgets::{
-    paint_shadow, Alert, Badge, Breadcrumb, BreadcrumbItem, BreadcrumbSep, Button, Calendar,
-    Checkbox, ColorPicker, Column, ContextMenu, DatePicker, HoverCard, Input, Kbd, Label, Link,
-    Modal, Pagination, PolishedFontWeight, PolishedLabel, Popover, Progress, Radio, Resizable,
-    Select, Separator, ShadowSpec, Sheet, SheetSide, SheetSize, Sidebar, SidebarItem, SidebarStyle,
-    Skeleton, Slider, Spinner, Stepper, Switch, TabItem, TabTreatment, Table, TableState, Tabs,
-    Tag, TagTone, Tooltip, Tree, TreeNode, TreeState,
+    paint_shadow, Alert, Badge, Button, Checkbox, ContextMenu, HoverCard, Input, Kbd, Label,
+    Modal, Pagination, PolishedFontWeight, PolishedLabel, Popover, Progress,
+    Select, Separator, ShadowSpec, Skeleton, Slider, Spinner, Stepper, Switch, TabItem,
+    TabTreatment, Tabs, Tag, TagTone, Tooltip,
 };
 
 // ── Persistent sample state, all in egui memory ─────────────────────────
@@ -33,7 +31,6 @@ struct GalleryState {
     cb_b: bool,
     cb_tri: crate::ui_kit::widgets::CheckState,
     cb_dis: bool,
-    radio: u8,
     in_a: String,
     in_b: String,
     in_c: String,
@@ -48,17 +45,8 @@ struct GalleryState {
     tab_items: Vec<TabItem>,
     slider_v: f32,
     pagination_page: usize,
-    cal_date: Option<chrono::NaiveDate>,
-    dp_single: Option<chrono::NaiveDate>,
-    dp_range: Option<(chrono::NaiveDate, chrono::NaiveDate)>,
     modal_open: bool,
-    sheet_open: bool,
     popover_open: bool,
-    color_compact: Color32,
-    color_inline: Color32,
-    tree_state: TreeState,
-    table_state: TableState,
-    resizable_split: f32,
 }
 
 impl Default for GalleryState {
@@ -71,7 +59,6 @@ impl Default for GalleryState {
             cb_b: true,
             cb_tri: crate::ui_kit::widgets::CheckState::Indeterminate,
             cb_dis: true,
-            radio: 1,
             in_a: String::new(),
             in_b: String::new(),
             in_c: "100".into(),
@@ -90,17 +77,8 @@ impl Default for GalleryState {
             ],
             slider_v: 50.0,
             pagination_page: 5,
-            cal_date: None,
-            dp_single: None,
-            dp_range: None,
             modal_open: false,
-            sheet_open: false,
             popover_open: false,
-            color_compact: Color32::from_rgb(220, 100, 80),
-            color_inline: Color32::from_rgb(80, 160, 220),
-            tree_state: TreeState::default(),
-            table_state: TableState::default(),
-            resizable_split: 0.4,
         }
     }
 }
@@ -118,36 +96,6 @@ fn with_state<R>(ui: &mut egui::Ui, f: impl FnOnce(&mut egui::Ui, &mut GallerySt
     let r = f(ui, &mut s);
     ui.ctx().memory_mut(|m| m.data.insert_temp(id, s));
     r
-}
-
-// ── Tree sample types ────────────────────────────────────────────────────
-
-#[derive(Clone)]
-struct DemoNode {
-    id: u64,
-    depth: usize,
-    has_children: bool,
-    label: String,
-}
-
-impl TreeNode for DemoNode {
-    fn id(&self) -> u64 { self.id }
-    fn depth(&self) -> usize { self.depth }
-    fn has_children(&self) -> bool { self.has_children }
-    fn label(&self) -> &str { &self.label }
-}
-
-fn demo_tree() -> Vec<DemoNode> {
-    vec![
-        DemoNode { id: 1, depth: 0, has_children: true, label: "Watchlists".into() },
-        DemoNode { id: 2, depth: 1, has_children: true, label: "Tech".into() },
-        DemoNode { id: 3, depth: 2, has_children: false, label: "AAPL".into() },
-        DemoNode { id: 4, depth: 2, has_children: false, label: "MSFT".into() },
-        DemoNode { id: 5, depth: 1, has_children: true, label: "Energy".into() },
-        DemoNode { id: 6, depth: 2, has_children: false, label: "XOM".into() },
-        DemoNode { id: 7, depth: 0, has_children: true, label: "Drawings".into() },
-        DemoNode { id: 8, depth: 1, has_children: false, label: "Trendline".into() },
-    ]
 }
 
 // ── Section helper ───────────────────────────────────────────────────────
@@ -225,13 +173,6 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
             Checkbox::new(&mut s.cb_b).label("On").show(ui, theme);
             Checkbox::tri(&mut s.cb_tri).label("Indeterminate").show(ui, theme);
             Checkbox::new(&mut s.cb_dis).label("Disabled").disabled(true).show(ui, theme);
-        });
-        ui.add_space(6.0);
-        Label::subheading("Radio").show(ui, theme);
-        ui.horizontal(|ui| {
-            Radio::new(&mut s.radio, 0u8).label("Option A").show(ui, theme);
-            Radio::new(&mut s.radio, 1u8).label("Option B").show(ui, theme);
-            Radio::new(&mut s.radio, 2u8).label("Option C").show(ui, theme);
         });
     });
 
@@ -400,30 +341,13 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
     });
     Skeleton::lines(3, 240.0).show(ui, theme);
 
-    // 8. Pagination + Breadcrumb + Link + Stepper
-    section(ui, theme, "8. Pagination + Breadcrumb + Link + Stepper");
+    // 8. Pagination + Stepper
+    section(ui, theme, "8. Pagination + Stepper");
     with_state(ui, |ui, s| {
         Label::subheading("Pagination (total=100, page_size=10)").show(ui, theme);
         Pagination::new(&mut s.pagination_page, 100)
             .show_first_last(true)
             .show(ui, theme);
-    });
-    ui.add_space(6.0);
-    Label::subheading("Breadcrumb").show(ui, theme);
-    let crumbs = [
-        BreadcrumbItem::new("Home").icon(Icon::CHART_LINE),
-        BreadcrumbItem::new("Watchlists"),
-        BreadcrumbItem::new("Tech"),
-        BreadcrumbItem::new("AAPL"),
-    ];
-    Breadcrumb::with_items(&crumbs)
-        .separator(BreadcrumbSep::Chevron)
-        .show(ui, theme);
-    ui.add_space(6.0);
-    Label::subheading("Link").show(ui, theme);
-    ui.horizontal(|ui| {
-        Link::new("Plain link").show(ui, theme);
-        Link::new("External link").external(true).show(ui, theme);
     });
     ui.add_space(6.0);
     Label::subheading("Stepper — horizontal").show(ui, theme);
@@ -456,27 +380,6 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
         .closable(true)
         .show(ui, theme);
 
-    // 10. Calendar + DatePicker
-    section(ui, theme, "10. Calendar + DatePicker");
-    with_state(ui, |ui, s| {
-        Label::subheading("Calendar (single)").show(ui, theme);
-        Calendar::new(&mut s.cal_date)
-            .id_salt("gallery_cal")
-            .show(ui, theme);
-        ui.add_space(6.0);
-        Label::subheading("DatePicker triggers (click to open)").show(ui, theme);
-        ui.horizontal(|ui| {
-            DatePicker::new(&mut s.dp_single)
-                .placeholder("Pick a date")
-                .id_salt("gallery_dp_single")
-                .show(ui, theme);
-            DatePicker::range(&mut s.dp_range)
-                .placeholder("Pick a range")
-                .id_salt("gallery_dp_range")
-                .show(ui, theme);
-        });
-    });
-
     // 11. Tooltip + HoverCard
     section(ui, theme, "11. Tooltip + HoverCard");
     ui.horizontal(|ui| {
@@ -497,62 +400,8 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
         });
     });
 
-    // 12. Sidebar / Resizable
-    section(ui, theme, "12. Sidebar / Resizable");
-    with_state(ui, |ui, s| {
-        ui.horizontal(|ui| {
-            // Embedded sidebar (rail).
-            ui.allocate_ui(egui::vec2(80.0, 180.0), |ui| {
-                let items = [
-                    SidebarItem::new("Chart", Icon::CHART_LINE),
-                    SidebarItem::new("Orders", Icon::CIRCLE),
-                    SidebarItem::new("Tape", Icon::CIRCLE),
-                ];
-                let mut active = 0usize;
-                Sidebar::new(&mut active, &items)
-                    .style(SidebarStyle::Rail)
-                    .show(ui, theme);
-            });
-            ui.add_space(8.0);
-            // Embedded sidebar (panel).
-            ui.allocate_ui(egui::vec2(180.0, 180.0), |ui| {
-                let items = [
-                    SidebarItem::new("Watchlists", Icon::CHART_LINE),
-                    SidebarItem::new("Drawings", Icon::CIRCLE).badge(2),
-                    SidebarItem::new("Settings", Icon::GEAR),
-                ];
-                let mut active = 0usize;
-                Sidebar::new(&mut active, &items)
-                    .style(SidebarStyle::Panel)
-                    .show(ui, theme);
-            });
-            ui.add_space(8.0);
-            // Resizable split.
-            ui.allocate_ui(egui::vec2(360.0, 180.0), |ui| {
-                Resizable::horizontal(&mut s.resizable_split).show(
-                    ui,
-                    theme,
-                    |ui| {
-                        PolishedLabel::new("Left")
-                            .size(KitSize::Lg)
-                            .weight(PolishedFontWeight::Semibold)
-                            .show(ui, theme);
-                        ui.label("Lorem ipsum dolor sit amet.");
-                    },
-                    |ui| {
-                        PolishedLabel::new("Right")
-                            .size(KitSize::Lg)
-                            .weight(PolishedFontWeight::Semibold)
-                            .show(ui, theme);
-                        ui.label("Consectetur adipiscing elit.");
-                    },
-                );
-            });
-        });
-    });
-
-    // 13. Modal / Sheet / Popover triggers
-    section(ui, theme, "13. Modal / Sheet / Popover");
+    // 13. Modal / Popover triggers
+    section(ui, theme, "13. Modal / Popover");
     with_state(ui, |ui, s| {
         ui.horizontal(|ui| {
             if Button::new("Open Modal")
@@ -561,13 +410,6 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
                 .clicked()
             {
                 s.modal_open = true;
-            }
-            if Button::new("Open Sheet (right)")
-                .variant(Variant::Secondary)
-                .show(ui, theme)
-                .clicked()
-            {
-                s.sheet_open = true;
             }
             let pop_btn = Button::new("Toggle Popover")
                 .variant(Variant::Secondary)
@@ -607,15 +449,6 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
             }
         }
 
-        Sheet::new()
-            .open(&mut s.sheet_open)
-            .side(SheetSide::Right)
-            .size(SheetSize::Fixed(360.0))
-            .title("Gallery Sheet")
-            .id("gallery_sheet")
-            .show(ui, theme, |ui| {
-                Label::new("Sample sheet content (right side).").show(ui, theme);
-            });
     });
 
     // 14. ContextMenu
@@ -659,65 +492,8 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
         }
     }
 
-    // 15. ColorPicker
-    section(ui, theme, "15. ColorPicker");
-    with_state(ui, |ui, s| {
-        ui.horizontal(|ui| {
-            Label::new("Compact").show(ui, theme);
-            ColorPicker::new(&mut s.color_compact)
-                .compact(true)
-                .show(ui, theme);
-            ui.add_space(16.0);
-            Label::new("Inline").show(ui, theme);
-            ColorPicker::new(&mut s.color_inline)
-                .inline(true)
-                .show(ui, theme);
-        });
-    });
-
-    // 16. Tree
-    section(ui, theme, "16. Tree");
-    with_state(ui, |ui, s| {
-        // Make sure top-level nodes default to expanded so the demo isn't empty.
-        if s.tree_state.expanded.is_empty() {
-            s.tree_state.expand(1);
-            s.tree_state.expand(2);
-            s.tree_state.expand(7);
-        }
-        let items = demo_tree();
-        Tree::new(&mut s.tree_state, &items).show(ui, theme);
-    });
-
-    // 17. Table
-    section(ui, theme, "17. Table");
-    with_state(ui, |ui, s| {
-        let cols = [
-            Column::new("Symbol").sortable(true),
-            Column::new("Last").sortable(true),
-            Column::new("Chg %").sortable(true),
-        ];
-        let rows: Vec<[String; 3]> = vec![
-            ["AAPL".into(), "189.45".into(), "+1.20%".into()],
-            ["MSFT".into(), "412.30".into(), "+0.85%".into()],
-            ["GOOG".into(), "143.20".into(), "-0.42%".into()],
-            ["NVDA".into(), "920.10".into(), "+2.30%".into()],
-            ["TSLA".into(), "210.55".into(), "-1.15%".into()],
-        ];
-        Table::new(&cols, &rows, &mut s.table_state)
-            .resizable(true)
-            .row_render(|ui, theme, row, col_idx, _cell_rect| {
-                if col_idx == 2 {
-                    let c = if row[2].starts_with('+') { theme.bull() } else { theme.bear() };
-                    Label::new(&row[2]).color(c).show(ui, theme);
-                } else {
-                    Label::new(&row[col_idx]).show(ui, theme);
-                }
-            })
-            .show(ui, theme);
-    });
-
-    // 18. Shadow showcase
-    section(ui, theme, "18. Shadow showcase");
+    // 15. Shadow showcase
+    section(ui, theme, "15. Shadow showcase");
     let presets: [(&str, ShadowSpec); 4] = [
         ("sm", ShadowSpec::sm_themed(theme)),
         ("md", ShadowSpec::md_themed(theme)),

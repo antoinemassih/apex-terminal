@@ -9,8 +9,7 @@
 //!   PanelSubSection: 2 collapsible panels (2)
 
 use _scaffold_lib::ui_kit::widgets::{
-    Breadcrumb, BreadcrumbSep, Pagination, PanelSubSection, Stepper, Tabs, TabTreatment, Tree,
-    TreeNode,
+    Pagination, PanelSubSection, Stepper, Tabs, TabTreatment,
     theme::ComponentTheme,
 };
 use egui::Ui;
@@ -22,35 +21,6 @@ use super::super::stories::DisclosureState;
 
 
 // ── Sample tree data ──────────────────────────────────────────────────────────
-
-#[derive(Clone)]
-struct FolderNode {
-    id: u64,
-    depth: usize,
-    has_children: bool,
-    label: String,
-}
-
-impl TreeNode for FolderNode {
-    fn id(&self) -> u64 { self.id }
-    fn depth(&self) -> usize { self.depth }
-    fn has_children(&self) -> bool { self.has_children }
-    fn label(&self) -> &str { &self.label }
-}
-
-fn sample_tree() -> Vec<FolderNode> {
-    vec![
-        FolderNode { id: 1, depth: 0, has_children: true,  label: "Documents".into() },
-        FolderNode { id: 2, depth: 1, has_children: true,  label: "Projects".into() },
-        FolderNode { id: 3, depth: 2, has_children: false, label: "apex-terminal".into() },
-        FolderNode { id: 4, depth: 2, has_children: false, label: "whalefin".into() },
-        FolderNode { id: 5, depth: 1, has_children: false, label: "Resume.pdf".into() },
-        FolderNode { id: 6, depth: 0, has_children: true,  label: "Downloads".into() },
-        FolderNode { id: 7, depth: 1, has_children: false, label: "installer.dmg".into() },
-    ]
-}
-
-// ── Story entry point ─────────────────────────────────────────────────────────
 
 pub fn show<T: ComponentTheme>(ui: &mut Ui, theme: &T, state: &mut DisclosureState) {
     // ── Tabs ──────────────────────────────────────────────────────────────────
@@ -80,19 +50,6 @@ pub fn show<T: ComponentTheme>(ui: &mut Ui, theme: &T, state: &mut DisclosureSta
     Tabs::new(&mut state.tab_filled, TAB_LABELS)
         .treatment(TabTreatment::Filled)
         .id_salt("disc_filled")
-        .show(ui, theme);
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── Breadcrumb ────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "Breadcrumb");
-    ui.add_space(6.0);
-
-    Breadcrumb::new(&["Home", "Folder", "File.txt"]).show(ui, theme);
-    ui.add_space(6.0);
-    Breadcrumb::new(&["Home", "Folder", "File.txt"])
-        .separator(BreadcrumbSep::Slash)
         .show(ui, theme);
 
     ui.add_space(12.0);
@@ -131,23 +88,6 @@ pub fn show<T: ComponentTheme>(ui: &mut Ui, theme: &T, state: &mut DisclosureSta
         ui.set_width(200.0);
         Stepper::new(WIZARD_STEPS, 2).vertical(true).show(ui, theme);
     });
-
-    ui.add_space(12.0);
-    rule(ui, theme);
-
-    // ── Tree ──────────────────────────────────────────────────────────────────
-    story_heading(ui, theme, "Tree");
-    ui.add_space(6.0);
-
-    // Pre-expand the Documents folder so users see nested items.
-    if state.tree_state.expanded.is_empty() {
-        state.tree_state.expand(1);
-        state.tree_state.expand(2);
-        state.tree_state.expand(6);
-    }
-
-    let items = sample_tree();
-    Tree::new(&mut state.tree_state, &items).show(ui, theme);
 
     ui.add_space(12.0);
     rule(ui, theme);
