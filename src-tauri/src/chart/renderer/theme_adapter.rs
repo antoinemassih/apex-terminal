@@ -70,8 +70,36 @@ pub fn color_scheme_to_theme(cs: &ColorScheme) -> Theme {
     // exactly what the app's chrome is made of, honour the authored value and
     // fall back to the derived hairline only when a palette leaves it unset
     // (fully transparent).
-    let authored_border = c32(cs.border);
-    let toolbar_border   = if authored_border.a() > 0 { authored_border } else { hairline_border(bg) };
+    //
+    // ⚠ It must be FLATTENED against `bg` first. Aperture authors
+    // `rgba(255,255,255,0.12)` — a translucent white, the normal way to write a
+    // dark-theme hairline in CSS. But `Theme.toolbar_border` is consumed all
+    // over the app as `color_alpha(t.toolbar_border, N)`, and `color_alpha`
+    // REPLACES the alpha rather than scaling it. Passing the raw value through
+    // therefore turned a 12%-white hairline into white@N — bright grey boxes
+    // around every rail button and toolbar control. (Caught by looking at the
+    // app; the unit tests were all green.) Compositing over `bg` preserves the
+    // designer's intent as an opaque colour of the same visual weight, so the
+    // call-site alpha maths keeps working.
+    let toolbar_border = {
+        // `Rgba` is [u8; 4] — channels and alpha are both 0..=255.
+        let a = cs.border[3];
+        if a == 0 {
+            hairline_border(bg)
+        } else if a == 255 {
+            c32(cs.border)
+        } else {
+            let f = a as f32 / 255.0;
+            let over = |fg: u8, bg_c: u8| -> u8 {
+                (fg as f32 * f + bg_c as f32 * (1.0 - f)).round().clamp(0.0, 255.0) as u8
+            };
+            egui::Color32::from_rgb(
+                over(cs.border[0], bg.r()),
+                over(cs.border[1], bg.g()),
+                over(cs.border[2], bg.b()),
+            )
+        }
+    };
     let border_variant   = hairline_border_variant(bg);
     // P12: 10 Zed-style overlay derivations (element_*, ghost_*, icon_*) were
     // formerly stored on Theme. They now live in theme_impl.rs at the
