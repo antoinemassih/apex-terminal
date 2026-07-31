@@ -614,8 +614,23 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
     match cmd {
         AppCommand::AddPriceAlert { pane, price, above } => {
-            debug_assert!(pane < panes.len().max(1),
-                "AddPriceAlert: pane index {} out of bounds (len={})", pane, panes.len());
+            if pane >= panes.len() {
+                // NOT a debug_assert. The handling below is already safe
+                // (`get_mut` + `if let`/`let else`), so the assert was
+                // STRICTER THAN THE CODE IT GUARDED — and in a debug build it
+                // aborted the process for a case the code handles fine.
+                // That mattered: the dev harness legitimately sends commands
+                // for pane indices the *current* workspace may not have (a
+                // saved 1-pane layout replaying a 2-pane scenario), and the
+                // panic took down the dev-inspector thread with it — after
+                // which every later request got connection-refused. A whole
+                // 1067-scenario corpus run reported as a mass failure, and was
+                // misread for two days as "winsock is broken on this machine".
+                // A dev-harness command must never be able to kill the app.
+                tracing::warn!(target: "cmd",
+                    "AddPriceAlert: pane index {} out of range (len={}) — ignored",
+                    pane, panes.len());
+            }
             let Some(p) = panes.get_mut(pane) else { return; };
             let sym = p.symbol.clone();
             // Add to pane only — the alerts panel already shows pane_active; pushing
@@ -634,8 +649,23 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::PlaceDraftAlert { pane, id } => {
-            debug_assert!(pane < panes.len().max(1),
-                "PlaceDraftAlert: pane index {} out of bounds (len={})", pane, panes.len());
+            if pane >= panes.len() {
+                // NOT a debug_assert. The handling below is already safe
+                // (`get_mut` + `if let`/`let else`), so the assert was
+                // STRICTER THAN THE CODE IT GUARDED — and in a debug build it
+                // aborted the process for a case the code handles fine.
+                // That mattered: the dev harness legitimately sends commands
+                // for pane indices the *current* workspace may not have (a
+                // saved 1-pane layout replaying a 2-pane scenario), and the
+                // panic took down the dev-inspector thread with it — after
+                // which every later request got connection-refused. A whole
+                // 1067-scenario corpus run reported as a mass failure, and was
+                // misread for two days as "winsock is broken on this machine".
+                // A dev-harness command must never be able to kill the app.
+                tracing::warn!(target: "cmd",
+                    "PlaceDraftAlert: pane index {} out of range (len={}) — ignored",
+                    pane, panes.len());
+            }
             if let Some(p) = panes.get_mut(pane) {
                 if let Some(a) = p.price_alerts.iter_mut().find(|a| a.id == id) {
                     a.draft = false;
@@ -652,8 +682,23 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::CancelPaneAlert { pane, id } => {
-            debug_assert!(pane < panes.len().max(1),
-                "CancelPaneAlert: pane index {} out of bounds (len={})", pane, panes.len());
+            if pane >= panes.len() {
+                // NOT a debug_assert. The handling below is already safe
+                // (`get_mut` + `if let`/`let else`), so the assert was
+                // STRICTER THAN THE CODE IT GUARDED — and in a debug build it
+                // aborted the process for a case the code handles fine.
+                // That mattered: the dev harness legitimately sends commands
+                // for pane indices the *current* workspace may not have (a
+                // saved 1-pane layout replaying a 2-pane scenario), and the
+                // panic took down the dev-inspector thread with it — after
+                // which every later request got connection-refused. A whole
+                // 1067-scenario corpus run reported as a mass failure, and was
+                // misread for two days as "winsock is broken on this machine".
+                // A dev-harness command must never be able to kill the app.
+                tracing::warn!(target: "cmd",
+                    "CancelPaneAlert: pane index {} out of range (len={}) — ignored",
+                    pane, panes.len());
+            }
             if let Some(p) = panes.get_mut(pane) {
                 p.price_alerts.retain(|a| a.id != id);
             }
@@ -672,8 +717,23 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::CancelOrder { pane, id } => {
-            debug_assert!(pane < panes.len().max(1),
-                "CancelOrder: pane index {} out of bounds (len={})", pane, panes.len());
+            if pane >= panes.len() {
+                // NOT a debug_assert. The handling below is already safe
+                // (`get_mut` + `if let`/`let else`), so the assert was
+                // STRICTER THAN THE CODE IT GUARDED — and in a debug build it
+                // aborted the process for a case the code handles fine.
+                // That mattered: the dev harness legitimately sends commands
+                // for pane indices the *current* workspace may not have (a
+                // saved 1-pane layout replaying a 2-pane scenario), and the
+                // panic took down the dev-inspector thread with it — after
+                // which every later request got connection-refused. A whole
+                // 1067-scenario corpus run reported as a mass failure, and was
+                // misread for two days as "winsock is broken on this machine".
+                // A dev-harness command must never be able to kill the app.
+                tracing::warn!(target: "cmd",
+                    "CancelOrder: pane index {} out of range (len={}) — ignored",
+                    pane, panes.len());
+            }
             if let Some(p) = panes.get_mut(pane) {
                 cancel_order_with_pair(&mut p.orders, id);
             }
@@ -922,8 +982,23 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         // ── Per-pane display flag ───────────────────────────────────────
         AppCommand::SetChartFlag { pane, flag, value } => {
-            debug_assert!(pane < panes.len().max(1),
-                "SetChartFlag: pane index {} out of bounds (len={})", pane, panes.len());
+            if pane >= panes.len() {
+                // NOT a debug_assert. The handling below is already safe
+                // (`get_mut` + `if let`/`let else`), so the assert was
+                // STRICTER THAN THE CODE IT GUARDED — and in a debug build it
+                // aborted the process for a case the code handles fine.
+                // That mattered: the dev harness legitimately sends commands
+                // for pane indices the *current* workspace may not have (a
+                // saved 1-pane layout replaying a 2-pane scenario), and the
+                // panic took down the dev-inspector thread with it — after
+                // which every later request got connection-refused. A whole
+                // 1067-scenario corpus run reported as a mass failure, and was
+                // misread for two days as "winsock is broken on this machine".
+                // A dev-harness command must never be able to kill the app.
+                tracing::warn!(target: "cmd",
+                    "SetChartFlag: pane index {} out of range (len={}) — ignored",
+                    pane, panes.len());
+            }
             let Some(p) = panes.get_mut(pane) else { return; };
             match flag {
                 ChartFlag::ShowVolume        => p.show_volume = value,
@@ -944,8 +1019,23 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         // ── Pane / layout ───────────────────────────────────────────────
         AppCommand::ChangePaneType { pane, kind } => {
-            debug_assert!(pane < panes.len().max(1),
-                "ChangePaneType: pane index {} out of bounds (len={})", pane, panes.len());
+            if pane >= panes.len() {
+                // NOT a debug_assert. The handling below is already safe
+                // (`get_mut` + `if let`/`let else`), so the assert was
+                // STRICTER THAN THE CODE IT GUARDED — and in a debug build it
+                // aborted the process for a case the code handles fine.
+                // That mattered: the dev harness legitimately sends commands
+                // for pane indices the *current* workspace may not have (a
+                // saved 1-pane layout replaying a 2-pane scenario), and the
+                // panic took down the dev-inspector thread with it — after
+                // which every later request got connection-refused. A whole
+                // 1067-scenario corpus run reported as a mass failure, and was
+                // misread for two days as "winsock is broken on this machine".
+                // A dev-harness command must never be able to kill the app.
+                tracing::warn!(target: "cmd",
+                    "ChangePaneType: pane index {} out of range (len={}) — ignored",
+                    pane, panes.len());
+            }
             if let Some(p) = panes.get_mut(pane) {
                 p.pane_type = kind;
             }
