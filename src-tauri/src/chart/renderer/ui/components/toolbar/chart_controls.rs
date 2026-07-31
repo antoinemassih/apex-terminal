@@ -67,6 +67,36 @@ pub(crate) fn render(
     let ap = ap.min(panes.len() - 1);
     ui.spacing_mut().item_spacing.x = 0.0;
     ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
+
+    // ── Toolbar runs ONE TIER BELOW body (subtree cascade override) ─────────
+    //
+    // The chart toolbar is dense chrome: a single fixed-width row that has to
+    // fit ~10 labelled menus. When the app-wide type scale was lifted
+    // (font_sm 11->12, font_md 13->14) this row overflowed and egui clipped the
+    // last two buttons — caught by the corpus as
+    // `clipped: toolbar.indicators_btn, toolbar.widgets_btn` in both the design
+    // and UX audit baselines. Unit tests and screenshots both missed it.
+    //
+    // The fix is the cascade doing the job it exists for: re-point the tiers
+    // for THIS SUBTREE only. Every widget below inherits it with no call site
+    // changed, and the global scale (which made the rest of the app readable)
+    // is untouched. This is precisely what hand-passed FontIds could never do.
+    {
+        use crate::chart_renderer::ui::foundation::text_style::TextStyle as Tier;
+        let s = ui.style_mut();
+        for (tier, size) in [
+            (Tier::Body,    crate::ui_kit::style::font_sm()),
+            (Tier::BodySm,  crate::ui_kit::style::font_xs()),
+            (Tier::Label,   crate::ui_kit::style::font_xs()),
+            (Tier::Caption, crate::ui_kit::style::font_xs()),
+        ] {
+            let mono = tier.spec().monospace;
+            s.text_styles.insert(
+                tier.egui(),
+                if mono { egui::FontId::monospace(size) } else { egui::FontId::proportional(size) },
+            );
+        }
+    }
     {
         let v = &mut ui.style_mut().visuals.widgets;
         v.inactive.bg_fill        = egui::Color32::TRANSPARENT;
