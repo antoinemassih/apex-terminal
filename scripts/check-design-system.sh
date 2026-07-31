@@ -1,123 +1,163 @@
 #!/usr/bin/env bash
 # check-design-system.sh
-# Fails if new code introduces raw egui primitives outside the design-system modules.
-# Existing violations are tracked in scripts/.design-system-baseline.txt and are tolerated
-# until manually migrated.  Any line NOT in the baseline is a new violation → exit 1.
+#
+# Ratchet: fails if code introduces MORE raw/off-token UI primitives than the
+# recorded baseline. Existing violations are tolerated per-file until migrated;
+# the ratchet only ever tightens (a file that improves updates its budget down
+# on the next `--update`, and can never regress past it).
+#
+#   ./scripts/check-design-system.sh            # check (CI mode)
+#   ./scripts/check-design-system.sh --update   # re-record the baseline
+#
+# WHY COUNTS, NOT LINES: the previous version stored `path:line:content` and
+# compared exact lines, so ANY edit above a violation shifted its line number
+# and reported it as a brand-new violation. A gate that cries wolf on every
+# refactor gets its baseline blindly regenerated, which makes it decorative.
+# Per-file counts are stable under refactoring and still block new drift.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASELINE_FILE="$REPO_ROOT/scripts/.design-system-baseline.txt"
 SRC_DIR="$REPO_ROOT/src-tauri/src"
+MODE="${1:-check}"
 
-# Patterns to detect
+# Patterns to detect.
+#
+# The first three guard raw egui primitives. The rest were added after the
+# 2026-07-31 UI audit, which found the drift classes this gate was blind to
+# (see docs/UI_AUDIT_2026-07-31.md):
+#
+#  * literal FONT SIZES — ~70% of the app had drifted onto 9/11px because every
+#    call site picked its own size. Use font_xs()/font_sm()/font_md()/… or a
+#    TextStyle tier (which now cascades through egui's text_styles table).
+#  * named COLOR CONSTANTS — Color32::WHITE/BLACK/GRAY are theme-blind and break
+#    on the 5 light palettes. Use the theme (t.text / t.dim / t.bull / …).
+#  * literal-channel rgba — use `color_alpha(t.<role>, a)`.
+#  * `CornerRadius::same(<literal>)` — use the per-style radius tokens
+#    (radius_xs/sm/md/lg, r_pill) or `current().region_radius`.
+#
+# NOT matched (deliberate): the positional rounding arg in
+# `rect_filled(rect, 4.0, col)`. It was the single biggest radius leak (155
+# sites at audit time), but it is indistinguishable by grep from any other
+# 3-argument call, so a regex gate would be all false positives. That one needs
+# a clippy lint or an AST pass — recorded as follow-up rather than faked here.
 PATTERNS=(
   "egui::Button::new("
   "egui::TextEdit::singleline"
   "Color32::from_rgb("
+  "Color32::from_rgba_unmultiplied("
+  "Color32::WHITE"
+  "Color32::BLACK"
+  "Color32::GRAY"
+  "Color32::LIGHT_GRAY"
+  "Color32::DARK_GRAY"
+  "FontId::proportional("
+  "FontId::monospace("
+  "FontId::new("
+  "CornerRadius::same("
 )
 
-# Paths that are explicitly allowed to use raw egui primitives
-ALLOWED_PATHS=(
-  "chart_renderer/ui/style.rs"
-  "chart_renderer/ui/components.rs"
-  "chart_renderer/ui/components_extra.rs"
-  "design_inspector.rs"
+# Files that DEFINE the design system (they must use raw primitives to build
+# the tokens everything else consumes) plus dev-only surfaces.
+ALLOWED_BASENAMES=(
+  "style.rs"                 # token definitions (ui_kit + chart layer)
+  "theme.rs"                 # ComponentTheme defaults / PortableTheme
+  "theme_impl.rs"            # chart Theme -> ComponentTheme bridge
+  "theme_adapter.rs"         # ColorScheme -> Theme adapter
+  "builtin.rs"               # palette + style-system literals
+  "color_scheme.rs"
+  "design_tokens.rs"
+  "design_inspector.rs"      # the token editor itself
+  "theme_studio.rs"          # live theme editor
+  "widget_gallery.rs"        # component demo surface
+  "color_picker.rs"          # an RGB picker, by definition
+  "recipe_spec.rs"
 )
 
-# Build the grep exclude args
-EXCLUDE_ARGS=()
-for p in "${ALLOWED_PATHS[@]}"; do
-  EXCLUDE_ARGS+=(--exclude="*${p##*/}")   # by filename (portable)
-done
+# Build a basename filter regex. NOTE: we deliberately do NOT use grep's
+# --exclude — it silently fails to filter under the MSYS/Git-Bash grep 3.0 on
+# this machine (verified: `--exclude="style.rs"` still returned style.rs hits),
+# which would have quietly baselined every token-definition file as a violation.
+# Filtering in the pipeline is portable and testable.
+ALLOWED_RE="/($(IFS='|'; echo "${ALLOWED_BASENAMES[*]%.rs}"))\.rs$"
+EXCLUDE_DIR_ARGS=(
+  --exclude-dir="apex-terminal-designmode"
+  --exclude-dir=".git"
+  --exclude-dir="playground"   # standalone demo binary, not the product
+)
 
-# We also exclude the designmode directory entirely
-EXCLUDE_DIR_ARGS=(--exclude-dir="apex-terminal-designmode" --exclude-dir=".git")
+# ── Collect per-file violation counts ───────────────────────────────────────
+collect() {
+  for pat in "${PATTERNS[@]}"; do
+    grep -rn \
+      "${EXCLUDE_DIR_ARGS[@]}" \
+      --include="*.rs" \
+      -F "$pat" \
+      "$SRC_DIR" 2>/dev/null || true
+  done \
+  | grep -v -E ':[0-9]+:[[:space:]]*//' \
+  | sed "s|^$REPO_ROOT/||" \
+  | cut -d: -f1 \
+  | grep -v -E "$ALLOWED_RE" \
+  | grep -v -E '(^|/)tests?/' \
+  | sort | uniq -c \
+  | awk '{printf "%s %s\n", $1, $2}' \
+  | sort -k2
+}
 
-# -----------------------------------------------------------------------
-# Collect all current violations (file:line:content)
-# -----------------------------------------------------------------------
-VIOLATIONS_TMP=$(mktemp)
-trap 'rm -f "$VIOLATIONS_TMP"' EXIT
+CURRENT=$(mktemp); trap 'rm -f "$CURRENT"' EXIT
+collect > "$CURRENT"
 
-for pat in "${PATTERNS[@]}"; do
-  grep -rn \
-    "${EXCLUDE_ARGS[@]}" \
-    "${EXCLUDE_DIR_ARGS[@]}" \
-    --include="*.rs" \
-    -F "$pat" \
-    "$SRC_DIR" 2>/dev/null || true
-done | sort -u > "$VIOLATIONS_TMP"
-
-# Make paths relative to repo root for stable comparison across machines
-# (baseline was generated the same way)
-VIOLATIONS_REL_TMP=$(mktemp)
-trap 'rm -f "$VIOLATIONS_TMP" "$VIOLATIONS_REL_TMP"' EXIT
-
-while IFS= read -r line; do
-  rel="${line#$REPO_ROOT/}"
-  echo "$rel"
-done < "$VIOLATIONS_TMP" | sort -u > "$VIOLATIONS_REL_TMP"
-
-# -----------------------------------------------------------------------
-# Compare against baseline
-# -----------------------------------------------------------------------
-if [[ ! -f "$BASELINE_FILE" ]]; then
-  echo "WARNING: baseline file not found at $BASELINE_FILE"
-  echo "         Treating all violations as new."
-  BASELINE_SORTED=$(mktemp)
-  touch "$BASELINE_SORTED"
-  trap 'rm -f "$VIOLATIONS_TMP" "$VIOLATIONS_REL_TMP" "$BASELINE_SORTED"' EXIT
-else
-  BASELINE_SORTED=$(mktemp)
-  trap 'rm -f "$VIOLATIONS_TMP" "$VIOLATIONS_REL_TMP" "$BASELINE_SORTED"' EXIT
-  sort -u "$BASELINE_FILE" > "$BASELINE_SORTED"
-fi
-
-NEW_VIOLATIONS=$(comm -23 "$VIOLATIONS_REL_TMP" "$BASELINE_SORTED")
-
-if [[ -z "$NEW_VIOLATIONS" ]]; then
-  TOTAL=$(wc -l < "$VIOLATIONS_REL_TMP" | tr -d ' ')
-  echo "Design-system check passed. ($TOTAL baseline violation(s) tolerated, 0 new)"
+if [[ "$MODE" == "--update" ]]; then
+  cp "$CURRENT" "$BASELINE_FILE"
+  echo "Baseline updated: $(wc -l < "$BASELINE_FILE") files, $(awk '{s+=$1} END{print s+0}' "$BASELINE_FILE") violations."
   exit 0
 fi
 
-# -----------------------------------------------------------------------
-# Print actionable output for each new violation
-# -----------------------------------------------------------------------
-echo ""
-echo "============================================================"
-echo "  DESIGN-SYSTEM VIOLATIONS DETECTED"
-echo "  These are NEW violations not present in the baseline."
-echo "  Fix them before merging, or add them to the baseline with"
-echo "  justification if they are truly unavoidable."
-echo "============================================================"
-echo ""
+if [[ ! -f "$BASELINE_FILE" ]]; then
+  echo "ERROR: no baseline at $BASELINE_FILE — run: $0 --update"
+  exit 1
+fi
 
+# ── Compare: fail only on INCREASES ─────────────────────────────────────────
 FAIL=0
-while IFS= read -r vline; do
-  [[ -z "$vline" ]] && continue
-  FAIL=1
-
-  # Determine which pattern matched to give a useful suggestion
-  SUGGESTION="a design-system component from style.rs"
-  if echo "$vline" | grep -qF "egui::Button::new("; then
-    SUGGESTION="icon_btn / small_action_btn / pill_button / big_action_btn from style.rs"
-  elif echo "$vline" | grep -qF "egui::TextEdit::singleline"; then
-    SUGGESTION="text_input_field or numeric_input_field from style.rs"
-  elif echo "$vline" | grep -qF "Color32::from_rgb("; then
-    SUGGESTION="a token color via current().accent / current().bull / etc. from style.rs"
+REGRESSED=""
+while read -r cur_count cur_file; do
+  [[ -z "${cur_file:-}" ]] && continue
+  base_count=$(awk -v f="$cur_file" '$2==f {print $1; found=1} END{if(!found) print 0}' "$BASELINE_FILE")
+  if (( cur_count > base_count )); then
+    REGRESSED+="  $cur_file: $base_count -> $cur_count (+$((cur_count - base_count)))"$'\n'
+    FAIL=1
   fi
+done < "$CURRENT"
 
-  echo "DESIGN-SYSTEM VIOLATION: $vline"
-  echo "  -> Use $SUGGESTION instead."
+CUR_TOTAL=$(awk '{s+=$1} END{print s+0}' "$CURRENT")
+BASE_TOTAL=$(awk '{s+=$1} END{print s+0}' "$BASELINE_FILE")
+
+if (( FAIL )); then
+  echo "DESIGN-SYSTEM RATCHET FAILED — new off-token UI primitives:"
   echo ""
-done <<< "$NEW_VIOLATIONS"
+  printf '%s' "$REGRESSED"
+  echo ""
+  echo "Total: $BASE_TOTAL -> $CUR_TOTAL"
+  echo ""
+  echo "Use the design system instead of raw primitives:"
+  echo "  colors  -> the theme (t.text / t.dim / t.accent / t.bull / t.bear),"
+  echo "             or color_alpha(t.<role>, a) for translucency"
+  echo "  fonts   -> font_xs()/font_sm()/font_md()/… or a TextStyle tier"
+  echo "  radii   -> radius_xs/sm/md/lg(), r_pill(), current().region_radius"
+  echo "  widgets -> ui_kit::widgets::{Button, Input, PanelListRow, …}"
+  echo ""
+  echo "If a violation is genuinely justified (a brand colour, a token"
+  echo "definition), add the file to ALLOWED_BASENAMES with a comment saying why."
+  echo "Do NOT blanket-regenerate the baseline to silence a real regression."
+  exit 1
+fi
 
-echo "------------------------------------------------------------"
-COUNT=$(echo "$NEW_VIOLATIONS" | grep -c '.' || true)
-echo "  $COUNT new violation(s) found."
-echo "  See docs/DESIGN_SYSTEM.md for guidance."
-echo "============================================================"
-echo ""
-
-exit 1
+if (( CUR_TOTAL < BASE_TOTAL )); then
+  echo "Design-system ratchet OK — improved: $BASE_TOTAL -> $CUR_TOTAL."
+  echo "Run '$0 --update' to lock in the gain."
+else
+  echo "Design-system ratchet OK — $CUR_TOTAL violations (baseline $BASE_TOTAL)."
+fi
+exit 0

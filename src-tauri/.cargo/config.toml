@@ -8,6 +8,27 @@
 #
 # Profiles themselves are tuned in Cargo.toml ([profile.dev] optimises
 # dependencies so even the dev build is usable).
+# `cargo design`      → dev build with the DESIGN-MODE inspector compiled in.
+#                       F12 then opens live token editing (sliders / colour
+#                       pickers) that applies on the NEXT REPAINT, and can save
+#                       back to design.toml; the theme watcher hot-reloads JSON
+#                       from the styles/ dir within ~1.5s.
+#                       This is feature-gated, so a normal `cargo apex-dev`
+#                       build has NO live editing — which is why iterating on
+#                       visuals otherwise means edit → rebuild → relaunch
+#                       (minutes per change). Use this for any visual tuning.
+
+# `cargo design`      -> dev build with the DESIGN-MODE inspector compiled in.
+#                       F12 then opens live token editing (sliders / colour
+#                       pickers) that applies on the NEXT REPAINT, and can save
+#                       back to design.toml; the theme watcher hot-reloads JSON
+#                       from the styles/ dir within ~1.5s.
+#                       This is feature-gated, so a normal `cargo apex-dev`
+#                       build has NO live editing -- which is why iterating on
+#                       visuals otherwise means edit -> rebuild -> relaunch
+#                       (minutes per change). Use this for any visual tuning.
+
 [alias]
 apex     = "run --release --bin apex-native"
 apex-dev = "run --bin apex-native"
+design   = "run --bin apex-native --features design-mode"
