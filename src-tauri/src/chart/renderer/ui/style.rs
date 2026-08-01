@@ -1432,14 +1432,42 @@ pub(crate) fn toolnav_visible() -> bool {
         None => true,
     }
 }
-/// Resolved toolnav height (px). Falls back to 30 when the user forces it on
-/// but the active style sets `toolnav_height = 0`.
+/// Resolved toolnav height (px). Falls back to [`toolnav_min_height`] when the
+/// user forces the row on but the active style sets `toolnav_height = 0`.
 #[inline]
 pub(crate) fn toolnav_resolved_height() -> f32 {
-    // Floor at 38px: the second toolbar row hosts the same ~36.6px dropdown menu
-    // buttons (indicators/widgets) as the main toolbar, so a 30px row clipped them.
+    let floor = toolnav_min_height();
     let h = current().toolnav_height;
-    if h > 0.0 { h.max(38.0) } else { 38.0 }
+    if h > 0.0 { h.max(floor) } else { floor }
+}
+
+/// The smallest toolnav height that can actually CONTAIN its tallest control.
+///
+/// The row hosts icon dropdown buttons (indicators / widgets) built as
+/// `Button::menu(icon).glyph_size(font_lg())` with the toolbar's
+/// `button_padding.y == gap_sm()`, so their height is
+/// `icon-font line height + 2 * gap_sm()`.
+///
+/// WHY THIS IS DERIVED AND NOT A CONSTANT (2026-08-01): this used to be a hard
+/// `38.0`, chosen when those buttons measured ~36.6px. When the app-wide type
+/// scale was lifted the buttons grew to ~37.3px, the frozen 38px row no longer
+/// contained them, and egui clipped their bottom edge — the corpus caught it as
+/// `clipped: toolbar.indicators_btn, toolbar.widgets_btn` in 572 / 913 / 2400.
+/// The row is chrome that WRAPS type, so its floor has to track the type scale
+/// (and the user's spacing-scale override) instead of being frozen against it.
+/// Shrinking the type back was explicitly rejected — the readability win stands
+/// and the causation test showed the scale was not the defect; the frozen
+/// constant was.
+#[inline]
+pub(crate) fn toolnav_min_height() -> f32 {
+    // Phosphor's icon face lays out at ~1.33x the requested px size.
+    const ICON_LINE_FACTOR: f32 = 1.35;
+    // Slack for the panel frame: the panel spends a couple of px on its own
+    // chrome, and `horizontal_centered` centres the run inside what's left.
+    const FRAME_SLACK: f32 = 6.0;
+    let btn_h = crate::ui_kit::style::font_lg() * ICON_LINE_FACTOR
+        + 2.0 * crate::ui_kit::style::gap_sm();
+    (btn_h + FRAME_SLACK).max(38.0)
 }
 
 // ── Footer (bottom dock) visibility override (hybrid: style default + user) ──
