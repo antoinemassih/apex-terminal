@@ -25,6 +25,14 @@ use std::time::Duration;
 // Prometheus via `foundation/monitoring.rs`.
 pub(crate) static MESSAGES_IN:        AtomicU64 = AtomicU64::new(0);
 pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
+/// Subscription frames actually written to the socket.
+pub(crate) static SUBS_PUSH_SENT:       AtomicU64 = AtomicU64::new(0);
+/// Identical subscription pushes suppressed before hitting the wire.
+///
+/// Expected to be LARGE and to dwarf `SUBS_PUSH_SENT` — `set_quotes` is driven
+/// from the per-frame render loop, so this counts the ~60/s no-op pushes that
+/// used to reach ApexData and write-lock its fanout index for every client.
+pub(crate) static SUBS_PUSH_SUPPRESSED: AtomicU64 = AtomicU64::new(0);
 pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
 pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
 
@@ -130,10 +138,25 @@ struct Manager {
     /// Set by `Shutdown::drain` to stop the reconnect loop after the current
     /// iteration exits.
     shutdown: AtomicBool,
+    /// The last subscription frame actually written to the socket.
+    ///
+    /// Exists to make re-sending an identical set impossible. `set_quotes` is
+    /// driven from the per-frame render loop, so without this the terminal
+    /// pushed a full `{quotes:[...]}` frame ~60x/second. ApexData takes a WRITE
+    /// LOCK on its fanout index per subscription frame, so that starves
+    /// dispatch for EVERY client on the account, not just this one — it is the
+    /// single most damaging thing a client can do to the shared feed.
+    ///
+    /// Cleared on disconnect so the first push after a reconnect always goes
+    /// out (the server has no memory of what we wanted).
+    last_sent_subs: Mutex<Option<String>>,
 }
 
 enum CtrlMsg {
-    PushSubs,
+    /// `force` bypasses the identical-frame suppression. Required after a
+    /// `resync` or a reconnect: the server has dropped its subscription state
+    /// and is waiting for us to re-declare, so "unchanged" must still be sent.
+    PushSubs { force: bool },
     Shutdown,
 }
 
@@ -148,6 +171,7 @@ fn manager() -> Arc<Manager> {
             tx_ctrl: Mutex::new(None),
             connected: Mutex::new(false),
             shutdown: AtomicBool::new(false),
+            last_sent_subs: Mutex::new(None),
         })
     }).clone()
 }
@@ -289,16 +313,22 @@ pub fn set_chain(underlyings: &[String]) {
 /// and expects clients to re-declare what they want). Cheap — just replays the
 /// existing `SubState`, no local subscription is lost.
 pub fn resubscribe() {
-    push_subs();
+    push_subs_forced();
 }
 
 fn with_subs(f: impl FnOnce(&mut SubState)) {
     if let Ok(mut g) = manager().subs.lock() { f(&mut g); }
 }
 
-fn push_subs() {
+fn push_subs() { push_subs_inner(false) }
+
+/// Push even if the set is unchanged — for resync/reconnect, where the server
+/// has forgotten what we asked for.
+fn push_subs_forced() { push_subs_inner(true) }
+
+fn push_subs_inner(force: bool) {
     if let Some(tx) = manager().tx_ctrl.lock().ok().and_then(|g| g.clone()) {
-        let _ = tx.send(CtrlMsg::PushSubs);
+        let _ = tx.send(CtrlMsg::PushSubs { force });
     }
 }
 
@@ -472,8 +502,24 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
                 }
                 ctrl = rx_ctrl.recv() => {
                     match ctrl {
-                        Some(CtrlMsg::PushSubs) => {
-                            if let Some(frame) = build_subs_frame(&mgr) {
+                        Some(CtrlMsg::PushSubs { force }) => {
+                            // Suppress identical re-sends. ApexData write-locks
+                            // its fanout index per subscription frame, so a
+                            // no-op push starves dispatch for every client on
+                            // the account. `force` is set after resync/reconnect
+                            // where the server genuinely needs re-declaring.
+                            let frame = build_subs_frame(&mgr);
+                            let unchanged = !force && matches!(
+                                (&frame, mgr.last_sent_subs.lock().ok().as_deref()),
+                                (Some(f), Some(Some(prev))) if f == prev
+                            );
+                            if unchanged {
+                                SUBS_PUSH_SUPPRESSED.fetch_add(1, Ordering::Relaxed);
+                            } else if let Some(frame) = frame {
+                                if let Ok(mut g) = mgr.last_sent_subs.lock() {
+                                    *g = Some(frame.clone());
+                                }
+                                SUBS_PUSH_SENT.fetch_add(1, Ordering::Relaxed);
                                 if let Err(e) = tx_ws.send(Message::Text(frame)).await {
                                     report(ErrorLevel::Warn, "apex_data.ws", "send_failed", e.to_string());
                                     break;
@@ -490,6 +536,11 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         }
 
         if let Ok(mut c) = mgr.connected.lock() { *c = false; }
+        // Forget what we last declared. The server keeps no subscription state
+        // across a connection, so the first push after reconnect MUST go out
+        // even if our local set is byte-identical — otherwise suppression would
+        // leave us silently subscribed to nothing.
+        if let Ok(mut g) = mgr.last_sent_subs.lock() { *g = None; }
         broadcast(&mgr, &Frame::Connection(false));
         if mgr.shutdown.load(Ordering::SeqCst) {
             publish_state(ConnectionState::ShuttingDown);
@@ -552,11 +603,21 @@ async fn run_watchdog() {
 
 fn build_subs_frame(mgr: &Arc<Manager>) -> Option<String> {
     let s = mgr.subs.lock().ok()?.clone();
-    let bars: Vec<String>      = s.bars.iter().cloned().collect();
-    let bars_mark: Vec<String> = s.bars_mark.iter().cloned().collect();
-    let tape: Vec<String>      = s.tape.iter().cloned().collect();
-    let quotes: Vec<String>    = s.quotes.iter().cloned().collect();
-    let chain: Vec<String>     = s.chain.iter().cloned().collect();
+    // SORTED, not just collected. These are HashSets, which iterate in a
+    // different order every time, so an unchanged subscription set serialized
+    // to different bytes on every frame — defeating any dedup and making the
+    // wire traffic undiffable. Sorting makes the frame a pure function of the
+    // set, which is what lets `last_sent_subs` suppress no-op pushes.
+    let sorted = |set: &std::collections::HashSet<String>| -> Vec<String> {
+        let mut v: Vec<String> = set.iter().cloned().collect();
+        v.sort_unstable();
+        v
+    };
+    let bars      = sorted(&s.bars);
+    let bars_mark = sorted(&s.bars_mark);
+    let tape      = sorted(&s.tape);
+    let quotes    = sorted(&s.quotes);
+    let chain     = sorted(&s.chain);
     // MARK_BARS_PROTOCOL: always send BOTH arrays atomically — server treats
     // a missing array as empty.
     let msg = OutMsg {
@@ -1056,5 +1117,74 @@ mod w1_09_replay_overlay_tests {
         });
         let (b, _) = replay_overlay_bar(&bar).expect("prices complete → bar");
         assert_eq!(b.volume, 0.0);
+    }
+}
+
+#[cfg(test)]
+mod subs_frame_stability_tests {
+    use super::*;
+
+    fn state(quotes: &[&str]) -> SubState {
+        let mut s = SubState::default();
+        s.quotes = quotes.iter().map(|x| x.to_string()).collect();
+        s
+    }
+
+    /// Serialize exactly as `build_subs_frame` does, without needing a Manager.
+    fn frame_of(s: &SubState) -> String {
+        let sorted = |set: &std::collections::HashSet<String>| -> Vec<String> {
+            let mut v: Vec<String> = set.iter().cloned().collect();
+            v.sort_unstable();
+            v
+        };
+        let (bars, bars_mark, tape, quotes, chain) =
+            (sorted(&s.bars), sorted(&s.bars_mark), sorted(&s.tape), sorted(&s.quotes), sorted(&s.chain));
+        serde_json::to_string(&OutMsg {
+            subscribe: Some(&bars), subscribe_mark: Some(&bars_mark),
+            tape: Some(&tape), quotes: Some(&quotes), chain: Some(&chain), format: None,
+        }).unwrap()
+    }
+
+    #[test]
+    fn the_same_contract_set_always_serializes_identically() {
+        // THE bug this guards: HashSet iteration order varies run to run, so an
+        // unchanged subscription produced different bytes every frame. That
+        // defeats dedup entirely — every no-op push looks like a real change
+        // and reaches ApexData, which write-locks its fanout index per frame.
+        let a = frame_of(&state(&["O:SPY260804C00744000", "O:SPY260804P00744000", "O:QQQ260804C00500000"]));
+        for _ in 0..64 {
+            // Rebuilt from scratch each time: fresh HashSet, fresh iteration order.
+            let b = frame_of(&state(&["O:QQQ260804C00500000", "O:SPY260804P00744000", "O:SPY260804C00744000"]));
+            assert_eq!(a, b, "identical sets must produce identical bytes regardless of insertion order");
+        }
+    }
+
+    #[test]
+    fn a_genuinely_different_set_produces_a_different_frame() {
+        // Suppression must not be so aggressive that a real change is dropped —
+        // that would leave the user staring at unseated contracts forever.
+        let a = frame_of(&state(&["O:SPY260804C00744000"]));
+        let b = frame_of(&state(&["O:SPY260804C00744000", "O:SPY260804P00744000"]));
+        assert_ne!(a, b, "adding a visible contract MUST reach the wire");
+    }
+
+    #[test]
+    fn quotes_are_sorted_in_the_payload() {
+        let f = frame_of(&state(&["O:C", "O:A", "O:B"]));
+        let a = f.find("O:A").expect("A present");
+        let b = f.find("O:B").expect("B present");
+        let c = f.find("O:C").expect("C present");
+        assert!(a < b && b < c, "payload must be deterministically ordered: {f}");
+    }
+
+    #[test]
+    fn an_empty_set_still_serializes_all_arrays() {
+        // MARK_BARS_PROTOCOL: the server treats a MISSING array as empty, so
+        // every array must be present even when empty — otherwise clearing a
+        // subscription silently fails to clear.
+        let f = frame_of(&SubState::default());
+        for key in ["subscribe", "subscribe_mark", "tape", "quotes", "chain"] {
+            assert!(f.contains(key), "{key} must be present in {f}");
+        }
     }
 }
