@@ -1,39 +1,6 @@
 {
   "done": true,
   "total": 1067,
-  "correct": 1059,
-  "real": [
-    {
-      "file": "572_design_audit_baseline.json",
-      "detail": "step 2 (assert): [\u2717] clipped: toolbar.indicators_btn, toolbar.widgets_btn; [\u2717] clipped: toolbar.indicators_btn, toolbar.widgets_btn"
-    },
-    {
-      "file": "913_ux_audit_baseline.json",
-      "detail": "step 3 (assert): [\u2717] clipped: toolbar.indicators_btn, toolbar.widgets_btn"
-    },
-    {
-      "file": "1121_dom_ladder_rty.json",
-      "detail": "step 8 (assert): [\u2713] state.panes.0.dom_sidebar_open == true; [\u2717] pane 0 DOM ladder BAD: levels=20 desc=true bid=None ask=Some(2927.10009765625); [\u2717] pane 0 DOM ladder BAD: levels=20 desc=true uniform=false; [\u2713] no panics; [\u2713] viewport(s) sane; [\u2713] all canvas values finite; [\u2713] bars strictly time-ordered, left\u2192right; [\u2713] candle geometry ordered (high above low, body within wick); [\u2713] canvas pane 0: all 180 bars hav"
-    },
-    {
-      "file": "1122_dom_ladder_cl.json",
-      "detail": "step 8 (assert): [\u2713] state.panes.0.dom_sidebar_open == true; [\u2717] pane 0 DOM ladder BAD: levels=20 desc=true bid=Some(87.37999725341797) ask=None; [\u2717] pane 0 DOM ladder BAD: levels=20 desc=true uniform=false; [\u2713] no panics; [\u2713] viewport(s) sane; [\u2713] all canvas values finite; [\u2713] bars strictly time-ordered, left\u2192right; [\u2713] candle geometry ordered (high above low, body within wick); [\u2713] canvas pane 0: all 180 bars ha"
-    },
-    {
-      "file": "1123_dom_ladder_gc.json",
-      "detail": "step 8 (assert): [\u2713] state.panes.0.dom_sidebar_open == true; [\u2717] pane 0 DOM ladder BAD: levels=20 desc=true bid=None ask=Some(3711.0); [\u2717] pane 0 DOM ladder BAD: levels=20 desc=true uniform=false; [\u2713] no panics; [\u2713] viewport(s) sane; [\u2713] all canvas values finite; [\u2713] bars strictly time-ordered, left\u2192right; [\u2713] candle geometry ordered (high above low, body within wick); [\u2713] canvas pane 0: all 180 bars have valid OH"
-    },
-    {
-      "file": "1609_desk_session_nq.json",
-      "detail": "step 19 (assert): [\u2713] canvas pane 0 indicator 'VWAP' exists; [\u2713] state.panes.0.gamma_level_count (31) >= 1; [\u2713] state.panes.0.dom_level_count (20) >= 1; [\u2713] state.panes.0.order_draft_count (1) >= 1; [\u2713] state.scanner.result_count == 50; [\u2717] pane 0 DOM ladder BAD: levels=20 desc=true bid=None ask=Some(28169.75); [\u2713] paper_mode on, 0 orders in a submitted state; [\u2713] no panics; [\u2713] viewport(s) sane; [\u2713] all canvas val"
-    },
-    {
-      "file": "1857_matrix_dom_zn.json",
-      "detail": "step 8 (assert): [\u2713] state.panes.0.dom_level_count (20) >= 1; [\u2717] pane 0 DOM ladder BAD: levels=20 desc=true bid=Some(108.21875) ask=None; [\u2713] no panics; [\u2713] viewport(s) sane; [\u2713] 49.8 fps >= 5"
-    },
-    {
-      "file": "2400_autochart_panel_open_render.json",
-      "detail": "step 6 (assert): [\u2713] state.auto_chart.open == true; [\u2713] found checkbox 'Auto-charting ON' (id=auto_chart.enabled); [\u2713] found slider 'bars back' (id=auto_chart.window); [\u2713] found checkbox 'Anchored only' (id=auto_chart.anchored_only); [\u2713] found checkbox 'Trendlines' (id=auto_chart.trendlines); [\u2713] found checkbox 'Channels' (id=auto_chart.channels); [\u2713] found checkbox 'Levels' (id=auto_chart.levels); [\u2713] found check"
-    }
-  ]
+  "correct": 1067,
+  "real": []
 }
