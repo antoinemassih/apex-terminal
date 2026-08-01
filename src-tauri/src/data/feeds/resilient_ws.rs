@@ -100,13 +100,17 @@ pub async fn connect_lan_aware(url: &str)
 {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     use tokio_tungstenite::{client_async, connect_async, MaybeTlsStream};
-    use tokio::net::TcpStream;
+
     use crate::data::feeds::apex_data::config;
 
     let req = url.into_client_request()?;
-    match (config::apex_lan_ip(), config::apex_host_port()) {
-        (Some(ip), Some((_h, port))) => {
-            let stream = TcpStream::connect((ip.as_str(), port)).await?;
+    match (config::apex_lan_ips().is_empty(), config::apex_host_port()) {
+        (false, Some((_h, port))) => {
+            // Walks every candidate node rather than betting on one — see
+            // apex_data::ws::dial_lan_candidates.
+            let stream = crate::data::feeds::apex_data::ws::dial_lan_candidates(port)
+                .await
+                .map_err(std::io::Error::other)?;
             let (ws, _) = client_async(req, MaybeTlsStream::Plain(stream)).await?;
             Ok(ws)
         }

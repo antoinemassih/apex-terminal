@@ -112,6 +112,10 @@ pub fn apex_lan_ip() -> Option<String> {
 /// The REST client hands the whole list to reqwest's `resolve_to_addrs`, which
 /// tries them in turn — so losing one node degrades to a slower connect rather
 /// than to fabricated option prices.
+/// How many LAN candidates ship by default. Used to bound the worst-case
+/// dial walk in tests.
+pub fn default_lan_ip_count() -> usize { DEFAULT_LAN_IPS.len() }
+
 pub fn apex_lan_ips() -> Vec<String> {
     lan_ip_cell().read().ok()
         .and_then(|g| g.clone())

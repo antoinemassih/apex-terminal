@@ -320,6 +320,45 @@ fn with_subs(f: impl FnOnce(&mut SubState)) {
     if let Ok(mut g) = manager().subs.lock() { f(&mut g); }
 }
 
+/// Per-candidate TCP connect budget when walking LAN nodes.
+///
+/// A node that is down but not actively refusing (firewalled, or mid-reboot)
+/// black-holes the SYN and the connect hangs until the OS gives up — which is
+/// tens of seconds. With a whole candidate list that would be worse than the
+/// single-IP behaviour it replaces, so each attempt is capped.
+const LAN_DIAL_TIMEOUT: Duration = Duration::from_millis(1500);
+
+/// Connect to the first reachable LAN candidate, in preference order.
+///
+/// The WS path cannot use reqwest's `resolve_to_addrs` (it dials a raw TCP
+/// socket and hands it to `client_async` with the original Host-bearing
+/// request, to keep Traefik ingress routing intact), so failover is explicit
+/// here. Same rationale as the REST side: losing one K3s node must cost a
+/// reconnect, not drop the terminal onto synthesized option prices.
+pub(crate) async fn dial_lan_candidates(port: u16) -> Result<TcpStream, String> {
+    let ips = super::config::apex_lan_ips();
+    if ips.is_empty() {
+        return Err("no LAN candidates configured".into());
+    }
+    let mut errors: Vec<String> = Vec::new();
+    for ip in &ips {
+        match tokio::time::timeout(LAN_DIAL_TIMEOUT, TcpStream::connect((ip.as_str(), port))).await {
+            Ok(Ok(stream)) => {
+                if !errors.is_empty() {
+                    // Worth a line: a silent failover hides a node that is down.
+                    report(ErrorLevel::Warn, "apex_data.ws", "lan_failover",
+                        format!("connected {ip}:{port} after {} failed candidate(s): {}",
+                            errors.len(), errors.join("; ")));
+                }
+                return Ok(stream);
+            }
+            Ok(Err(e)) => errors.push(format!("{ip}: {e}")),
+            Err(_)     => errors.push(format!("{ip}: timeout after {}ms", LAN_DIAL_TIMEOUT.as_millis())),
+        }
+    }
+    Err(format!("all {} LAN candidate(s) failed: {}", ips.len(), errors.join("; ")))
+}
+
 fn push_subs() { push_subs_inner(false) }
 
 /// Push even if the set is unchanged — for resync/reconnect, where the server
@@ -376,19 +415,19 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         // LAN-IP override: when set, connect TCP directly to the homelab
         // Traefik IP and hand the socket to `client_async` with the original
         // Host-bearing request. Keeps Traefik ingress routing intact.
-        let lan_override = match (super::config::apex_lan_ip(), super::config::apex_host_port()) {
-            (Some(ip), Some((_host, port))) => Some((ip, port)),
+        let lan_override = match (super::config::apex_lan_ips().is_empty(), super::config::apex_host_port()) {
+            (false, Some((_host, port))) => Some(port),
             _ => None,
         };
 
-        let conn_result = if let Some((ip, port)) = lan_override.as_ref() {
-            report(ErrorLevel::Info, "apex_data.ws", "lan_override", format!("dial {ip}:{port}"));
-            match TcpStream::connect((ip.as_str(), *port)).await {
+        let conn_result = if let Some(port) = lan_override {
+            report(ErrorLevel::Info, "apex_data.ws", "lan_override", format!("dial :{port}"));
+            match dial_lan_candidates(port).await {
                 Ok(stream) => match client_async(req, MaybeTlsStream::Plain(stream)).await {
                     Ok((ws, _)) => Ok(ws),
                     Err(e) => Err(format!("handshake: {e}")),
                 },
-                Err(e) => Err(format!("tcp connect {ip}:{port}: {e}")),
+                Err(e) => Err(e),
             }
         } else {
             match connect_async(req).await {
@@ -762,18 +801,18 @@ where
 
     // Reuse the LAN-IP override path (same trick the live WS uses) so the
     // replay socket also bypasses public DNS in the homelab.
-    let lan_override = match (super::config::apex_lan_ip(), super::config::apex_host_port()) {
-        (Some(ip), Some((_host, port))) => Some((ip, port)),
+    let lan_override = match (super::config::apex_lan_ips().is_empty(), super::config::apex_host_port()) {
+        (false, Some((_host, port))) => Some(port),
         _ => None,
     };
 
-    let conn_result = if let Some((ip, port)) = lan_override.as_ref() {
-        match TcpStream::connect((ip.as_str(), *port)).await {
+    let conn_result = if let Some(port) = lan_override {
+        match dial_lan_candidates(port).await {
             Ok(stream) => match client_async(req, MaybeTlsStream::Plain(stream)).await {
                 Ok((ws, _)) => Ok(ws),
                 Err(e) => Err(format!("handshake: {e}")),
             },
-            Err(e) => Err(format!("tcp {ip}:{port}: {e}")),
+            Err(e) => Err(e),
         }
     } else {
         match connect_async(req).await {
@@ -1186,5 +1225,46 @@ mod subs_frame_stability_tests {
         for key in ["subscribe", "subscribe_mark", "tape", "quotes", "chain"] {
             assert!(f.contains(key), "{key} must be present in {f}");
         }
+    }
+}
+
+#[cfg(test)]
+mod lan_dial_tests {
+    use super::*;
+
+    #[test]
+    fn the_per_candidate_budget_is_bounded() {
+        // A node that black-holes the SYN (firewalled, mid-reboot) hangs the
+        // connect until the OS gives up — tens of seconds. Unbounded, walking a
+        // candidate list would be WORSE than the single IP it replaced, because
+        // each dead node adds its own full stall before the next is tried.
+        assert!(LAN_DIAL_TIMEOUT <= Duration::from_secs(3),
+            "per-candidate dial budget must stay small enough that walking the \
+             whole list beats one hung connect");
+    }
+
+    #[test]
+    fn walking_every_candidate_stays_within_a_reconnect_budget() {
+        // Worst case: every candidate times out. That total is what a reconnect
+        // costs before falling back — it must not exceed the chain fetch's own
+        // patience, or the terminal drops to a synthetic chain while the dialer
+        // is still working through the list.
+        let worst = LAN_DIAL_TIMEOUT * crate::apex_data::config::default_lan_ip_count() as u32;
+        assert!(worst <= Duration::from_secs(8),
+            "worst-case dial walk {worst:?} would outlast the chain retry window");
+    }
+
+    #[tokio::test]
+    async fn an_empty_candidate_list_fails_fast_and_explains_itself() {
+        use crate::apex_data::config;
+        // Save/restore: this mutates PROCESS-WIDE config, and the suite runs
+        // tests in parallel. Leaving it clobbered would silently strip the LAN
+        // candidates out from under any test that reads them later — a flake
+        // that would look like a networking bug rather than a dirty fixture.
+        let prev = config::apex_lan_ips().join(",");
+        config::set_apex_lan_ip(Some(String::new()));
+        let err = dial_lan_candidates(65535).await.unwrap_err();
+        config::set_apex_lan_ip(if prev.is_empty() { None } else { Some(prev) });
+        assert!(err.contains("no LAN candidates"), "unhelpful error: {err}");
     }
 }
