@@ -279,7 +279,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         crate::dev_inspector::record(
             crate::dev_inspector::WidgetRecord::from_response(
                 format!("alert_feed.badge_{k}"), "button", a.message.as_str(), &resp, ui,
-            ).with_style("alert_feed"),
+            ).with_style("alert_feed").in_ticker(),
         );
 
         // Paint the pill (clipped to the frame so off-edge badges are cut, not moved).

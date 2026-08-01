@@ -190,6 +190,21 @@ pub fn init_live_feeds() {
                 // brief: "Resubscribe on resync").
                 report(ErrorLevel::Warn, "apex_data", "resync", reason.to_string());
                 apex_data::ws::resubscribe();
+                // Re-declaring subscriptions is NOT enough. A resync means the
+                // server rebuilt its state, so our locally cached option chain
+                // is stale — chaindelta only carries CHANGED rows, so nothing
+                // will ever correct a row that drifted while we were desynced.
+                // Drop the cache; the pills fall back to "?" (provenance
+                // unknown) until fresh rows land, which is the honest state.
+                let stale: Vec<String> = apex_data::live_state::chain_summary()
+                    .into_iter().map(|(ul, _, _)| ul).collect();
+                for ul in &stale {
+                    apex_data::live_state::clear_chain(ul);
+                }
+                if !stale.is_empty() {
+                    report(ErrorLevel::Warn, "apex_data", "resync_chain_invalidated",
+                        format!("dropped cached chain(s): {}", stale.join(", ")));
+                }
             }
             Frame::Connection(connected) => {
                 apex_data::live_state::set_connected(*connected);

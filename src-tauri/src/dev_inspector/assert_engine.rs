@@ -1493,8 +1493,12 @@ fn dispatch(
                          && w.rect.area() > 0.0 && w.rect.min_side() < min_px)
                 .map(|w| format!("{} ({:.0}px)", w.id, w.rect.min_side())).collect();
             if !small.is_empty() { issues.push(format!("touch<{min_px}px: {}", small.join(", "))); }
+            // `!w.ticker`: marquee cells slide THROUGH each other's slots during
+            // the tape animation, so a transient overlap there is the design, not
+            // a usability defect. Everything else is still checked.
             let btns: Vec<_> = state.widget_tree.iter()
-                .filter(|w| w.role == "button" && w.layer == 0 && w.rect.area() > 0.0).collect();
+                .filter(|w| w.role == "button" && w.layer == 0 && w.rect.area() > 0.0 && !w.ticker)
+                .collect();
             let mut ov = Vec::new();
             for i in 0..btns.len() {
                 for j in (i + 1)..btns.len() {

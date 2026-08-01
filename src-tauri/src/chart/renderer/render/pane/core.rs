@@ -1810,6 +1810,7 @@ fn render_chart_pane(
             clip_rect: ui.clip_rect().into(),
             layer: 0, focused: false, hovered: false, enabled: true,
             is_clipped: false, style_class: None,
+            ticker: false,
         });
         crate::dev_inspector::check_contract(
             &format!("pane.{pane_idx}.chart_body"),
@@ -3146,6 +3147,16 @@ fn render_chart_pane(
                 // NOTHING — a staleness warning that is invisible is worse than
                 // no warning at all, because it reads as "checked, fine".
                 let (mark, mark_col) = if chart.overlay_chain_placeholder {
+                    ("?", t.warn)
+                } else if fresh.is_none() {
+                    // No cache entry for this contract — provenance UNKNOWN.
+                    // This is not the same as healthy, and it must not render
+                    // like healthy: it happens after a resync invalidates the
+                    // chain cache, or when a pill is drawn for a contract the
+                    // cache never carried. Rendering nothing here would make
+                    // "we have no idea how old this is" look identical to a
+                    // live quote — the precise fail-silent this whole marker
+                    // exists to prevent.
                     ("?", t.warn)
                 } else if is_stale {
                     ("!", t.warn)

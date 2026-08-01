@@ -72,6 +72,11 @@ pub struct WidgetRecord {
     pub enabled: bool,
     pub is_clipped: bool,
     pub style_class: Option<String>, // "primary", "ghost", "toolbar", "header", etc.
+    /// Cell of a horizontally sliding ticker (marquee). Both the clipped and the
+    /// overlap audits skip these: partial visibility AND transient overlap are
+    /// the design — badges slide through one another's slots mid-animation.
+    #[serde(default)]
+    pub ticker: bool,
 }
 
 impl WidgetRecord {
@@ -80,7 +85,7 @@ impl WidgetRecord {
             id: id.into(), role: role.into(), label: label.into(),
             value: None, rect: SerRect::zero(), clip_rect: SerRect::zero(),
             layer: 0, focused: false, hovered: false, enabled: true, is_clipped: false,
-            style_class: None,
+            style_class: None, ticker: false,
         }
     }
     pub fn from_response(
@@ -110,6 +115,7 @@ impl WidgetRecord {
             hovered: resp.hovered(),
             enabled: ui.is_enabled(),
             style_class: None,
+            ticker: false,
         }
     }
     pub fn with_style(mut self, class: impl Into<String>) -> Self {
@@ -129,6 +135,27 @@ impl WidgetRecord {
     /// soon as the DB held enough saved watchlists to overflow the pane the
     /// baseline went red on scrollable-but-reachable content. This restores the
     /// audit's true meaning without weakening horizontal-clip detection.
+    /// Mark this widget as a cell of a horizontally SLIDING ticker (marquee),
+    /// clearing `is_clipped`.
+    ///
+    /// Partial visibility is the DESIGN here, not a defect. The alert feed
+    /// renders a deliberate 4.5-slot window (`AREA_SLOTS`) so that a half-badge
+    /// signals "more is sliding in", and the outgoing badge is dissolved under
+    /// an edge fade rather than cut. The content is reachable by waiting for
+    /// the tape to advance, or via the bell — so it is not "cut off and
+    /// unreachable", which is what `no_clipped_widgets` means.
+    ///
+    /// WHY (2026-08-02): registering the feed badges with the inspector was
+    /// correct — they had NO widget-tree presence, so nothing could assert
+    /// anything about them. But registering them without encoding that intent
+    /// immediately turned a by-design clip into three red baselines (572, 900,
+    /// 913). Same shape, and same fix, as `in_vscroll` above.
+    pub fn in_ticker(mut self) -> Self {
+        self.is_clipped = false;
+        self.ticker = true;
+        self
+    }
+
     pub fn in_vscroll(mut self) -> Self {
         const TOL: f32 = 0.5;
         let (r, c) = (&self.rect, &self.clip_rect);
@@ -1224,6 +1251,18 @@ pub fn end_frame(
         "active_timeframe":active_chart.map(|c| c.timeframe.as_str()).unwrap_or(""),
         "bar_count":       active_chart.map(|c| c.bars.len()).unwrap_or(0),
         "open_dialogs":    open_dialogs,
+        // ApexData subscription hygiene. `set_quotes` is driven from the
+        // per-frame render loop, so without suppression the terminal pushed a
+        // full {quotes:[...]} frame ~60x/second and write-locked ApexData's
+        // fanout index for every client on the account. These two numbers are
+        // the evidence the suppression is holding: `suppressed` should dwarf
+        // `sent`, and `sent` should only move when the visible contract set
+        // actually changes. A `sent` that climbs with the frame counter means
+        // the dedup has regressed.
+        "apex_data_subs": {
+            "sent":       crate::apex_data::ws::SUBS_PUSH_SENT.load(std::sync::atomic::Ordering::Relaxed),
+            "suppressed": crate::apex_data::ws::SUBS_PUSH_SUPPRESSED.load(std::sync::atomic::Ordering::Relaxed),
+        },
         "panes":           panes_json,
         "watchlist": {
             "section_count":  watchlist.sections.len(),

@@ -415,6 +415,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
             clip_rect: crate::dev_inspector::SerRect::zero(),
             layer: 1, focused: false, hovered: false, enabled: true,
             is_clipped: false, style_class: None,
+            ticker: false,
         });
     }
 
