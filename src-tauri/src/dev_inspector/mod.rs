@@ -1064,6 +1064,17 @@ pub fn end_frame(
                 "show_strikes_overlay": p.show_strikes_overlay,
                 "strikes_call_count":   p.overlay_calls.len(),
                 "strikes_put_count":    p.overlay_puts.len(),
+                // Fabricated-vs-real for the strike pills, mirroring
+                // `gamma_synthetic` above. The axis pills print a bid/ask per
+                // strike; when the upstream chain is unavailable those numbers
+                // are locally synthesized from Black-Scholes. The chart draws a
+                // PLACEHOLDER badge, but nothing could OBSERVE the distinction —
+                // so "are the pills showing real money or a model?" was not a
+                // question the harness could answer, and a synthetic chain could
+                // sit unnoticed. It is the same failure shape as a dead options
+                // feed behind a green aggregate.
+                "strikes_placeholder":  p.overlay_chain_placeholder,
+                "strikes_chain_symbol": p.overlay_chain_symbol.clone(),
                 "play_line_count":      p.play_lines.len(),
                 // Spreadsheet computed grid (rows×cols of formula-evaluated values).
                 "spreadsheet": {
