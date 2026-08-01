@@ -90,11 +90,9 @@ pub(crate) fn render(
             (Tier::Label,   crate::ui_kit::style::font_xs()),
             (Tier::Caption, crate::ui_kit::style::font_xs()),
         ] {
-            let mono = tier.spec().monospace;
-            s.text_styles.insert(
-                tier.egui(),
-                if mono { egui::FontId::monospace(size) } else { egui::FontId::proportional(size) },
-            );
+            // `font_id_at` keeps the tier's own family — the call site never
+            // builds a FontId and so cannot flip mono/proportional by accident.
+            s.text_styles.insert(tier.egui(), tier.font_id_at(size));
         }
     }
     {

@@ -67,6 +67,10 @@ ALLOWED_BASENAMES=(
   "builtin.rs"               # palette + style-system literals
   "color_scheme.rs"
   "design_tokens.rs"
+  "text_style.rs"            # DEFINES the 16 type tiers. font_id()/font_id_at()
+                             # must build FontIds — that is the whole point, and
+                             # centralising construction HERE is what keeps call
+                             # sites from doing it. Same rationale as scale.rs.
   "scale.rs"                 # DEFINES the typed Space/Radius/Weight/Level scales
                              # — Radius::cr() must build a CornerRadius, that is
                              # its whole job. Exempt for the same reason style.rs

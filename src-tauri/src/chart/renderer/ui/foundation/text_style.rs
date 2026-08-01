@@ -157,6 +157,20 @@ impl TextStyle {
             .unwrap_or_else(|| self.font_id())
     }
 
+    /// This tier's FAMILY at an explicit size — for subtree cascade overrides
+    /// (`style.text_styles.insert(tier.egui(), tier.font_id_at(sz))`).
+    ///
+    /// The tier owns whether it is mono or proportional, so callers re-pointing
+    /// a tier for a subtree never construct a `FontId` themselves and cannot
+    /// accidentally flip the family.
+    pub fn font_id_at(self, size: f32) -> egui::FontId {
+        if self.spec().monospace {
+            egui::FontId::monospace(size)
+        } else {
+            egui::FontId::proportional(size)
+        }
+    }
+
     /// The `FontId` this tier resolves to right now (per-style tokens applied).
     pub fn font_id(self) -> egui::FontId {
         let s = self.spec();
