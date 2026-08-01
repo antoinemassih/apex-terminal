@@ -110,6 +110,20 @@ const ICON_BTN_W_OV: f32 = 80.0;
 const ICON_BTN_W_DRAWING: f32 = 60.0;
 /// Width for the LAYERS (object-tree) button.
 const ICON_BTN_W_LAYERS: f32 = 60.0;
+/// The pane-header right cluster, in paint order: (button, label, icon, MINIMUM width).
+///
+/// The width is a FLOOR ONLY. Actual widths are measured per-frame from the
+/// live font via `Button::intrinsic_width` — see `icon_btn_widths`. Hoisted to
+/// module scope because both the cluster's total (which fixes its left edge)
+/// and the per-button layout must read the same table.
+const BTN_TABLE: &[(PaneBtn, &str, &str, f32)] = &[
+    (PaneBtn::Overlay, "OVERLAY", Icon::EYE,             ICON_BTN_W_OV),
+    (PaneBtn::Layers,  "LAYERS",  Icon::STACK,           ICON_BTN_W_LAYERS),
+    (PaneBtn::Order,   "ORDER",   Icon::CURRENCY_DOLLAR, ICON_BTN_W),
+    (PaneBtn::Dom,     "DOM",     Icon::LADDER,          ICON_BTN_W_DOM),
+    (PaneBtn::Options, "OPTIONS", Icon::CIRCLE,          ICON_BTN_W_OPTIONS),
+];
+
 /// Maximum height for option side / DTE badges.
 const BADGE_HEIGHT_MAX: f32 = 16.0;
 /// Vertical inset reserved around badges (top + bottom combined).
@@ -989,15 +1003,20 @@ impl<'a> PainterPaneHeader<'a> {
         let close_total       = if self.show_close          { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
         // Pane-action controls are at the far right (left of close-tab button).
         let pane_ctrls_total  = close_pane_total + split_total + expand_total;
-        let order_dom_total = {
-            let mut w = 0.0f32;
-            if self.buttons[PaneBtn::Overlay as usize].show { w += ICON_BTN_W_OV; }
-            if self.buttons[PaneBtn::Layers as usize].show  { w += ICON_BTN_W_LAYERS; }
-            if self.buttons[PaneBtn::Order as usize].show   { w += ICON_BTN_W; }
-            if self.buttons[PaneBtn::Dom as usize].show     { w += ICON_BTN_W_DOM; }
-            if self.buttons[PaneBtn::Options as usize].show { w += ICON_BTN_W_OPTIONS; }
-            w
-        };
+        // Measured, not pinned — and it MUST use the same widths the cluster is
+        // laid out with below, or the cluster's left edge (and its divider) lands
+        // somewhere the buttons don't actually start.
+        let icon_btn_widths: Vec<(PaneBtn, f32)> = BTN_TABLE.iter()
+            .filter(|(btn, ..)| self.buttons[*btn as usize].show)
+            .map(|&(btn, label, icon, pinned)| {
+                let natural = crate::ui_kit::widgets::Button::new(label)
+                    .leading_icon(icon)
+                    .status(true)
+                    .intrinsic_width(ui);
+                (btn, natural.max(pinned))
+            })
+            .collect();
+        let order_dom_total: f32 = icon_btn_widths.iter().map(|(_, w)| *w).sum();
 
         // Strong divider at the left edge of the entire right cluster.
         if order_dom_total > 0.0 || pane_ctrls_total > 0.0 || self.show_close {
@@ -1014,18 +1033,20 @@ impl<'a> PainterPaneHeader<'a> {
         {
             use crate::ui_kit::widgets::Button;
 
-            // (btn_enum, label, icon, width)
-            const BTN_TABLE: &[(PaneBtn, &str, &str, f32)] = &[
-                (PaneBtn::Overlay, "OVERLAY", Icon::EYE,            ICON_BTN_W_OV),
-                (PaneBtn::Layers,  "LAYERS",  Icon::STACK,           ICON_BTN_W_LAYERS),
-                (PaneBtn::Order,   "ORDER",   Icon::CURRENCY_DOLLAR, ICON_BTN_W),
-                (PaneBtn::Dom,     "DOM",     Icon::LADDER,          ICON_BTN_W_DOM),
-                (PaneBtn::Options, "OPTIONS", Icon::CIRCLE,          ICON_BTN_W_OPTIONS),
-            ];
-
+            // Widths come from `icon_btn_widths`, measured ONCE above at the
+            // current font. The table's pinned numbers are a floor, not the
+            // value: on a wider type scale "LAYERS" overran its 60px slot, the
+            // next button painted on top of it, and the group divider landed
+            // mid-word. Reusing the same vector keeps the cluster's left edge,
+            // its dividers, and the buttons themselves in agreement.
             let visible: Vec<(PaneBtn, &str, &str, f32)> = BTN_TABLE.iter()
                 .filter(|(btn, ..)| self.buttons[*btn as usize].show)
-                .copied()
+                .map(|&(btn, label, icon, _pinned)| {
+                    let w = icon_btn_widths.iter()
+                        .find(|(b, _)| *b == btn).map(|(_, w)| *w)
+                        .unwrap_or(_pinned);
+                    (btn, label, icon, w)
+                })
                 .collect();
 
             let icon_h = h - ICON_BTN_INSET_V;

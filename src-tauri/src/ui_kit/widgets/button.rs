@@ -533,7 +533,80 @@ impl<'a> Button<'a> {
     }
 }
 
+/// Content width (excluding side padding) of a non-icon-only button.
+///
+/// Extracted so the paint path and [`Button::intrinsic_width`] cannot drift.
+/// The bug that motivated it: the pane header hand-lays its right cluster from a
+/// table of PINNED pixel widths (`ICON_BTN_W_LAYERS = 60.0` and friends), sized
+/// once for a font that has since grown. On styles with a wider face, "LAYERS"
+/// overran its 60px slot, the next button painted on top of it, and the group
+/// divider landed mid-word.
+#[allow(clippy::too_many_arguments)]
+fn measure_content_w(
+    ui: &Ui,
+    has_leading: bool,
+    label: &str,
+    has_trailing: bool,
+    kbd: Option<&str>,
+    font_size: f32,
+    icon_gap: f32,
+    kbd_font: &FontId,
+) -> f32 {
+    let mut w = 0.0f32;
+    if has_leading {
+        w += font_size * 1.1 + icon_gap;
+    }
+    if !label.is_empty() {
+        // Chrome buttons render labels in Proportional (Inter) so they visually
+        // match context menus, panel chrome, and dropdowns. Tabular data (prices,
+        // tickers) should use RichText.monospace directly, not Button labels.
+        // layout-only galley: only `.rect.width()` is read; color discarded.
+        let galley = ui.fonts(|f| {
+            f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), Color32::WHITE)
+        });
+        w += galley.rect.width();
+    }
+    if has_trailing {
+        w += icon_gap + font_size * 1.1;
+    }
+    if let Some(kt) = kbd {
+        // layout-only galley: width measurement only.
+        let g = ui.fonts(|f| f.layout_no_wrap(kt.to_string(), kbd_font.clone(), Color32::WHITE));
+        w += st::gap_md() + g.rect.width();
+    }
+    w
+}
+
 impl<'a> Button<'a> {
+    /// The width this button needs in order to paint without overrunning.
+    ///
+    /// For call sites that pre-allocate a rect instead of letting the button
+    /// allocate its own (see [`Button::show_at`]). Measured through the same
+    /// [`measure_content_w`] the paint path uses, so it tracks the type scale
+    /// automatically instead of being pinned to whatever the font measured on
+    /// the day the constant was written.
+    ///
+    /// Does not cover the stacked (sublabel) layout — those call sites allocate
+    /// normally and never needed a pinned width.
+    pub fn intrinsic_width(&self, ui: &Ui) -> f32 {
+        let font_size = self.size.font_size();
+        let pad_x = if self.is_status { st::gap_2xs() } else { self.size.padding_x() };
+        if self.icon_only {
+            return self.size.height();
+        }
+        let content = measure_content_w(
+            ui,
+            self.leading_icon.is_some(),
+            self.label,
+            self.trailing_icon.is_some(),
+            self.kbd.as_deref(),
+            font_size,
+            st::gap_2xs(),
+            &st::mono_xs(),
+        );
+        content + 2.0 * pad_x
+    }
+
     #[doc(hidden)]
     fn resolve_tint(&self, theme: &dyn ComponentTheme) -> Option<Color32> {
         if self._marker_tint_bull { return Some(palette_ct(theme).base(Tone::Bull)); }
@@ -645,33 +718,23 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
     let kbd_font = st::mono_xs();
 
     // ── Measure intrinsic width ──
-    let mut content_w = 0.0f32;
-    if icon_only {
-        content_w = icon_px;
+    // Shared with `Button::intrinsic_width` so a caller that pre-lays-out a rect
+    // (the pane header hand-lays its right cluster) measures with EXACTLY the
+    // font and gaps this paint path will use. See that method for why.
+    let mut content_w = if icon_only {
+        icon_px
     } else {
-        if leading_icon.is_some() || loading {
-            content_w += font_size * 1.1 + icon_gap;
-        }
-        if !label.is_empty() {
-            // Chrome buttons render labels in Proportional (Inter) so they
-            // visually match context menus, panel chrome, and dropdowns.
-            // Tabular data (prices, tickers) should use RichText.monospace
-            // directly, not Button labels.
-            // layout-only galley: only `.rect.width()` is read; color discarded.
-            let galley = ui.fonts(|f| {
-                f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), Color32::WHITE)
-            });
-            content_w += galley.rect.width();
-        }
-        if trailing_icon.is_some() {
-            content_w += icon_gap + font_size * 1.1;
-        }
-        if let Some(kt) = kbd_text.as_ref() {
-            // layout-only galley: width measurement only.
-            let g = ui.fonts(|f| f.layout_no_wrap(kt.clone(), kbd_font.clone(), Color32::WHITE));
-            content_w += st::gap_md() + g.rect.width();
-        }
-    }
+        measure_content_w(
+            ui,
+            leading_icon.is_some() || loading,
+            label,
+            trailing_icon.is_some(),
+            kbd_text.as_deref(),
+            font_size,
+            icon_gap,
+            &kbd_font,
+        )
+    };
 
     // Stacked (sublabel) layout: vertical icon + label + sublabel.
     // Override measurements computed above.
