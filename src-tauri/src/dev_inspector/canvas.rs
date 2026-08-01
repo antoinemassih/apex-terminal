@@ -55,6 +55,11 @@ pub struct PaneOverlays {
     pub strikes_put_count: usize,
     pub overlay_chain_symbol: String,
     pub overlay_chain_loading: bool,
+    /// True when the strike pills are drawing a LOCALLY SYNTHESIZED chain
+    /// because upstream was unreachable. The rows are Black-Scholes output, not
+    /// quotes — `strikes_overlay_active` counts them and passes regardless, so
+    /// this is what separates "populated" from "real".
+    pub overlay_chain_placeholder: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -432,6 +437,7 @@ fn capture_pane(idx: usize, chart: &crate::chart_renderer::gpu::Chart) -> PaneCa
         strikes_put_count:    chart.overlay_puts.len(),
         overlay_chain_symbol: chart.overlay_chain_symbol.clone(),
         overlay_chain_loading: chart.overlay_chain_loading,
+        overlay_chain_placeholder: chart.overlay_chain_placeholder,
     };
 
     PaneCanvas {

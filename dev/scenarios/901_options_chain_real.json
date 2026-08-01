@@ -1,0 +1,33 @@
+{
+  "name": "options_chain_real",
+  "description": "The strike pills must be showing REAL upstream option quotes, not the locally synthesized Black-Scholes fallback. strikes_overlay_active only counts rows and passes on a fabricated chain, so this asserts strikes_are_real instead. Guards the whole options path end to end: ApexData reachable (LAN candidate failover working), chain fetch returning rows, and the overlay populated from upstream rather than from send_placeholder_chain.",
+  "story": "Options/Chain",
+  "tags": ["options", "chain", "apex-data", "money-path"],
+  "settle_ms": 200,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "pane": 0, "symbol": "SPY" },
+    { "action": "wait_frames", "count": 10 },
+
+    { "action": "cmd", "cmd": "SetChartFlag", "pane": 0, "flag": "show_strikes_overlay", "on": true },
+    { "action": "wait_frames", "count": 30 },
+
+    {
+      "action": "assert",
+      "assertions": [
+        { "strikes_overlay_active": { "pane": 0 } }
+      ]
+    },
+    { "action": "log", "message": "Strikes overlay is populated." },
+
+    {
+      "action": "assert",
+      "assertions": [
+        { "strikes_are_real": { "pane": 0 } }
+      ]
+    },
+    { "action": "log", "message": "And the rows came from upstream -- NOT the synthesized Black-Scholes fallback. A failure here means ApexData was unreachable and the axis pills are showing fabricated bids/asks." }
+  ]
+}

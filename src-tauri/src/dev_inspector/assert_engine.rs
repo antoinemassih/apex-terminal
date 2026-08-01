@@ -1444,6 +1444,37 @@ fn dispatch(
             }
         }
 
+        // The strike pills must be showing REAL quotes, not a synthesized chain.
+        //
+        // `strikes_overlay_active` only counts rows, so it passes happily on a
+        // fully fabricated chain — which is exactly the state the terminal falls
+        // into when ApexData is unreachable (fetch retries, then
+        // send_placeholder_chain synthesizes Black-Scholes bids/asks). On a
+        // trading surface "populated" and "real" are not the same assertion.
+        "strikes_are_real" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            match state.canvas.panes.get(pane).map(|p| &p.overlays) {
+                None => ("StrikesAreReal".into(), false, format!("pane {pane} not found")),
+                Some(o) => {
+                    let rows = o.strikes_call_count + o.strikes_put_count;
+                    let pass = o.show_strikes_overlay
+                        && rows > 0
+                        && !o.overlay_chain_placeholder;
+                    let why = if pass {
+                        format!("pane {pane} strikes REAL: {rows} row(s) from upstream [{}]",
+                                o.overlay_chain_symbol)
+                    } else if !o.show_strikes_overlay {
+                        format!("pane {pane} strikes overlay is OFF")
+                    } else if o.overlay_chain_placeholder {
+                        format!("pane {pane} strikes are SYNTHESIZED (upstream unreachable) —                                  {rows} fabricated row(s), not quotes")
+                    } else {
+                        format!("pane {pane} strikes ON but 0 chain rows")
+                    };
+                    ("StrikesAreReal".into(), pass, why)
+                }
+            }
+        }
+
         // ── UX / usability audit (one bundled check) ───────────────────────────
         // Clipping + sub-minimum touch targets + overlapping interactive widgets.
         // The widget tree lets the harness "see" usability problems a user would hit.
