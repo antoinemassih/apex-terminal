@@ -144,10 +144,20 @@ fn client() -> Client {
     // LAN override: when configured, resolve the apex-data hostname to the
     // homelab Traefik IP directly (bypasses public DNS that returns an
     // un-routable WAN IP). Host header stays untouched so ingress routing works.
-    if let (Some(ip), Some((host, port))) = (super::config::apex_lan_ip(), super::config::apex_host_port()) {
-        if let Ok(ip_parsed) = ip.parse::<std::net::IpAddr>() {
-            b = b.resolve(&host, std::net::SocketAddr::new(ip_parsed, port));
-            crate::apex_log!("rest.cfg", "LAN override: {host}:{port} → {ip}");
+    if let Some((host, port)) = super::config::apex_host_port() {
+        // ALL configured IPs, not just the first. reqwest tries them in order,
+        // so one dead node costs a connect retry instead of dropping the chain
+        // fetch into its synthetic Black-Scholes fallback — which would swap
+        // real NBBO for fabricated prices on the axis pills without the user
+        // having asked for anything different.
+        let addrs: Vec<std::net::SocketAddr> = super::config::apex_lan_ips()
+            .iter()
+            .filter_map(|ip| ip.parse::<std::net::IpAddr>().ok())
+            .map(|ip| std::net::SocketAddr::new(ip, port))
+            .collect();
+        if !addrs.is_empty() {
+            b = b.resolve_to_addrs(&host, &addrs);
+            crate::apex_log!("rest.cfg", "LAN override: {host}:{port} → {} candidate(s)", addrs.len());
         }
     }
     b.build().unwrap_or_else(|_| Client::new())

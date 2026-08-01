@@ -22,7 +22,23 @@ const DEFAULT_URL: &str = "http://apex-data-v2-dev.xllio.com";
 /// missing split-horizon DNS). Set to `None` to use normal DNS.
 ///
 /// Override via `APEX_DATA_LAN_IP` env or `set_apex_lan_ip()`.
-const DEFAULT_LAN_IP: Option<&str> = Some("192.168.1.71");
+///
+/// ⚠ A LIST, not a single host. Every K3s node runs `svclb-traefik`, so any of
+/// them can serve the ingress — and a single hard-coded IP put one machine in
+/// front of a money path. When it stops answering, the chain fetch fails and
+/// `fetch.rs` falls back to a SYNTHESIZED Black-Scholes chain, i.e. the axis
+/// pills quietly switch from real NBBO to fabricated bids/asks. Failing over to
+/// another node is strictly better than failing over to invented prices.
+///
+/// Verified serving the ingress on 2026-08-01 (Host header + `/api/chain/SPY`
+/// → HTTP 200). 192.168.1.79 is deliberately EXCLUDED — it was not answering.
+const DEFAULT_LAN_IPS: &[&str] = &[
+    "192.168.1.71",
+    "192.168.1.177",
+    "192.168.1.55",
+    "192.168.1.56",
+    "192.168.1.80",
+];
 
 static URL:     OnceLock<RwLock<String>>          = OnceLock::new();
 static TOKEN:   OnceLock<RwLock<Option<String>>>  = OnceLock::new();
@@ -35,8 +51,10 @@ fn enabled_cell() -> &'static RwLock<bool>           { ENABLED.get_or_init(|| Rw
 fn lan_ip_cell()  -> &'static RwLock<Option<String>> { LAN_IP.get_or_init(|| RwLock::new(load_initial_lan_ip())) }
 
 fn load_initial_lan_ip() -> Option<String> {
+    // `APEX_DATA_LAN_IP` accepts a comma-separated list; a single value keeps
+    // working exactly as before.
     std::env::var("APEX_DATA_LAN_IP").ok().filter(|s| !s.is_empty())
-        .or_else(|| DEFAULT_LAN_IP.map(|s| s.to_string()))
+        .or_else(|| Some(DEFAULT_LAN_IPS.join(",")))
 }
 
 fn load_initial_url() -> String {
@@ -83,8 +101,34 @@ pub fn set_enabled(on: bool) {
     if let Ok(mut g) = enabled_cell().write() { *g = on; }
 }
 
+/// First configured LAN IP. For call sites that can only take one address
+/// (the WS connect path) and for diagnostics display.
 pub fn apex_lan_ip() -> Option<String> {
-    lan_ip_cell().read().ok().and_then(|g| g.clone())
+    apex_lan_ips().into_iter().next()
+}
+
+/// Every configured LAN IP, in preference order.
+///
+/// The REST client hands the whole list to reqwest's `resolve_to_addrs`, which
+/// tries them in turn — so losing one node degrades to a slower connect rather
+/// than to fabricated option prices.
+pub fn apex_lan_ips() -> Vec<String> {
+    lan_ip_cell().read().ok()
+        .and_then(|g| g.clone())
+        .map(|raw| parse_lan_ips(&raw))
+        .unwrap_or_default()
+}
+
+/// Split a configured LAN-IP string into candidates, in preference order.
+///
+/// Pure so it can be tested without touching the process-wide config cell —
+/// two tests mutating that global raced under the parallel test runner.
+fn parse_lan_ips(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
 }
 pub fn set_apex_lan_ip(ip: Option<String>) {
     if let Ok(mut g) = lan_ip_cell().write() { *g = ip.filter(|s| !s.is_empty()); }
@@ -176,4 +220,63 @@ pub fn apex_host_port() -> Option<(String, u16)> {
         None => (host_port.to_string(), if url.starts_with("https://") { 443 } else { 80 }),
     };
     if host.is_empty() { None } else { Some((host, port)) }
+}
+
+#[cfg(test)]
+mod lan_failover_tests {
+    use super::*;
+
+    #[test]
+    fn the_default_is_more_than_one_node() {
+        // The regression this guards: a single hard-coded IP in front of the
+        // chain fetch. When it stops answering, the terminal does not show an
+        // error — it shows SYNTHESIZED option prices. More than one candidate
+        // is the difference between degrading and fabricating.
+        assert!(DEFAULT_LAN_IPS.len() >= 2,
+            "one LAN IP means one machine can silently turn the pills synthetic");
+    }
+
+    #[test]
+    fn every_default_is_a_parseable_address() {
+        for ip in DEFAULT_LAN_IPS {
+            assert!(ip.parse::<std::net::IpAddr>().is_ok(), "unparseable default LAN IP: {ip}");
+        }
+    }
+
+    #[test]
+    fn the_known_dead_node_is_not_a_candidate() {
+        // 192.168.1.79 did not answer the ingress on 2026-08-01. Listing a node
+        // that never responds just buys a connect timeout on every request.
+        assert!(!DEFAULT_LAN_IPS.contains(&"192.168.1.79"),
+            "192.168.1.79 was not serving the ingress — do not make requests wait on it");
+    }
+
+    #[test]
+    fn a_comma_separated_override_parses_into_candidates() {
+        assert_eq!(parse_lan_ips("10.0.0.1, 10.0.0.2 ,10.0.0.3"),
+                   vec!["10.0.0.1", "10.0.0.2", "10.0.0.3"]);
+    }
+
+    #[test]
+    fn a_single_value_override_still_works_unchanged() {
+        // Backwards compatibility: APEX_DATA_LAN_IP was a single IP before.
+        assert_eq!(parse_lan_ips("10.9.9.9"), vec!["10.9.9.9"]);
+    }
+
+    #[test]
+    fn an_empty_or_ragged_override_yields_no_bogus_candidates() {
+        // An empty entry would become an unparseable "address" that costs a
+        // failed resolve on every request.
+        assert!(parse_lan_ips("").is_empty());
+        assert!(parse_lan_ips("  ").is_empty());
+        assert_eq!(parse_lan_ips("10.0.0.1,,  ,10.0.0.2"), vec!["10.0.0.1", "10.0.0.2"]);
+    }
+
+    #[test]
+    fn the_packed_default_round_trips_back_to_the_candidate_list() {
+        // load_initial_lan_ip() joins DEFAULT_LAN_IPS with commas; parsing it
+        // back must reproduce the list exactly, or the default silently
+        // degrades to one node again.
+        assert_eq!(parse_lan_ips(&DEFAULT_LAN_IPS.join(",")), DEFAULT_LAN_IPS.to_vec());
+    }
 }
