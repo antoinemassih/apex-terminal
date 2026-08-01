@@ -1,23 +1,6 @@
 {
   "done": true,
   "total": 1069,
-  "correct": 1065,
-  "real": [
-    {
-      "file": "572_design_audit_baseline.json",
-      "detail": "step 2 (assert): [\u2717] clipped: alert_feed.badge_5; [\u2717] clipped: alert_feed.badge_5"
-    },
-    {
-      "file": "900_responsive_widths.json",
-      "detail": "step 4 (assert): [\u2717] clipped: alert_feed.badge_4, alert_feed.badge_5"
-    },
-    {
-      "file": "913_ux_audit_baseline.json",
-      "detail": "step 3 (assert): [\u2717] clipped: alert_feed.badge_4, alert_feed.badge_5"
-    },
-    {
-      "file": "2400_autochart_panel_open_render.json",
-      "detail": "step 6 (assert): [\u2713] state.auto_chart.open == true; [\u2713] found checkbox 'Auto-charting ON' (id=auto_chart.enabled); [\u2713] found slider 'bars back' (id=auto_chart.window); [\u2713] found checkbox 'Anchored only' (id=auto_chart.anchored_only); [\u2713] found checkbox 'Trendlines' (id=auto_chart.trendlines); [\u2713] found checkbox 'Channels' (id=auto_chart.channels); [\u2713] found checkbox 'Levels' (id=auto_chart.levels); [\u2713] found check"
-    }
-  ]
+  "correct": 1069,
+  "real": []
 }
