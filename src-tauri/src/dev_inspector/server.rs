@@ -328,6 +328,7 @@ fn handle(
                     Ok(cmd) => {
                         queues.lock().unwrap().commands.push(QueuedDevCmd::App(cmd));
                         wait_for_next_frame(&shared, 1000);
+                        settle_deferred(&shared, body["cmd"].as_str().unwrap_or("").trim());
                         ok_json(&mut stream, &serde_json::json!({"ok": true}));
                     }
                     Err(e) => err_json(&mut stream, 400, &e),
@@ -705,6 +706,7 @@ fn route_for_batch(
                 Ok(cmd) => {
                     queues.lock().unwrap().commands.push(QueuedDevCmd::App(cmd));
                     wait_for_next_frame(shared, 1000);
+                    settle_deferred(shared, body_val["cmd"].as_str().unwrap_or("").trim());
                     (200, b"{\"ok\":true}".to_vec())
                 }
                 Err(e) => (400, format!("{{\"error\":{e:?}}}").into_bytes()),
@@ -1013,9 +1015,17 @@ fn execute_step(
                 .unwrap_or("")
                 .to_string();
 
-            // SetLayout is headless-only: adjust synthetic pane count without a real AppCommand.
-            if cmd_name == "SetLayout" || cmd_name == "set_layout"
-                || cmd_name == "HeadlessLayout" || cmd_name == "headless_layout" {
+            // HeadlessLayout stays synthetic-only: it resizes the headless
+            // ticker's fake pane array without a real AppCommand. In LIVE mode
+            // `SetLayout` now falls through to parse_app_command, which emits
+            // AppCommand::SetLayoutLive so the REAL app grows/shrinks panes
+            // (see gpu::PENDING_LAYOUT). In headless mode SetLayout keeps the
+            // old synthetic behaviour so the headless suites are unaffected.
+            let force_headless_layout = cmd_name == "HeadlessLayout"
+                || cmd_name == "headless_layout"
+                || ((cmd_name == "SetLayout" || cmd_name == "set_layout")
+                    && super::is_headless());
+            if force_headless_layout {
                 // HeadlessLayout accepts a direct "cols" number; SetLayout maps a layout string.
                 let cols: usize = if let Some(n) = args["cols"].as_u64()
                     .or_else(|| args["args"]["cols"].as_u64()) {
@@ -1099,6 +1109,7 @@ fn execute_step(
                     }
                     drop(q);
                     wait_for_next_frame(shared, 1000);
+                    settle_deferred(shared, &cmd_name);
                     (true, format!("queued cmd={cmd_name}"))
                 }
                 Err(e) => (false, e),
@@ -1554,6 +1565,19 @@ fn step_json_path(root: &serde_json::Value, path: &str) -> serde_json::Value {
 
 /// Block until the frame counter increments (one render cycle completes) or timeout.
 /// This is the critical synchronisation primitive — no arbitrary sleeps.
+/// Some AppCommands are DEFERRED by one frame: `dispatch()` runs at the very
+/// bottom of `draw_chart()` and only parks a request in a thread-local, which
+/// the render loop drains near the TOP of the next frame (this is how
+/// `SetLayoutLive` resizes the pane array — see `gpu::PENDING_LAYOUT`).
+/// A single `wait_for_next_frame` therefore returns while `/panes` still shows
+/// the OLD pane count. Wait out the deferral so the HTTP response is only sent
+/// once the effect is observable.
+fn settle_deferred(shared: &Arc<Mutex<DevSharedState>>, cmd_name: &str) {
+    if matches!(cmd_name, "SetLayout" | "set_layout") {
+        for _ in 0..2 { wait_for_next_frame(shared, 1000); }
+    }
+}
+
 pub fn wait_for_next_frame(shared: &Arc<Mutex<DevSharedState>>, timeout_ms: u64) -> bool {
     let start_frame = shared.lock().unwrap().frame_counter;
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
@@ -2197,6 +2221,28 @@ fn parse_app_command(
         "ChangeTimeframe" | "change_timeframe" => {
             let tf = body["tf"].as_str().unwrap_or("5m").to_string();
             Ok(AppCommand::ChangeTimeframe { pane, tf })
+        }
+        // ── Layout ─────────────────────────────────────────────────────────
+        // Live pane-layout template change. Accepts either a layout label
+        // ("2", "2H", "TwoColumns", "quad", …) or a raw pane count via
+        // "cols" (the shape HeadlessLayout uses), so a scenario written for
+        // the headless path still drives the real app.
+        "SetLayout" | "set_layout" => {
+            let label = match body["layout"].as_str()
+                .or_else(|| body["args"]["layout"].as_str())
+            {
+                Some(s) if !s.trim().is_empty() => s.to_string(),
+                _ => {
+                    let cols = body["cols"].as_u64()
+                        .or_else(|| body["args"]["cols"].as_u64())
+                        .ok_or_else(|| "layout or cols required".to_string())?;
+                    cols.to_string()
+                }
+            };
+            if crate::chart_renderer::gpu::Layout::from_label(&label).is_none() {
+                return Err(format!("unknown layout {label:?}"));
+            }
+            Ok(AppCommand::SetLayoutLive { layout: label })
         }
         "ChangePaneType" | "change_pane_type" => {
             let kind_str = body["kind"].as_str().unwrap_or("Chart");

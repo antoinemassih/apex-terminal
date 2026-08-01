@@ -141,6 +141,63 @@ pub(crate) fn truncate_charts(panes: &mut Vec<Chart>, wl: &mut Watchlist, len: u
     dropped
 }
 
+/// Default symbols used to populate panes a layout template grows into.
+const TEMPLATE_FILL_SYMBOLS: [&str; 9] =
+    ["SPY", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "GOOG", "AMD"];
+
+/// Apply a layout TEMPLATE change: grow `panes` up to `ly.max_panes()`,
+/// switch the active template, clamp `active_pane`, snapshot undo, queue any
+/// surplus panes for deferred close, and regenerate the `PaneLayout` tree.
+///
+/// Single implementation shared by BOTH entry points:
+///   * the command palette (`ui/command_palette/execute.rs`, "layout:*" ids)
+///   * the dev harness (`AppCommand::SetLayoutLive` → `gpu::PENDING_LAYOUT`,
+///     drained in `render/pane/core.rs`)
+///
+/// Surplus panes are NOT removed here — they are pushed onto
+/// `PENDING_PANE_CLOSE` so any caller's local pane-index snapshot stays valid
+/// for the rest of the frame (P16 fix #3). The render loop drains that queue
+/// immediately after.
+pub(crate) fn apply_layout_template(
+    panes: &mut Vec<Chart>,
+    wl: &mut Watchlist,
+    layout: &mut Layout,
+    active_pane: &mut usize,
+    ly: Layout,
+) {
+    let max = ly.max_panes();
+    // Grow to the template's pane count. New panes inherit pane 0's timeframe
+    // and theme; `pending_symbol_change` is what actually fires the initial
+    // bar fetch (without it the new pane sits on the spinner forever).
+    while panes.len() < max {
+        let sym = TEMPLATE_FILL_SYMBOLS.get(panes.len()).copied().unwrap_or("SPY");
+        let tf = panes.first().map(|p| p.timeframe.clone()).unwrap_or_else(|| "5m".to_string());
+        let theme_idx = panes.first().map(|p| p.theme_idx).unwrap_or(0);
+        let mut p = Chart::new_with(sym, &tf);
+        p.theme_idx = theme_idx;
+        p.pending_symbol_change = Some(sym.to_string());
+        panes.push(p);
+    }
+    *layout = ly;
+    if *active_pane >= max { *active_pane = 0; }
+    // P17 #3 — snapshot before destructive template change.
+    pane_layout_record_undo(wl);
+    // P16 fix #3 — queue orphan panes for deferred removal.
+    if panes.len() > max {
+        super::gpu::PENDING_PANE_CLOSE.with(|q| {
+            let mut closes = q.borrow_mut();
+            for idx in max..panes.len() {
+                closes.push(idx);
+            }
+        });
+        wl.maximized_pane = wl.maximized_pane.filter(|&m| m < max);
+    }
+    ensure_pane_ids_synced(wl, panes.len());
+    let mut slot_ids: Vec<u64> = wl.pane_ids.iter().copied().take(max.max(1)).collect();
+    while slot_ids.len() < max.max(1) { slot_ids.push(0); }
+    wl.pane_layout = Some(super::pane_layout::PaneLayout::from_template(ly, &slot_ids));
+}
+
 // ─── PaneLayout integration helpers (Phase 1 — PaneGrid migration) ──────────
 //
 // The chart-app's render loop calls into these to read pane rects + drive

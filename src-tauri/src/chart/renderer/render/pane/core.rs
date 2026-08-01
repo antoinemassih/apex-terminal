@@ -10687,6 +10687,23 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
         }
 
+        // Drain a queued layout-TEMPLATE change (dev harness / AppCommand
+        // path). `commands::dispatch()` only gets a `&mut [Chart]` slice so it
+        // cannot resize the pane array; it parks the parsed Layout in
+        // PENDING_LAYOUT and we apply it here, where the real `Vec<Chart>`,
+        // `layout` and `active_pane` are all in scope.
+        //
+        // MUST run before the PENDING_PANE_CLOSE drain below: shrinking
+        // templates queue their surplus panes onto that same queue, and this
+        // ordering removes them in the SAME frame.
+        let pending_layout = crate::chart_renderer::gpu::PENDING_LAYOUT
+            .with(|c| c.borrow_mut().take());
+        if let Some(ly) = pending_layout {
+            crate::chart_renderer::gpu::apply_layout_template(
+                panes, watchlist, layout, active_pane, ly,
+            );
+        }
+
         // Drain queued pane-close requests. Remove in descending order so
         // earlier indices stay valid as later ones are removed. If the
         // active pane was closed, snap active_pane to a valid index.

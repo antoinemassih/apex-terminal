@@ -564,6 +564,22 @@ thread_local! {
         std::cell::RefCell::new(Vec::new());
 }
 
+// ─── Pending layout-template change (deferred, same pattern as above) ────────
+//
+// `commands::dispatch()` receives panes as a `&mut [Chart]` SLICE, so it can
+// neither push nor remove panes — a layout template change needs both. The
+// `AppCommand::SetLayoutLive` handler therefore parks the requested Layout
+// here, and the render loop (`render/pane/core.rs`, where the real
+// `Vec<Chart>`, `layout` and `active_pane` are all in scope) drains it right
+// before the PENDING_PANE_CLOSE drain, so surplus panes queued by the
+// template change are removed in the SAME frame.
+//
+// Only the newest request survives — layout changes are not cumulative.
+thread_local! {
+    pub(crate) static PENDING_LAYOUT: std::cell::RefCell<Option<Layout>> =
+        std::cell::RefCell::new(None);
+}
+
 // ─── Pane layout & lifecycle (extracted to `pane_layout`, WS-E E2) ──────────
 // Re-exported so `gpu::compute_pane_rects_for_frame()` / `gpu::alloc_pane_id()`
 // / ... and gpu.rs's own bare compute_pane_rects_for_frame() call are unchanged.
@@ -631,6 +647,47 @@ impl Layout {
         Layout::Six=>"6", Layout::SixH=>"6H", Layout::SixL=>"6L",
         Layout::Seven=>"7", Layout::EightH=>"8H", Layout::Nine=>"9",
     }}
+    /// Permissive label → Layout parse. Accepts every `label()` string plus
+    /// the descriptive aliases the dev harness / scenario corpus uses
+    /// ("Single", "TwoColumns", "two_rows", "quad", "2x2", …).
+    ///
+    /// Normalisation: case-insensitive, and whitespace / `_` / `-` are
+    /// stripped, so "two columns", "two_columns", "TwoColumns" and
+    /// "TWO-COLUMNS" all land on the same arm. Returns `None` for anything
+    /// unrecognised so callers can report a real error instead of silently
+    /// snapping to a 1-pane layout.
+    pub(crate) fn from_label(s: &str) -> Option<Layout> {
+        let norm: String = s
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '_' && *c != '-')
+            .flat_map(|c| c.to_uppercase())
+            .collect();
+        let ly = match norm.as_str() {
+            "1" | "ONE" | "SINGLE" | "1PANE" | "ONEPANE" | "FULL" => Layout::One,
+            "2" | "TWO" | "2C" | "2COL" | "2COLS" | "2COLUMNS"
+                | "TWOCOL" | "TWOCOLS" | "TWOCOLUMNS" | "SIDEBYSIDE" => Layout::Two,
+            "2H" | "TWOH" | "2ROW" | "2ROWS" | "TWOROW" | "TWOROWS"
+                | "STACKED" | "2STACKED" => Layout::TwoH,
+            "3" | "THREE" | "3COL" | "3COLS" | "3COLUMNS"
+                | "THREECOL" | "THREECOLS" | "THREECOLUMNS" => Layout::Three,
+            "3L" | "THREEL" => Layout::ThreeL,
+            "3R" | "THREER" => Layout::ThreeR,
+            "4" | "FOUR" | "QUAD" | "2X2" | "4GRID" | "FOURGRID" | "GRID" => Layout::Four,
+            "4L" | "FOURL" => Layout::FourL,
+            "5" | "FIVE" | "5C" | "FIVEC" => Layout::FiveC,
+            "5L" | "FIVEL" => Layout::FiveL,
+            "5W" | "FIVEW" => Layout::FiveW,
+            "5R" | "FIVER" => Layout::FiveR,
+            "6" | "SIX" | "3X2" => Layout::Six,
+            "6H" | "SIXH" => Layout::SixH,
+            "6L" | "SIXL" => Layout::SixL,
+            "7" | "SEVEN" => Layout::Seven,
+            "8" | "8H" | "EIGHT" | "EIGHTH" => Layout::EightH,
+            "9" | "NINE" | "3X3" => Layout::Nine,
+            _ => return None,
+        };
+        Some(ly)
+    }
     pub(crate) fn description(self) -> &'static str { match self {
         Layout::One=>"Single pane", Layout::Two=>"2 side-by-side", Layout::TwoH=>"2 stacked",
         Layout::Three=>"1 top + 2 bottom", Layout::ThreeL=>"1 left + 2 right", Layout::ThreeR=>"2 left + 1 right",
@@ -9525,6 +9582,80 @@ pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: Chart
     };
     let _ = el.run_app(&mut app);
     *spawn_tx_lock.lock().unwrap() = None;
+}
+
+#[cfg(test)]
+mod layout_from_label_tests {
+    use super::Layout;
+
+    #[test]
+    fn every_canonical_label_round_trips() {
+        // The single hard invariant: whatever `label()` prints must parse
+        // back to the same Layout, for EVERY variant. If a variant is added
+        // to the enum without a from_label arm, this fails.
+        let all = [
+            Layout::One, Layout::Two, Layout::TwoH,
+            Layout::Three, Layout::ThreeL, Layout::ThreeR,
+            Layout::Four, Layout::FourL,
+            Layout::FiveC, Layout::FiveL, Layout::FiveW, Layout::FiveR,
+            Layout::Six, Layout::SixH, Layout::SixL,
+            Layout::Seven, Layout::EightH, Layout::Nine,
+        ];
+        for ly in all {
+            assert_eq!(
+                Layout::from_label(ly.label()), Some(ly),
+                "label {:?} did not round-trip", ly.label()
+            );
+        }
+    }
+
+    #[test]
+    fn parses_the_scenario_corpus_aliases() {
+        // These are the exact strings dev/scenarios/*.json send with
+        // {"cmd":"SetLayout","args":{"layout":...}}. If any stops parsing,
+        // those scenarios silently go back to being un-runnable.
+        assert_eq!(Layout::from_label("Single"),        Some(Layout::One));
+        assert_eq!(Layout::from_label("One"),           Some(Layout::One));
+        assert_eq!(Layout::from_label("TwoColumns"),    Some(Layout::Two));
+        assert_eq!(Layout::from_label("TwoRows"),       Some(Layout::TwoH));
+        assert_eq!(Layout::from_label("ThreeColumns"),  Some(Layout::Three));
+        assert_eq!(Layout::from_label("FourGrid"),      Some(Layout::Four));
+        assert_eq!(Layout::from_label("Quad"),          Some(Layout::Four));
+    }
+
+    #[test]
+    fn normalisation_is_case_space_underscore_and_dash_insensitive() {
+        for s in ["two_columns", "TWO-COLUMNS", "two columns", "2cols", "2Cols"] {
+            assert_eq!(Layout::from_label(s), Some(Layout::Two), "failed on {s:?}");
+        }
+        for s in ["two_rows", "2ROWS", "2h", "2H"] {
+            assert_eq!(Layout::from_label(s), Some(Layout::TwoH), "failed on {s:?}");
+        }
+        for s in ["quad", "2x2", "2X2", "four_grid"] {
+            assert_eq!(Layout::from_label(s), Some(Layout::Four), "failed on {s:?}");
+        }
+    }
+
+    #[test]
+    fn bare_pane_counts_map_to_the_default_template_for_that_count() {
+        // The dev harness may send a raw count ("3") instead of a label.
+        for (s, want) in [
+            ("1", 1usize), ("2", 2), ("3", 3), ("4", 4),
+            ("5", 5), ("6", 6), ("7", 7), ("8", 8), ("9", 9),
+        ] {
+            let ly = Layout::from_label(s).unwrap_or_else(|| panic!("{s} did not parse"));
+            assert_eq!(ly.max_panes(), want, "{s} produced the wrong pane count");
+        }
+    }
+
+    #[test]
+    fn unknown_labels_are_rejected_not_silently_defaulted() {
+        // Rejecting matters: silently falling back to Layout::One would make a
+        // typo'd scenario look like it "worked" while running 1 pane.
+        for s in ["", "  ", "0", "10", "banana", "2Q", "layout:2"] {
+            assert_eq!(Layout::from_label(s), None, "{s:?} should not parse");
+        }
+    }
 }
 
 #[cfg(test)]

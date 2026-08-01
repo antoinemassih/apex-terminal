@@ -60,44 +60,12 @@ pub(super) fn execute(
 
     // Layouts
     if let Some(ly_id) = id.strip_prefix("layout:") {
-        let ly = match ly_id {
-            "1" => Layout::One, "2" => Layout::Two, "2H" => Layout::TwoH,
-            "3" => Layout::Three, "3L" => Layout::ThreeL, "3R" => Layout::ThreeR,
-            "4" => Layout::Four, "4L" => Layout::FourL,
-            "5C" => Layout::FiveC, "6" => Layout::Six, "9" => Layout::Nine,
-            _ => return,
-        };
-        let max = ly.max_panes();
-        while panes.len() < max {
-            let syms = ["SPY","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOG","AMD"];
-            let sym = syms.get(panes.len()).copied().unwrap_or("SPY");
-            let tf = panes[0].timeframe.clone();
-            let mut p = Chart::new_with(sym, &tf);
-            p.theme_idx = panes[0].theme_idx;
-            p.pending_symbol_change = Some(sym.to_string());
-            panes.push(p);
-        }
-        *layout = ly;
-        if *active_pane >= max { *active_pane = 0; }
-        // P17 #3 — snapshot before destructive template change.
-        crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
-        // Phase 1: regenerate PaneLayout when layout is changed via cmd palette.
-        // P16 fix #3 — queue orphan panes for deferred removal so callers'
-        // local `ap` snapshots stay valid for the rest of the frame.
-        if panes.len() > max {
-            crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| {
-                let mut closes = q.borrow_mut();
-                for idx in max..panes.len() {
-                    closes.push(idx);
-                }
-            });
-            watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < max);
-        }
-        crate::chart_renderer::gpu::ensure_pane_ids_synced(watchlist, panes.len());
-        let mut slot_ids: Vec<u64> = watchlist.pane_ids.iter().copied().take(max.max(1)).collect();
-        while slot_ids.len() < max.max(1) { slot_ids.push(0); }
-        watchlist.pane_layout = Some(
-            crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &slot_ids)
+        let Some(ly) = Layout::from_label(ly_id) else { return };
+        // Grow/shrink panes, swap the template, snapshot undo and regenerate
+        // PaneLayout — shared with the dev-harness SetLayoutLive path so there
+        // is exactly one implementation of "apply a layout template".
+        crate::chart_renderer::gpu::apply_layout_template(
+            panes, watchlist, layout, active_pane, ly,
         );
         return;
     }

@@ -212,6 +212,21 @@ pub enum AppCommand {
     /// `style_idx` and consumed by the renderer via `style::set_active_style`.
     SetStyleIdx { idx: usize },
 
+    // ── Layout ───────────────────────────────────────────────────────────
+    /// Switch the pane-layout TEMPLATE on the live app (grows/shrinks the
+    /// pane array to the template's pane count).
+    ///
+    /// `layout` is a permissive label — every `Layout::label()` string plus
+    /// the descriptive aliases the dev harness uses ("Single", "TwoColumns",
+    /// "two_rows", "quad", "2x2", …); see `Layout::from_label`.
+    ///
+    /// DEFERRED: `dispatch()` receives panes as a `&mut [Chart]` SLICE and so
+    /// cannot push or remove panes. The handler therefore only parks the
+    /// parsed `Layout` in `gpu::PENDING_LAYOUT`; the render loop drains it
+    /// where the real `Vec<Chart>` is in scope. Same pattern as
+    /// `gpu::PENDING_PANE_CLOSE`.
+    SetLayoutLive { layout: String },
+
     // ── Watchlist (domain mutations) ────────────────────────────────────
     /// Add a symbol to the active watchlist (de-dup'd, lands in last stock section).
     WatchlistAddSymbol { symbol: String },
@@ -1072,6 +1087,22 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         AppCommand::SetStyleIdx { idx } => {
             watchlist.style_idx = idx;
+        }
+
+        AppCommand::SetLayoutLive { layout } => {
+            // Park the request — panes is a slice here, so the actual
+            // grow/shrink happens in the render loop's PENDING_LAYOUT drain
+            // (see gpu::PENDING_LAYOUT / pane_ops::apply_layout_template).
+            match crate::chart_renderer::gpu::Layout::from_label(&layout) {
+                Some(ly) => {
+                    crate::chart_renderer::gpu::PENDING_LAYOUT
+                        .with(|c| *c.borrow_mut() = Some(ly));
+                }
+                None => {
+                    tracing::warn!(target: "cmd",
+                        "SetLayoutLive: unrecognised layout label {:?} — ignored", layout);
+                }
+            }
         }
 
         AppCommand::WatchlistRenameActive { name } => {

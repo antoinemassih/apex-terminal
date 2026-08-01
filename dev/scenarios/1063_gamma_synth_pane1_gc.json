@@ -20,6 +20,15 @@
     },
     {
       "action": "cmd",
+      "cmd": "SetLayout",
+      "layout": "2"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
       "cmd": "SwapPaneSymbol",
       "pane": 1,
       "symbol": "GC"

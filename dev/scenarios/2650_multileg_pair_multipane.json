@@ -21,6 +21,15 @@
     },
     {
       "action": "cmd",
+      "cmd": "SetLayout",
+      "layout": "2"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
       "cmd": "SetPlaybookPanel",
       "open": true
     },

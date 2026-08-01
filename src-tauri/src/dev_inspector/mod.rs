@@ -519,6 +519,21 @@ fn apply_headless_cmd(
                 p.pane_type = format!("{kind:?}");
             }
         }
+        // Live layout change reaching the headless ticker (a scenario written
+        // for the real app replayed headlessly). Mirror it onto the synthetic
+        // pane array so pane-count assertions behave the same either way.
+        AppCommand::SetLayoutLive { layout } => {
+            if let Some(ly) = crate::chart_renderer::gpu::Layout::from_label(&layout) {
+                let target = ly.max_panes().max(1);
+                while hs.panes.len() < target {
+                    hs.panes.push(PaneSim::new_default("SPY"));
+                }
+                if hs.panes.len() > target {
+                    hs.panes.truncate(target);
+                    if hs.active_pane >= target { hs.active_pane = 0; }
+                }
+            }
+        }
         AppCommand::WatchlistAddSection { title } |
         AppCommand::WatchlistAddOptionSection { title } => {
             hs.watchlist_sections.push(SectionSim { title, item_count: 0, collapsed: false });
