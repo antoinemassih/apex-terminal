@@ -8235,6 +8235,10 @@ impl ApplicationHandler for App {
                 // Window, and this app is not eframe, so egui viewport commands are
                 // never consumed. Un-maximize first: Windows silently ignores an
                 // inner-size request on a maximized window.
+                if let Some(on) = crate::chart_renderer::bug_anchor::take_pending_maximize() {
+                    cw.win.set_maximized(on);
+                    cw.win.request_redraw();
+                }
                 if let Some((vw, vh)) = crate::chart_renderer::bug_anchor::take_pending_viewport() {
                     if cw.win.is_maximized() { cw.win.set_maximized(false); }
                     let _ = cw.win.request_inner_size(winit::dpi::LogicalSize::new(vw, vh));

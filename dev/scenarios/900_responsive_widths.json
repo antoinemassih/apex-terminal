@@ -31,6 +31,11 @@
     { "action": "cmd", "cmd": "SetViewportSize", "w": 2400, "h": 1000 },
     { "action": "wait_frames", "count": 6 },
     { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },
-    { "action": "log", "message": "Restored to 2400 and still clean — the resize is reversible, not one-way." }
+    { "action": "log", "message": "Restored to 2400 and still clean — the resize is reversible, not one-way." },
+
+    { "action": "cmd", "cmd": "SetWindowMaximized", "on": true },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },
+    { "action": "log", "message": "Re-maximized. MANDATORY: resizing un-maximizes the window, and every later scenario in this app instance would otherwise run at a size it was never written against." }
   ]
 }

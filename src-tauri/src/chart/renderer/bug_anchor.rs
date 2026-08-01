@@ -37,7 +37,7 @@ use std::path::{Path, PathBuf};
 // ── Re-exports of the moved registry (ui_kit::inspect is the owner) ─────────
 pub use crate::ui_kit::inspect::{
     anchor, apply_ui_debug, begin_frame, button_key, inspect, mark,
-    register, request_viewport_size, take_pending_viewport, set_inspect,
+    register, request_maximized, request_viewport_size, take_pending_maximize, take_pending_viewport, set_inspect,
     set_ui_debug, short, slug, tag, take_pending, toggle_inspect, toggle_ui_debug, ui_debug,
     AnchorHit,
 };

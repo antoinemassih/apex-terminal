@@ -2345,6 +2345,10 @@ fn parse_app_command(
                 .unwrap_or(1080.0) as f32;
             Ok(AppCommand::SetViewportSize { w, h })
         }
+        "SetWindowMaximized" | "set_window_maximized" | "maximize" => {
+            let on = body["on"].as_bool().unwrap_or(true);
+            Ok(AppCommand::SetWindowMaximized { on })
+        }
         "SetObjectTree" | "set_object_tree" => {
             let open = body["open"].as_bool().unwrap_or(true);
             Ok(AppCommand::SetObjectTree { open })

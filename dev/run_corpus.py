@@ -17,6 +17,17 @@ Usage: python dev/run_corpus.py [base_url]
 """
 import sys, json, glob, os, time, subprocess, urllib.request, urllib.error
 
+# Windows consoles default to cp1252, which cannot encode the check/cross marks
+# that scenario assertion messages embed. Printing ONE such failure detail raised
+# UnicodeEncodeError and killed the whole runner at scenario 2 of 1068 — i.e. a
+# cosmetic encoding issue aborted the entire gate and produced no verdict.
+# Reconfigure to UTF-8 and never let an un-encodable glyph be fatal.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Dev-inspector port. Default 7892, overridable via APEX_CORPUS_PORT — 7892 is
 # shared with supermodel's harness on this machine, so when a co-tenant holds it
 # the apex app can never bind (its bind retries forever) and start_app times out

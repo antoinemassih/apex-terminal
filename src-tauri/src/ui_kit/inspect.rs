@@ -104,6 +104,21 @@ pub fn request_viewport_size(w: f32, h: f32) {
     }
 }
 
+// A resize necessarily un-maximizes the window, which would leave every LATER
+// corpus scenario running at a different size than the one they were written
+// against. So a scenario that resizes must be able to put the window back.
+static PENDING_MAXIMIZE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
+
+/// Request the window be (un)maximized. Applied on the next frame.
+pub fn request_maximized(on: bool) {
+    if let Ok(mut g) = PENDING_MAXIMIZE.lock() { *g = Some(on); }
+}
+
+/// Take a pending maximize request, if any.
+pub fn take_pending_maximize() -> Option<bool> {
+    PENDING_MAXIMIZE.lock().ok().and_then(|mut g| g.take())
+}
+
 /// Take a pending viewport resize, if any. Called by the winit event loop, which
 /// owns the `Window` and is the only place that can actually apply it.
 ///

@@ -316,6 +316,10 @@ pub enum AppCommand {
     /// resize does not make the app re-lay-out, which left every responsive
     /// behaviour (overflow menus, collapsing toolbars) untestable.
     SetViewportSize { w: f32, h: f32 },
+    /// (Un)maximize the window. A scenario that resizes MUST restore the
+    /// maximized state, else every later scenario in the same app instance runs
+    /// at a size it was not written against.
+    SetWindowMaximized { on: bool },
     /// Set a spreadsheet cell's raw text (grows the grid as needed).
     #[cfg(debug_assertions)]
     SetCell { pane: usize, row: usize, col: usize, text: String },
@@ -1251,6 +1255,10 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         AppCommand::SetViewportSize { w, h } => {
             crate::chart_renderer::bug_anchor::request_viewport_size(w, h);
+        }
+
+        AppCommand::SetWindowMaximized { on } => {
+            crate::chart_renderer::bug_anchor::request_maximized(on);
         }
 
         AppCommand::SetObjectTree { open } => {
