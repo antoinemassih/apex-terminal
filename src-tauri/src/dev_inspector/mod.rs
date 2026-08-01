@@ -974,10 +974,37 @@ pub fn end_frame(
             } else {
                 p.dom.levels.get(p.dom.levels.len() / 2).map(|l| l.price).unwrap_or(0.0)
             };
-            let dom_best_ask = p.dom.levels.iter().filter(|l| l.price >= dom_mid)
-                .map(|l| l.price).fold(f32::NAN, f32::min);
-            let dom_best_bid = p.dom.levels.iter().filter(|l| l.price <= dom_mid)
-                .map(|l| l.price).fold(f32::NAN, f32::max);
+            // Best bid/ask come from the levels' OWN resting sizes, which is how
+            // the app itself defines them (render/pane/core.rs ~1468). They used
+            // to be derived POSITIONALLY — "highest price at or below
+            // `center_price`" — which measured the wrong thing: `center_price` is
+            // a VIEWPORT anchor, re-centred only when the market drifts more than
+            // 40 ticks from it, while the visible ladder is ~20 levels deep. So a
+            // perfectly healthy book can sit entirely above (or below) the anchor,
+            // and the positional form then reported `bid=None` / `ask=None` and
+            // failed `dom_spread_sane`. That is exactly what 5 futures scenarios
+            // (RTY/CL/GC/NQ/ZN) were reporting — a measurement defect in the
+            // harness, not a defect in the ladder.
+            //
+            // Falls back to the positional form only when no level carries a
+            // resting size (a book with sizes stripped), so mock/synthetic
+            // ladders keep reporting something sane.
+            let has_sizes = p.dom.levels.iter().any(|l| l.bid_size > 0 || l.ask_size > 0);
+            let (dom_best_bid, dom_best_ask) = if has_sizes {
+                (
+                    p.dom.levels.iter().filter(|l| l.bid_size > 0)
+                        .map(|l| l.price).fold(f32::NAN, f32::max),
+                    p.dom.levels.iter().filter(|l| l.ask_size > 0)
+                        .map(|l| l.price).fold(f32::NAN, f32::min),
+                )
+            } else {
+                (
+                    p.dom.levels.iter().filter(|l| l.price <= dom_mid)
+                        .map(|l| l.price).fold(f32::NAN, f32::max),
+                    p.dom.levels.iter().filter(|l| l.price >= dom_mid)
+                        .map(|l| l.price).fold(f32::NAN, f32::min),
+                )
+            };
             let dom_best_ask = if dom_best_ask.is_finite() { Some(dom_best_ask) } else { None };
             let dom_best_bid = if dom_best_bid.is_finite() { Some(dom_best_bid) } else { None };
             // Real correctness invariant: prices strictly descend down the ladder.
