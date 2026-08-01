@@ -311,6 +311,11 @@ pub enum AppCommand {
     /// Toggle egui's built-in widget-debug overlay (Ctrl+Shift+D equivalent),
     /// so the UI inspector can be driven headlessly from the dev harness.
     SetUiDebug { on: bool },
+    /// Resize the app's LOGICAL viewport, so the harness can assert layout at a
+    /// given width. Goes through `egui::ViewportCommand` — an OS-level window
+    /// resize does not make the app re-lay-out, which left every responsive
+    /// behaviour (overflow menus, collapsing toolbars) untestable.
+    SetViewportSize { w: f32, h: f32 },
     /// Set a spreadsheet cell's raw text (grows the grid as needed).
     #[cfg(debug_assertions)]
     SetCell { pane: usize, row: usize, col: usize, text: String },
@@ -1242,6 +1247,10 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         AppCommand::SetUiDebug { on } => {
             crate::chart_renderer::bug_anchor::set_ui_debug(on);
+        }
+
+        AppCommand::SetViewportSize { w, h } => {
+            crate::chart_renderer::bug_anchor::request_viewport_size(w, h);
         }
 
         AppCommand::SetObjectTree { open } => {

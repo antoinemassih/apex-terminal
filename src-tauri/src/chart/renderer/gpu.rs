@@ -8231,6 +8231,15 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                // A dev harness resize can only be applied HERE — we own the winit
+                // Window, and this app is not eframe, so egui viewport commands are
+                // never consumed. Un-maximize first: Windows silently ignores an
+                // inner-size request on a maximized window.
+                if let Some((vw, vh)) = crate::chart_renderer::bug_anchor::take_pending_viewport() {
+                    if cw.win.is_maximized() { cw.win.set_maximized(false); }
+                    let _ = cw.win.request_inner_size(winit::dpi::LogicalSize::new(vw, vh));
+                    cw.win.request_redraw();
+                }
                 // Drain watchlist price updates before render
                 // (these come via the broadcast channel from fetch_watchlist_prices)
                 let mut cmds_to_requeue = Vec::new();

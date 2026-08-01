@@ -2337,6 +2337,14 @@ fn parse_app_command(
             let on = body["on"].as_bool().unwrap_or(true);
             Ok(AppCommand::SetUiDebug { on })
         }
+        "SetViewportSize" | "set_viewport_size" | "resize" => {
+            // Height is optional: a width-only sweep is the common case.
+            let w = body["w"].as_f64().or_else(|| body["width"].as_f64())
+                .ok_or_else(|| "SetViewportSize requires `w`".to_string())? as f32;
+            let h = body["h"].as_f64().or_else(|| body["height"].as_f64())
+                .unwrap_or(1080.0) as f32;
+            Ok(AppCommand::SetViewportSize { w, h })
+        }
         "SetObjectTree" | "set_object_tree" => {
             let open = body["open"].as_bool().unwrap_or(true);
             Ok(AppCommand::SetObjectTree { open })

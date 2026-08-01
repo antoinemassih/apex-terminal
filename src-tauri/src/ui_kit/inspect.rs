@@ -76,6 +76,52 @@ pub fn apply_ui_debug(ctx: &egui::Context) {
     });
 }
 
+// ── VIEWPORT SIZING (dev harness) ────────────────────────────────────────────
+//
+// WHY THIS EXISTS. The dev harness could not drive the app's WIDTH at all. An
+// OS-level resize (Win32 `MoveWindow` on the frame) moves the window without
+// the app re-laying-out: the clip rect stays at its startup width and every
+// widget rect comes back byte-identical. The consequence was that every corpus
+// scenario ran at one fixed viewport, so the entire responsive dimension of the
+// UI — overflow menus, collapsing toolbars, min-width behaviour — was
+// unassertable. Layout bugs at narrow widths could only ever be eyeballed.
+//
+// Going through egui's own `ViewportCommand` instead makes the resize an event
+// the framework processes, so the next frame genuinely lays out at the new size.
+// NOT a thread_local: the dev-inspector command may be applied on a different
+// thread from the one that owns the winit window, and a thread-local would then
+// be silently written and never read — the exact failure mode this whole
+// mechanism exists to rule out.
+static PENDING_VIEWPORT: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::new(None);
+
+/// Request a logical viewport (inner) size. Applied on the next frame.
+pub fn request_viewport_size(w: f32, h: f32) {
+    if let Ok(mut g) = PENDING_VIEWPORT.lock() {
+        *g = Some((
+            w.clamp(MIN_VIEWPORT.0, MAX_VIEWPORT.0),
+            h.clamp(MIN_VIEWPORT.1, MAX_VIEWPORT.1),
+        ));
+    }
+}
+
+/// Take a pending viewport resize, if any. Called by the winit event loop, which
+/// owns the `Window` and is the only place that can actually apply it.
+///
+/// This does NOT go through `egui::ViewportCommand`: apex-native drives a
+/// hand-rolled winit + egui-wgpu loop rather than eframe, so nothing consumes
+/// egui's `viewport_output` and a viewport command is accepted then dropped on
+/// the floor. Sizes are clamped on the way in, so a zero or absurd request can't
+/// wedge the window from a dev command.
+pub fn take_pending_viewport() -> Option<(f32, f32)> {
+    PENDING_VIEWPORT.lock().ok().and_then(|mut g| g.take())
+}
+
+/// Floor for a dev-requested viewport. Below this the shell has no room for
+/// even a collapsed toolbar, and the resize is not a useful test.
+pub const MIN_VIEWPORT: (f32, f32) = (320.0, 240.0);
+/// Ceiling for a dev-requested viewport (generous — 8K-wide spans).
+pub const MAX_VIEWPORT: (f32, f32) = (7680.0, 4320.0);
+
 /// Clear the per-frame region list. Call once before rendering the shell.
 pub fn begin_frame() { FRAME.with(|f| f.borrow_mut().clear()); }
 
