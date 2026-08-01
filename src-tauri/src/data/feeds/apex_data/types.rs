@@ -201,7 +201,65 @@ pub struct ChainRow {
     #[serde(default, deserialize_with = "de_i64_or_zero")] pub day_volume:    i64,
 
     #[serde(default, deserialize_with = "de_i64_or_zero")] pub updated_at_ms: i64,
+
+    // ── Sub-second price motion (ApexData "hot band") ────────────────────────
+    // `bid`/`ask`/`mid` are real NBBO and are NEVER modelled, but they only
+    // refresh on the 1.3-2.0 s snapshot tier. `theo` re-prices that last real
+    // quote against the CURRENT underlying:
+    //
+    //     theo = mid + delta*ds + 0.5*gamma*ds^2,  ds = spot_now - spot_at_quote
+    //
+    // Because it is anchored on an observed NBBO it cannot drift free of a real
+    // price, and it collapses back to the true quote when the next snapshot
+    // lands. This is the ONLY route to sub-second option pricing — polling the
+    // chain faster does not help, the floor is upstream snapshot latency.
+    //
+    // ⚠ These are ABSENT, not null, outside the hot band — verified against the
+    // live gateway, where 860 of 1676 SPY rows carried `theo` and the remainder
+    // omitted the keys entirely. `Option` + `serde(default)` is therefore load-
+    // bearing: a non-optional field here would fail to deserialize the whole
+    // row and silently drop half the chain.
+    #[serde(default)] pub theo: Option<f64>,
+    /// When `theo` was computed (~0.6 s in the hot band). Drives staleness:
+    /// a re-price that has stopped updating must not look live.
+    #[serde(default)] pub theo_at_ms: Option<i64>,
+    /// Underlying level when the NBBO was captured — `theo`'s anchor. Needed to
+    /// recompute motion locally against a fresher spot than the server used.
+    #[serde(default)] pub spot_at_quote: Option<f64>,
 }
+
+impl ChainRow {
+    /// Age of the real NBBO in this row, in milliseconds, given a clock reading.
+    ///
+    /// Takes `now_ms` rather than reading the clock so freshness is testable and
+    /// so every row in one render is judged against a single instant.
+    pub fn nbbo_age_ms(&self, now_ms: i64) -> Option<i64> {
+        if self.updated_at_ms <= 0 { return None; }
+        Some((now_ms - self.updated_at_ms).max(0))
+    }
+
+    /// Age of the `theo` re-price, if this row is in the hot band at all.
+    pub fn theo_age_ms(&self, now_ms: i64) -> Option<i64> {
+        let t = self.theo_at_ms?;
+        if t <= 0 { return None; }
+        Some((now_ms - t).max(0))
+    }
+
+    /// Best price to display for motion: `theo` when the hot band is live,
+    /// otherwise the real `mid`. Returns the value AND whether it is modelled,
+    /// so a caller can never render a model without knowing it is one.
+    pub fn display_price(&self, now_ms: i64) -> (f64, bool) {
+        match (self.theo, self.theo_age_ms(now_ms)) {
+            (Some(theo), Some(age)) if age <= THEO_STALE_MS && theo > 0.0 => (theo, true),
+            _ => (self.mid, false),
+        }
+    }
+}
+
+/// A seated contract's NBBO older than this during RTH is stale, not live.
+pub const NBBO_STALE_MS: i64 = 10_000;
+/// A `theo` re-price older than this is no longer tracking the underlying.
+pub const THEO_STALE_MS: i64 = 5_000;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ChainFilters {
@@ -1390,5 +1448,94 @@ mod wave10_parse_tests {
             }
             BulkSnapshotBody::Bare(_) => panic!("object must parse as the envelope variant"),
         }
+    }
+}
+
+#[cfg(test)]
+mod chain_row_freshness_tests {
+    use super::*;
+
+    // Verbatim from the live gateway (apex-data-v2-gateway, 2026-08-01),
+    // GET /api/chain/SPY?dte_max=7 — a HOT-BAND row, theo present.
+    const HOT: &str = r#"{
+        "ask":1.82,"ask_size":51.0,"bid":1.8,"bid_size":93.0,"day_volume":5866,
+        "delta":-0.34110680328792164,"expiry":"2026-08-04","gamma":0.04728178062092077,
+        "iv":0.11082279444226915,"last":1.8,"mid":1.81,"oi_change":null,
+        "open_interest":360,"side":"P","spot_at_quote":747.03,"strike":744.0,
+        "theo":1.81,"theo_at_ms":1785600517916,"theta":-0.4252832211206595,
+        "ticker":"O:SPY260804P00744000","underlying":"SPY",
+        "updated_at_ms":1785600471124,"vega":0.24754713095744477
+    }"#;
+
+    // Also verbatim, from ?all=true — a COLD row. Note theo/theo_at_ms/
+    // spot_at_quote are ABSENT KEYS, not nulls. This is the shape that would
+    // break a non-Option field and silently drop half the chain.
+    const COLD: &str = r#"{
+        "ask":97.69,"ask_size":25.0,"bid":97.34,"bid_size":19.0,"day_volume":27,
+        "delta":0.9557063867415878,"expiry":"2026-05-08","gamma":0.0019532857075851683,
+        "iv":0.3907576719649419,"last":97.6,"mid":97.515,"oi_change":0,
+        "open_interest":1098,"side":"C","strike":640.0,
+        "theta":-0.24560925152939603,"ticker":"O:SPY260508C00640000",
+        "underlying":"SPY","updated_at_ms":1778299172796,"vega":0.11569004829525913
+    }"#;
+
+    #[test]
+    fn cold_row_missing_theo_keys_still_parses() {
+        // The regression that matters: absent keys must not fail the row.
+        let r: ChainRow = serde_json::from_str(COLD).expect("cold row must deserialize");
+        assert_eq!(r.ticker, "O:SPY260508C00640000");
+        assert_eq!(r.theo, None);
+        assert_eq!(r.theo_at_ms, None);
+        assert_eq!(r.spot_at_quote, None);
+        assert_eq!(r.mid, 97.515, "real NBBO must survive intact");
+    }
+
+    #[test]
+    fn hot_row_carries_the_reprice_and_its_anchor() {
+        let r: ChainRow = serde_json::from_str(HOT).expect("hot row must deserialize");
+        assert_eq!(r.theo, Some(1.81));
+        assert_eq!(r.theo_at_ms, Some(1785600517916));
+        assert_eq!(r.spot_at_quote, Some(747.03));
+        // theta arrives as "theta" on this shape, aliased onto theta_per_day.
+        assert!(r.theta_per_day.is_some(), "theta alias must bind");
+    }
+
+    #[test]
+    fn a_cold_row_never_reports_a_modelled_price() {
+        let r: ChainRow = serde_json::from_str(COLD).unwrap();
+        let (px, modelled) = r.display_price(1785600520000);
+        assert_eq!(px, 97.515);
+        assert!(!modelled, "no theo => must fall back to the REAL mid");
+    }
+
+    #[test]
+    fn a_fresh_reprice_is_used_and_flagged_as_modelled() {
+        let r: ChainRow = serde_json::from_str(HOT).unwrap();
+        // 1s after theo was computed — inside the hot band.
+        let (px, modelled) = r.display_price(1785600518916);
+        assert_eq!(px, 1.81);
+        assert!(modelled, "a displayed theo MUST be flagged as modelled");
+    }
+
+    #[test]
+    fn a_stale_reprice_falls_back_to_the_real_quote() {
+        let r: ChainRow = serde_json::from_str(HOT).unwrap();
+        // 30s after theo was computed — it has stopped tracking the underlying.
+        let (px, modelled) = r.display_price(1785600547916);
+        assert_eq!(px, 1.81, "falls back to mid (same value here, by construction)");
+        assert!(!modelled, "a stale theo must NOT be presented as live motion");
+    }
+
+    #[test]
+    fn ages_are_never_negative_and_absent_stamps_report_none() {
+        let hot: ChainRow = serde_json::from_str(HOT).unwrap();
+        let cold: ChainRow = serde_json::from_str(COLD).unwrap();
+        // Clock skew must not produce a negative age that reads as "fresh".
+        assert_eq!(hot.nbbo_age_ms(0), Some(0));
+        assert_eq!(hot.theo_age_ms(0), Some(0));
+        assert_eq!(cold.theo_age_ms(1785600520000), None);
+        // The cold row's NBBO really is ~3 months old — that must be visible.
+        let age = cold.nbbo_age_ms(1785600520000).unwrap();
+        assert!(age > 80 * 24 * 3600 * 1000, "stale row must report its true age, got {age}ms");
     }
 }
