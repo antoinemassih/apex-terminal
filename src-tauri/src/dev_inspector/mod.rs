@@ -1075,6 +1075,15 @@ pub fn end_frame(
                 // feed behind a green aggregate.
                 "strikes_placeholder":  p.overlay_chain_placeholder,
                 "strikes_chain_symbol": p.overlay_chain_symbol.clone(),
+                // OPTION-side feed age, in milliseconds, tracked SEPARATELY from
+                // stock quotes. Equities tick constantly, so any combined
+                // "feed healthy" number stays green over a completely dead
+                // options feed — that masking hid a dead feed for 90 days.
+                // null means: no cached option rows at all for this underlying.
+                "option_feed_age_ms": (!p.overlay_chain_symbol.is_empty())
+                    .then(|| crate::apex_data::live_state::chain_newest_update_ms(&p.overlay_chain_symbol))
+                    .flatten()
+                    .map(|t| (chrono::Utc::now().timestamp_millis() - t).max(0)),
                 "play_line_count":      p.play_lines.len(),
                 // Spreadsheet computed grid (rows×cols of formula-evaluated values).
                 "spreadsheet": {
