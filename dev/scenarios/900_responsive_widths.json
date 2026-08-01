@@ -1,0 +1,36 @@
+{
+  "name": "responsive_widths",
+  "description": "Assert the chrome lays out cleanly across viewport widths. Until SetViewportSize existed the harness could not resize the app at all, so every other scenario ran at one fixed width and the entire responsive dimension of the UI was untested. Widths below ~800 logical are a KNOWN open defect (toolbar.watchlist_toggle clips) and are deliberately not asserted here — see docs/UI_AUDIT_2026-07-31.md.",
+  "story": "Chrome/Responsive",
+  "tags": ["design", "responsive", "toolbar"],
+  "settle_ms": 120,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+
+    { "action": "cmd", "cmd": "SetViewportSize", "w": 2400, "h": 1000 },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },
+    { "action": "log", "message": "2400 wide: clean." },
+
+    { "action": "cmd", "cmd": "SetViewportSize", "w": 1600, "h": 1000 },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },
+    { "action": "log", "message": "1600 wide: clean." },
+
+    { "action": "cmd", "cmd": "SetViewportSize", "w": 1280, "h": 1000 },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },
+    { "action": "log", "message": "1280 wide (common laptop): clean." },
+
+    { "action": "cmd", "cmd": "SetViewportSize", "w": 1100, "h": 1000 },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },
+    { "action": "log", "message": "1100 wide: clean — this is the narrowest width currently known good." },
+
+    { "action": "cmd", "cmd": "SetViewportSize", "w": 2400, "h": 1000 },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },
+    { "action": "log", "message": "Restored to 2400 and still clean — the resize is reversible, not one-way." }
+  ]
+}
