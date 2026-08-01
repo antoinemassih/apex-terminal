@@ -504,6 +504,49 @@ pub fn get_chain(underlying: &str) -> Vec<ChainRow> {
     }).unwrap_or_default()
 }
 
+/// Freshness of ONE contract, read without cloning the row.
+///
+/// `get_chain` clones every row for an underlying (thousands), which is fine for
+/// a seed but far too expensive to call per-pill per-frame. The axis pills need
+/// only these three numbers to decide whether what they are drawing is live,
+/// modelled, or stale, so this returns a `Copy` triplet under a single lock.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ChainFreshness {
+    /// Delta-gamma re-price against the current underlying. `None` outside the
+    /// hot band — those contracts are snapshot-only.
+    pub theo: Option<f64>,
+    /// When `theo` was computed.
+    pub theo_at_ms: Option<i64>,
+    /// When the real NBBO last refreshed from upstream.
+    pub updated_at_ms: i64,
+}
+
+/// Look up freshness for a single contract by its OCC ticker.
+pub fn chain_row_freshness(underlying: &str, ticker: &str) -> Option<ChainFreshness> {
+    let g = state().chains.lock().ok()?;
+    let row = g.get(&underlying.to_uppercase())?.get(ticker)?;
+    Some(ChainFreshness {
+        theo: row.theo,
+        theo_at_ms: row.theo_at_ms,
+        updated_at_ms: row.updated_at_ms,
+    })
+}
+
+/// Newest `updated_at_ms` across an underlying's cached chain.
+///
+/// This is the OPTION-side feed heartbeat. It must be tracked separately from
+/// stock quotes: equities tick constantly and will hold a combined "feed
+/// healthy" indicator green while the options feed is completely dead. That
+/// exact masking hid a dead options feed for 90 days.
+pub fn chain_newest_update_ms(underlying: &str) -> Option<i64> {
+    let g = state().chains.lock().ok()?;
+    g.get(&underlying.to_uppercase())?
+        .values()
+        .map(|r| r.updated_at_ms)
+        .filter(|t| *t > 0)
+        .max()
+}
+
 pub fn clear_chain(underlying: &str) {
     if let Ok(mut g) = state().chains.lock() {
         g.remove(&underlying.to_uppercase());

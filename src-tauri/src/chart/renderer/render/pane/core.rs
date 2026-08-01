@@ -3023,13 +3023,22 @@ fn render_chart_pane(
                     egui::pos2(pill_left, badge_y),
                     egui::vec2(pill_w, 14.0),
                 );
-                ui.painter().rect_filled(badge_rect, 2.0, color_alpha(t.warn, style::alpha_dim()));
+                // Loud on purpose. These bids and asks are SYNTHESIZED by a
+                // local Black-Scholes model because upstream was unreachable —
+                // they are not quotes and nothing should be traded off them. A
+                // faint tag reads as decoration; this has to read as a warning.
+                ui.painter().rect_filled(badge_rect, 2.0, color_alpha(t.warn, 220));
+                ui.painter().rect_stroke(
+                    badge_rect, 2.0,
+                    egui::Stroke::new(1.0, t.warn),
+                    egui::StrokeKind::Inside,
+                );
                 ui.painter().text(
                     badge_rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    "PLACEHOLDER",
+                    "SIMULATED — NOT QUOTES",
                     mono_xs(),
-                    t.warn,
+                    contrast_fg(t.warn),
                 );
             }
 
@@ -3085,10 +3094,70 @@ fn render_chart_pane(
                 // Separator line
                 painter.line_segment([egui::pos2(split_x, si.display_y - pill_h / 2.0 + 3.0), egui::pos2(split_x, si.display_y + pill_h / 2.0 - 3.0)],
                     egui::Stroke::new(0.5, color_alpha(base_col, 40)));
-                // Bid × Ask — max-contrast fg over the pill fill, larger font
+                // ── Freshness ────────────────────────────────────────────────
+                // A seated row and a dead row must NOT look identical. An
+                // options feed once sat dead for three months while every
+                // dashboard stayed green, because a stale-but-real quote is
+                // indistinguishable from a live one unless its age is shown.
+                //
+                // Read straight from the ApexData chain cache (cheap Copy
+                // triplet, no row clone) so this reflects the newest chaindelta
+                // rather than whatever the seed fetch happened to carry.
+                let fresh = if chart.overlay_chain_placeholder {
+                    None // synthesized rows have no upstream stamp to report
+                } else {
+                    crate::apex_data::live_state::chain_row_freshness(
+                        &chart.overlay_chain_symbol, &si.contract)
+                };
+                let now_ms = chrono::Utc::now().timestamp_millis();
+                let nbbo_age = fresh.and_then(|f| {
+                    (f.updated_at_ms > 0).then(|| (now_ms - f.updated_at_ms).max(0))
+                });
+                let is_stale = nbbo_age
+                    .map(|a| a > crate::apex_data::types::NBBO_STALE_MS)
+                    .unwrap_or(false);
+                // theo only counts as motion while it is still tracking spot.
+                let theo_live = fresh.and_then(|f| {
+                    let t = f.theo_at_ms?;
+                    let age = (now_ms - t).max(0);
+                    (age <= crate::apex_data::types::THEO_STALE_MS)
+                        .then_some(f.theo)
+                        .flatten()
+                });
+
+                // Bid × Ask — max-contrast fg over the pill fill, larger font.
+                // Stale quotes are dimmed so they cannot be mistaken for live
+                // prices at a glance.
+                let px_col = if is_stale {
+                    color_alpha(contrast_fg(base_col), 90)
+                } else {
+                    contrast_fg(base_col)
+                };
                 painter.text(egui::pos2(split_x + 5.0, si.display_y), egui::Align2::LEFT_CENTER,
-                    &format!("{:.2} × {:.2}", si.bid, si.ask), mono_xs(),
-                    contrast_fg(base_col));
+                    &format!("{:.2} × {:.2}", si.bid, si.ask), mono_xs(), px_col);
+
+                // Right-edge freshness marker, outside the pill:
+                //   .  live theo (sub-second motion, modelled off a real NBBO)
+                //   !  NBBO older than NBBO_STALE_MS — do not trade off this
+                //   ?  no upstream stamp at all (synthesized or uncached)
+                //
+                // ASCII ONLY, deliberately. The first cut used "⧗" (U+29D7),
+                // which is absent from the mono face and therefore rendered as
+                // NOTHING — a staleness warning that is invisible is worse than
+                // no warning at all, because it reads as "checked, fine".
+                let (mark, mark_col) = if chart.overlay_chain_placeholder {
+                    ("?", t.warn)
+                } else if is_stale {
+                    ("!", t.warn)
+                } else if theo_live.is_some() {
+                    (".", color_alpha(base_col, 200))
+                } else {
+                    ("", egui::Color32::TRANSPARENT)
+                };
+                if !mark.is_empty() {
+                    painter.text(egui::pos2(pill_right + 2.0, si.display_y),
+                        egui::Align2::LEFT_CENTER, mark, mono_xs(), mark_col);
+                }
 
                 // Dashed horizontal line across chart on hover (visible)
                 if is_hovered {
