@@ -1064,6 +1064,18 @@ impl<'a> PainterPaneHeader<'a> {
                     .active(self.buttons[btn as usize].active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { clicked_btn = Some(btn); }
+                // Register with the dev inspector. These were invisible to it —
+                // the whole pane-header cluster and the alert feed had ZERO
+                // entries in the widget tree, which is why a corpus run could
+                // report "no clipped widgets" while OVERLAY/LAYERS/DOM were
+                // visibly painted on top of each other.
+                #[cfg(debug_assertions)]
+                crate::dev_inspector::record(
+                    crate::dev_inspector::WidgetRecord::from_response(
+                        format!("pane.{}", label.to_ascii_lowercase()),
+                        "button", label, &resp, ui,
+                    ).with_style("pane_header"),
+                );
                 rx += width;
                 if pos + 1 < visible.len() {
                     header_divider_strong(&painter, rx, rect, t);

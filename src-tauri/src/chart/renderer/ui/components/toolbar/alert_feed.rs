@@ -271,6 +271,17 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         if resp.hovered() { hovered_now = Some(id); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
         if resp.clicked() { to_dismiss = Some(id); }
 
+        // Register with the dev inspector — the feed had no widget-tree presence
+        // at all, so nothing could assert anything about it. Indexed by slot (not
+        // alert id) so the ids are stable across runs; the badge that sits under
+        // the edge fade is expected to report as clipped, which is the point.
+        #[cfg(debug_assertions)]
+        crate::dev_inspector::record(
+            crate::dev_inspector::WidgetRecord::from_response(
+                format!("alert_feed.badge_{k}"), "button", a.message.as_str(), &resp, ui,
+            ).with_style("alert_feed"),
+        );
+
         // Paint the pill (clipped to the frame so off-edge badges are cut, not moved).
         let accent  = kind_color(a.kind, t);
         let sym     = a.symbol.as_deref().filter(|s| !s.is_empty());
@@ -374,6 +385,34 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         );
         let bp = fp.with_clip_rect(body_clip);
         bp.galley(pos2(box_rect.left() + ACCENT_W + PAD_L, box_rect.top() + PAD_V + HEADER_H + gap_xs()), galley, mcol);
+    }
+
+    // ── Edge fade over the outgoing badge ────────────────────────────────────
+    // The window is deliberately 4½ slots wide (AREA_SLOTS) so a half badge
+    // signals "more is sliding in". But a bare clip rect guillotines that badge
+    // mid-glyph and lops off its rounded corner, which reads as a rendering bug
+    // rather than as a ticker tape. Dissolve the last stretch into the toolbar
+    // instead: same information, no hard cut.
+    //
+    // Painted AFTER the badges (so it covers them) and BEFORE the bell (so the
+    // bell stays crisp). A mesh gives a true gradient — stepped rects band
+    // visibly against the flat toolbar fill on light styles like Aperture.
+    {
+        const FADE_W: f32 = 28.0;
+        let x1 = area_right;
+        let x0 = (x1 - FADE_W).max(area_left);
+        if x1 > x0 {
+            let (y0, y1) = (badge_clip.top(), badge_clip.bottom());
+            let mut mesh = egui::Mesh::default();
+            // Transparent on the inboard edge → solid toolbar fill at the clip.
+            mesh.colored_vertex(pos2(x0, y0), egui::Color32::TRANSPARENT);
+            mesh.colored_vertex(pos2(x0, y1), egui::Color32::TRANSPARENT);
+            mesh.colored_vertex(pos2(x1, y0), t.toolbar_bg);
+            mesh.colored_vertex(pos2(x1, y1), t.toolbar_bg);
+            mesh.add_triangle(0, 1, 2);
+            mesh.add_triangle(2, 1, 3);
+            ui.painter().with_clip_rect(badge_clip).add(egui::Shape::mesh(mesh));
+        }
     }
 
     // ── Notification bell (pinned, stable) + count + history toggle. ──
