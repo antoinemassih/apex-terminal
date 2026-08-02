@@ -197,13 +197,32 @@ impl SubscriptionManager {
         source: BarSource,
     ) -> Result<broadcast::Receiver<BarWire>, ApiError> {
         let key = (symbol.to_string(), timeframe.to_string(), source);
-        let mut map = self.bars.lock();
-        if let Some(sub) = map.get(&key) {
-            sub.refcount.fetch_add(1, Ordering::SeqCst);
-            return Ok(sub.fanout.subscribe());
+
+        // AUDIT 2026-08-02 (AT-003, P0): ABBA lock inversion — FIXED.
+        //
+        // This used to hold `self.bars` across `provider.subscribe_bars()`,
+        // which locks ApexData's ROUTES mutex. Meanwhile the WS reader
+        // (providers/apex_data.rs:66) holds ROUTES and calls
+        // `bump_last_seen_bar()`, which locks `self.bars`. Two threads, two
+        // locks, opposite order — a classic ABBA that deadlocks the WS reader
+        // against any chart-load thread, taking every live feed down at once.
+        //
+        // The map lock is now released before the provider call and re-acquired
+        // after. Losing the resulting race is benign and self-healing: both
+        // threads register a sender in ROUTES, the loser drops its receiver, and
+        // the reader's `senders.retain(|s| s.send(..).is_ok())` prunes the dead
+        // one on the next frame. That is why no extra serialising mutex is
+        // needed — adding one would risk reintroducing a cycle.
+        {
+            let map = self.bars.lock();
+            if let Some(sub) = map.get(&key) {
+                sub.refcount.fetch_add(1, Ordering::SeqCst);
+                return Ok(sub.fanout.subscribe());
+            }
         }
         // Only Last has a trait-side pump. Mark gets a state-only entry; its
         // bumper is driven externally from the feed adapter.
+        // NOTE: no `self.bars` guard is held here — see above.
         let upstream = if source == BarSource::Last {
             Some(self.provider.subscribe_bars(symbol, timeframe)?)
         } else {
@@ -216,8 +235,17 @@ impl SubscriptionManager {
             last_activity: Mutex::new(Instant::now()),
             fanout: tx.clone(),
         });
-        map.insert(key.clone(), sub.clone());
-        drop(map);
+        {
+            let mut map = self.bars.lock();
+            // Another thread may have created this subscription while we were
+            // outside the lock. Defer to it; our upstream receiver drops on
+            // return and its ROUTES sender self-prunes.
+            if let Some(existing) = map.get(&key) {
+                existing.refcount.fetch_add(1, Ordering::SeqCst);
+                return Ok(existing.fanout.subscribe());
+            }
+            map.insert(key.clone(), sub.clone());
+        }
         let recv_out = tx.subscribe();
         if let Some(mut rx) = upstream {
             spawn_pump({
@@ -245,15 +273,21 @@ impl SubscriptionManager {
     #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe, source = ?source))]
     pub fn unsubscribe_bars_with_source(&self, symbol: &str, timeframe: &str, source: BarSource) {
         let key = (symbol.to_string(), timeframe.to_string(), source);
-        let mut map = self.bars.lock();
-        if let Some(sub) = map.get(&key) {
-            if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
-                map.remove(&key);
-                if source == BarSource::Last {
-                    self.provider.unsubscribe_bars(symbol, timeframe);
+        // AT-003: decide under the lock, act outside it — `unsubscribe_bars`
+        // locks ROUTES and must never be called while `self.bars` is held.
+        let drop_upstream = {
+            let mut map = self.bars.lock();
+            match map.get(&key) {
+                Some(sub) if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 => {
+                    map.remove(&key);
+                    source == BarSource::Last
                 }
-                // Mark-source upstream unsub stays the caller's responsibility.
+                _ => false,
             }
+        };
+        if drop_upstream {
+            // Mark-source upstream unsub stays the caller's responsibility.
+            self.provider.unsubscribe_bars(symbol, timeframe);
         }
     }
 
@@ -262,10 +296,14 @@ impl SubscriptionManager {
         &self,
         symbol: &str,
     ) -> Result<broadcast::Receiver<Quote>, ApiError> {
-        let mut map = self.quotes.lock();
-        if let Some(sub) = map.get(symbol) {
-            sub.refcount.fetch_add(1, Ordering::SeqCst);
-            return Ok(sub.fanout.subscribe());
+        // AT-003: never hold `self.quotes` across a provider call — it locks
+        // ROUTES, which the WS reader holds while locking this map.
+        {
+            let map = self.quotes.lock();
+            if let Some(sub) = map.get(symbol) {
+                sub.refcount.fetch_add(1, Ordering::SeqCst);
+                return Ok(sub.fanout.subscribe());
+            }
         }
         let mut rx = self.provider.subscribe_quotes(symbol)?;
         let (tx, _) = broadcast::channel::<Quote>(FANOUT_CAP);
@@ -275,8 +313,14 @@ impl SubscriptionManager {
             last_activity: Mutex::new(Instant::now()),
             fanout: tx.clone(),
         });
-        map.insert(symbol.to_string(), sub.clone());
-        drop(map);
+        {
+            let mut map = self.quotes.lock();
+            if let Some(existing) = map.get(symbol) {
+                existing.refcount.fetch_add(1, Ordering::SeqCst);
+                return Ok(existing.fanout.subscribe());
+            }
+            map.insert(symbol.to_string(), sub.clone());
+        }
         let recv_out = tx.subscribe();
         spawn_pump(async move {
             while let Some(q) = rx.recv().await {
@@ -295,12 +339,19 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn unsubscribe_quotes(&self, symbol: &str) {
-        let mut map = self.quotes.lock();
-        if let Some(sub) = map.get(symbol) {
-            if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
-                map.remove(symbol);
-                self.provider.unsubscribe_quotes(symbol);
+        // AT-003: decide under the lock, act outside it.
+        let drop_upstream = {
+            let mut map = self.quotes.lock();
+            match map.get(symbol) {
+                Some(sub) if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 => {
+                    map.remove(symbol);
+                    true
+                }
+                _ => false,
             }
+        };
+        if drop_upstream {
+            self.provider.unsubscribe_quotes(symbol);
         }
     }
 
@@ -309,10 +360,14 @@ impl SubscriptionManager {
         &self,
         symbol: &str,
     ) -> Result<broadcast::Receiver<Trade>, ApiError> {
-        let mut map = self.trades.lock();
-        if let Some(sub) = map.get(symbol) {
-            sub.refcount.fetch_add(1, Ordering::SeqCst);
-            return Ok(sub.fanout.subscribe());
+        // AT-003: never hold `self.trades` across a provider call — it locks
+        // ROUTES, which the WS reader holds while locking this map.
+        {
+            let map = self.trades.lock();
+            if let Some(sub) = map.get(symbol) {
+                sub.refcount.fetch_add(1, Ordering::SeqCst);
+                return Ok(sub.fanout.subscribe());
+            }
         }
         let mut rx = self.provider.subscribe_trades(symbol)?;
         let (tx, _) = broadcast::channel::<Trade>(FANOUT_CAP);
@@ -322,8 +377,14 @@ impl SubscriptionManager {
             last_activity: Mutex::new(Instant::now()),
             fanout: tx.clone(),
         });
-        map.insert(symbol.to_string(), sub.clone());
-        drop(map);
+        {
+            let mut map = self.trades.lock();
+            if let Some(existing) = map.get(symbol) {
+                existing.refcount.fetch_add(1, Ordering::SeqCst);
+                return Ok(existing.fanout.subscribe());
+            }
+            map.insert(symbol.to_string(), sub.clone());
+        }
         let recv_out = tx.subscribe();
         spawn_pump(async move {
             while let Some(t) = rx.recv().await {
@@ -342,12 +403,19 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn unsubscribe_trades(&self, symbol: &str) {
-        let mut map = self.trades.lock();
-        if let Some(sub) = map.get(symbol) {
-            if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
-                map.remove(symbol);
-                self.provider.unsubscribe_trades(symbol);
+        // AT-003: decide under the lock, act outside it.
+        let drop_upstream = {
+            let mut map = self.trades.lock();
+            match map.get(symbol) {
+                Some(sub) if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 => {
+                    map.remove(symbol);
+                    true
+                }
+                _ => false,
             }
+        };
+        if drop_upstream {
+            self.provider.unsubscribe_trades(symbol);
         }
     }
 
@@ -356,10 +424,14 @@ impl SubscriptionManager {
         &self,
         underlying: &str,
     ) -> Result<broadcast::Receiver<ChainDelta>, ApiError> {
-        let mut map = self.chain.lock();
-        if let Some(sub) = map.get(underlying) {
-            sub.refcount.fetch_add(1, Ordering::SeqCst);
-            return Ok(sub.fanout.subscribe());
+        // AT-003: never hold `self.chain` across a provider call — it locks
+        // ROUTES, which the WS reader holds while locking this map.
+        {
+            let map = self.chain.lock();
+            if let Some(sub) = map.get(underlying) {
+                sub.refcount.fetch_add(1, Ordering::SeqCst);
+                return Ok(sub.fanout.subscribe());
+            }
         }
         let mut rx = self.provider.subscribe_chain(underlying)?;
         let (tx, _) = broadcast::channel::<ChainDelta>(FANOUT_CAP);
@@ -368,8 +440,14 @@ impl SubscriptionManager {
             last_activity: Mutex::new(Instant::now()),
             fanout: tx.clone(),
         });
-        map.insert(underlying.to_string(), sub.clone());
-        drop(map);
+        {
+            let mut map = self.chain.lock();
+            if let Some(existing) = map.get(underlying) {
+                existing.refcount.fetch_add(1, Ordering::SeqCst);
+                return Ok(existing.fanout.subscribe());
+            }
+            map.insert(underlying.to_string(), sub.clone());
+        }
         let recv_out = tx.subscribe();
         spawn_pump(async move {
             while let Some(d) = rx.recv().await {
@@ -382,12 +460,19 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(underlying))]
     pub fn unsubscribe_chain(&self, underlying: &str) {
-        let mut map = self.chain.lock();
-        if let Some(sub) = map.get(underlying) {
-            if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
-                map.remove(underlying);
-                self.provider.unsubscribe_chain(underlying);
+        // AT-003: decide under the lock, act outside it.
+        let drop_upstream = {
+            let mut map = self.chain.lock();
+            match map.get(underlying) {
+                Some(sub) if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 => {
+                    map.remove(underlying);
+                    true
+                }
+                _ => false,
             }
+        };
+        if drop_upstream {
+            self.provider.unsubscribe_chain(underlying);
         }
     }
 
