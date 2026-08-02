@@ -128,6 +128,12 @@ pub struct TokenSnapshot {
     /// Defaults WHITE/BLACK — the pre-M1 hardcoded look.
     pub bevel_highlight_tint: Color32,
     pub bevel_shadow_tint: Color32,
+    /// M2.1: per-style semantic font sizes (previously read from chart-side
+    /// `StyleSettings::current()` inside text_style.rs — which fenced the
+    /// entire 16-tier cascade OUT of ui_kit by dependency direction).
+    pub font_body: f32,
+    pub font_caption: f32,
+    pub font_section_label: f32,
 }
 
 /// Compile-time defaults — match every token fn's non-design-mode constant
@@ -168,6 +174,9 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     bevel_shadow_alpha:    0,
     bevel_highlight_tint: Color32::WHITE,
     bevel_shadow_tint:    Color32::BLACK,
+    font_body: 11.0,
+    font_caption: 9.0,
+    font_section_label: 9.0,
 };
 
 thread_local! {
@@ -417,6 +426,13 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 // `design-mode` was off (shipping builds), and the TOML override path is
 // preserved via `TokenSnapshot` — hosts that push a TokenSnapshot with the
 // display tier extended can drive these from outside.
+/// Largest UI heading rung (Display/HeadingLg tiers). Mirrors the chart-side
+/// helper so the moved text_style.rs needs no chart import.
+#[inline] pub fn font_2xl() -> f32 { font_xl() + 6.0 }
+/// Per-style semantic sizes (M2.1 — pushed by begin_frame from StyleSettings).
+#[inline] pub fn font_body() -> f32 { frame_tokens().font_body }
+#[inline] pub fn font_caption() -> f32 { frame_tokens().font_caption }
+#[inline] pub fn font_section_label() -> f32 { frame_tokens().font_section_label }
 #[inline] pub fn font_display_sm() -> f32 { 28.0 }
 #[inline] pub fn font_display_md() -> f32 { 32.0 }
 #[inline] pub fn font_display_lg() -> f32 { 42.0 }

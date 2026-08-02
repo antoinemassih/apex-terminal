@@ -9,6 +9,7 @@ pub mod widgets;
 pub mod symbols;
 pub mod tokens;
 pub mod style;
+pub mod text_style;
 /// Taffy-backed flexbox layout (geometry only; styling stays in the tokens).
 pub mod layout;
 /// Typed design scales (Space/Radius/Weight/Level) — the constraint layer.

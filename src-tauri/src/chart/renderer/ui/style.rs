@@ -193,6 +193,10 @@ pub fn begin_frame() {
         // ACTIVE PANE's authored tints right after (palette axis joins there).
         bevel_highlight_tint:  egui::Color32::WHITE,
         bevel_shadow_tint:     egui::Color32::BLACK,
+        // M2.1: per-style semantic fonts for the (now ui_kit-resident) cascade.
+        font_body:          st.font_body,
+        font_caption:       st.font_caption,
+        font_section_label: st.font_section_label,
         // Default tab treatment — Filled for Aperture/Cadence/Glass, Line for others.
         panel_tab_treatment:   current().panel_tab_treatment,
         // List row shape — pill for Aperture/Glass, hairlines for Alto/Mariner/Relay.
