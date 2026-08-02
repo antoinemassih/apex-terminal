@@ -200,6 +200,30 @@ thread_local! {
     > = std::cell::RefCell::new(std::sync::Arc::new(Vec::new()));
 }
 
+thread_local! {
+    static CARD_RECIPE: std::cell::Cell<
+        Option<crate::design_system::style_system::CardRecipe>
+    > = std::cell::Cell::new(None);
+    static NUMERAL_TIER: std::cell::Cell<
+        Option<crate::design_system::style_system::NumeralTier>
+    > = std::cell::Cell::new(None);
+}
+
+/// M1 Change D setters/getters (pushed by `begin_frame`).
+pub fn set_card_recipe(cr: Option<crate::design_system::style_system::CardRecipe>) {
+    CARD_RECIPE.with(|c| c.set(cr));
+}
+pub fn card_recipe() -> Option<crate::design_system::style_system::CardRecipe> {
+    CARD_RECIPE.with(|c| c.get())
+}
+pub fn set_numeral_tier(nt: Option<crate::design_system::style_system::NumeralTier>) {
+    NUMERAL_TIER.with(|c| c.set(nt));
+}
+/// The authored display-numeral treatment (None = classic mono).
+pub fn numeral_tier() -> Option<crate::design_system::style_system::NumeralTier> {
+    NUMERAL_TIER.with(|c| c.get())
+}
+
 /// Push the active style's authored shadow stacks (called from `begin_frame`).
 pub fn set_card_shadow_layers(
     card: Vec<crate::design_system::style_system::ShadowLayer>,

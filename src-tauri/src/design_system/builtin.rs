@@ -1027,6 +1027,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
             panel_footer_card: false, panel_footer_radius: 0.0,
         },
+        numerals: None, card: None,
     };
 
     // ── Aperture (id=1) ───────────────────────────────────────────────────────
@@ -1156,6 +1157,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_header_treatment: 2, panel_section_fill_alpha: 0,
             panel_footer_card: true, panel_footer_radius: 10.0,
         },
+        numerals: None, card: None,
     };
 
     // ── Octave (id=2) ─────────────────────────────────────────────────────────
@@ -1279,6 +1281,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
             panel_footer_card: false, panel_footer_radius: 0.0,
         },
+        numerals: None, card: None,
     };
 
     // ── Cadence (id=3) — Spotify-dark: pill primaries, elevated cards ────────

@@ -45,6 +45,17 @@ pub struct TextSpec {
 }
 
 impl TextStyle {
+    /// M1 Change D: whether the numeric display tiers render MONO. Classic =
+    /// true; a style authoring `numerals.family == Ui/Display` flips the hero
+    /// numerals to proportional (Aperture's Inter Tight 500 look).
+    pub fn numeric_display_is_mono() -> bool {
+        use crate::design_system::style_system::FontRole;
+        match crate::ui_kit::style::numeral_tier() {
+            Some(nt) => nt.family == FontRole::Mono,
+            None => true,
+        }
+    }
+
     pub fn spec(self) -> TextSpec {
         // font_section_label / font_body / font_caption pull from StyleSettings so
         // the inspector knobs propagate to Label/Eyebrow, Body, and Caption roles.

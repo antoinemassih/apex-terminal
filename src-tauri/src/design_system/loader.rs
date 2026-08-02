@@ -614,7 +614,7 @@ impl StyleSystem {
             panel_footer_radius:           read_f32_or(&ch_sec, "panel_footer_radius",           "chrome", d_ch.panel_footer_radius),
         };
 
-        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome })
+        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome, numerals: None, card: None })
     }
 }
 
@@ -839,6 +839,7 @@ mod tests {
                 panel_footer_card: true,
                 panel_footer_radius: 8.0,
             },
+            numerals: None, card: None,
         };
 
         let json = original.to_dtcg();

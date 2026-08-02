@@ -273,6 +273,7 @@ pub fn baseline_style_system() -> StyleSystem {
             pane_gap: 0.0, pane_active_indicator: 1, tab_underline_thickness: 2.0,
             ..Chrome::default()
         },
+        numerals: None, card: None,
     }
 }
 

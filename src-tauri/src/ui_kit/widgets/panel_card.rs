@@ -97,10 +97,23 @@ impl PanelCard {
         // Outer margin so cards breathe from the panel edges and from each other
         // (stacked cards) instead of sitting flush against the borders.
         let om = crate::ui_kit::style::gap_sm() as i8;
+        // M1 Change D: an authored CardRecipe overrides the derived card chrome.
+        // (`border_width: None` inside an authored recipe = NO stroke at all —
+        // Aperture's borderless lifted tiles.)
+        let card_recipe = crate::ui_kit::style::card_recipe();
+        let (radius, pad, border_stroke) = if let Some(cr) = card_recipe {
+            let stroke = match cr.border_width {
+                Some(w) => Stroke::new(w, border),
+                None    => Stroke::NONE,
+            };
+            (egui::CornerRadius::same(cr.radius as u8), cr.padding as i8, stroke)
+        } else {
+            (radius, pad, Stroke::new(crate::ui_kit::style::stroke_thin(), border))
+        };
         let mut frame = Frame::NONE
             .fill(bg)
             .corner_radius(radius)
-            .stroke(Stroke::new(crate::ui_kit::style::stroke_thin(), border))
+            .stroke(border_stroke)
             .outer_margin(Margin { left: om, right: om, top: om / 2, bottom: om / 2 })
             .inner_margin(Margin {
                 left: pad,

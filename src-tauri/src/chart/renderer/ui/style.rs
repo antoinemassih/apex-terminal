@@ -209,6 +209,9 @@ pub fn begin_frame() {
         ass.shadows.card_layers.clone(),
         ass.shadows.modal_layers.clone(),
     );
+    // M1 Change D: signature tokens (None = derived classics).
+    crate::ui_kit::style::set_card_recipe(ass.card);
+    crate::ui_kit::style::set_numeral_tier(ass.numerals);
 }
 
 // ─── Typography scale ─────────────────────────────────────────────────────────
@@ -3888,6 +3891,12 @@ mod data_driven_proof {
     }
 }
 
+// Serialises tests that mutate the process-global ACTIVE_STYLE + preset
+// stores (cargo test runs threads in parallel; thread-local snapshots are
+// isolated but the atomic + RwLock stores are not).
+#[cfg(test)]
+pub(crate) static M1_GLOBAL_STATE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 // ── M1 ladder-wiring proof tests ─────────────────────────────────────────────
 #[cfg(test)]
 mod m1_ladder_tests {
@@ -3946,6 +3955,7 @@ mod m1_ladder_tests {
     #[test]
     fn authored_gap_reaches_frame_tokens() {
         use crate::design_system::StyleSystem;
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
 
         let mut ss = StyleSystem::default();
@@ -3979,6 +3989,7 @@ mod m1_shadow_stack_tests {
     /// empty default must leave the legacy path in charge.
     #[test]
     fn authored_card_stack_reaches_ui_kit() {
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
 
         // Alto's 4-layer Zed bevel, transcribed from the DS spec.

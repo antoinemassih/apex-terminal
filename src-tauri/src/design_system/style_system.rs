@@ -543,6 +543,43 @@ pub struct ShadowSpec {
     /// Alpha multiplier applied on top of `ColorScheme.shadow`.
     pub alpha: f32,
 }
+// ── M1 Change D: signature tokens (numerals + card recipe) ──────────────────
+
+/// Which font family a text role draws from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FontRole {
+    #[default]
+    Ui,
+    Mono,
+    Display,
+}
+
+/// Display-numeral treatment (hero prices, big metrics). The tell that this
+/// must be authorable: Aperture's hero numerals are SANS (`Inter Tight 500 @
+/// -0.04em`) while every other theme is mono — "big numbers are mono"
+/// hardcoded would make Aperture permanently wrong.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NumeralTier {
+    pub family:   FontRole,
+    /// Letter-spacing in px (negative = tight; Aperture ≈ -0.5).
+    pub tracking: f32,
+    /// Weight expressed as a strength hint (400/500/600/700). NOTE: egui
+    /// selects weight by FAMILY registration, not a variable axis — until a
+    /// per-weight family is registered this is advisory (strong=true when
+    /// >= 600). Recorded per the M1.3-D spike decision.
+    pub weight:   u16,
+}
+
+/// Card chrome as ONE addressable recipe. `border_width: None` = NO stroke at
+/// all (Aperture's `--ds-card-border: none`), which no radius/stroke scale
+/// could previously express.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CardRecipe {
+    pub radius:  f32,
+    pub padding: f32,
+    pub border_width: Option<f32>,
+}
+
 // ── M1 Change E: multi-layer shadow stacks (additive; legacy specs stay) ────
 //
 // The DS card treatments are STACKS — e.g. Alto's four-layer "Zed warm-dark
@@ -1017,6 +1054,14 @@ pub struct StyleSystem {
     /// Chrome geometry + finish tokens (toolbar/pane heights, dividers, focus ring…).
     #[serde(default)]
     pub chrome:     Chrome,
+
+    /// M1 Change D: display-numeral treatment. `None` = classic mono.
+    #[serde(default)]
+    pub numerals: Option<NumeralTier>,
+    /// M1 Change D: card chrome recipe. `None` = derived (radius_lg /
+    /// gap-based padding / thin border), byte-identical to pre-M1.
+    #[serde(default)]
+    pub card: Option<CardRecipe>,
 }
 
 impl Default for StyleSystem {
@@ -1041,6 +1086,7 @@ impl StyleSystem {
             shadows:    Shadows::default(),
             treatments: Treatments::default(),
             chrome:     Chrome::default(),
+            numerals: None, card: None,
         }
     }
 
