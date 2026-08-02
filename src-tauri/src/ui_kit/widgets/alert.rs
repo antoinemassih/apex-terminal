@@ -146,7 +146,7 @@ impl Alert {
                 // `title_h` and the body_y advance), but paint the
                 // glyphs via cosmic-text for shaping quality.
                 if let Some(title_text) = self.title.as_ref() {
-                    crate::ui_kit::widgets::text_engine::paint_polished_label_at_subpixel(
+                    crate::ui_kit::widgets::text_engine::paint_polished_label_at(
                         &painter,
                         Pos2::new(text_x, y),
                         title_text,

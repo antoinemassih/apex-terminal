@@ -7409,13 +7409,13 @@ impl GpuCtx {
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false,
         }))?;
-        let mut required_features = wgpu::Features::empty();
-        if adapter.features().contains(wgpu::Features::DUAL_SOURCE_BLENDING) {
-            required_features |= wgpu::Features::DUAL_SOURCE_BLENDING;
-            eprintln!("[gpu] DUAL_SOURCE_BLENDING enabled — subpixel-AA text path available");
-        } else {
-            eprintln!("[gpu] DUAL_SOURCE_BLENDING not supported — text will use grayscale AA");
-        }
+        // AT-076: DUAL_SOURCE_BLENDING was requested solely for the subpixel-AA
+        // text pipeline, which is gone. Requesting a device feature nothing uses
+        // narrows the set of adapters that can satisfy the request for no
+        // benefit, so it goes with it. Text renders through cosmic-text +
+        // swash grayscale AA, which is what the one production call site was
+        // already falling back to on any adapter without this feature.
+        let required_features = wgpu::Features::empty();
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("chart"), memory_hints: wgpu::MemoryHints::Performance,
             required_features,
@@ -7498,13 +7498,10 @@ impl GpuCtx {
         // Publish the surface format so `paint_shadow_gpu` can build its
         // pipeline lazily on first use.
         crate::ui_kit::widgets::shadow_pipeline::set_surface_format(fmt);
-        crate::ui_kit::widgets::text_subpixel_pipeline::set_surface_format(fmt);
 
         // Phase 1.5: eagerly build the subpixel text pipeline so naga validates
         // the WGSL at startup rather than on first use. Pushes shader-syntax
         // failures up to launch time instead of runtime regressions.
-        let _ = crate::ui_kit::widgets::text_subpixel_pipeline::TextSubpixelPipeline::get(&device, fmt);
-        eprintln!("[gpu] text_subpixel_pipeline: WGSL validated OK");
 
         // GPU chart pipeline (SPEC_GPU_CHART_REFACTOR.md, Phase 1). Build the
         // pipeline unconditionally so the WGSL is validated at every launch,
