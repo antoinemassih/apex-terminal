@@ -1081,6 +1081,23 @@ pub(crate) enum IndicatorType {
 pub(crate) enum IndicatorCategory { Overlay, Oscillator }
 
 impl IndicatorType {
+    /// Can this indicator be extended one bar at a time, or does appending a
+    /// bar require recomputing the whole series?
+    ///
+    /// AUDIT 2026-08-02 (AT-004, P0): this fact used to live only as an
+    /// unwritten assumption inside `update_indicators`, whose catch-all arm
+    /// pushed `f32::NAN` for everything else and permanently froze 16 of the 19
+    /// indicator types. Putting it on the type means the next person adding a
+    /// variant sees the question next to the enum instead of discovering it as
+    /// a silently flat line months later.
+    ///
+    /// Deliberately conservative: anything with internal state that depends on
+    /// more than a trailing window of closes (Wilder smoothing, session VWAP,
+    /// MACD's nested EMAs, Stochastic's %D) answers `false`.
+    pub(crate) fn is_incrementally_extendable(&self) -> bool {
+        matches!(self, Self::SMA | Self::WMA | Self::EMA)
+    }
+
     /// W3-01: this variant's stable registry id. The ONE match that has to
     /// exist while the enum and the registry coexist — every other piece of
     /// indicator metadata is now derived from it rather than duplicated.
@@ -3829,10 +3846,8 @@ impl Chart {
         // If ANY configured indicator needs a full recompute, do one for the
         // whole set. This runs at most once per newly-closed bar (the function
         // early-returns when the count is unchanged), not per frame.
-        let all_incremental = self.indicators.iter().all(|i| matches!(
-            i.kind,
-            IndicatorType::SMA | IndicatorType::WMA | IndicatorType::EMA
-        ));
+        let all_incremental = self.indicators.iter()
+            .all(|i| i.kind.is_incrementally_extendable());
         if !all_incremental {
             self.recompute_indicators();
             return;
