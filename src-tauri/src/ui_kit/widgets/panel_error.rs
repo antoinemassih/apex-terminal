@@ -36,9 +36,10 @@
 
 use egui::{Align, FontId, Layout, RichText, Ui};
 
-use crate::ui_kit::tokens::{color_muted, font_sm, font_xl, font_xs, gap_md, gap_sm, gap_xs};
+use crate::ui_kit::tokens::{color_muted, font_xl, gap_md, gap_sm, gap_xs};
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::text_style::TextStyle;
 
 #[must_use = "PanelError must be rendered with `.show(...)`"]
 pub struct PanelError<'a> {
@@ -96,20 +97,14 @@ impl<'a> PanelError<'a> {
 
                 // Error message.
                 ui.label(
-                    RichText::new(self.message)
-                        .monospace()
-                        .size(font_sm())
-                        .color(t.dim()),
+                    TextStyle::MonoSm.as_rich_cascading(self.message, t.dim()),
                 );
 
                 // Optional hint.
                 if let Some(h) = self.hint {
                     ui.add_space(gap_xs());
                     ui.label(
-                        RichText::new(h)
-                            .monospace()
-                            .size(font_xs())
-                            .color(color_muted(t.dim())),
+                        TextStyle::MonoXs.as_rich_cascading(h, color_muted(t.dim())),
                     );
                 }
 

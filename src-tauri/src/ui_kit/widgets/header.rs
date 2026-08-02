@@ -54,6 +54,7 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::Tooltip;
 use super::icon_placement::IconPlacement;
+use crate::ui_kit::text_style::TextStyle;
 
 /// Which surface this header sits on. Drives height, font tier, padding,
 /// and whether a bottom rule is drawn.
@@ -226,7 +227,7 @@ impl<'a> Header<'a> {
 
         // ── Subtitle (muted, right after title) ──
         if let Some(sub) = self.subtitle {
-            let sub_font = FontId::monospace(st::font_xs());
+            let sub_font = TextStyle::MonoXs.font_id_in(ui);
             painter.text(
                 egui::pos2(left_cursor, cy),
                 egui::Align2::LEFT_CENTER,

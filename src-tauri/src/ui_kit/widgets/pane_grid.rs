@@ -51,6 +51,7 @@ use crate::ui_kit::sx::{palette_ct, Tone};
 use super::context_menu::{ContextMenu, DangerMenuItem, MenuItem};
 use super::motion;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 // ─── Identifiers ─────────────────────────────────────────────────────────────
 
@@ -954,7 +955,7 @@ fn draw_pane_chrome(
         close_rect.center(),
         egui::Align2::CENTER_CENTER,
         "×",
-        egui::FontId::proportional(st::font_sm()),
+        TextStyle::BodySm.font_id_in(ui),
         glyph_color,
     );
 

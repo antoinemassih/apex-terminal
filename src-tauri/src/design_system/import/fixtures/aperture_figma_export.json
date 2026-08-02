@@ -63,6 +63,19 @@
     },
     {
       "collection": "ColorScheme",
+      "name": "accent_sub",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 1.0,
+          "g": 0.5411764705882353,
+          "b": 0.2980392156862745,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
       "name": "bear",
       "type": "COLOR",
       "valuesByMode": {
@@ -82,6 +95,19 @@
     },
     {
       "collection": "ColorScheme",
+      "name": "bear_alpha",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.8470588235294118,
+          "g": 0.3137254901960784,
+          "b": 0.24313725490196078,
+          "a": 0.12156862745098039
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
       "name": "bg",
       "type": "COLOR",
       "valuesByMode": {
@@ -95,6 +121,45 @@
           "r": 0.07058823529411765,
           "g": 0.07058823529411765,
           "b": 0.07058823529411765,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bg_elevated",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.12156862745098039,
+          "g": 0.11372549019607843,
+          "b": 0.10196078431372549,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bg_hover",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9372549019607843,
+          "g": 0.3568627450980392,
+          "b": 0.23137254901960785,
+          "a": 0.058823529411764705
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bg_panel",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.0784313725490196,
+          "g": 0.07450980392156863,
+          "b": 0.06666666666666667,
           "a": 1.0
         }
       }
@@ -120,6 +185,19 @@
     },
     {
       "collection": "ColorScheme",
+      "name": "border_dim",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 1.0,
+          "g": 1.0,
+          "b": 1.0,
+          "a": 0.058823529411764705
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
       "name": "bull",
       "type": "COLOR",
       "valuesByMode": {
@@ -134,6 +212,19 @@
           "g": 0.8274509803921568,
           "b": 0.6,
           "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bull_alpha",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.3058823529411765,
+          "g": 0.7529411764705882,
+          "b": 0.47843137254901963,
+          "a": 0.12156862745098039
         }
       }
     },
@@ -358,9 +449,22 @@
           "a": 1.0
         },
         "Meridien": {
-          "r": 0.47058823529411764,
-          "g": 0.47058823529411764,
-          "b": 0.47058823529411764,
+          "r": 0.5254901960784314,
+          "g": 0.5254901960784314,
+          "b": 0.5254901960784314,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "fg_xmuted",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.2901960784313726,
+          "g": 0.2627450980392157,
+          "b": 0.21568627450980393,
           "a": 1.0
         }
       }

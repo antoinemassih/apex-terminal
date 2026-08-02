@@ -40,6 +40,7 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 /// Builder for a single-line text input. See module docs for usage.
 #[must_use = "Input does nothing until `.show(ui, theme)` is called"]
@@ -245,10 +246,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
     let outer = ui.vertical(|ui| {
         if let Some(lbl) = &label {
             ui.label(
-                egui::RichText::new(lbl)
-                    .monospace()
-                    .size(st::font_xs())
-                    .color(palette_ct(theme).base(Tone::Dim)),
+                TextStyle::MonoXs.as_rich_cascading(lbl, palette_ct(theme).base(Tone::Dim)),
             );
             ui.add_space(st::gap_2xs() * 0.5);
         }
@@ -506,10 +504,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         };
         ui.add_space(st::gap_2xs() * 0.5);
         ui.label(
-            egui::RichText::new(helper)
-                .monospace()
-                .size(st::font_xs())
-                .color(color),
+            TextStyle::MonoXs.as_rich_cascading(helper, color),
         );
     }
 
@@ -570,10 +565,7 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
 
     if let Some(lbl) = &label {
         ui.label(
-            egui::RichText::new(lbl)
-                .monospace()
-                .size(st::font_xs())
-                .color(palette_ct(theme).base(Tone::Dim)),
+            TextStyle::MonoXs.as_rich_cascading(lbl, palette_ct(theme).base(Tone::Dim)),
         );
         ui.add_space(st::gap_2xs() * 0.5);
     }
@@ -651,10 +643,7 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
     if let Some(helper) = &helper_text {
         ui.add_space(st::gap_2xs() * 0.5);
         ui.label(
-            egui::RichText::new(helper)
-                .monospace()
-                .size(st::font_xs())
-                .color(palette_ct(theme).base(Tone::Dim)),
+            TextStyle::MonoXs.as_rich_cascading(helper, palette_ct(theme).base(Tone::Dim)),
         );
     }
 

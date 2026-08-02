@@ -27,13 +27,14 @@
 //!
 //! Sister widgets: `PanelEmpty`, `Spinner`, `Progress`, `Skeleton`.
 
-use egui::{Align, Layout, RichText, Ui};
+use egui::{Align, Layout, Ui};
 
 use super::spinner::Spinner;
 use super::theme::active_theme;
 use super::tokens::Size;
-use crate::ui_kit::tokens::{color_muted, font_xs, gap_sm};
+use crate::ui_kit::tokens::{color_muted, gap_sm};
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::text_style::TextStyle;
 
 #[must_use = "PanelLoading must be rendered with `.show(...)`"]
 #[derive(Default)]
@@ -65,10 +66,7 @@ impl<'a> PanelLoading<'a> {
             Spinner::new().size(Size::Sm).show(ui, &comp_theme);
             if let Some(r) = self.reason {
                 ui.label(
-                    RichText::new(r)
-                        .monospace()
-                        .size(font_xs())
-                        .color(color_muted(t.dim())),
+                    TextStyle::MonoXs.as_rich_cascading(r, color_muted(t.dim())),
                 );
             }
         });

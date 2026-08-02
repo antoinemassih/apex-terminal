@@ -32,9 +32,10 @@
 use egui::{Align, FontId, Layout, RichText, Ui};
 
 use crate::ui_kit::tokens::{
-    color_muted, font_sm, font_xl, font_xs, gap_md, gap_xs,
+    color_muted, font_xl, font_xs, gap_md, gap_xs,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::text_style::TextStyle;
 
 #[must_use = "PanelEmpty must be rendered with `.show(...)`"]
 pub struct PanelEmpty<'a> {
@@ -89,10 +90,7 @@ impl<'a> PanelEmpty<'a> {
                 // Empty-state title + hint are descriptive prose → PROPORTIONAL
                 // (was monospace, which read as raw/techy for sentences).
                 ui.label(
-                    RichText::new(self.title)
-                        .family(egui::FontFamily::Proportional)
-                        .size(font_sm())
-                        .color(t.dim()),
+                    TextStyle::BodySm.as_rich_cascading(self.title, t.dim()),
                 );
                 if let Some(h) = self.hint {
                     ui.add_space(gap_xs());

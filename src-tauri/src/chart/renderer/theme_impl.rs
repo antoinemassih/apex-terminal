@@ -171,10 +171,11 @@ mod m1_ramp_tests {
     /// unreachable by construction. Authored `bg_panel` must win.
     #[test]
     fn authored_warm_panel_beats_achromatic_derivation() {
-        let mut cs = crate::design_system::builtin_color_schemes()
+        let cs = crate::design_system::builtin_color_schemes()
             .into_iter().find(|c| c.meta.id == "aperture").expect("aperture scheme");
-        assert!(cs.bg_panel.is_none(), "not yet authored in builtins (T1 authors it)");
-        cs.bg_panel = Some([0x14, 0x13, 0x11, 255]);
+        // T-track authored the ramp — assert the SHIPPED value now.
+        assert_eq!(cs.bg_panel, Some([0x14, 0x13, 0x11, 255]),
+            "Aperture ships the authored warm panel");
         let t = crate::chart_renderer::theme_adapter::color_scheme_to_theme(&cs);
         let p = t.panel_surface();
         assert_eq!((p.r(), p.g(), p.b()), (0x14, 0x13, 0x11), "authored warm panel must win");

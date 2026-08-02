@@ -21,6 +21,7 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 #[must_use = "Slider does nothing until `.show(ui, theme)` or `ui.add(slider)` is called"]
 pub struct Slider<'a, T: egui::emath::Numeric> {
@@ -213,7 +214,11 @@ fn paint_slider<T: egui::emath::Numeric>(
                     Pos2::new(rect.right() + st::gap_xs(), rect.center().y),
                     egui::Align2::LEFT_CENTER,
                     formatted,
-                    if size == Size::Sm || size == Size::Xs { st::mono_xs() } else { st::mono_sm() },
+                    if size == Size::Sm || size == Size::Xs {
+                        TextStyle::MonoXs.font_id_in(ui)
+                    } else {
+                        TextStyle::MonoSm.font_id_in(ui)
+                    },
                     palette_ct(theme).base(Tone::Text),
                 );
                 ui.allocate_exact_size(Vec2::new(value_label_w, total_h), Sense::hover());

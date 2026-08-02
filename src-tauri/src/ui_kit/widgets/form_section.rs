@@ -17,13 +17,14 @@
 //!     .show(ui, theme);
 //! ```
 
-use egui::{CornerRadius, Response, RichText, Stroke, Ui};
+use egui::{CornerRadius, Response, Stroke, Ui};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::Button;
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 // ── FormSection ───────────────────────────────────────────────────────────────
 
@@ -55,19 +56,13 @@ impl<'a> FormSection<'a> {
         body: B,
     ) -> R {
         ui.label(
-            RichText::new(self.title)
-                .monospace()
-                .size(st::font_md())
-                .strong()
-                .color(palette_ct(theme).base(Tone::Text)),
+            TextStyle::MonoMd.as_rich_cascading(self.title, palette_ct(theme).base(Tone::Text)).strong(),
         );
         if let Some(h) = self.helper {
             ui.label(
-                RichText::new(h)
-                    .monospace()
-                    .size(st::font_xs())
-                    .italics()
-                    .color(st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_dim())),
+                TextStyle::MonoXs
+                    .as_rich_cascading(h, st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_dim()))
+                    .italics(),
             );
         }
         ui.add_space(self.spacing);
@@ -115,11 +110,9 @@ impl<'a> FieldSet<'a> {
         frame.show(ui, |ui| {
             if let Some(title) = self.title {
                 ui.label(
-                    RichText::new(title)
-                        .monospace()
-                        .size(st::font_sm())
-                        .strong()
-                        .color(palette_ct(theme).base(Tone::Text)),
+                    TextStyle::MonoSm
+                        .as_rich_cascading(title, palette_ct(theme).base(Tone::Text))
+                        .strong(),
                 );
                 ui.add_space(st::gap_sm());
             }

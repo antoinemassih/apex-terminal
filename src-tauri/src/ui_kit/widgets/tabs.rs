@@ -39,6 +39,7 @@ use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::sx::{palette_ct, Sx, StyleState, Tone};
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::text_style::TextStyle;
 
 // ── Public types ───────────────────────────────────────────────────────────────
 
@@ -310,7 +311,7 @@ fn paint_tabs(
     let pad_x = st::gap_sm();
     let inner_gap = st::gap_xs();
     let font_label = FontId::proportional(size.font_size());
-    let font_icon = FontId::proportional(st::font_sm());
+    let font_icon = TextStyle::BodySm.font_id_in(ui);
 
     // Outer id for stable animation/drag keys.
     let outer_id = ui.make_persistent_id(("ui_kit_tabs", id_salt.unwrap_or("default")));

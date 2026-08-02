@@ -17,11 +17,12 @@
 //!     });
 //! ```
 
-use egui::{RichText, Ui, Vec2};
+use egui::{Ui, Vec2};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 /// Canonical top-label form field wrapper.
 ///
@@ -146,19 +147,12 @@ fn paint_label_and_control<'a, R>(
     if let Some(label_text) = field.label {
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(label_text)
-                    .monospace()
-                    .size(st::font_sm())
-                    .color(palette_ct(theme).base(Tone::Text)),
+                TextStyle::MonoSm.as_rich_cascading(label_text, palette_ct(theme).base(Tone::Text)),
             );
             if field.required {
                 ui.add_space(st::gap_xs());
                 ui.label(
-                    RichText::new("*")
-                        .monospace()
-                        .size(st::font_sm())
-                        .strong()
-                        .color(theme.danger()),
+                    TextStyle::MonoSm.as_rich_cascading("*", theme.danger()).strong(),
                 );
             }
         });
@@ -186,11 +180,7 @@ fn paint_label_and_control<'a, R>(
             // Allocate the exact reserved height so layout is stable.
             ui.allocate_ui(Vec2::new(ui.available_width(), sub_h), |ui| {
                 ui.label(
-                    RichText::new(text)
-                        .monospace()
-                        .size(st::font_xs())
-                        .italics()
-                        .color(col),
+                    TextStyle::MonoXs.as_rich_cascading(text, col).italics(),
                 );
             });
         }

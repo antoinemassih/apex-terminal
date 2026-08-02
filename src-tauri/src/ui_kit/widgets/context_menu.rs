@@ -29,6 +29,7 @@ use super::motion;
 
 use crate::ui_kit::widgets::frames::{BorderAlpha, PopupFrame};
 use crate::ui_kit::tokens::*;
+use crate::ui_kit::text_style::TextStyle;
 
 // `Theme` alias removed — the legacy `MenuTheme::from_theme(&Theme)` shortcut
 // is deleted below; `from_component<T: ComponentTheme>` is the portable API.
@@ -291,7 +292,7 @@ fn paint_row(
                     egui::pos2(max_x, y),
                     Align2::RIGHT_CENTER,
                     sc,
-                    FontId::monospace(font_xs()),
+                    TextStyle::MonoXs.font_id_in(ui),
                     sc_color,
                 );
             }

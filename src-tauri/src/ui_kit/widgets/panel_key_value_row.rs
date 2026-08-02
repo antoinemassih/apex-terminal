@@ -33,9 +33,10 @@ use egui::{FontId, Pos2, Rect, Sense, Ui, Vec2};
 use super::panel_section::Tone;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens::{
-    color_alpha, color_muted, font_sm, font_xs, gap_xs,
+    color_alpha, color_muted, font_xs, gap_xs,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::text_style::TextStyle;
 use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 
 // ─── Row geometry (flexbox) ──────────────────────────────────────────────────
@@ -127,7 +128,7 @@ impl<'a> PanelKeyValueRow<'a> {
         // Measure the meta galley (the only intrinsically-sized column) so the
         // flex engine can reserve it; label and value stay unmeasured.
         let meta_color = color_alpha(palette_ct(t).base(SxTone::Dim), 140);
-        let meta_font = FontId::monospace(font_xs());
+        let meta_font = TextStyle::MonoXs.font_id_in(ui);
         let meta_w = self.meta.as_ref().map(|m| {
             ui.fonts(|f| f.layout_no_wrap(m.clone(), meta_font.clone(), meta_color))
                 .size().x
@@ -153,7 +154,7 @@ impl<'a> PanelKeyValueRow<'a> {
             Tone::Default => palette_ct(t).base(SxTone::Text),
             other => other.color(t),
         };
-        let value_font = FontId::monospace(font_sm());
+        let value_font = TextStyle::MonoSm.font_id_in(ui);
 
         if let (Some(m), Some(mslot)) = (&self.meta, slots.meta) {
             painter.text(

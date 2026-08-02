@@ -29,6 +29,7 @@ use egui::{Color32, Context, CornerRadius, Pos2, Sense, Stroke, Ui};
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 #[derive(Default)]
 pub struct ToolPopoverResponse {
@@ -162,7 +163,7 @@ impl<'a> ToolPopover<'a> {
                                 egui::pos2(title_rect.left() + st::gap_md(), title_rect.center().y),
                                 egui::Align2::LEFT_CENTER,
                                 t,
-                                egui::FontId::monospace(st::font_sm()),
+                                TextStyle::MonoSm.font_id_in(ui),
                                 text_color,
                             );
                         }

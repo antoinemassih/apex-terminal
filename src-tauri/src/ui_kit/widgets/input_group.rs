@@ -35,6 +35,7 @@ use egui::{
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 /// Prefix/suffix wrapper for any form control.
 ///
@@ -95,7 +96,8 @@ impl<'a> InputGroup<'a> {
         theme: &dyn ComponentTheme,
         control: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        let chip_font_size = st::font_xs();
+        // Cascade-aware chip font (== mono at font_xs today, subtree-overridable).
+        let chip_font = TextStyle::MonoXs.font_id_in(ui);
         let chip_gap = st::gap_xs();
         let radius = CornerRadius::same(st::radius_sm() as u8);
 
@@ -104,7 +106,7 @@ impl<'a> InputGroup<'a> {
             ui.fonts(|f| {
                 f.layout_no_wrap(
                     p.to_string(),
-                    FontId::monospace(chip_font_size),
+                    chip_font.clone(),
                     Color32::PLACEHOLDER,
                 )
                 .rect
@@ -117,7 +119,7 @@ impl<'a> InputGroup<'a> {
             ui.fonts(|f| {
                 f.layout_no_wrap(
                     s.to_string(),
-                    FontId::monospace(chip_font_size),
+                    chip_font.clone(),
                     Color32::PLACEHOLDER,
                 )
                 .rect
@@ -156,7 +158,7 @@ impl<'a> InputGroup<'a> {
                         Sense::hover(),
                     );
                     if ui.is_rect_visible(chip_rect) {
-                        paint_chip(ui, chip_rect, text, chip_font_size, chip_col, theme, false);
+                        paint_chip(ui, chip_rect, text, chip_font.clone(), chip_col, theme, false);
                     }
                     // Vertical divider between prefix and control.
                     paint_vertical_divider(ui, border_col);
@@ -174,7 +176,7 @@ impl<'a> InputGroup<'a> {
                         Sense::hover(),
                     );
                     if ui.is_rect_visible(chip_rect) {
-                        paint_chip(ui, chip_rect, text, chip_font_size, chip_col, theme, true);
+                        paint_chip(ui, chip_rect, text, chip_font.clone(), chip_col, theme, true);
                     }
                 }
 
@@ -198,7 +200,7 @@ fn paint_chip(
     ui: &Ui,
     rect: Rect,
     text: &str,
-    font_size: f32,
+    font_id: FontId,
     color: Color32,
     _theme: &dyn ComponentTheme,
     _right_side: bool,
@@ -209,7 +211,7 @@ fn paint_chip(
         rect.center(),
         Align2::CENTER_CENTER,
         text,
-        FontId::monospace(font_size),
+        font_id,
         color,
     );
 }

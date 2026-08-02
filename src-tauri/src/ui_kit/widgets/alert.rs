@@ -16,6 +16,7 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Sx, Tone};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::text_style::TextStyle;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AlertVariant {
@@ -85,8 +86,8 @@ impl Alert {
         let close_reserve = if self.closable { close_size + gap + pad } else { pad };
         let text_max_w = (avail_w - content_left_offset - close_reserve).max(40.0);
 
-        let title_font = FontId::proportional(st::font_sm());
-        let body_font = FontId::proportional(st::font_sm());
+        let title_font = TextStyle::BodySm.font_id_in(ui);
+        let body_font = TextStyle::BodySm.font_id_in(ui);
 
         let text_color = palette_ct(theme).base(Tone::Text);
         let dim_color = palette_ct(theme).base(Tone::Dim);

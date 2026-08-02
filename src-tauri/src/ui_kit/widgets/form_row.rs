@@ -33,11 +33,12 @@
 //! When `label_top(true)` the label is rendered on its own row above the body
 //! at full width instead.
 
-use egui::{Color32, RichText, Ui, Vec2};
+use egui::{Color32, Ui, Vec2};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 /// Controls which side of the gutter area the body aligns to.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
@@ -183,18 +184,11 @@ impl<'a> FormRow<'a> {
         let render_label = |ui: &mut Ui, required: bool| {
             if required {
                 ui.label(
-                    RichText::new("*")
-                        .monospace()
-                        .size(st::font_sm())
-                        .strong()
-                        .color(theme.danger()),
+                    TextStyle::MonoSm.as_rich_cascading("*", theme.danger()).strong(),
                 );
             }
             ui.label(
-                RichText::new(self.label)
-                    .monospace()
-                    .size(st::font_sm())
-                    .color(label_col),
+                TextStyle::MonoSm.as_rich_cascading(self.label, label_col),
             );
         };
 
@@ -268,11 +262,7 @@ fn render_sub_text(
                 st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_dim())
             };
             ui.label(
-                RichText::new(text)
-                    .monospace()
-                    .size(st::font_xs())
-                    .italics()
-                    .color(col),
+                TextStyle::MonoXs.as_rich_cascading(text, col).italics(),
             );
         });
     }

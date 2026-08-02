@@ -51,10 +51,11 @@ use egui::{CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use super::super::icons::Icon;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens::{
-    color_alpha, font_sm, gap_2xs, gap_md, gap_xs, stroke_thin,
+    color_alpha, gap_2xs, gap_md, gap_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::text_style::TextStyle;
 
 /// Alpha (out of 255) of the bottom hairline rule. Higher than the L2
 /// surface contrast so the separator actually reads against the lifted
@@ -318,13 +319,13 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
         // hierarchy.
         let title_color = color_alpha(palette_ct(t).base(Tone::Text), 220);
         let title_galley = ui.fonts(|f| {
-            f.layout_no_wrap(title.to_uppercase(), FontId::monospace(font_sm()), title_color)
+            f.layout_no_wrap(title.to_uppercase(), TextStyle::MonoSm.font_id_in(ui), title_color)
         });
         // Count chip — same treatment as PanelSection.count.
         let count_color = color_alpha(palette_ct(t).base(Tone::Dim), 200);
         let count_galley = count.map(|n| {
             ui.fonts(|f| {
-                f.layout_no_wrap(format!("{}", n), FontId::monospace(font_sm()), count_color)
+                f.layout_no_wrap(format!("{}", n), TextStyle::MonoSm.font_id_in(ui), count_color)
             })
         });
 

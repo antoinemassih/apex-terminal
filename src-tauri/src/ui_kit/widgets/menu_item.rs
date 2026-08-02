@@ -32,6 +32,7 @@ use egui::{Button, Color32, CursorIcon, Response, RichText, Ui};
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 use crate::ui_kit::icons::Icon;
 
 /// Builder for a single menu-item row.
@@ -126,7 +127,10 @@ impl<'a> MenuItem<'a> {
             text.push_str(Icon::CARET_RIGHT);
         }
 
-        let mut rt = RichText::new(text).size(st::font_sm());
+        // Cascade-aware: size comes from the inherited BodySm tier (== font_sm)
+        // rather than a baked-in `.size(..)`. No color is forced — the optional
+        // tint below and egui's menu-item default text color still apply.
+        let mut rt = RichText::new(text).text_style(TextStyle::BodySm.egui());
         if let Some(tint) = self.tint {
             rt = rt.color(tint);
         }
@@ -134,9 +138,10 @@ impl<'a> MenuItem<'a> {
         let mut btn = Button::new(rt);
         if let Some(ref hint) = self.shortcut {
             btn = btn.shortcut_text(
-                RichText::new(hint.clone())
-                    .size(st::font_sm())
-                    .color(st::color_alpha(palette_ct(theme).base(Tone::Dim), 160)),
+                TextStyle::BodySm.as_rich_cascading(
+                    hint,
+                    st::color_alpha(palette_ct(theme).base(Tone::Dim), 160),
+                ),
             );
         }
 
@@ -173,7 +178,7 @@ impl<'a> MenuItem<'a> {
             text.push(' ');
         }
         text.push_str(&self.label);
-        let mut rt = RichText::new(text).size(st::font_sm());
+        let mut rt = RichText::new(text).text_style(TextStyle::BodySm.egui());
         if let Some(tint) = self.tint {
             rt = rt.color(tint);
         }

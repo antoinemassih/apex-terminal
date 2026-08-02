@@ -34,6 +34,7 @@ use crate::ui_kit::sx::{palette_ct, Tone};
 use super::button::Button;
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 /// Tone for the confirm button — picks the variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -145,9 +146,7 @@ impl<'a> ConfirmDialog<'a> {
                 if let Some(text) = body {
                     ui.add_space(st::gap_sm());
                     ui.label(
-                        egui::RichText::new(text)
-                            .size(st::font_sm())
-                            .color(palette_ct(theme).base(Tone::Text)),
+                        TextStyle::BodySm.as_rich_cascading(text, palette_ct(theme).base(Tone::Text)),
                     );
                     ui.add_space(st::gap_md());
                 }

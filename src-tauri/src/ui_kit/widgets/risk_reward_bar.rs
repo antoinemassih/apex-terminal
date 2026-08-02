@@ -12,6 +12,7 @@ use egui::{Response, Sense, Ui, Vec2};
 use super::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::text_style::TextStyle;
 
 /// Horizontal 2-segment risk/reward bar.
 #[must_use = "RiskRewardBar does nothing until `.show(ui, theme)` is called"]
@@ -105,7 +106,7 @@ impl RiskRewardBar {
                 bar_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 format!("R/R: {:.2}", rr),
-                egui::FontId::monospace(st::font_xs()),
+                TextStyle::MonoXs.font_id_in(ui),
                 pal.base(Tone::Text),
             );
         }

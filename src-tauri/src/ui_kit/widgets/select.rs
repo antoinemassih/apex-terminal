@@ -33,6 +33,7 @@ use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::text_style::TextStyle;
 
 /// Selection mode + storage.
 enum Mode<'a> {
@@ -898,7 +899,7 @@ fn render_panel<'a, T>(
                     .margin(egui::Margin::ZERO)
                     .frame(false)
                     .text_color(palette_ct(theme).base(Tone::Text))
-                    .font(egui::FontSelection::FontId(st::mono_sm()));
+                    .font(egui::FontSelection::FontId(TextStyle::MonoSm.font_id_in(&child)));
                 let _ = child.add(te);
                 if s_resp.clicked() {
                     ui.memory_mut(|m| m.request_focus(edit_id));
@@ -917,10 +918,7 @@ fn render_panel<'a, T>(
                 ui.add_space(st::gap_xs());
                 ui.vertical_centered(|ui| {
                     ui.label(
-                        egui::RichText::new(empty_text)
-                            .monospace()
-                            .size(st::font_xs())
-                            .color(palette_ct(theme).base(Tone::Dim)),
+                        TextStyle::MonoXs.as_rich_cascading(empty_text, palette_ct(theme).base(Tone::Dim)),
                     );
                 });
                 ui.add_space(st::gap_xs());

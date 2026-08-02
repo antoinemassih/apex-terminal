@@ -17,6 +17,7 @@ use super::motion;
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum IndicatorTone {
@@ -132,7 +133,7 @@ impl<'a> Indicator<'a> {
                     egui::pos2(cursor.left(), cursor.center().y),
                     egui::Align2::LEFT_CENTER,
                     text,
-                    egui::FontId::monospace(st::font_sm()),
+                    TextStyle::MonoSm.font_id_in(ui),
                     label_color,
                 );
                 // Allocate space for the text so egui accounts for its width.

@@ -19,6 +19,7 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 /// Builder for a multiline text input. See module docs for usage.
 #[must_use = "TextArea does nothing until `.show(ui, theme)` is called"]
@@ -101,10 +102,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
         // ── Label ──
         if let Some(lbl) = label {
             ui.label(
-                egui::RichText::new(lbl)
-                    .monospace()
-                    .size(st::font_xs())
-                    .color(palette_ct(theme).base(Tone::Dim)),
+                TextStyle::MonoXs.as_rich_cascading(lbl, palette_ct(theme).base(Tone::Dim)),
             );
             ui.add_space(st::gap_2xs() * 0.5);
         }

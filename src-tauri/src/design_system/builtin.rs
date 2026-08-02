@@ -1608,8 +1608,11 @@ mod tests {
         // Catppuccin, Tokyo Night, Kanagawa, Everforest, Vesper, Rosé Pine,
         // Bauhaus, Peach, Ivory, Newsprint.
         let schemes = builtin_color_schemes();
-        // 16 THEMES-backed schemes + 5 React palette ports (Aperture/Cadence/Alto/Mariner/Lucid).
-        assert_eq!(schemes.len(), 21, "expected 21 schemes (16 THEMES + 5 React ports)");
+        // 16 THEMES-backed schemes + 5 React palette ports (Aperture/Cadence/
+        // Alto/Mariner/Lucid) + Meridien (T2: registered as a scheme; palette
+        // is a deliberate byte-identical Lucid clone — differentiators live on
+        // the style axis).
+        assert_eq!(schemes.len(), 22, "expected 22 schemes (16 THEMES + 5 React ports + Meridien)");
     }
 
     #[test]

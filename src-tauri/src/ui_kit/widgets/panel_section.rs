@@ -72,6 +72,7 @@ use crate::ui_kit::tokens::{
     color_alpha, font_sm, font_xs, gap_lg, gap_sm, gap_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::text_style::TextStyle;
 use crate::ui_kit::sx::{palette_ct, Sx, StyleState, Tone as SxTone};
 
 /// Shared semantic tone for the panel body primitives. Resolves to a theme
@@ -572,11 +573,9 @@ impl<'a> PanelSection<'a> {
                             if let Some(s) = &count_text {
                                 label_exact(
                                     ui,
-                                    RichText::new(s)
-                                        .monospace()
-                                        .size(font_xs())
-                                        .strong()
-                                        .color(color_alpha(title_color, 200)),
+                                    TextStyle::MonoXs
+                                        .as_rich_cascading(s, color_alpha(title_color, 200))
+                                        .strong(),
                                 );
                             }
                         }
@@ -584,10 +583,8 @@ impl<'a> PanelSection<'a> {
                             if let Some(m) = &meta {
                                 label_exact(
                                     ui,
-                                    RichText::new(m)
-                                        .monospace()
-                                        .size(font_xs())
-                                        .color(color_alpha(palette_ct(t).base(SxTone::Dim), 160)),
+                                    TextStyle::MonoXs
+                                        .as_rich_cascading(m, color_alpha(palette_ct(t).base(SxTone::Dim), 160)),
                                 );
                             }
                         }
@@ -732,7 +729,7 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
         rect.center(),
         egui::Align2::CENTER_CENTER,
         glyph,
-        crate::ui_kit::style::prop_sm(),
+        TextStyle::BodySm.font_id_in(ui),
         draw_color,
     );
     resp.clicked()
@@ -746,7 +743,7 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
 /// exactly the rect the button will fill.
 fn section_action_button_size(ui: &Ui, label: &str) -> Vec2 {
     let galley = ui.fonts(|f| {
-        f.layout_no_wrap(label.to_string(), crate::ui_kit::style::mono_xs(), Color32::PLACEHOLDER)
+        f.layout_no_wrap(label.to_string(), TextStyle::MonoXs.font_id_in(ui), Color32::PLACEHOLDER)
     });
     let pad_x = gap_xs() + 2.0;
     // Ceil for the same reason as `text_size`: the flex rect that reserves this
@@ -771,7 +768,7 @@ fn section_action_button(ui: &mut Ui, label: &str, color: Color32) -> bool {
         rect.center(),
         egui::Align2::CENTER_CENTER,
         label,
-        crate::ui_kit::style::mono_xs(),
+        TextStyle::MonoXs.font_id_in(ui),
         color,
     );
     let _ = text;
@@ -1070,6 +1067,23 @@ mod tests {
         super::super::theme::PortableTheme::dark()
     }
 
+    /// `egui::__run_test_ui` with the ui_kit typography tiers installed —
+    /// what every real host does per frame in `setup_theme`. Without this,
+    /// `as_rich_cascading` (used by the header's count/meta labels) resolves
+    /// a `Name` text-style that is missing from the raw test context's table
+    /// and panics inside egui.
+    fn run_test_ui(f: impl FnOnce(&mut Ui)) {
+        // `__run_test_ui` wants `impl Fn`; hand the FnOnce through a Cell so
+        // the (single) invocation stays compatible.
+        let f = Cell::new(Some(f));
+        egui::__run_test_ui(|ui| {
+            TextStyle::install(ui.style_mut());
+            if let Some(f) = f.take() {
+                f(ui);
+            }
+        });
+    }
+
     #[test]
     fn collapsible_toggle_skips_body_when_collapsed() {
         use std::cell::RefCell;
@@ -1077,7 +1091,7 @@ mod tests {
         let expanded: RefCell<bool> = RefCell::new(false);
         let body_called = Cell::new(false);
 
-        egui::__run_test_ui(|ui| {
+        run_test_ui(|ui| {
             let mut e = expanded.borrow_mut();
             let resp = PanelSection::new("ACTIVE")
                 .count(0)
@@ -1099,7 +1113,7 @@ mod tests {
         let expanded: RefCell<bool> = RefCell::new(true);
         let body_called = Cell::new(false);
 
-        egui::__run_test_ui(|ui| {
+        run_test_ui(|ui| {
             let mut e = expanded.borrow_mut();
             let resp = PanelSection::new("ACTIVE")
                 .count(3)
@@ -1118,7 +1132,7 @@ mod tests {
         let theme = theme();
 
         // count == 0 + delete_when_empty: button paints, click flag wired.
-        egui::__run_test_ui(|ui| {
+        run_test_ui(|ui| {
             let resp = PanelSection::new("WATCHLIST")
                 .count(0)
                 .delete_when_empty()
@@ -1130,7 +1144,7 @@ mod tests {
         });
 
         // count > 0: delete button suppressed, action button (if any) paints.
-        egui::__run_test_ui(|ui| {
+        run_test_ui(|ui| {
             let resp = PanelSection::new("WATCHLIST")
                 .count(5)
                 .delete_when_empty()
@@ -1150,6 +1164,7 @@ mod tests {
         let theme = theme();
         let expanded: RefCell<bool> = RefCell::new(true);
         let ctx = egui::Context::default();
+        ctx.style_mut(|s| TextStyle::install(s)); // headless host: register the tiers
         let seen: Cell<Option<egui::Rect>> = Cell::new(None);
         let panel: Cell<Option<egui::Rect>> = Cell::new(None);
 
@@ -1186,6 +1201,7 @@ mod tests {
         // captured in a Cell so we can synthesize a click at its
         // center on the second frame.
         let ctx = egui::Context::default();
+        ctx.style_mut(|s| TextStyle::install(s)); // headless host: register the tiers
         let header_rect_cell: Cell<Option<egui::Rect>> = Cell::new(None);
 
         // First pass — discover header rect (no click).

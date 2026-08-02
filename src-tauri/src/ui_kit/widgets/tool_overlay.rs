@@ -52,6 +52,7 @@ use super::tokens::{Size as KitSize, Variant};
 use super::{Button, Tooltip};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::text_style::TextStyle;
 
 #[derive(Default)]
 pub struct ToolOverlayResponse {
@@ -346,7 +347,7 @@ impl<'a> ToolOverlay<'a> {
             // Measure title width so we can position the leading slot after it.
             let title_galley = ui.fonts(|f| f.layout_no_wrap(
                 title.to_string(),
-                egui::FontId::monospace(st::font_sm()),
+                TextStyle::MonoSm.font_id_in(ui),
                 text_color,
             ));
             ui.painter().galley(

@@ -99,15 +99,16 @@
 //! For back-compat, `.show()` still returns `egui::Response`; use
 //! `.show_full()` when you need the trailing-button click index.
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Ui, Vec2};
+use egui::{Color32, CornerRadius, Pos2, Rect, Response, Sense, Ui, Vec2};
 
 use crate::ui_kit::tokens::{
-    self as st, alpha_ghost, color_alpha, color_muted, font_md, font_sm, font_xs, gap_lg, gap_md, gap_xs,
+    self as st, alpha_ghost, color_alpha, color_muted, gap_lg, gap_md, gap_xs,
     radius_sm,
 };
 use crate::ui_kit::widgets::theme::{ComponentTheme, get_ambient_recipes};
 use crate::ui_kit::sx::{palette_ct, Fill, Sx, StyleState, Tone as SxTone};
 use crate::ui_kit::widgets::{motion, Tooltip};
+use crate::ui_kit::text_style::TextStyle;
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -768,7 +769,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                         // Primary label at font_md (was font_sm) — the small
                         // 11px was the "unreadable" complaint; 13px matches the
                         // watchlist row's readability.
-                        let font = FontId::monospace(font_md());
+                        let font = TextStyle::MonoMd.font_id_in(ui);
                         let galley = ui.fonts(|f| {
                             f.layout_no_wrap(p.to_string(), font.clone(), pal.base(SxTone::Text))
                         });
@@ -777,7 +778,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                     }
                     if let Some(s) = secondary {
                         // Secondary line one tier up too (font_xs 9px → font_sm 11px).
-                        let font = FontId::monospace(font_sm());
+                        let font = TextStyle::MonoSm.font_id_in(ui);
                         let col = color_muted(pal.base(SxTone::Dim));
                         let galley = ui.fonts(|f| {
                             f.layout_no_wrap(s.to_string(), font.clone(), col)
@@ -844,7 +845,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                     r.center(),
                     egui::Align2::CENTER_CENTER,
                     btn.icon,
-                    FontId::proportional(font_sm()),
+                    TextStyle::BodySm.font_id_in(ui),
                     glyph_color,
                 );
 
@@ -917,9 +918,9 @@ fn paint_columns<T: ComponentTheme>(ui: &mut Ui, rect: Rect, cols: &[Column<'_>]
         );
 
         let font = if c.mono {
-            FontId::monospace(font_sm())
+            TextStyle::MonoSm.font_id_in(ui)
         } else {
-            FontId::proportional(font_sm())
+            TextStyle::BodySm.font_id_in(ui)
         };
         let color = if c.color == Color32::PLACEHOLDER { palette_ct(t).base(SxTone::Text) } else { c.color };
         let galley = ui.fonts(|f| f.layout_no_wrap(c.text.to_string(), font, color));
