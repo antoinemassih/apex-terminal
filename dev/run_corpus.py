@@ -143,6 +143,18 @@ def start_app():
     # supermodel process holding 7892 doesn't block the run.
     _env = dict(os.environ)
     _env["APEX_DEV_INSPECTOR_PORT"] = str(CORPUS_PORT)
+    # AUDIT 2026-08-02 (AT-142): synthetic bar generation is now opt-in.
+    #
+    # It used to activate from `!is_crypto && !apex_data::is_enabled()` alone —
+    # and `is_enabled()` is a user-facing checkbox in Settings, so one click made
+    # a release build fabricate random-walk candles with no badge. Turning the
+    # feed off now shows no new data, which is the honest result.
+    #
+    # The corpus genuinely needs generated bars (it runs with ApexData disabled),
+    # so it opts in explicitly here. If this line is removed, scenarios that
+    # assert on advancing candles will go quiet rather than fail loudly — check
+    # this first if the corpus starts reporting empty charts.
+    _env["APEX_SIM_BARS"] = "1"
     # CREATE_NO_WINDOW rather than DETACHED_PROCESS.
     #
     # UNRESOLVED (2026-08-01) — read this before trusting a red corpus run.

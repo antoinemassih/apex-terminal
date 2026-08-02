@@ -592,6 +592,28 @@ const SIM_VOLATILITY: f32 = 0.0005;       // Per-tick price change magnitude (~0
 const SIM_REVERSION: f32 = 0.003;         // Mean-reversion strength toward candle open
 const SIM_VOL_BASE: f32 = 1000.0;         // Minimum volume per tick
 const SIM_VOL_RANGE: f32 = 8000.0;        // Random volume range above base
+
+/// Is synthetic bar GENERATION explicitly opted into?
+///
+/// AT-142: `APEX_SIM_BARS=1` (or `true`/`yes`/`on`). Read once and cached — this
+/// is consulted per pane per frame, and the answer cannot change usefully
+/// mid-run anyway.
+///
+/// Deliberately an env var, not a settings toggle: fabricated price data should
+/// require intent from whoever launched the process, not a click by whoever is
+/// using it. `dev/run_corpus.py` sets it so the scenario corpus keeps working.
+pub(crate) fn sim_bars_opt_in() -> bool {
+    static OPT_IN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *OPT_IN.get_or_init(|| {
+        std::env::var("APEX_SIM_BARS")
+            .map(|v| {
+                let v = v.trim().to_ascii_lowercase();
+                v == "1" || v == "true" || v == "yes" || v == "on"
+            })
+            .unwrap_or(false)
+    })
+}
+
 const SIM_DEFAULT_INTERVAL: i64 = 300;    // Default bar interval (5 min) when no timestamps
 const AUTO_SCROLL_RESUME_SECS: u64 = 5;   // Resume auto-scroll after N seconds of inactivity
 pub(crate) const CHART_RIGHT_PAD: u32 = 20;           // Empty bars of space to the right of latest bar
@@ -4358,7 +4380,29 @@ fn tick_pane_frame(chart: &mut Chart) {
     //
     // Wave 9c: registry-backed asset class via `symbol_meta` (avoids the
     // `is_crypto(&str)` suffix heuristic mis-flagging XUSDT-style equities).
-    let sim_active = !chart.symbol_meta.is_crypto() && !crate::apex_data::is_enabled();
+    // AUDIT 2026-08-02 (AT-142, P1): synthetic bar generation now requires an
+    // EXPLICIT opt-in.
+    //
+    // This used to activate purely from `!is_crypto && !apex_data::is_enabled()`.
+    // `apex_data::is_enabled()` is flipped by a user-facing checkbox —
+    // `settings_panel.rs:876`, labelled "Enabled — Stream live market data from
+    // the ApexData feed". So one click in Settings made the chart start writing
+    // fabricated random-walk candles into `chart.bars`, in a release build, with
+    // NO badge threaded out to the UI. Nothing in that toggle's wording suggests
+    // turning the live feed OFF substitutes invented prices for it.
+    //
+    // Every other synthetic path in this codebase flags itself to a visible
+    // badge (`placeholder` on chains, `gamma_synthetic`, `cvd_synthetic`), and
+    // gpu.rs already chose empty-state over fabrication for fundamentals /
+    // econ / insider data. This was the one path that fabricated silently.
+    //
+    // Turning off the feed now shows NO new data, which is the honest result.
+    // The 1067-scenario corpus genuinely needs generated bars, so it opts in via
+    // `APEX_SIM_BARS=1` (set by dev/run_corpus.py). A user cannot reach this
+    // state by accident.
+    let sim_active = sim_bars_opt_in()
+        && !chart.symbol_meta.is_crypto()
+        && !crate::apex_data::is_enabled();
     if sim_active && !chart.bars.is_empty() {
         // Init sim_price from last bar's close — and immediately create a new
         // candle so the simulation never overwrites historical data.

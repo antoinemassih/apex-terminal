@@ -47,7 +47,7 @@ AT-026, AT-073, AT-075, AT-124.
 
 Surfaced while verifying existing items. Ids continue the AT- sequence.
 
-- [ ] **AT-142** `P1` `C` `TRADING` — `gpu.rs::tick_pane_frame` contains a LIVE synthetic
+- [x] **AT-142** `P1` `C` `TRADING` — `gpu.rs::tick_pane_frame` contains a LIVE synthetic
   tick/candle generator (random walk, Box-Muller) that writes invented candles into
   `chart.bars`. Gated at RUNTIME, not compile time: `!symbol_meta.is_crypto() &&
   !apex_data::is_enabled()`. So a release build with ApexData disabled fabricates
