@@ -12,9 +12,7 @@
 #![allow(dead_code)]
 
 pub mod codec;
-pub mod commands;
 pub mod drawings;
-pub mod file_io;
 pub mod annotations;
 pub mod indicators;
 pub mod templates;

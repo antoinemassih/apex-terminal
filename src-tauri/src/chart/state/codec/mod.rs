@@ -12,7 +12,6 @@
 #![allow(dead_code)]
 
 pub mod db;
-pub mod xol;
 
 use std::io::{Read, Write};
 

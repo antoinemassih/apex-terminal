@@ -66,6 +66,13 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   TWICE (a `NewsRow` loop outside the scroll area, then a `PanelListRow` loop inside).
   Every headline appears twice; only the first copy's click was wired.
 
+- [ ] **AT-146** `P2` `C` `MISSED` — `cargo check --examples` has been FAILING on this
+  branch (`examples/seed_watchlist_universes.rs` matches `Option` on a `Result` from
+  `apex_rest::fetch_holdings`). Verified broken at HEAD~1 too, so it is not recent.
+  Nothing catches it: CI is `--lib` only (AT-073) and the new `shipping-binary` job
+  checks `--bins`. Either fix the example and add `--examples` to that job, or delete
+  it — but a target that has never compiled should not sit in the tree pretending to.
+
 ### Corrections to original findings
 
 - **AT-064 / ThemeRegistry** — the audit counted `registry.rs` (266) twice. Real total
@@ -195,7 +202,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [ ] **AT-045** `P2` `C` `ARCH` — 73% of the AppCommand dispatch layer has no producer in a release build — its only callers are the debug-only dev_inspector
 - [ ] **AT-058** `P2` `?` `DATA` — SubscriptionManager::check_stale() has zero callers — the documented per-subscription staleness TTL never fires
 - [ ] **AT-059** `P2` `W` `DEADCODE` — Conditional orders and options-trigger orders are implemented end-to-end but have no production entry point
-- [ ] **AT-060** `P2` `W` `DEADCODE` — `chart/state` — 2,583 LOC of chart-storage architecture — is unreachable; its single integration point is hardcoded `None`
+- [x] **AT-060** `P2` `W` `DEADCODE` — `chart/state` — 2,583 LOC of chart-storage architecture — is unreachable; its single integration point is hardcoded `None`
 - [ ] **AT-074** `P2` `?` `MISSED` — The cooperative-shutdown subsystem is entirely dead: `drain_all` has zero callers, so the Postgres pool is never closed and the bug its own doc claims to fix is unfixed
 - [ ] **AT-076** `P2` `C` `OTHER` — ContextMenu (507 LOC) and Popover (173 LOC) have zero production callers; the app uses raw egui context menus in 22 places
 - [ ] **AT-095** `P2` `C` `UNWIRED` — Command-palette Help and Calc entries execute to nothing — the dispatcher has no arm for their ids
