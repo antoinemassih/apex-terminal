@@ -15,8 +15,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Make script executable
-        run: chmod +x scripts/check-design-system.sh
+      - name: Make scripts executable
+        run: chmod +x scripts/check-design-system.sh scripts/style-mig-lint.sh scripts/sx_ratchet.sh
 
-      - name: Run design-system lint guard
+      - name: Run design-system ratchet (per-file budgets)
         run: scripts/check-design-system.sh
+
+      # M0.8: the other two gates existed but never ran in CI, which made them
+      # decorative. All three design gates now run on every push/PR.
+      - name: Run style-migration lints (baselines.toml ratchets)
+        if: ${{ !cancelled() }}
+        run: bash scripts/style-mig-lint.sh
+
+      - name: Run legacy-tone ratchet + Sx adoption floor
+        if: ${{ !cancelled() }}
+        run: bash scripts/sx_ratchet.sh

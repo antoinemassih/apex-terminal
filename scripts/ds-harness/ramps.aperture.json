@@ -1,0 +1,34 @@
+{
+  "_comment": "Aperture authored surface ramp — values from docs/DESIGN_BRIEF_DS_ADOPTION.md §5.1 (canvas #000000; warm panel ramp #141311 -> #1a1816 -> #1f1d1a, R>G>B). COORDINATES ARE PLACEHOLDERS: after the first live capture (capture_app.py, theme=aperture style=aperture), open the PNG, pick a pixel squarely inside each surface (chart canvas / side-panel body / card surface / modal-or-dropdown), and fill in real x/y. Set 'image' to the capture path or pass --image.",
+  "image": "../../docs/styling/screenshots/current/aperture-aperture-1440x900.png",
+  "samples": [
+    {
+      "name": "bg",
+      "_where": "PLACEHOLDER — pure-black chart canvas, away from bars/grid",
+      "x": 700, "y": 450,
+      "expected_rgb": "#000000",
+      "tolerance": 4
+    },
+    {
+      "name": "panel",
+      "_where": "PLACEHOLDER — side-panel / toolbar body (first ramp step, warm)",
+      "x": 60, "y": 200,
+      "expected_rgb": "#141311",
+      "tolerance": 4
+    },
+    {
+      "name": "surface",
+      "_where": "PLACEHOLDER — card / section surface (second ramp step)",
+      "x": 1300, "y": 300,
+      "expected_rgb": "#1a1816",
+      "tolerance": 4
+    },
+    {
+      "name": "elevated",
+      "_where": "PLACEHOLDER — modal / dropdown / elevated card (third ramp step)",
+      "x": 1300, "y": 120,
+      "expected_rgb": "#1f1d1a",
+      "tolerance": 4
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>apex-terminal DS contact sheet</title>
+<style>
+  body { margin: 0; padding: 24px; background: #111; color: #ddd;
+         font: 13px/1.5 -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 16px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 32px 0 8px;
+       text-transform: capitalize; border-bottom: 1px solid #333;
+       padding-bottom: 4px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .cell { flex: 1 1 460px; max-width: 720px; }
+  .cell .tag { font-size: 11px; color: #999; margin: 0 0 4px;
+               text-transform: uppercase; letter-spacing: 0.05em; }
+  .cell .tag b { color: #ccc; }
+  .cell img { width: 100%; height: auto; display: block;
+              border: 1px solid #333; border-radius: 4px; background: #000; }
+  .missing { display: flex; align-items: center; justify-content: center;
+             min-height: 200px; border: 1px dashed #444; border-radius: 4px;
+             color: #666; }
+  .note { color: #888; font-size: 12px; }
+</style></head>
+<body>
+<h1>Design-system contact sheet &mdash; reference vs current</h1>
+<p class="note">reference = original theme HTML (ApexTerminalThemes, :5173) &middot;
+current = live apex-terminal capture via dev_inspector. Regenerate with
+<code>python scripts/ds-harness/contact_sheet.py</code>.</p>
+<h2>aperture</h2>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; trading-terminal-1440x900.png</p><a href="reference/aperture/trading-terminal-1440x900.png"><img src="reference/aperture/trading-terminal-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; trading-terminal-2560x1440.png</p><a href="reference/aperture/trading-terminal-2560x1440.png"><img src="reference/aperture/trading-terminal-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div><h2>cadence</h2>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; trading-app-1440x900.png</p><a href="reference/cadence/trading-app-1440x900.png"><img src="reference/cadence/trading-app-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; trading-app-2560x1440.png</p><a href="reference/cadence/trading-app-2560x1440.png"><img src="reference/cadence/trading-app-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div><h2>alto</h2>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; daily-1440x900.png</p><a href="reference/alto/daily-1440x900.png"><img src="reference/alto/daily-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; daily-2560x1440.png</p><a href="reference/alto/daily-2560x1440.png"><img src="reference/alto/daily-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; terminal-1440x900.png</p><a href="reference/alto/terminal-1440x900.png"><img src="reference/alto/terminal-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; terminal-2560x1440.png</p><a href="reference/alto/terminal-2560x1440.png"><img src="reference/alto/terminal-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; the-daily-1440x900.png</p><a href="reference/alto/the-daily-1440x900.png"><img src="reference/alto/the-daily-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; the-daily-2560x1440.png</p><a href="reference/alto/the-daily-2560x1440.png"><img src="reference/alto/the-daily-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div><h2>mariner</h2>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; alto-warm-dark-1440x900.png</p><a href="reference/mariner/alto-warm-dark-1440x900.png"><img src="reference/mariner/alto-warm-dark-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; alto-warm-dark-2560x1440.png</p><a href="reference/mariner/alto-warm-dark-2560x1440.png"><img src="reference/mariner/alto-warm-dark-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; terminal-1440x900.png</p><a href="reference/mariner/terminal-1440x900.png"><img src="reference/mariner/terminal-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; terminal-2560x1440.png</p><a href="reference/mariner/terminal-2560x1440.png"><img src="reference/mariner/terminal-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div><h2>lucid</h2>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; terminal-1440x900.png</p><a href="reference/lucid/terminal-1440x900.png"><img src="reference/lucid/terminal-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; terminal-2560x1440.png</p><a href="reference/lucid/terminal-2560x1440.png"><img src="reference/lucid/terminal-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div><h2>meridien</h2>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; terminal-1440x900.png</p><a href="reference/meridien/terminal-1440x900.png"><img src="reference/meridien/terminal-1440x900.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+<div class="row"><div class="cell"><p class="tag"><b>reference</b> &middot; terminal-2560x1440.png</p><a href="reference/meridien/terminal-2560x1440.png"><img src="reference/meridien/terminal-2560x1440.png" loading="lazy"></a></div><div class="cell"><p class="tag">current (apex-terminal)</p><div class="missing">no capture</div></div></div>
+</body></html>

@@ -55,6 +55,20 @@ PATTERNS=(
   "FontId::monospace("
   "FontId::new("
   "CornerRadius::same("
+  # gamma_multiply with a literal factor darkens/brightens a colour outside the
+  # token system — the result tracks NO theme role. Use color_alpha / tint or a
+  # dedicated token instead. Fixed-string on the "0." prefix catches the literal
+  # forms (gamma_multiply(0.5) etc.) without matching variable factors.
+  "gamma_multiply(0."
+  # Literal stroke WIDTHS: Stroke::new(0.5/1.0/1.5/2.0/3.0, …) hardcodes line
+  # weight per call site instead of using the stroke-width tokens. grep -F, so
+  # each common literal is its own fixed string (regex would need -E and would
+  # false-positive on computed widths).
+  "Stroke::new(0.5,"
+  "Stroke::new(1.0,"
+  "Stroke::new(1.5,"
+  "Stroke::new(2.0,"
+  "Stroke::new(3.0,"
 )
 
 # Files that DEFINE the design system (they must use raw primitives to build
@@ -83,6 +97,8 @@ ALLOWED_BASENAMES=(
   "widget_gallery.rs"        # component demo surface
   "color_picker.rs"          # an RGB picker, by definition
   "recipe_spec.rs"
+  "tps_overlay.rs"           # fake-Excel boss-key overlay — theme-blindness IS the feature
+  "bug_anchor.rs"            # Ctrl+Shift+I dev bug-reporter overlay; same rationale as inspect.rs
 )
 
 # Build a basename filter regex. NOTE: we deliberately do NOT use grep's
