@@ -73,6 +73,14 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   checks `--bins`. Either fix the example and add `--examples` to that job, or delete
   it — but a target that has never compiled should not sit in the tree pretending to.
 
+- [ ] **AT-147** `P2` `C` `MISSED` — `tests/dev_inspector.rs` hardcodes scenario filenames
+  that no longer exist (`50_chart_indicator_heavy_fps`, `51_order_open_close_fast`,
+  `66_options_sentiment_pane`, and ~17 more in the 50-69 range). They were renamed or
+  removed and the test was never updated, so it reports "could not load scenario" and
+  the whole target fails. Invisible because CI is `--lib` only (AT-073). Either repoint
+  the test at the current scenario set or have it enumerate `dev/scenarios/` rather than
+  hardcode names — hardcoding is what let this rot silently.
+
 ### Corrections to original findings
 
 - **AT-064 / ThemeRegistry** — the audit counted `registry.rs` (266) twice. Real total
@@ -211,7 +219,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [ ] **AT-098** `P2` `W` `UNWIRED` — The whole ApexSignals integration — not just the three MSG panels — defaults to http://localhost:8100 with no way to configure it
 - [ ] **AT-099** `P2` `W` `UNWIRED` — Three user-editable hotkeys are read by nothing, including "Halt Trading" — and the F1 cheatsheet advertises a Halt chord that does something else
 - [ ] **AT-100** `P2` `C` `UNWIRED` — Two complete, tested panels have zero call sites anywhere in the tree
-- [ ] **AT-109** `P3` `C` `DATA` — providers/mock.rs (546 lines) and providers/replay.rs (212 lines) are compiled into production builds despite being test-only scaffolding
+- [x] **AT-109** `P3` `C` `DATA` — providers/mock.rs (546 lines) and providers/replay.rs (212 lines) are compiled into production builds despite being test-only scaffolding
 - [ ] **AT-110** `P3` `C` `DEADCODE` — Dead REST client surface in the ApexData feed: async auth-retry wrappers and four sync getters with no callers
 - [ ] **AT-111** `P3` `W` `DEADCODE` — FMV is ingested on every frame into a map with no reader — `get_fmv()` is never called
 - [ ] **AT-112** `P3` `W` `DEADCODE` — Fabricated market-data generators sit unreferenced in gpu.rs — a 100-LOC landmine in a live-money binary

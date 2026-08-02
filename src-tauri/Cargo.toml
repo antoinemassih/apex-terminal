@@ -101,8 +101,24 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSRe
 objc2-foundation = { version = "0.3", features = ["NSData", "NSString"] }
 libloading = "0.8"
 
+# AT-107: this integration test needs the mock provider, which is feature-gated
+# out of release builds. `required-features` makes cargo SKIP the target when the
+# feature is off rather than fail to compile it, so a bare `cargo test` still
+# works — it just does not run this suite.
+[[test]]
+name = "connectivity_integration"
+required-features = ["test-utils"]
+
 [features]
 default = ["gpu_chart_v2"]
+# AUDIT 2026-08-02 (AT-107): gates `data/providers/mock.rs`, a 546-LOC
+# fabricated market-data provider that was shipping in release builds.
+#
+# It cannot use a bare `#[cfg(test)]`: `tests/connectivity_integration.rs` is a
+# separate crate that links the NON-test build of the library, so cfg(test)
+# items are invisible to it and the suite would fail to compile. Hence a
+# feature, enabled explicitly when running that integration test.
+test-utils = []
 design-mode = ["dep:toml"]
 # Activates the GPU chart render pass (SPEC_GPU_CHART_REFACTOR.md, Phase 1-4b).
 # Renders candle bodies + wicks, indicator lines, and band fills through an

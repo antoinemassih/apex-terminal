@@ -37,6 +37,8 @@ pub mod crypto;
 pub mod signals;
 pub mod http_fallback;
 pub mod registry;
+// AT-107: fabricated market data — never in a release binary.
+#[cfg(any(test, feature = "test-utils"))]
 pub mod mock;
 
 pub use provider::{
@@ -47,4 +49,5 @@ pub use subscription_manager::SubscriptionManager;
 pub use fallback::FallbackProvider;
 pub use cached::CachedProvider;
 pub use http_fallback::HttpFallbackProvider;
+#[cfg(any(test, feature = "test-utils"))]
 pub use mock::{MockFrame, MockMarketDataProvider};

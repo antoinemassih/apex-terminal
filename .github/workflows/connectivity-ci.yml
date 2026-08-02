@@ -73,7 +73,8 @@ jobs:
         # network or fixtures not yet wired into CI. Surface failures
         # without blocking the PR until they're stabilized.
         continue-on-error: true
-        run: cargo test --test connectivity_integration
+        # AT-107: mock provider is feature-gated out of release builds.
+        run: cargo test --test connectivity_integration --features test-utils
 
       - name: cargo clippy (gated, lib scope)
         working-directory: src-tauri
