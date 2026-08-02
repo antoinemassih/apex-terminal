@@ -1126,6 +1126,26 @@ impl OrderManager {
         }
     }
 
+    /// True when `intent` moves the position toward flat.
+    ///
+    /// AT-015: used by the halt gate so an automated risk trip stops new
+    /// exposure without trapping the trader in the position that caused it.
+    ///
+    /// "Reducing" means the side opposes the current net position. The size is
+    /// deliberately NOT checked here — the oversell guard in `submit` already
+    /// caps a closing order at the position it is closing, so an oversized
+    /// close is rejected there rather than being allowed to flip into a fresh
+    /// position on the other side while halted.
+    ///
+    /// With no position there is nothing to reduce, so this is false and the
+    /// halt gate blocks normally.
+    fn order_reduces_position(&self, intent: &OrderIntent) -> bool {
+        let net = self.net_position_for(&intent.symbol);
+        if net == 0 { return false; }
+        let is_buy = matches!(intent.side, OrderSide::Buy | OrderSide::TriggerBuy);
+        (net > 0 && !is_buy) || (net < 0 && is_buy)
+    }
+
     fn validate_risk(&mut self, intent: &OrderIntent, paper: bool) -> Result<(), OrderResult> {
         // ── T1: reset daily accumulator on date rollover ─────────────────────
         let today = today_day_index();
@@ -1619,7 +1639,31 @@ impl OrderManager {
     #[tracing::instrument(skip(self, intent), level = "debug", fields(symbol = %intent.symbol, side = ?intent.side, qty = intent.qty, price = intent.price))]
     pub(crate) fn submit(&mut self, intent: OrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
-        if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
+        // AUDIT 2026-08-02 (AT-015, P1): the halt gate used to block EVERY
+        // order, including ones that close a position.
+        //
+        // The daily-loss breaker auto-halts precisely because the account is
+        // losing money — and then prevented Flatten, Reverse and Halve from
+        // cutting the loss that tripped it. The trader was locked into the
+        // position by the very mechanism meant to protect them, and because
+        // `flatten` discarded the returned OrderResult the button did nothing
+        // with no message at all.
+        //
+        // A halt must stop new RISK, not stop the exit. Orders that reduce an
+        // existing position now pass.
+        //
+        // Derived from the live position rather than a caller-set flag: there
+        // are 35 OrderIntent construction sites, and one that forgot to set a
+        // `reduce_only` flag would silently re-create this bug. The oversell
+        // guard further down still caps a reducing order at the position size,
+        // so this cannot be used to flip into a new position on the other side.
+        //
+        // The kill switch deliberately still blocks everything: it is an
+        // explicit operator "stop, I will handle this myself", not an automated
+        // risk trip.
+        if self.halted && !self.order_reduces_position(&intent) {
+            return OrderResult::Rejected(self.halt_reason().into());
+        }
         // Wave 8a Task B: rate-limit submits (only — cancels and modifies remain
         // unmetered since they reduce exposure). Trips BEFORE dedup so a stuck
         // hotkey that keeps re-firing the same intent gets caught at the bucket
@@ -3312,7 +3356,10 @@ impl OrderManager {
         if current_qty != 0 {
             let side = if current_qty > 0 { OrderSide::Sell } else { OrderSide::Buy };
             let qty = current_qty.unsigned_abs();
-            self.submit(OrderIntent {
+            // AT-015: the result was discarded, so a rejected flatten — halted,
+            // rate-limited, kill-engaged — left the position open and told the
+            // trader nothing. Reported below.
+            let result = self.submit(OrderIntent {
                 symbol: symbol.to_string(),
                 side,
                 order_type: ManagedOrderType::Market,
@@ -3331,6 +3378,10 @@ impl OrderManager {
                 strategy_id: None,
                 override_warnings: false,
             });
+            if let OrderResult::Rejected(reason) = &result {
+                report(ErrorLevel::Error, "order_manager", "flatten_rejected",
+                    format!("FLATTEN {symbol} x{qty} REJECTED: {reason} — the position is still open"));
+            }
         }
     }
 
@@ -6822,6 +6873,63 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.state, OrderState::Draft,
             "order state must remain Draft after halted confirm");
+    }
+
+    // ── AT-015: a halt must stop new risk, not trap the trader ───────────────
+
+    /// Push a filled position into the manager so `net_position_for` sees it.
+    /// In paper mode that helper reads local fills, which is what tests use.
+    fn seed_local_fill(m: &mut OrderManager, symbol: &str, side: OrderSide, qty: u32) {
+        let now = epoch_ms();
+        let id = m.next_id; m.next_id += 1;
+        m.orders.push(ManagedOrder {
+            id, client_order_id: format!("seed-{id}"),
+            symbol: symbol.into(), symbol_typed: Symbol::equity(symbol), side,
+            order_type: ManagedOrderType::Market, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+            qty, filled_qty: qty, avg_fill_price: Price::from_f32(100.0),
+            state: OrderState::Filled, pair_id: None,
+            trail_amount: None, trail_percent: None,
+            option_symbol: None, option_con_id: None,
+            source: OrderSource::OrderPanel,
+            created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
+            tif: 0, outside_rth: false,
+            state_history: vec![(OrderState::Filled, ts_from_ms(now))],
+            rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
+        });
+    }
+
+    /// AUDIT 2026-08-02 (AT-015, P1): the daily-loss breaker auto-halts because
+    /// the account is losing money — and then blocked Flatten/Reverse/Halve from
+    /// cutting the loss that tripped it. The trader was locked into the position
+    /// by the mechanism meant to protect them.
+    #[test]
+    fn a_halt_blocks_new_risk_but_never_the_exit() {
+        let mut m = fresh_manager();
+        seed_local_fill(&mut m, "AAPL", OrderSide::Buy, 100);
+        m.halted = true;
+
+        // Closing the long must be allowed.
+        let closing = market_order_intent("AAPL", OrderSide::Sell, 100);
+        let r = m.submit(closing);
+        assert!(!matches!(r, OrderResult::Rejected(_)),
+            "a halt must not trap the trader in the position that caused it; got {r:?}");
+
+        // Adding to it must still be blocked.
+        let opening = market_order_intent("AAPL", OrderSide::Buy, 100);
+        assert!(matches!(m.submit(opening), OrderResult::Rejected(_)),
+            "a halt must still stop NEW exposure");
+    }
+
+    /// With no position there is nothing to reduce, so the halt gate applies
+    /// normally — this is what keeps the pre-existing halt tests honest.
+    #[test]
+    fn with_no_position_a_halt_blocks_everything() {
+        let mut m = fresh_manager();
+        m.halted = true;
+        let i = market_order_intent("MSFT", OrderSide::Sell, 10);
+        assert!(matches!(m.submit(i), OrderResult::Rejected(_)),
+            "a sell with no long to close is opening a SHORT — still blocked");
     }
 
     // ── AT-007: position guards must read the BROKER, not local Filled rows ───

@@ -41,7 +41,7 @@ Verdict key: `C` confirmed · `W` weakened · `?` unverified (re-check before ac
 - [ ] **AT-032** `P1` `C` `TRADING` — Confirming a Draft OCO or bracket leg re-submits it as a standalone order — the OCA group and bracket parent are lost, so both legs can fill
 - [ ] **AT-033** `P1` `C` `TRADING` — In paper mode the poller still adopts REAL broker orders and the paper fill engine then fabricates fills for them, with synthetic prices booked into realized P&L
 - [ ] **AT-034** `P1` `C` `TRADING` — Kill switch, halt and resume ignore the broker's HTTP status AND their Result is discarded — a failed server-side kill reports success
-- [ ] **AT-035** `P1` `C` `TRADING` — Risk gates block position-REDUCING orders: once the daily-loss breaker auto-halts, Flatten/Reverse cannot close the position, and the failure is completely silent
+- [x] **AT-035** `P1` `C` `TRADING` — Risk gates block position-REDUCING orders: once the daily-loss breaker auto-halts, Flatten/Reverse cannot close the position, and the failure is completely silent
 - [ ] **AT-036** `P1` `C` `TRADING` — `paper_mode` is not persisted: a restart without APEX_TRADING_MODE=live restores real live orders into paper mode, where cancel is a no-op that marks them Cancelled locally
 
 ---
