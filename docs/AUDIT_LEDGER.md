@@ -157,10 +157,10 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [ ] **AT-082** `P2` `C` `REDUND` — Hot-reload StyleSystem override maps the wrong stroke tiers, thickening every hairline the moment a theme JSON is present
 - [ ] **AT-083** `P2` `C` `REDUND` — The shared HTTP client introduced to fix per-call TLS handshakes was adopted by only two files; the pre-trade margin check still builds a fresh client per call
 - [ ] **AT-084** `P2` `C` `REDUND` — The strikes-overlay chain fetch is a third parallel path that neither reads nor seeds the shared chain cache
-- [ ] **AT-085** `P2` `C` `REDUND` — ~980 lines of a fully-built parallel theme model (ThemeRegistry / ActiveTheme / DesignSnapshot) has zero production callers, and a test comment falsely claims begin_frame uses it
+- [x] **AT-085** `P2` `C` `REDUND` — ~980 lines of a fully-built parallel theme model (ThemeRegistry / ActiveTheme / DesignSnapshot) has zero production callers, and a test comment falsely claims begin_frame uses it
 - [ ] **AT-104** `P3` `W` `ARCH` — Two parallel persistence schemes coexist: a versioned `Persistable` envelope used by ~6 aggregates, and ~15 hand-rolled JSON files with no version field
 - [ ] **AT-117** `P3` `C` `DEADCODE` — `chart/renderer/compute.rs` holds a second, dead copy of the drawing-tool math that `core.rs` implements inline
-- [ ] **AT-120** `P3` `C` `DESIGNSYS` — Two divergent definitions of the Meridien style exist; the one the ThemeRegistry defaults to is not the one the app renders
+- [x] **AT-120** `P3` `C` `DESIGNSYS` — Two divergent definitions of the Meridien style exist; the one the ThemeRegistry defaults to is not the one the app renders
 - [ ] **AT-125** `P3` `?` `MISSED` — The library declares `staticlib` and `cdylib` crate-types with no FFI consumer anywhere in the repo
 - [ ] **AT-132** `P3` `W` `REDUND` — Greeks arrive from two independent sources with no reconciliation: the chain cache and a serial per-contract HTTP poller
 - [ ] **AT-133** `P3` `C` `REDUND` — Verbatim-duplicated blocks across the chain stack: two JSON row parsers, four to_rows closures, two whole option quick pickers
@@ -175,7 +175,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [ ] **AT-015** `P1` `C` `DESIGNSYS` — Theme-invariant categorical colours (incl. stop/target/R:R chart lines) score 1.1:1–3.0:1 contrast on all 5 light ColorSchemes
 - [ ] **AT-062** `P2` `W` `DESIGNSYS` — FROZEN CHROME: FONT_* consts are pinned to the pre-lift scale and their doc comment now asserts a false equivalence; 45 live call sites render 1-2px small
 - [ ] **AT-063** `P2` `C` `DESIGNSYS` — The hot-reload path remaps stroke tiers differently from the preset path, so the same StyleSystem paints borders up to 2× thicker when loaded from JSON
-- [ ] **AT-064** `P2` `C` `DESIGNSYS` — ThemeRegistry / DesignSnapshot (979 LOC) are documented as the canonical active-pair state but have zero references outside design_system/
+- [x] **AT-064** `P2` `C` `DESIGNSYS` — ThemeRegistry / DesignSnapshot (979 LOC) are documented as the canonical active-pair state but have zero references outside design_system/
 - [ ] **AT-065** `P2` `C` `DESIGNSYS` — Whole StyleSystem sub-structs (alphas, elevation) and 11 further fields are inert, yet the design inspector ships sliders for them
 - [ ] **AT-066** `P2` `C` `DESIGNSYS` — paint_bevel hardcodes white/black and documents itself as palette-independent, producing a one-sided dark smear on light palettes
 - [ ] **AT-077** `P2` `C` `OTHER` — Label adoption is ~15%: 295 raw ui.label calls in production panel code vs 51 kit Label uses, across five competing label abstractions
@@ -212,7 +212,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [ ] **AT-114** `P3` `W` `DEADCODE` — The `InFlightRegistry` migration stalled: entries are created and never expired, and no consumer reads it
 - [ ] **AT-115** `P3` `W` `DEADCODE` — `ChainRow::display_price()` remains test-only — production still renders the raw field it was written to replace
 - [ ] **AT-116** `P3` `W` `DEADCODE` — `SubscriptionManager::check_stale()` — the documented silent-stale-feed alarm — is never called
-- [ ] **AT-118** `P3` `C` `DEADCODE` — `design_system::registry` (266 LOC) is a competing theme source-of-truth with zero references outside its own module
+- [x] **AT-118** `P3` `C` `DEADCODE` — `design_system::registry` (266 LOC) is a competing theme source-of-truth with zero references outside its own module
 - [ ] **AT-126** `P3` `W` `OTHER` — 2,105 LOC of subpixel-text machinery (incl. a 986-LOC wgpu pipeline) serves exactly one production call site
 - [ ] **AT-128** `P3` `C` `OTHER` — All five free-function helpers in ui_kit/widgets/mod.rs are dead, and they hand-roll raw egui inside the design system
 - [ ] **AT-131** `P3` `W` `OTHER` — Thirteen exported types in the kit's public surface have no consumer anywhere outside their defining file

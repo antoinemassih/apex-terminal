@@ -33,7 +33,6 @@
 
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
-    registry::ThemeRegistry,
     style_system::{
         Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowSpec,
         Spacing, Strokes, StyleSystem, Treatments, Typography,
@@ -1385,22 +1384,6 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     vec![meridien, aperture, octave, cadence, alto, mariner, lucid, relay, glass]
 }
 
-/// Builds a `ThemeRegistry` pre-populated with all built-in `ColorScheme`s
-/// (derived from `gpu::THEMES`) and the default `StyleSystem`(s).
-///
-/// The first color scheme (Midnight) becomes the active default; the first
-/// registered `StyleSystem` (apex-default) becomes the active style.
-pub fn builtin_registry() -> ThemeRegistry {
-    let mut reg = ThemeRegistry::with_builtins();
-    for scheme in builtin_color_schemes() {
-        reg.register_colors(scheme);
-    }
-    for style in builtin_style_systems() {
-        reg.register_style(style);
-    }
-    reg
-}
-
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1455,17 +1438,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn builtin_registry_has_gpu_themes() {
-        let reg = builtin_registry();
-        let ids = reg.color_ids();
-        // Spot-check a few
-        assert!(ids.contains(&"midnight"),     "Midnight must be in registry");
-        assert!(ids.contains(&"dracula"),      "Dracula must be in registry");
-        assert!(ids.contains(&"rose-pine"),    "Rose Pine must be in registry");
-        assert!(ids.contains(&"bauhaus"),      "Bauhaus must be in registry");
-        assert!(ids.contains(&"tokyo-night"),  "Tokyo Night must be in registry");
-    }
 
     #[test]
     fn builtin_style_systems_has_three_entries() {
@@ -1487,12 +1459,4 @@ mod tests {
         assert!(ids.contains(&"octave"),   "octave must be present");
     }
 
-    #[test]
-    fn builtin_registry_has_style_systems() {
-        let reg = builtin_registry();
-        let ids = reg.style_ids();
-        assert!(ids.contains(&"meridien"), "meridien must be in registry");
-        assert!(ids.contains(&"aperture"), "aperture must be in registry");
-        assert!(ids.contains(&"octave"),   "octave must be in registry");
-    }
 }

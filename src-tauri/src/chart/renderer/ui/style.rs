@@ -3749,7 +3749,6 @@ mod data_driven_proof {
     use crate::design_system::{
         builtin_style_systems, builtin_color_schemes, StyleSystem, ColorScheme,
     };
-    use crate::design_system::snapshot::snapshot;
 
     #[test]
     fn new_style_from_json_flows_through_with_zero_rust_edits() {
@@ -3780,10 +3779,10 @@ mod data_driven_proof {
         assert_eq!(settings.r_lg, 17, "custom radius did not reach StyleSettings");
         assert!((settings.stroke_thick - 4.25).abs() < 1e-4, "custom stroke did not reach StyleSettings");
 
-        // 5. Run through the per-frame resolver (snapshot) exactly as begin_frame does.
-        let scheme = builtin_color_schemes()[0].clone();
-        let snap = snapshot(&loaded, &scheme);
-        assert!((snap.radius_lg - 17.0).abs() < 1e-4, "custom radius did not reach DesignSnapshot");
+        // AT-064: step 5 removed with `DesignSnapshot`. Its comment claimed to
+        // run "exactly as begin_frame does" — begin_frame never called
+        // `snapshot()`; it builds a `TokenSnapshot` from active_override /
+        // DesignTokens / current(). Steps 1-4 above exercise the real path.
     }
 
     #[test]

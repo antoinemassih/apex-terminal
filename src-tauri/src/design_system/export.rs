@@ -350,9 +350,7 @@ pub fn export_builtin_themes(dir: &Path) -> io::Result<usize> {
 /// file via the DTCG loader.  Files that fail to parse are skipped with a
 /// diagnostic printed to stderr — the function never panics.
 ///
-/// This is the "installed themes" scan path for [`ThemeRegistry`].
 ///
-/// [`ThemeRegistry`]: super::registry::ThemeRegistry
 pub fn scan_theme_dir(dir: &Path) -> (Vec<ColorScheme>, Vec<StyleSystem>) {
     let mut schemes = Vec::new();
     let mut styles  = Vec::new();

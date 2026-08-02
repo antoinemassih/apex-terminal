@@ -76,8 +76,6 @@ pub mod hot_reload;
 pub mod import;
 pub mod loader;
 pub mod recipes;
-pub mod registry;
-pub mod snapshot;
 pub mod style_system;
 pub mod theme_pack;
 
@@ -88,11 +86,9 @@ pub mod theme_pack;
 // import directly from chart_renderer, which keeps the dependency arrow
 // pointing the right way (chart_renderer → design_system, never reverse).
 pub use baseline::{baseline_color_scheme, baseline_style_system};
-pub use builtin::{builtin_color_schemes, builtin_registry, builtin_style_systems};
+pub use builtin::{builtin_color_schemes, builtin_style_systems};
 pub use color_scheme::{ColorScheme, Meta, Rgba};
 pub use export::{export_builtin_themes, scan_theme_dir};
 pub use hot_reload::{active_override, start_theme_watcher, themes_dir};
 pub use recipes::{RecipeSet, SxCache};
-pub use registry::{ActiveTheme, ThemeRegistry, live_registry};
-pub use snapshot::{DesignSnapshot, DEFAULT_SNAPSHOT};
 pub use style_system::StyleSystem;

@@ -1,14 +1,14 @@
 {
-  "dead_code_allows": 50,
+  "dead_code_allows": 49,
   "eprintln_in_data": 0,
   "expect_total": 61,
   "file_loc": {
-    "chart/renderer/gpu.rs": 10690,
-    "chart/renderer/render/pane/core.rs": 13673,
-    "chart/renderer/trading/order_manager.rs": 8039,
-    "chart/renderer/ui/chart_widgets.rs": 3137,
-    "chart/renderer/ui/style.rs": 3807,
-    "dev_inspector/server.rs": 2662,
+    "chart/renderer/gpu.rs": 10851,
+    "chart/renderer/render/pane/core.rs": 13672,
+    "chart/renderer/trading/order_manager.rs": 8366,
+    "chart/renderer/ui/chart_widgets.rs": 3147,
+    "chart/renderer/ui/style.rs": 3806,
+    "dev_inspector/server.rs": 2684,
     "foundation/design_inspector.rs": 3304
   },
   "indicator_enum_matches": 172,
