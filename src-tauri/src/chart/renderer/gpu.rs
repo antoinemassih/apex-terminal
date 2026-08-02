@@ -4786,9 +4786,14 @@ pub(crate) fn compute_volume_analytics(chart: &mut Chart) {
     let mut cum_vol = 0.0_f64;
     let mut cum_tp2_vol = 0.0_f64;
     for i in 0..n {
+        // AT-013: was `gap > 14400` only — no calendar-day check — so a 24/7
+        // instrument never reset and the VWAP accumulated across every day the
+        // chart stayed open. Shares one definition with `compute_vwap` now.
         let new_session = if i == 0 { true } else {
-            let gap = chart.timestamps.get(i).unwrap_or(&0) - chart.timestamps.get(i-1).unwrap_or(&0);
-            gap > 14400
+            crate::chart_renderer::compute::is_new_session(
+                *chart.timestamps.get(i - 1).unwrap_or(&0),
+                *chart.timestamps.get(i).unwrap_or(&0),
+            )
         };
         if new_session {
             cum_tp_vol = 0.0;

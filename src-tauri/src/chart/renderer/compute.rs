@@ -321,28 +321,39 @@ pub fn compute_stochastic(highs: &[f32], lows: &[f32], closes: &[f32], k_period:
 /// `timestamps` is a Unix-seconds slice parallel to the price slices.  When
 /// the slice is empty or shorter than the price data the function falls back
 /// to a single cumulative (no-reset) VWAP for compatibility.
+/// Session boundary between two consecutive bars.
+///
+/// `prev`/`cur` are chart timestamps in SECONDS (every writer of
+/// `chart.timestamps` normalises to seconds — the REST loaders divide by 1000
+/// and `bar_wire_to_append_cmd` does too).
+///
+/// AUDIT 2026-08-02 (AT-013, P1): this rule existed twice with different
+/// content. `compute_vwap` here used "gap > 4h OR calendar-day change", while
+/// `gpu.rs::compute_volume_analytics` — which draws the VWAP line and its σ
+/// bands — used ONLY "gap > 4h". Instruments that trade around the clock
+/// (crypto, and futures outside the maintenance break) never produce a 4-hour
+/// gap, so the σ-band VWAP never reset: it accumulated from the first loaded
+/// bar and drifted further from the true session VWAP every day the chart
+/// stayed open, with the bands widening to match.
+///
+/// One definition now, used by both.
+pub fn is_new_session(prev: i64, cur: i64) -> bool {
+    /// 4-hour gap, in seconds.
+    const SESSION_GAP_SECS: i64 = 4 * 3600;
+    const SECS_PER_DAY: i64 = 86_400;
+    (cur - prev) > SESSION_GAP_SECS || (prev / SECS_PER_DAY) != (cur / SECS_PER_DAY)
+}
+
 pub fn compute_vwap(closes: &[f32], volumes: &[f32], highs: &[f32], lows: &[f32], timestamps: &[i64]) -> Vec<f32> {
     let n = closes.len();
     let mut r = vec![f32::NAN; n];
     let mut cum_tp_vol = 0.0_f32;
     let mut cum_vol = 0.0_f32;
     let use_ts = timestamps.len() >= n && n > 0;
-    // 4-hour gap threshold in seconds
-    const SESSION_GAP_SECS: i64 = 4 * 3600;
     for i in 0..n {
         // Detect session boundary: new calendar day or large gap.
         let new_session = if use_ts {
-            if i == 0 {
-                true
-            } else {
-                let prev = timestamps[i - 1];
-                let cur  = timestamps[i];
-                let gap  = cur - prev;
-                // Calendar-day change (UTC) or gap > 4 h
-                let prev_day = prev / 86_400;
-                let cur_day  = cur  / 86_400;
-                gap > SESSION_GAP_SECS || cur_day != prev_day
-            }
+            i == 0 || is_new_session(timestamps[i - 1], timestamps[i])
         } else {
             i == 0
         };
@@ -838,6 +849,37 @@ mod tests {
 
     // ── VWAP: session reset on new calendar day ───────────────────────────────
     #[test]
+    /// AUDIT 2026-08-02 (AT-013, P1): the session rule existed twice with
+    /// different content. `gpu.rs::compute_volume_analytics` — which draws the
+    /// VWAP line and its sigma bands — checked ONLY "gap > 4h". A 24/7
+    /// instrument (crypto; futures outside the maintenance break) never
+    /// produces a 4-hour gap, so its VWAP never reset and accumulated across
+    /// every day the chart stayed open.
+    ///
+    /// Both sites share `is_new_session` now. This pins the case that used to
+    /// differ between them.
+    #[test]
+    fn session_rolls_over_midnight_without_any_gap() {
+        // Consecutive 1-minute bars either side of UTC midnight: a 60-second
+        // gap, nowhere near the 4-hour threshold.
+        let before_midnight: i64 = 1_704_153_540; // 2024-01-01 23:59:00 UTC
+        let after_midnight:  i64 = before_midnight + 60;
+        assert!(is_new_session(before_midnight, after_midnight),
+            "a 24/7 instrument must still start a new session at the day              boundary — the gap-only rule is what let VWAP run for days");
+
+        // And a normal intraday step must NOT reset.
+        assert!(!is_new_session(before_midnight - 120, before_midnight - 60),
+            "consecutive intraday bars are the same session");
+    }
+
+    /// The overnight gap on a regular-hours instrument still resets.
+    #[test]
+    fn session_resets_on_a_long_gap_within_one_day() {
+        let t0: i64 = 1_704_100_000;
+        assert!(is_new_session(t0, t0 + 5 * 3600), "a 5h gap is a new session");
+        assert!(!is_new_session(t0, t0 + 3 * 3600), "a 3h gap is not");
+    }
+
     fn vwap_resets_on_new_day() {
         // Bar 0: some time on day D, Bar 1: next calendar day
         let ts0: i64 = 1_704_153_600; // 2024-01-02 12:00 UTC
