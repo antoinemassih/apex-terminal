@@ -74,7 +74,11 @@ const PANE_POPUP_RIGHT_INSET: f32 = 30.0;
 // until asked for. That keeps the request proportional to what is actually
 // being read, and makes a revealed strike a deliberate act.
 /// Strikes each side of spot that get a live seat without being asked for.
-pub(crate) const NEAR_STRIKE_SEATS: usize = 12;
+///
+/// 10 each side => a 20-strike viewing window around spot showing live prices.
+/// Everything outside greys out and is fetched only on click. Sized to what a
+/// trader actually reads at a glance, not to what the chain contains.
+pub(crate) const NEAR_STRIKE_SEATS: usize = 10;
 
 static REVEALED_STRIKES: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
     std::sync::Mutex::new(None);
