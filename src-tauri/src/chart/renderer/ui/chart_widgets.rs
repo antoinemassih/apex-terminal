@@ -863,7 +863,7 @@ pub(crate) struct WidgetData {
     rsi_multi: [f32; 7],
     // Trend alignment: 7 lookback horizons × 4 indicators (EMA slope, MACD, price>VWAP, RSI>50)
     trend_grid: [[bool; 4]; 7],
-    /// AT-014: labels for the 7 rows, DERIVED from the pane timeframe ×
+    /// AT-018: labels for the 7 rows, DERIVED from the pane timeframe ×
     /// `TREND_GRID_PERIODS` rather than hardcoded to fixed timeframes.
     horizon_labels: [String; 7],
     // Momentum ROC across 8 lookbacks
@@ -1462,7 +1462,7 @@ fn draw_market_breadth(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let cx = body.center().x;
     let cy = body.center().y - 4.0;
-    // AT-014: real lookback horizons for this pane, not fixed timeframe names.
+    // AT-018: real lookback horizons for this pane, not fixed timeframe names.
     let tf_labels: [&str; 7] = std::array::from_fn(|i| wd.horizon_labels[i].as_str());
 
     let n = 7;
@@ -1550,7 +1550,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 
 /// Trend Alignment — dot grid (inspired by chart9 dot matrix)
 fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    // AT-014: real lookback horizons for this pane, not fixed timeframe names.
+    // AT-018: real lookback horizons for this pane, not fixed timeframe names.
     let tf_labels: [&str; 7] = std::array::from_fn(|i| wd.horizon_labels[i].as_str());
     let ind_labels = ["EMA", "SMA", "RSI", "HH"];
     let rows = 7; let cols = 4;

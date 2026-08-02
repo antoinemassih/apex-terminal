@@ -38,7 +38,7 @@ pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
 
 /// Last time a DATA frame (binary/text) arrived, as opposed to any frame.
 ///
-/// AUDIT 2026-08-02 (AT-036): the watchdog used to reconnect on
+/// AUDIT 2026-08-02 (AT-011): the watchdog used to reconnect on
 /// `LAST_MESSAGE_AT_MS` alone — but that atomic is only written by
 /// `handle_binary`/`handle_text`, never by the pong arm, despite the comment at
 /// the heartbeat claiming pongs are "counted in LAST_MESSAGE_AT_MS via the
@@ -575,7 +575,7 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
                         Some(Ok(Message::Binary(bytes))) => handle_binary(&mgr, &bytes),
                         Some(Ok(Message::Text(text)))   => handle_text(&mgr, &text),
                         Some(Ok(Message::Close(_))) => { report(ErrorLevel::Warn, "apex_data.ws", "ws_close", "close frame"); break; }
-                        // AT-036: Pong / Ping / Frame. These prove the SOCKET is
+                        // AT-011: Pong / Ping / Frame. These prove the SOCKET is
                         // alive even when no market data is flowing, so they must
                         // count toward socket liveness — previously this arm was
                         // an empty no-op and a quiet feed reconnected every 30s.
@@ -657,7 +657,7 @@ async fn run_watchdog() {
         tick.tick().await;
         let now = now_ms();
 
-        // AT-036: data starvation on a LIVE socket is reported, never
+        // AT-011: data starvation on a LIVE socket is reported, never
         // reconnected. If pongs are arriving but no market data is, the
         // subscription or entitlement is wrong upstream — churning the
         // connection cannot fix that and only hides it behind a reconnect loop.
@@ -750,7 +750,7 @@ fn broadcast(mgr: &Arc<Manager>, f: &Frame) {
 
 fn handle_text(mgr: &Arc<Manager>, text: &str) {
     MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
-    // AT-036: a data frame proves BOTH that the socket is alive and that the
+    // AT-011: a data frame proves BOTH that the socket is alive and that the
     // feed is actually delivering. Pongs only prove the former.
     LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
     LAST_DATA_AT_MS.store(now_ms(), Ordering::Relaxed);
@@ -765,7 +765,7 @@ fn handle_text(mgr: &Arc<Manager>, text: &str) {
 
 fn handle_binary(mgr: &Arc<Manager>, bytes: &[u8]) {
     MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
-    // AT-036: see handle_text.
+    // AT-011: see handle_text.
     LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
     LAST_DATA_AT_MS.store(now_ms(), Ordering::Relaxed);
     match rmp_serde::from_slice::<InEnvelope>(bytes) {

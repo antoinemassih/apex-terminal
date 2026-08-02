@@ -198,7 +198,7 @@ impl SubscriptionManager {
     ) -> Result<broadcast::Receiver<BarWire>, ApiError> {
         let key = (symbol.to_string(), timeframe.to_string(), source);
 
-        // AUDIT 2026-08-02 (AT-003, P0): ABBA lock inversion — FIXED.
+        // AUDIT 2026-08-02 (AT-001, P0): ABBA lock inversion — FIXED.
         //
         // This used to hold `self.bars` across `provider.subscribe_bars()`,
         // which locks ApexData's ROUTES mutex. Meanwhile the WS reader
@@ -273,7 +273,7 @@ impl SubscriptionManager {
     #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe, source = ?source))]
     pub fn unsubscribe_bars_with_source(&self, symbol: &str, timeframe: &str, source: BarSource) {
         let key = (symbol.to_string(), timeframe.to_string(), source);
-        // AT-003: decide under the lock, act outside it — `unsubscribe_bars`
+        // AT-001: decide under the lock, act outside it — `unsubscribe_bars`
         // locks ROUTES and must never be called while `self.bars` is held.
         let drop_upstream = {
             let mut map = self.bars.lock();
@@ -296,7 +296,7 @@ impl SubscriptionManager {
         &self,
         symbol: &str,
     ) -> Result<broadcast::Receiver<Quote>, ApiError> {
-        // AT-003: never hold `self.quotes` across a provider call — it locks
+        // AT-001: never hold `self.quotes` across a provider call — it locks
         // ROUTES, which the WS reader holds while locking this map.
         {
             let map = self.quotes.lock();
@@ -339,7 +339,7 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn unsubscribe_quotes(&self, symbol: &str) {
-        // AT-003: decide under the lock, act outside it.
+        // AT-001: decide under the lock, act outside it.
         let drop_upstream = {
             let mut map = self.quotes.lock();
             match map.get(symbol) {
@@ -360,7 +360,7 @@ impl SubscriptionManager {
         &self,
         symbol: &str,
     ) -> Result<broadcast::Receiver<Trade>, ApiError> {
-        // AT-003: never hold `self.trades` across a provider call — it locks
+        // AT-001: never hold `self.trades` across a provider call — it locks
         // ROUTES, which the WS reader holds while locking this map.
         {
             let map = self.trades.lock();
@@ -403,7 +403,7 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn unsubscribe_trades(&self, symbol: &str) {
-        // AT-003: decide under the lock, act outside it.
+        // AT-001: decide under the lock, act outside it.
         let drop_upstream = {
             let mut map = self.trades.lock();
             match map.get(symbol) {
@@ -424,7 +424,7 @@ impl SubscriptionManager {
         &self,
         underlying: &str,
     ) -> Result<broadcast::Receiver<ChainDelta>, ApiError> {
-        // AT-003: never hold `self.chain` across a provider call — it locks
+        // AT-001: never hold `self.chain` across a provider call — it locks
         // ROUTES, which the WS reader holds while locking this map.
         {
             let map = self.chain.lock();
@@ -460,7 +460,7 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(underlying))]
     pub fn unsubscribe_chain(&self, underlying: &str) {
-        // AT-003: decide under the lock, act outside it.
+        // AT-001: decide under the lock, act outside it.
         let drop_upstream = {
             let mut map = self.chain.lock();
             match map.get(underlying) {

@@ -262,7 +262,7 @@ fn daily_loss_state_path() -> PathBuf {
 
 /// Sidecar recording which trading mode wrote `orders.json`.
 ///
-/// AUDIT 2026-08-02 (AT-016/AT-017, P1): the mode was NOT persisted. It came
+/// AUDIT 2026-08-02 (AT-036/AT-033, P1): the mode was NOT persisted. It came
 /// only from `APEX_TRADING_MODE`, read once at startup, defaulting to paper.
 ///
 /// `OrderManager::new()` starts with `paper_mode: true`, so the guard in
@@ -293,7 +293,7 @@ struct TradingModeState {
 
 /// Is this order one leg of a multi-leg group?
 ///
-/// AT-018: `confirm` re-submits through the SINGLE-order broker endpoint, which
+/// AT-032: `confirm` re-submits through the SINGLE-order broker endpoint, which
 /// carries no ocaGroup and no bracket parent, so a group leg confirmed alone
 /// arrives at the broker with its sibling link severed.
 fn is_group_leg(source: OrderSource) -> bool {
@@ -302,7 +302,7 @@ fn is_group_leg(source: OrderSource) -> bool {
 
 /// Should the restored state force this process into LIVE mode?
 ///
-/// AT-016/AT-017. Pure so the policy is testable without touching the
+/// AT-036/AT-033. Pure so the policy is testable without touching the
 /// filesystem — the three inputs are the whole decision:
 ///
 /// * `sidecar_paper`  — mode that wrote `orders.json`
@@ -1184,7 +1184,7 @@ impl OrderManager {
 
     /// True when `intent` moves the position toward flat.
     ///
-    /// AT-015: used by the halt gate so an automated risk trip stops new
+    /// AT-035: used by the halt gate so an automated risk trip stops new
     /// exposure without trapping the trader in the position that caused it.
     ///
     /// "Reducing" means the side opposes the current net position. The size is
@@ -1617,7 +1617,7 @@ impl OrderManager {
         self.daily_loss_date = date;
     }
 
-    /// AT-016/AT-017: record the mode that owns the current `orders.json`.
+    /// AT-036/AT-033: record the mode that owns the current `orders.json`.
     fn save_trading_mode(&self) {
         let st = TradingModeState { paper: self.paper_mode };
         if let Ok(bytes) = serde_json::to_vec(&st) {
@@ -1629,7 +1629,7 @@ impl OrderManager {
 
     /// Adopt the persisted mode when the restored orders were placed LIVE.
     ///
-    /// AT-016/AT-017: called at the end of `load_from_disk`, once the orders are
+    /// AT-036/AT-033: called at the end of `load_from_disk`, once the orders are
     /// in memory. If the file was written by a LIVE session and any restored
     /// order is still active, this process must treat them as live regardless of
     /// `APEX_TRADING_MODE` — those orders exist at the broker whether or not
@@ -1736,7 +1736,7 @@ impl OrderManager {
     #[tracing::instrument(skip(self, intent), level = "debug", fields(symbol = %intent.symbol, side = ?intent.side, qty = intent.qty, price = intent.price))]
     pub(crate) fn submit(&mut self, intent: OrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
-        // AUDIT 2026-08-02 (AT-015, P1): the halt gate used to block EVERY
+        // AUDIT 2026-08-02 (AT-035, P1): the halt gate used to block EVERY
         // order, including ones that close a position.
         //
         // The daily-loss breaker auto-halts precisely because the account is
@@ -2069,7 +2069,7 @@ impl OrderManager {
             return false;
         }
 
-        // AUDIT 2026-08-02 (AT-018, P1): refuse to confirm a single leg of a
+        // AUDIT 2026-08-02 (AT-032, P1): refuse to confirm a single leg of a
         // multi-leg group.
         //
         // `confirm` re-submits through `broker.submit()` — the SINGLE-order
@@ -2295,7 +2295,7 @@ impl OrderManager {
         // Validate the ENTRY intent, exactly as `submit()` does. The tp/sl legs
         // are exits on the opposite side: they reduce exposure rather than add
         // it, so validating them against a position cap would reject the very
-        // orders that protect the position (see AT-013, the same bug in the
+        // orders that protect the position (see AT-019, the same bug in the
         // halt path). Entry is the only risk-bearing leg.
         let paper = self.paper_mode;
         if let Err(rejection) = self.validate_risk(&intent, paper) {
@@ -3480,7 +3480,7 @@ impl OrderManager {
         if current_qty != 0 {
             let side = if current_qty > 0 { OrderSide::Sell } else { OrderSide::Buy };
             let qty = current_qty.unsigned_abs();
-            // AT-015: the result was discarded, so a rejected flatten — halted,
+            // AT-035: the result was discarded, so a rejected flatten — halted,
             // rate-limited, kill-engaged — left the position open and told the
             // trader nothing. Reported below.
             let result = self.submit(OrderIntent {
@@ -3570,7 +3570,7 @@ impl OrderManager {
         if let Err(e) = crate::state::save(&orders_envelope_path(), &snapshot) {
             report(ErrorLevel::Error, "order_manager", "save_envelope_failed", e.to_string());
         }
-        // AT-016/AT-017: record which mode owns this file so a restart cannot
+        // AT-036/AT-033: record which mode owns this file so a restart cannot
         // silently adopt live orders as paper.
         self.save_trading_mode();
         // W0-05: checkpoint the daily-loss accumulator alongside orders (also
@@ -3627,7 +3627,7 @@ impl OrderManager {
             };
             self.pending_toasts.push(msg);
         }
-        // AT-016/AT-017: the orders are in memory now, so the persisted mode can
+        // AT-036/AT-033: the orders are in memory now, so the persisted mode can
         // be checked against them. Must run AFTER the restore — the whole defect
         // was that the startup mode decision happened when `orders` was empty.
         self.adopt_persisted_mode();
@@ -7006,9 +7006,9 @@ mod tests {
             "order state must remain Draft after halted confirm");
     }
 
-    // ── AT-018: a group leg must not be confirmed alone ──────────────────────
+    // ── AT-032: a group leg must not be confirmed alone ──────────────────────
 
-    /// AUDIT 2026-08-02 (AT-018, P1): `confirm` re-submits through the
+    /// AUDIT 2026-08-02 (AT-032, P1): `confirm` re-submits through the
     /// SINGLE-order broker endpoint, which carries no ocaGroup and no bracket
     /// parent. Confirming one Draft leg placed it standalone with its sibling
     /// link severed — both OCO legs could then fill, doubling the position.
@@ -7057,9 +7057,9 @@ mod tests {
         }
     }
 
-    // ── AT-016/AT-017: live orders must never be restored as paper ───────────
+    // ── AT-036/AT-033: live orders must never be restored as paper ───────────
 
-    /// AUDIT 2026-08-02 (AT-016/AT-017, P1): the trading mode was not persisted.
+    /// AUDIT 2026-08-02 (AT-036/AT-033, P1): the trading mode was not persisted.
     /// `OrderManager::new()` starts paper, so the `set_paper_mode` guard
     /// (`paper && !paper_mode`) could never fire at startup, and a restart
     /// without APEX_TRADING_MODE=live restored LIVE working orders into a
@@ -7094,7 +7094,7 @@ mod tests {
             "no change when the process is already live");
     }
 
-    // ── AT-015: a halt must stop new risk, not trap the trader ───────────────
+    // ── AT-035: a halt must stop new risk, not trap the trader ───────────────
 
     /// Push a filled position into the manager so `net_position_for` sees it.
     /// In paper mode that helper reads local fills, which is what tests use.
@@ -7118,7 +7118,7 @@ mod tests {
         });
     }
 
-    /// AUDIT 2026-08-02 (AT-015, P1): the daily-loss breaker auto-halts because
+    /// AUDIT 2026-08-02 (AT-035, P1): the daily-loss breaker auto-halts because
     /// the account is losing money — and then blocked Flatten/Reverse/Halve from
     /// cutting the loss that tripped it. The trader was locked into the position
     /// by the mechanism meant to protect them.

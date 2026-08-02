@@ -24,7 +24,7 @@ pub(crate) fn compute_autocorrelation(bars: &[crate::chart_renderer::types::Bar]
     (cov / var).clamp(-1.0, 1.0)
 }
 
-// AUDIT 2026-08-02 (AT-012, P1): these two used to carry their OWN math —
+// AUDIT 2026-08-02 (AT-017, P1): these two used to carry their OWN math —
 // a simple mean over the trailing `period` bars — while
 // `chart_renderer::compute` used Wilder smoothing for the same indicators.
 //
@@ -69,7 +69,7 @@ pub(crate) fn compute_atr(bars: &[crate::chart_renderer::types::Bar], period: us
 
 /// Lookback periods behind the seven trend-grid / RSI-multi rows.
 ///
-/// AUDIT 2026-08-02 (AT-014, P1): these are periods on the PANE'S OWN
+/// AUDIT 2026-08-02 (AT-018, P1): these are periods on the PANE'S OWN
 /// timeframe, not seven different timeframes. The widgets used to label the
 /// rows `["5m","15m","30m","1h","4h","1D","1W"]` regardless, which is wrong in
 /// both directions: on a 5m chart the "1W" row is period 140 x 5m ≈ 11.7 hours,
@@ -98,7 +98,7 @@ pub(crate) fn timeframe_minutes(tf: &str) -> Option<f32> {
 
 /// Human label for "`period` bars of `tf`" — the real lookback horizon.
 ///
-/// AT-014: this replaces the hardcoded timeframe labels. It tells the trader
+/// AT-018: this replaces the hardcoded timeframe labels. It tells the trader
 /// what the row actually covers, which is both honest and more useful than a
 /// bare period count.
 pub(crate) fn horizon_label(tf: &str, period: usize) -> String {
@@ -301,7 +301,7 @@ mod at012_tests {
         }).collect()
     }
 
-    /// AUDIT 2026-08-02 (AT-012, P1): the widget scalars and the chart series
+    /// AUDIT 2026-08-02 (AT-017, P1): the widget scalars and the chart series
     /// used to compute the SAME indicator with different math — a simple
     /// trailing mean here, Wilder smoothing in `compute.rs` — and both were on
     /// screen at once via the glob import in chart_widgets.rs.
@@ -345,7 +345,7 @@ mod at012_tests {
 mod at014_tests {
     use super::{horizon_label, timeframe_minutes, TREND_GRID_PERIODS};
 
-    /// AUDIT 2026-08-02 (AT-014, P1): the seven trend-grid rows are periods on
+    /// AUDIT 2026-08-02 (AT-018, P1): the seven trend-grid rows are periods on
     /// the PANE'S timeframe, but were labelled with fixed timeframe names. The
     /// labels were wrong in both directions.
     #[test]

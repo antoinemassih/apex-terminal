@@ -15,6 +15,33 @@ Backend-owned items: [`BACKEND_FIX_LIST_2026-08-02.md`](BACKEND_FIX_LIST_2026-08
 
 Verdict key: `C` confirmed · `W` weakened · `?` unverified (re-check before acting).
 
+
+## Errata — commit id references (2026-08-02)
+
+Commits `f32dfc3a`..`97dc2aab` cite some `AT-` ids that do not match this
+ledger. I wrote them from memory instead of looking them up. The **ticks in
+this file are correct** (they were matched by finding title, not by id), and the
+in-source `AUDIT ... (AT-xxx)` comments have been corrected. The commit messages
+themselves are already pushed and left as-is; use this table to read them.
+
+| Cited in commit | Actual ledger id | Finding |
+|---|---|---|
+| AT-060 | **AT-079** | layer_guard glob hole |
+| AT-118 | **AT-108** | bar_cache key has no range dimension |
+| AT-003 | **AT-001** | ABBA lock inversion |
+| AT-036 | **AT-011** | watchdog ignores pong/control frames |
+| AT-011 | **AT-003** | cross-timeframe indexed in source-bar space |
+| AT-012 | **AT-017** | RSI/ATR three implementations |
+| AT-014 | **AT-018** | multi-timeframe RSI row labels |
+| AT-013 | **AT-019** | VWAP implemented twice |
+| AT-015 | **AT-035** | halt blocks position-reducing orders |
+| AT-016 | **AT-036** | paper_mode not persisted |
+| AT-017 | **AT-033** | paper mode adopts real broker orders |
+| AT-018 | **AT-032** | confirming a single group leg |
+
+Correct as cited: AT-002, AT-004, AT-005, AT-007, AT-008, AT-009, AT-010,
+AT-026, AT-073, AT-075, AT-124.
+
 ## Progress
 
 - Total: **141**

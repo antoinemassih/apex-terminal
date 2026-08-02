@@ -48,7 +48,7 @@ fn to_bar_wires(bars: Vec<crate::data::Bar>, sym: &str, tf: &str) -> Vec<BarWire
 
 /// Clip a cached bar series to the range/limit the caller actually asked for.
 ///
-/// AUDIT 2026-08-02 (AT-118 / AT-002, P0): the bar cache is keyed on
+/// AUDIT 2026-08-02 (AT-108 / AT-002, P0): the bar cache is keyed on
 /// `{symbol}:{timeframe}` with no range dimension, so a hit could serve any
 /// stored span. Returning it unclipped is what let a small gap-fill window
 /// receive the entire cached history. Pure fn so the boundary behaviour is
@@ -98,7 +98,7 @@ impl MarketDataProvider for CachedProvider {
     ) -> Result<Vec<BarWire>, ApiError> {
         // Cache hit?
         //
-        // AUDIT 2026-08-02 (AT-118 / AT-002, P0): this used to return the cached
+        // AUDIT 2026-08-02 (AT-108 / AT-002, P0): this used to return the cached
         // blob verbatim, ignoring start_ms, end_ms AND limit. The cache key is
         // `apex:bars:{sym}:{tf}` with no range dimension (bar_cache.rs:58), so
         // whatever range happened to be stored first was served for EVERY
@@ -170,7 +170,7 @@ mod tests {
         }
     }
 
-    /// AUDIT 2026-08-02 (AT-118 / AT-002, P0): the cache key has no range
+    /// AUDIT 2026-08-02 (AT-108 / AT-002, P0): the cache key has no range
     /// dimension, so a hit could serve any stored span. Returning it unclipped
     /// is what turned a small gap-fill catch-up window into a replay of the
     /// entire cached history straight down the live AppendBar path.

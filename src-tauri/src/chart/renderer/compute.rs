@@ -327,7 +327,7 @@ pub fn compute_stochastic(highs: &[f32], lows: &[f32], closes: &[f32], k_period:
 /// `chart.timestamps` normalises to seconds — the REST loaders divide by 1000
 /// and `bar_wire_to_append_cmd` does too).
 ///
-/// AUDIT 2026-08-02 (AT-013, P1): this rule existed twice with different
+/// AUDIT 2026-08-02 (AT-019, P1): this rule existed twice with different
 /// content. `compute_vwap` here used "gap > 4h OR calendar-day change", while
 /// `gpu.rs::compute_volume_analytics` — which draws the VWAP line and its σ
 /// bands — used ONLY "gap > 4h". Instruments that trade around the clock
@@ -849,7 +849,7 @@ mod tests {
 
     // ── VWAP: session reset on new calendar day ───────────────────────────────
     #[test]
-    /// AUDIT 2026-08-02 (AT-013, P1): the session rule existed twice with
+    /// AUDIT 2026-08-02 (AT-019, P1): the session rule existed twice with
     /// different content. `gpu.rs::compute_volume_analytics` — which draws the
     /// VWAP line and its sigma bands — checked ONLY "gap > 4h". A 24/7
     /// instrument (crypto; futures outside the maintenance break) never

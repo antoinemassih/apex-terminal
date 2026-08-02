@@ -3120,7 +3120,7 @@ impl Chart {
                         // (`subscription_manager::gap_fill_on_reconnect`), which
                         // replays a historical range straight into this append
                         // path. It requests [last_seen_ts, now] — but the bar
-                        // cache key carries no range dimension (AT-118), so a
+                        // cache key carries no range dimension (AT-108), so a
                         // cache hit can serve a much older span, which then lands
                         // here as a block of stale bars appended AFTER the
                         // current one.
@@ -3784,7 +3784,7 @@ impl Chart {
                 _ => {}
             }
 
-            // AUDIT 2026-08-02 (AT-011, P0): re-index a multi-timeframe series
+            // AUDIT 2026-08-02 (AT-003, P0): re-index a multi-timeframe series
             // from SOURCE-bar space into CHART-bar space.
             //
             // When `source_tf` is set the indicator is computed over
@@ -4786,7 +4786,7 @@ pub(crate) fn compute_volume_analytics(chart: &mut Chart) {
     let mut cum_vol = 0.0_f64;
     let mut cum_tp2_vol = 0.0_f64;
     for i in 0..n {
-        // AT-013: was `gap > 14400` only — no calendar-day check — so a 24/7
+        // AT-019: was `gap > 14400` only — no calendar-day check — so a 24/7
         // instrument never reset and the VWAP accumulated across every day the
         // chart stayed open. Shares one definition with `compute_vwap` now.
         let new_session = if i == 0 { true } else {
@@ -5472,7 +5472,7 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
                 Ok("live") => false,
                 Ok("paper") | _ => true, // unset, invalid, or "paper" → paper (fail-safe)
             };
-            // AUDIT 2026-08-02 (AT-016/AT-017): the old comment here claimed
+            // AUDIT 2026-08-02 (AT-036/AT-033): the old comment here claimed
             // "at startup there are none, so this is always Ok" and discarded
             // the Result. That was the bug — `load_from_disk` restores live
             // working orders before this runs, and because the manager starts
@@ -10818,7 +10818,7 @@ mod pane_event_apply_tests {
 
 /// Step-map a series computed in SOURCE-timeframe bar space into CHART bar space.
 ///
-/// AUDIT 2026-08-02 (AT-011, P0). For each chart bar, take the value of the most
+/// AUDIT 2026-08-02 (AT-003, P0). For each chart bar, take the value of the most
 /// recent source bar at or before it (last-known-value / forward fill). Chart
 /// bars earlier than the first source bar get NaN — no value exists yet, and the
 /// polyline builder already skips NaN.
@@ -10846,7 +10846,7 @@ pub(crate) fn step_map_to_chart(vals: &[f32], src_ts: &[i64], chart_ts: &[i64]) 
 mod at011_tests {
     use super::step_map_to_chart;
 
-    /// AUDIT 2026-08-02 (AT-011, P0): a multi-timeframe indicator was computed
+    /// AUDIT 2026-08-02 (AT-003, P0): a multi-timeframe indicator was computed
     /// over SOURCE bars but indexed by the renderer with CHART bar indices. On a
     /// 5m chart a "1D RSI" has ~500 source values and thousands of chart bars, so
     /// every index past the source length silently drew nothing and every index

@@ -116,7 +116,7 @@ fn violation_count(src: &str) -> usize {
 
 /// Files allowed to import the `tokens::*` glob bridge.
 ///
-/// AUDIT 2026-08-02 (AT-060, W2): the main guard below counts literal
+/// AUDIT 2026-08-02 (AT-079, W2): the main guard below counts literal
 /// `chart_renderer::` references per file. `tokens.rs` is pinned at 1 for its
 /// `pub use crate::chart_renderer::ui::style::*` re-export — but that single
 /// pinned reference is a GLOB. Any ui_kit file can write `use ...tokens::*`
@@ -134,7 +134,7 @@ const GLOB_BRIDGE_CONSUMERS: &[&str] = &[
     "widgets/shell_variants.rs",
 ];
 
-/// AUDIT 2026-08-02 (AT-060, W2): pin the glob-bridge consumer set.
+/// AUDIT 2026-08-02 (AT-079, W2): pin the glob-bridge consumer set.
 #[test]
 fn ui_kit_glob_bridge_consumers_do_not_grow() {
     let files = ui_kit_sources();
