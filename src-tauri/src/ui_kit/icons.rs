@@ -261,7 +261,17 @@ fn ambient_lock() -> &'static RwLock<Arc<IconSet>> {
 /// Returns the built-in set until a theme pack replaces it via
 /// [`set_active_icon_set`].  This is an `Arc` clone — cheap to call per frame.
 pub fn active_icon_set() -> Arc<IconSet> {
-    ambient_lock().read().unwrap().clone()
+    // AUDIT 2026-08-02 (AT ratchet, W2): this used to unwrap the read guard.
+    // It runs on EVERY frame, so a single poisoned lock (any panic while a
+    // writer held it)
+    // turned a one-off fault into a permanent per-frame panic loop that takes
+    // the whole terminal down. The icon set is immutable behind an Arc, so the
+    // data is still perfectly readable after a writer panic — recover it rather
+    // than propagate. Same pattern as `trading/snapshot.rs:42`.
+    match ambient_lock().read() {
+        Ok(g) => g.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
 }
 
 /// Replace the process-wide active [`IconSet`].
@@ -270,7 +280,13 @@ pub fn active_icon_set() -> Arc<IconSet> {
 /// activated, or when reverting to the built-in.  Takes effect on the next
 /// frame — no restart required.
 pub fn set_active_icon_set(set: IconSet) {
-    *ambient_lock().write().unwrap() = Arc::new(set);
+    // AUDIT 2026-08-02 (AT ratchet, W2): see `active_icon_set`. Writing through
+    // a poisoned lock is safe here because we overwrite the value wholesale —
+    // no torn state can survive the assignment.
+    match ambient_lock().write() {
+        Ok(mut g) => *g = Arc::new(set),
+        Err(poisoned) => *poisoned.into_inner() = Arc::new(set),
+    }
 }
 
 /// Reset the process-wide icon set to the built-in Phosphor set.

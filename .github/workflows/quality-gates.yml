@@ -155,3 +155,48 @@ jobs:
         # run here — they pass in isolation via `-- --ignored` and would flake
         # under CI parallelism.
         run: cargo test --lib
+
+  # AUDIT 2026-08-02 (W2): CI never compiled the artifact this project SHIPS.
+  #
+  # Every other job above is `--lib`, debug, ubuntu-only. That leaves three
+  # whole surfaces permanently unverified:
+  #   • both [[bin]] targets — `apex-native` (src/native_main.rs, the actual
+  #     desktop app) and `apex-playground`. A type error in either could merge
+  #     green forever, because nothing built them.
+  #   • the release profile — different codegen, different lints, and the
+  #     `CountingAlloc` global allocator is release-gated.
+  #   • all 30 `cfg(windows)` / `cfg(target_os = "windows")` sites. The product
+  #     ships on Windows; ubuntu-latest compiles the *other* arm of every one
+  #     of those conditionals, so Windows-only code was never type-checked.
+  #
+  # This job closes all three. It runs on windows-latest, builds the bins, and
+  # needs no GPU or display — compiling wgpu/winit does not require a device.
+  shipping-binary:
+    name: Shipping binary (windows, --bins)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Create placeholder sidecar binaries (for tauri-build)
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          touch src-tauri/binaries/ococo-api-aarch64-apple-darwin
+          touch src-tauri/binaries/ococo-api-x86_64-pc-windows-msvc.exe
+          touch src-tauri/binaries/ococo-api-x86_64-unknown-linux-gnu
+      # `check` first: it surfaces every type error in the bins and in the
+      # cfg(windows) arms in a fraction of the time a full build takes, so a
+      # broken Windows path fails fast instead of after a long link.
+      - name: cargo check --bins (windows cfg arms + both bin targets)
+        working-directory: src-tauri
+        run: cargo check --bins
+      # Then the real thing. Release codegen is where the allocator and any
+      # opt-level-dependent breakage actually shows up.
+      - name: cargo build --release --bins
+        working-directory: src-tauri
+        run: cargo build --release --bins

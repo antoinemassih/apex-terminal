@@ -50,8 +50,8 @@ Verdict key: `C` confirmed · `W` weakened · `?` unverified (re-check before ac
 
 - [ ] **AT-026** `P1` `?` `MISSED` — dev_inspector's HTTP server is an unauthenticated, browser-reachable control plane that can synthesize real clicks into a window that may be in live-trading mode
 - [ ] **AT-061** `P2` `C` `DEADCODE` — ui_kit's dead surface is hidden by six module-wide `#[allow(dead_code)]` blankets
-- [ ] **AT-073** `P2` `?` `MISSED` — No CI job ever compiles the shipping artifact: every job is `--lib` only, debug-only, and ubuntu-only, so both `[[bin]]` targets, the release configuration, and all 30 `cfg(windows)` sites are never type-checked
-- [ ] **AT-075** `P2` `?` `MISSED` — The quality-gate ratchet — the CI job whose job is to block regressions — is currently failing on committed HEAD, so it no longer distinguishes new regressions from old ones
+- [x] **AT-073** `P2` `?` `MISSED` — No CI job ever compiles the shipping artifact: every job is `--lib` only, debug-only, and ubuntu-only, so both `[[bin]]` targets, the release configuration, and all 30 `cfg(windows)` sites are never type-checked
+- [x] **AT-075** `P2` `?` `MISSED` — The quality-gate ratchet — the CI job whose job is to block regressions — is currently failing on committed HEAD, so it no longer distinguishes new regressions from old ones
 - [ ] **AT-079** `P2` `C` `OTHER` — The layer_guard ratchet has a glob-shaped hole; a real chart-layer dependency inside ui_kit currently passes as clean
 - [ ] **AT-124** `P3` `?` `MISSED` — The Prometheus metrics server listens on 0.0.0.0:9091 in release builds with no authentication and `Access-Control-Allow-Origin: *`
 - [ ] **AT-129** `P3` `C` `OTHER` — Blanket #[allow(dead_code)] on 6 of 12 ui_kit modules disables the only automatic shelfware detector over 29,000 lines
