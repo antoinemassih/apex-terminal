@@ -5473,8 +5473,8 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         let st = super::ui::style::current();
         // M1 Change C: join the palette's authored bevel tints into the frame snapshot.
         crate::ui_kit::style::set_frame_bevel_tints(
-            t.bevel_highlight.unwrap_or(egui::Color32::WHITE),
-            t.bevel_shadow.unwrap_or(egui::Color32::BLACK),
+            t.bevel_highlight.unwrap_or(crate::ui_kit::style::BEVEL_TINT_DEFAULT_HIGHLIGHT),
+            t.bevel_shadow.unwrap_or(crate::ui_kit::style::BEVEL_TINT_DEFAULT_SHADOW),
         );
         super::ui::style::apply_ui_style(&mut style, &st, t.toolbar_border, t.toolbar_bg, t.accent, t.shadow_color);
         ctx.set_style(style);

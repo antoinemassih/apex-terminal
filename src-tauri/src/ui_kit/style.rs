@@ -185,6 +185,11 @@ pub fn set_frame_tokens(snap: TokenSnapshot) {
 /// snapshot. Called from `setup_theme` (which knows the palette) after the
 /// dimension-side `begin_frame` has pushed the snapshot — geometry from the
 /// style axis, tint from the colour axis, joined here once per frame.
+/// Default bevel tints when a palette authors none — the classic pre-M1
+/// look. Named tokens so call sites never hardcode WHITE/BLACK.
+pub const BEVEL_TINT_DEFAULT_HIGHLIGHT: Color32 = Color32::WHITE;
+pub const BEVEL_TINT_DEFAULT_SHADOW:    Color32 = Color32::BLACK;
+
 pub fn set_frame_bevel_tints(highlight: Color32, shadow: Color32) {
     FRAME_TOKENS_LOCAL.with(|c| {
         let mut snap = c.get();
