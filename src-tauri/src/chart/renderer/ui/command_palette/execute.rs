@@ -15,6 +15,18 @@ pub(super) fn execute(
     let ap = *active_pane;
 
     if id == "ai:chat" { watchlist.cmd_palette.ai_mode = true; return; }
+    // AUDIT 2026-08-02 (AT-089): `help:*` and `calc:x` had NO arm in this
+    // dispatcher, so they fell through the final `_ => {}` and did nothing while
+    // the caller closed the palette — a visibly dead entry.
+    //
+    // The help view already exists (`render::draw_help_mode`) and is reachable by
+    // typing `? widgets`. These registry entries were meant to be the
+    // discoverable shortcut into it, so they set the query rather than
+    // duplicating the renderer.
+    if let Some(topic) = id.strip_prefix("help:") {
+        watchlist.cmd_palette.query = format!("? {topic}");
+        return;
+    }
     if id == "dyn:reorganize" {
         watchlist.cmd_palette.ai_mode = true;
         watchlist.cmd_palette.ai_input =

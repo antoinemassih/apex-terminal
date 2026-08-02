@@ -213,18 +213,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                 return;
             }
 
-            for news in &filtered {
-                let resp = super::super::widgets::rows::NewsRow::new(
-                    &news.headline, &news.timestamp, &news.source, &news.symbol)
-                    .sentiment(news.sentiment)
-                    .height(52.0)
-                    .theme(t)
-                    .show(ui);
-
-                if resp.clicked() && !news.url.is_empty() {
-                    let _ = open::that(&news.url);
-                }
-            }
+            // AUDIT 2026-08-02 (AT-145): a second `NewsRow` loop used to run
+            // here, rendering every headline a FIRST time outside the scroll
+            // area — so the panel showed each story twice, and the top copy did
+            // not scroll. It is a leftover from the row-primitive migration
+            // (NewsRow -> PanelListRow); the ScrollArea loop below is the
+            // intended one. Removed, and its working click handler moved down to
+            // the surviving loop, which had a `// TODO: open URL` stub.
             egui::ScrollArea::vertical()
                 .id_salt("news_items")
                 .auto_shrink([false, false])
@@ -248,8 +243,11 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                                 ui.painter().circle_filled(r.center(), 3.0, color);
                             })
                             .show(ui, t);
+                        // AT-145: was `// TODO: open URL` — the url was already
+                        // in hand and non-empty-checked, then discarded. Uses
+                        // the same `open::that` idiom as discord_panel.rs:311.
                         if row.clicked() && !news.url.is_empty() {
-                            // TODO: open URL
+                            let _ = open::that(&news.url);
                         }
                     }
                 });

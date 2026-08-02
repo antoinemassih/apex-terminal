@@ -555,7 +555,7 @@ fn draw_normal_mode(
     // Execute
     if let Some(idx) = execute_idx {
         let entry = watchlist.cmd_palette.results.get(idx).cloned();
-        if let Some((id, _label, _cat)) = entry {
+        if let Some((id, label, _cat)) = entry {
             // W0-10: a destructive account-wide command must be confirmed. On the
             // first Enter, arm it and render the banner (above); it runs only on
             // the second Enter, when it is the already-armed id.
@@ -565,6 +565,15 @@ fn draw_normal_mode(
                 // Keep the palette open, do NOT execute yet.
             } else {
                 clear_pending_destructive();
+                // AT-089: `calc:x` is synthesized from an `=` query and had no
+                // dispatcher arm. Its useful action is copy-to-clipboard, and
+                // that needs `ui`, which `execute()` does not take — threading it
+                // through would churn every call site for one entry. Handled
+                // here instead, using the same idiom as provenance_pane.rs:378.
+                if id == "calc:x" {
+                    let val = label.trim_start_matches('=').trim().to_string();
+                    ui.output_mut(|o| o.copied_text = val);
+                }
                 execute(&id, watchlist, panes, layout, active_pane);
                 watchlist.cmd_palette.recent.retain(|r| r != &id);
                 watchlist.cmd_palette.recent.insert(0, id.clone());
@@ -583,7 +592,9 @@ fn draw_normal_mode(
                     }
                 }
 
-                if !watchlist.cmd_palette.ai_mode {
+                // AT-089: `help:*` switches the palette INTO help mode, so
+                // closing it here would hide the thing the user just asked for.
+                if !watchlist.cmd_palette.ai_mode && !id.starts_with("help:") {
                     watchlist.cmd_palette.open = false;
                 }
             }

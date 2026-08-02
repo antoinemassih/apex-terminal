@@ -101,6 +101,11 @@ pub(super) fn draw_help_mode(ui: &mut egui::Ui, topic: &str, t: &Theme, _pal_w: 
                     });
                 }
             }
+            // AT-089: `help:prefixes` is a registry entry; without this arm it
+            // switched the palette into help mode and then rendered nothing.
+            "prefixes" => {
+                ui.label("> commands   @ symbols   # layouts   / settings   ? help   = calc");
+            }
             _ => {}
         }
     });

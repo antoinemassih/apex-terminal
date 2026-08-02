@@ -62,7 +62,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   `OnceLock<AtomicBool>` that is never reset, so after all windows close and
   `open_window` restarts the event loop, the new supervisor reads the latched flag and
   dies immediately. Persistence is dead for the rest of the process lifetime.
-- [ ] **AT-145** `P2` `C` `UX` — `news_panel::draw_content` renders the headline list
+- [x] **AT-145** `P2` `C` `UX` — `news_panel::draw_content` renders the headline list
   TWICE (a `NewsRow` loop outside the scroll area, then a `PanelListRow` loop inside).
   Every headline appears twice; only the first copy's click was wired.
 
@@ -165,7 +165,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [ ] **AT-029** `P1` `C` `REDUND` — Three writers into watchlist.chain.near/far; the per-frame cache-derive clobbers the command path and never clears the PLACEHOLDER flag
 - [x] **AT-030** `P1` `C` `REDUND` — Two divergent RSI implementations and two divergent ATR implementations, both rendered on screen at the same time
 - [ ] **AT-031** `P1` `C` `REDUND` — Two type scales run in the same frame: TextStyle is style-live, ui_kit's font_*() is frozen to literals in every shipping build
-- [ ] **AT-041** `P1` `C` `UX` — News panel renders every headline twice, and the second copy's click handler is a dead `// TODO: open URL`
+- [x] **AT-041** `P1` `C` `UX` — News panel renders every headline twice, and the second copy's click handler is a dead `// TODO: open URL`
 - [ ] **AT-050** `P2` `C` `ARCH` — No single HTTP/endpoint layer: 16 files build their own reqwest client and the ApexSignals base URL is re-derived from env at 8 independent sites
 - [ ] **AT-054** `P2` `?` `DATA` — IB feed bumps the gap-fill anchor with a hardcoded "5m" timeframe inside a loop that already knows the active timeframes
 - [ ] **AT-081** `P2` `W` `OTHER` — Two SegmentedControl types and two Select types, both live in production, with mutually incompatible call conventions
@@ -204,7 +204,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 
 - [ ] **AT-012** `P1` `W` `DEADCODE` — The kill switch is one-way: `release_kill_switch()` has no caller, so engaged=true is unrecoverable in-app
 - [ ] **AT-037** `P1` `W` `UNWIRED` — Screener BUILD tab: "Run Now" and "Save Screen" are literal no-op handlers, and their reducers are stubs
-- [ ] **AT-038** `P1` `C` `UNWIRED` — Time & Sales tape is permanently empty: the WS subscription is gated on `tape.open`, a flag no user action can set
+- [x] **AT-038** `P1` `C` `UNWIRED` — Time & Sales tape is permanently empty: the WS subscription is gated on `tape.open`, a flag no user action can set
 - [ ] **AT-039** `P1` `C` `UNWIRED` — Two independent shortcut systems collide: Ctrl+Shift+R resumes halted trading AND toggles a panel in the same frame
 - [ ] **AT-042** `P1` `?` `UX` — News sentiment filter chip (Any/Bull/Bear/Neut) changes its own label and active state but never filters the list — the filter function is only ever called by unit tests
 - [ ] **AT-045** `P2` `C` `ARCH` — 73% of the AppCommand dispatch layer has no producer in a release build — its only callers are the debug-only dev_inspector
@@ -213,9 +213,9 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [x] **AT-060** `P2` `W` `DEADCODE` — `chart/state` — 2,583 LOC of chart-storage architecture — is unreachable; its single integration point is hardcoded `None`
 - [ ] **AT-074** `P2` `?` `MISSED` — The cooperative-shutdown subsystem is entirely dead: `drain_all` has zero callers, so the Postgres pool is never closed and the bug its own doc claims to fix is unfixed
 - [ ] **AT-076** `P2` `C` `OTHER` — ContextMenu (507 LOC) and Popover (173 LOC) have zero production callers; the app uses raw egui context menus in 22 places
-- [ ] **AT-095** `P2` `C` `UNWIRED` — Command-palette Help and Calc entries execute to nothing — the dispatcher has no arm for their ids
-- [ ] **AT-096** `P2` `C` `UNWIRED` — Four rail panels are registered in the dispatch table but their `is_open` predicate has no writer that can ever return true
-- [ ] **AT-097** `P2` `C` `UNWIRED` — News headline clicks are a no-op: the URL is present and non-empty-checked, then discarded
+- [x] **AT-095** `P2` `C` `UNWIRED` — Command-palette Help and Calc entries execute to nothing — the dispatcher has no arm for their ids
+- [x] **AT-096** `P2` `C` `UNWIRED` — Four rail panels are registered in the dispatch table but their `is_open` predicate has no writer that can ever return true
+- [x] **AT-097** `P2` `C` `UNWIRED` — News headline clicks are a no-op: the URL is present and non-empty-checked, then discarded
 - [ ] **AT-098** `P2` `W` `UNWIRED` — The whole ApexSignals integration — not just the three MSG panels — defaults to http://localhost:8100 with no way to configure it
 - [ ] **AT-099** `P2` `W` `UNWIRED` — Three user-editable hotkeys are read by nothing, including "Halt Trading" — and the F1 cheatsheet advertises a Halt chord that does something else
 - [ ] **AT-100** `P2` `C` `UNWIRED` — Two complete, tested panels have zero call sites anywhere in the tree

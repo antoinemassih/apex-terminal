@@ -1200,6 +1200,25 @@ pub(crate) fn render(
                 panel_toggle!(Icon::SPARKLE,         "Auto-Chart", auto_chart_open,       "Auto-Charting (lines, levels, patterns, tuning)"); // SPARKLE = auto/AI (was CHART_LINE, collided with Analysis)
                 panel_toggle!(Icon::PULSE,           "Indicators", watchlist.indicators.panel_open, indicators_panel_open, "Indicators (Active + Library + Tools)");
 
+                // AUDIT 2026-08-02 (AT-088 / AT-091): four rail panels were
+                // registered in `right_rail::PANELS` and fully implemented, but
+                // their `is_open` predicates had NO writer that could ever
+                // return true. Each flag's only non-test writer set it to
+                // `false` (the panel's own close-X), and each defaults to
+                // false — so the panels were unreachable for the whole life of
+                // the app. The state plumbing was already complete: every flag
+                // exists in SidebarState and round-trips through
+                // push_to_sidebar_store / sync_from_sidebar_store. Only the
+                // toolbar button was never added.
+                //
+                // These go through `update_sidebar_state` like every sibling —
+                // a direct `watchlist.tape.open = true` would be stomped by the
+                // next store sync (see the warning at commands.rs:1232).
+                panel_toggle!(Icon::CLOCK,         "T&S",     watchlist.tape.open,          tape_open,          "Time & Sales tape");
+                panel_toggle!(Icon::NOTEBOOK,      "Journal", watchlist.journal_panel.open, journal_panel_open, "Trade Journal");
+                panel_toggle!(Icon::CIRCLES_FOUR,  "RRG",     watchlist.rrg.open,           rrg_open,           "Relative Rotation Graph");
+                panel_toggle!(Icon::CODE,          "Script",  watchlist.script.open,        script_open,        "Script editor");
+
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
                 {
                     let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
