@@ -34,8 +34,8 @@
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
-        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowSpec,
-        Spacing, Strokes, StyleSystem, Treatments, Typography,
+        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowLayer,
+        ShadowSpec, ShadowTint, Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
 
@@ -801,9 +801,19 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
-                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
-            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
-            bevel_highlight: None, bevel_shadow: None,
+                // T1: AUTHORED ramp + tints (design-brief §5.3, global.css [data-ds=alto]).
+                // Warm dark surface stack #15120e→#1c1814→#221d18→#2a241e; amber-tinted
+                // hover; WARM cream bevel highlight — the Alto half of the sibling pair.
+                bg_panel:        Some([0x1c, 0x18, 0x14, 255]),
+                bg_elevated:     Some([0x2a, 0x24, 0x1e, 255]),
+                bg_hover:        Some([217, 152,  88,  18]),   // amber @ 0.07
+                fg_xmuted:       Some([0x6b, 0x63, 0x58, 255]),
+                accent_sub:      Some([0xb8, 0x78, 0x38, 255]),
+                bull_alpha:      Some([111, 191, 115,  33]),   // 0.13
+                bear_alpha:      Some([226,  93,  93,  33]),
+                border_dim:      Some([0x2f, 0x28, 0x20, 255]),
+                bevel_highlight: Some([255, 238, 210, 255]),   // WARM cream
+                bevel_shadow:    Some([0, 0, 0, 255]),
             }
         },
 
@@ -837,9 +847,20 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
-                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
-            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
-            bevel_highlight: None, bevel_shadow: None,
+                // T1: AUTHORED ramp + tints (design-brief §5.4). Shares Alto's warm-dark
+                // surface stack EXACTLY (siblings, not clones); differs by steel-blue
+                // accent family, steel-tinted hover, and the COOL bevel highlight —
+                // the single palette-level difference the audit found inexpressible.
+                bg_panel:        Some([0x1c, 0x18, 0x14, 255]),
+                bg_elevated:     Some([0x2a, 0x24, 0x1e, 255]),
+                bg_hover:        Some([110, 160, 200,  18]),   // steel @ 0.07
+                fg_xmuted:       Some([0x6b, 0x63, 0x58, 255]),
+                accent_sub:      Some([0x4f, 0x7e, 0xa0, 255]),
+                bull_alpha:      Some([111, 191, 115,  33]),
+                bear_alpha:      Some([226,  93,  93,  33]),
+                border_dim:      Some([0x2f, 0x28, 0x20, 255]),
+                bevel_highlight: Some([190, 215, 245, 255]),   // COOL steel
+                bevel_shadow:    Some([0, 0, 0, 255]),
             }
         },
 
@@ -1325,6 +1346,18 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0 },
         shadows: Shadows {
             card: ShadowSpec { blur: 8.0, spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 80.0/255.0 },
+            // T1: the Zed warm-dark card bevel — 4 layers from the DS spec
+            // (inset highlight + inset shadow + contact line + ambient drop).
+            // Mariner CLONES this stack; `ShadowTint::Highlight` resolves from
+            // each PALETTE's authored bevel_highlight at paint time, so the
+            // same stack renders WARM cream on Alto and COOL steel on Mariner
+            // — the sibling difference lives on the colour axis, once.
+            card_layers: vec![
+                ShadowLayer { inset: true,  offset_x: 0.0, offset_y:  1.0, blur: 0.0,  spread: 0.0,   tint: ShadowTint::Highlight, alpha: 15  },
+                ShadowLayer { inset: true,  offset_x: 0.0, offset_y: -1.0, blur: 0.0,  spread: 0.0,   tint: ShadowTint::Shadow,    alpha: 115 },
+                ShadowLayer { inset: false, offset_x: 0.0, offset_y:  1.0, blur: 0.0,  spread: 0.0,   tint: ShadowTint::Shadow,    alpha: 102 },
+                ShadowLayer { inset: false, offset_x: 0.0, offset_y: 12.0, blur: 28.0, spread: -16.0, tint: ShadowTint::Shadow,    alpha: 153 },
+            ],
             ..Shadows::default()
         },
         treatments: Treatments {
