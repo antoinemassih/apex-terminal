@@ -70,7 +70,7 @@ Verdict key: `C` confirmed · `W` weakened · `?` unverified (re-check before ac
 
 ## W4 — engine correctness  (5 items)
 
-- [ ] **AT-003** `P0` `C` `ENGINES` — Cross-timeframe indicators emit a series indexed in source-bar space but rendered in chart-bar space
+- [x] **AT-003** `P0` `C` `ENGINES` — Cross-timeframe indicators emit a series indexed in source-bar space but rendered in chart-bar space
 - [x] **AT-004** `P0` `C` `ENGINES` — Live incremental path appends NaN for 16 of 19 indicators and permanently suppresses full recompute
 - [ ] **AT-017** `P1` `C` `ENGINES` — RSI and ATR each exist in three implementations with three different smoothing conventions, all displayed simultaneously
 - [ ] **AT-018** `P1` `C` `ENGINES` — The multi-timeframe RSI widget labels seven rows 5m…1W but computes all seven on the pane's current timeframe

@@ -3766,6 +3766,37 @@ impl Chart {
                 }
                 _ => {}
             }
+
+            // AUDIT 2026-08-02 (AT-011, P0): re-index a multi-timeframe series
+            // from SOURCE-bar space into CHART-bar space.
+            //
+            // When `source_tf` is set the indicator is computed over
+            // `ind.source_bars` — e.g. ~500 daily bars for a "1D RSI". But the
+            // renderer indexes `ind.values.get(i)` with `i` as a CHART bar index
+            // (core.rs:3751 and friends), which on a 5m chart runs to thousands.
+            // The two axes were never reconciled, so every multi-timeframe
+            // indicator was plotting the wrong element: index 200 of a daily
+            // series painted at the 200th five-minute bar, and every index past
+            // the source length silently returned None and drew nothing.
+            //
+            // Step-map instead: for each chart bar, take the value of the most
+            // recent source bar at or before it. Chart bars earlier than the
+            // first source bar are NaN (no value exists yet), which the polyline
+            // builder already skips.
+            if !ind.source_tf.is_empty() && !ind.source_timestamps.is_empty() {
+                let src_ts = &ind.source_timestamps;
+                let chart_ts = &self.timestamps;
+                let remap = |vals: &Vec<f32>| step_map_to_chart(vals, src_ts, chart_ts);
+                ind.values     = remap(&ind.values);
+                ind.values2    = remap(&ind.values2);
+                ind.values3    = remap(&ind.values3);
+                ind.values4    = remap(&ind.values4);
+                ind.values5    = remap(&ind.values5);
+                ind.histogram  = remap(&ind.histogram);
+                // Divergences carry source-bar indices and would point at the
+                // wrong chart bars; drop them rather than draw them wrong.
+                ind.divergences.clear();
+            }
         }
         self.indicator_bar_count = self.bars.len();
     }
@@ -10748,5 +10779,81 @@ mod pane_event_apply_tests {
         assert_eq!(panes[2].next_indicator_id, 201);
         // Unlinked pane untouched.
         assert_eq!(panes[3].indicators.len(), 0);
+    }
+}
+
+/// Step-map a series computed in SOURCE-timeframe bar space into CHART bar space.
+///
+/// AUDIT 2026-08-02 (AT-011, P0). For each chart bar, take the value of the most
+/// recent source bar at or before it (last-known-value / forward fill). Chart
+/// bars earlier than the first source bar get NaN — no value exists yet, and the
+/// polyline builder already skips NaN.
+///
+/// Both timestamp slices must be ascending, which they are: bars are appended in
+/// time order and the monotonicity guard in `AppendBar` (AT-002) keeps them that
+/// way. Single pass, O(chart + source).
+pub(crate) fn step_map_to_chart(vals: &[f32], src_ts: &[i64], chart_ts: &[i64]) -> Vec<f32> {
+    if vals.is_empty() || src_ts.is_empty() { return Vec::new(); }
+    let mut out = Vec::with_capacity(chart_ts.len());
+    let mut j: usize = 0;
+    for &ts in chart_ts {
+        while j + 1 < src_ts.len() && src_ts[j + 1] <= ts { j += 1; }
+        if ts < src_ts[0] {
+            out.push(f32::NAN);
+        } else {
+            out.push(vals.get(j).copied().unwrap_or(f32::NAN));
+        }
+    }
+    out
+}
+
+
+#[cfg(test)]
+mod at011_tests {
+    use super::step_map_to_chart;
+
+    /// AUDIT 2026-08-02 (AT-011, P0): a multi-timeframe indicator was computed
+    /// over SOURCE bars but indexed by the renderer with CHART bar indices. On a
+    /// 5m chart a "1D RSI" has ~500 source values and thousands of chart bars, so
+    /// every index past the source length silently drew nothing and every index
+    /// inside it drew the wrong day's value at the wrong bar.
+    #[test]
+    fn source_series_is_step_mapped_onto_chart_bars() {
+        // Two daily source bars at t=100 and t=200, values 10.0 and 20.0.
+        let src_ts  = vec![100i64, 200];
+        let vals    = vec![10.0f32, 20.0];
+        // Chart bars every 50 ticks, straddling both source bars.
+        let chart_ts = vec![50i64, 100, 150, 200, 250, 300];
+
+        let got = step_map_to_chart(&vals, &src_ts, &chart_ts);
+
+        assert_eq!(got.len(), chart_ts.len(),
+            "output must be indexed in CHART space — one entry per chart bar");
+        assert!(got[0].is_nan(),
+            "a chart bar before the first source bar has no value yet");
+        assert_eq!(got[1], 10.0, "at the source bar itself");
+        assert_eq!(got[2], 10.0, "between source bars: hold the last known value");
+        assert_eq!(got[3], 20.0, "second source bar takes effect at its timestamp");
+        assert_eq!(got[4], 20.0, "and holds after it");
+        assert_eq!(got[5], 20.0, "including past the end of the source series");
+    }
+
+    #[test]
+    fn empty_inputs_yield_empty_rather_than_panicking() {
+        assert!(step_map_to_chart(&[], &[100], &[100]).is_empty());
+        assert!(step_map_to_chart(&[1.0], &[], &[100]).is_empty());
+    }
+
+    /// The bug this replaced: naive index reuse. A 2-element source series read
+    /// at chart index 5 used to return None and draw nothing.
+    #[test]
+    fn chart_longer_than_source_still_produces_a_full_series() {
+        let src_ts: Vec<i64> = vec![0, 1000];
+        let vals = vec![1.0f32, 2.0];
+        let chart_ts: Vec<i64> = (0..100).map(|i| i * 100).collect();
+        let got = step_map_to_chart(&vals, &src_ts, &chart_ts);
+        assert_eq!(got.len(), 100);
+        assert!(got.iter().all(|v| !v.is_nan()),
+            "every chart bar at/after the first source bar must carry a value");
     }
 }
