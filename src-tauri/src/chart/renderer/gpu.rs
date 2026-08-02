@@ -3782,6 +3782,31 @@ impl Chart {
             return;
         }
 
+        // AUDIT 2026-08-02 (AT-004, P0): only SMA, WMA and EMA can actually be
+        // extended one bar at a time. The `_` arm below acknowledged that —
+        // "DEMA, TEMA, VWAP, RSI, MACD, Stochastic — need full recompute" — and
+        // then pushed `f32::NAN` instead of recomputing.
+        //
+        // Because `indicator_bar_count` is set to `n` BEFORE the loop, the next
+        // call early-returns on `n == indicator_bar_count`, so the NaN was never
+        // repaired: 16 of the 19 indicator types silently froze at their last
+        // full recompute and then rendered nothing for every subsequent live
+        // bar (`core.rs` skips NaN points when building the polyline). The
+        // indicator did not error, did not blank, did not warn — it just stopped
+        // extending, which reads as "flat" rather than "broken".
+        //
+        // If ANY configured indicator needs a full recompute, do one for the
+        // whole set. This runs at most once per newly-closed bar (the function
+        // early-returns when the count is unchanged), not per frame.
+        let all_incremental = self.indicators.iter().all(|i| matches!(
+            i.kind,
+            IndicatorType::SMA | IndicatorType::WMA | IndicatorType::EMA
+        ));
+        if !all_incremental {
+            self.recompute_indicators();
+            return;
+        }
+
         // Incremental: extend each indicator for newly added bars
         let old = self.indicator_bar_count;
         self.indicator_bar_count = n;
@@ -3813,7 +3838,16 @@ impl Chart {
                         ind.values.push(v);
                     }
                     _ => {
-                        // DEMA, TEMA, VWAP, RSI, MACD, Stochastic — need full recompute
+                        // AT-004: unreachable — the `all_incremental` guard above
+                        // routes any non-SMA/WMA/EMA set to `recompute_indicators`
+                        // before we get here. Kept as a defensive arm; if a new
+                        // IndicatorType is added to the incremental match without
+                        // being added to that guard, this fires in debug rather
+                        // than silently poisoning the series with NaN again.
+                        debug_assert!(false,
+                            "indicator kind {:?} reached the incremental arm — add it \
+                             to the `all_incremental` guard or implement extension",
+                            ind.kind);
                         ind.values.push(f32::NAN);
                     }
                 }
