@@ -24,33 +24,47 @@ pub(crate) fn compute_autocorrelation(bars: &[crate::chart_renderer::types::Bar]
     (cov / var).clamp(-1.0, 1.0)
 }
 
+// AUDIT 2026-08-02 (AT-012, P1): these two used to carry their OWN math —
+// a simple mean over the trailing `period` bars — while
+// `chart_renderer::compute` used Wilder smoothing for the same indicators.
+//
+// Both were on screen at the same time. `chart_widgets.rs:29` does
+// `use super::overlays::indicators::*`, so the glob silently bound the
+// non-Wilder scalars for the on-chart readout, while the indicator pane
+// plotted the Wilder series from `compute.rs`. Same symbol, same period, two
+// different numbers, no indication which was which.
+//
+// Wilder is the correct convention (it is what TradingView, Bloomberg and every
+// other platform mean by "RSI 14" / "ATR 14"), and `compute.rs` already
+// implements it, so these now delegate. The scalar shape is kept because
+// `chart_widgets` genuinely wants a single latest value, not a series — the
+// duplication was in the MATH, not in the API.
+
+/// Latest RSI, Wilder-smoothed. Delegates to the canonical series
+/// implementation and takes the most recent finite value.
+///
+/// Returns the neutral 50.0 when there is not enough data, matching the
+/// previous contract for callers that render it directly.
 pub(crate) fn compute_rsi(bars: &[crate::chart_renderer::types::Bar], period: usize) -> f32 {
-    let n = bars.len();
-    if n < period + 1 { return 50.0; }
-    let mut gain_sum = 0.0f32;
-    let mut loss_sum = 0.0f32;
-    for i in (n - period)..n {
-        let diff = bars[i].close - bars[i - 1].close;
-        if diff > 0.0 { gain_sum += diff; } else { loss_sum += -diff; }
-    }
-    let avg_gain = gain_sum / period as f32;
-    let avg_loss = loss_sum / period as f32;
-    if avg_loss < 0.0001 { return 100.0; }
-    let rs = avg_gain / avg_loss;
-    100.0 - (100.0 / (1.0 + rs))
+    let closes: Vec<f32> = bars.iter().map(|b| b.close).collect();
+    crate::chart_renderer::compute::compute_rsi(&closes, period)
+        .iter().rev().copied()
+        .find(|v| !v.is_nan())
+        .unwrap_or(50.0)
 }
 
+/// Latest ATR, Wilder-smoothed. Delegates to the canonical series
+/// implementation and takes the most recent finite value.
+///
+/// Returns 0.0 when there is not enough data, matching the previous contract.
 pub(crate) fn compute_atr(bars: &[crate::chart_renderer::types::Bar], period: usize) -> f32 {
-    let n = bars.len();
-    if n < period + 1 { return 0.0; }
-    let mut sum = 0.0f32;
-    for i in (n - period)..n {
-        let tr = (bars[i].high - bars[i].low)
-            .max((bars[i].high - bars[i - 1].close).abs())
-            .max((bars[i].low - bars[i - 1].close).abs());
-        sum += tr;
-    }
-    sum / period as f32
+    let highs:  Vec<f32> = bars.iter().map(|b| b.high).collect();
+    let lows:   Vec<f32> = bars.iter().map(|b| b.low).collect();
+    let closes: Vec<f32> = bars.iter().map(|b| b.close).collect();
+    crate::chart_renderer::compute::compute_atr(&highs, &lows, &closes, period)
+        .iter().rev().copied()
+        .find(|v| !v.is_nan())
+        .unwrap_or(0.0)
 }
 
 pub(crate) fn compute_trend_grid(bars: &[crate::chart_renderer::types::Bar]) -> [[bool; 4]; 7] {
@@ -214,3 +228,58 @@ pub(crate) fn compute_liquidity(bars: &[crate::chart_renderer::types::Bar]) -> f
     (vol_score + consistency_score + spread_score).clamp(0.0, 100.0)
 }
 
+
+#[cfg(test)]
+mod at012_tests {
+    use crate::chart_renderer::types::Bar;
+
+    fn bars(closes: &[f32]) -> Vec<Bar> {
+        closes.iter().enumerate().map(|(i, &c)| {
+            // Give high/low a little spread so ATR has real true-range to chew on.
+            let prev = if i == 0 { c } else { closes[i - 1] };
+            Bar {
+                open: prev, high: c.max(prev) + 0.5, low: c.min(prev) - 0.5,
+                close: c, volume: 1000.0, _pad: 0.0,
+            }
+        }).collect()
+    }
+
+    /// AUDIT 2026-08-02 (AT-012, P1): the widget scalars and the chart series
+    /// used to compute the SAME indicator with different math — a simple
+    /// trailing mean here, Wilder smoothing in `compute.rs` — and both were on
+    /// screen at once via the glob import in chart_widgets.rs.
+    ///
+    /// This pins the invariant that matters: the scalar a widget shows must be
+    /// the last value of the series the chart plots. It fails if either side
+    /// drifts back to its own math.
+    #[test]
+    fn widget_scalars_match_the_canonical_series() {
+        let closes: Vec<f32> = (0..60).map(|i| 100.0 + (i as f32 * 0.37).sin() * 5.0).collect();
+        let b = bars(&closes);
+        let period = 14;
+
+        let series_rsi = crate::chart_renderer::compute::compute_rsi(&closes, period);
+        let last_rsi = series_rsi.iter().rev().copied().find(|v| !v.is_nan()).unwrap();
+        let scalar_rsi = super::compute_rsi(&b, period);
+        assert!((scalar_rsi - last_rsi).abs() < 1e-4,
+            "widget RSI {scalar_rsi} must equal the chart series' last value {last_rsi} \
+             — two different numbers for the same indicator is the defect");
+
+        let highs:  Vec<f32> = b.iter().map(|x| x.high).collect();
+        let lows:   Vec<f32> = b.iter().map(|x| x.low).collect();
+        let series_atr = crate::chart_renderer::compute::compute_atr(&highs, &lows, &closes, period);
+        let last_atr = series_atr.iter().rev().copied().find(|v| !v.is_nan()).unwrap();
+        let scalar_atr = super::compute_atr(&b, period);
+        assert!((scalar_atr - last_atr).abs() < 1e-4,
+            "widget ATR {scalar_atr} must equal the chart series' last value {last_atr}");
+    }
+
+    /// Insufficient data must keep the documented fallbacks, not NaN — these
+    /// values are rendered directly into widgets.
+    #[test]
+    fn insufficient_data_keeps_the_neutral_fallbacks() {
+        let b = bars(&[100.0, 101.0, 102.0]);
+        assert_eq!(super::compute_rsi(&b, 14), 50.0, "neutral RSI when data is short");
+        assert_eq!(super::compute_atr(&b, 14), 0.0, "zero ATR when data is short");
+    }
+}
