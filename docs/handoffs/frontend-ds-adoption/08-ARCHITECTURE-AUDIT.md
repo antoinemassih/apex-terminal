@@ -112,7 +112,11 @@ breaks all five light palettes today; one-line fix.
 pane_gap_color`, and the reverse map hardcodes them to `None` — **pack round-trips destroy
 authored data.**
 
-**Per-pane theming is half-honoured.** Pane *bodies* follow their own `theme_idx`, but
+**[CORRECTED during M1: pack activation is NOT pane-0-only.** The
+`AppCommand::SetThemeIdx` handler iterates ALL panes and ignores the command's
+`pane` field (`commands.rs` for-loop) — the original claim came from reading the
+bridge's `pane: 0` argument without the handler. The ambient-follows-active-pane
+finding below still stands.] **Per-pane theming is half-honoured.** Pane *bodies* follow their own `theme_idx`, but
 every ambient read, every egui-native widget, and every popup follows the **active pane**.
 An inactive Bauhaus pane next to an active Vesper pane renders a light chart body with
 dark buttons. And `theme_pack_bridge` activates packs against **pane 0 only**.

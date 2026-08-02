@@ -114,6 +114,22 @@ from `09` Phase 0.
 
 **Gate to M1:** harness demo + all M0 fixes screenshot-verified + CI green.
 
+> **EXECUTION STATUS (2026-08-02, session 1):**
+> **M0 ✅ COMPLETE** — harness live (18 reference PNGs + app captures via port
+> 7892), black-shadow/radius/ambient/round-trip bugs fixed, literal sweeps done,
+> gates hardened + in CI, docs truth-synced. 5 commits.
+> **M1 core ✅ LANDED** — M1.1 STYLE_SYSTEM_STORE + gap/type/alpha ladders LIVE
+> (authored values reach TokenSnapshot; proof tests); M1.3 Changes A/C/D/E all
+> landed (authored ramp fields end-to-end incl. DTCG; bevel tints joined per
+> frame; NumeralTier+CardRecipe consumed by PanelCard/TextStyle; multi-layer
+> shadow stacks ADDITIVE — no schema bump needed, v1 packs load unchanged).
+> M1.6 verified NO-OP (handler already all-panes — audit claim corrected).
+> **Remaining in M1:** M1.4 folded into M2.1 (ladder collapse rides the
+> TextStyle move); M1.5 (187 current() reads) = the M2-wave fan-out, gated on
+> Chrome-into-snapshot; M1.7 partial (ladders live-editable via dt defaults;
+> new ColorScheme fields lack F12 controls — debt).
+> 8 commits on feature/ds-adoption-m0. Sweep: 126+ tests green, gates 000.
+
 ### M1 — One source of truth (≈3–4 wk, ONE owner — the resolution spine is not parallelisable)
 
 | ID | Item | Accept |
