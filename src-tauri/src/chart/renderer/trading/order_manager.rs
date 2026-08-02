@@ -1072,6 +1072,60 @@ impl OrderManager {
     ///
     /// `paper` must be passed in (not re-read from `self`) so callers that
     /// already captured it can pass consistently; avoids a second lock read.
+    /// Net position for `symbol`, used by the position cap and oversell guard.
+    ///
+    /// AUDIT 2026-08-02 (AT-007, P0): this used to sum local `Filled` rows only.
+    /// Those rows are the ONE input to every position-based guard, and they are
+    /// systematically destroyed:
+    ///
+    ///   * `save_to_disk` persists only `Working | PendingSubmit | PartialFill`
+    ///     — `Filled` is never written, so after ANY restart the computed
+    ///     position is 0 and the cap permits a full fresh position on top of a
+    ///     real one still held at the broker.
+    ///   * `gc_orders` drops terminal orders older than one hour, so even
+    ///     without a restart the position decays to 0 sixty minutes after the
+    ///     fills that created it.
+    ///
+    /// Meanwhile the broker's actual position was already available via
+    /// `read_account_data()` and was simply not consulted here.
+    ///
+    /// Resolution: the broker is the source of truth. Local `Filled` rows are
+    /// still summed because they cover fills the account poller has not yet
+    /// reflected. When the two disagree we take whichever implies the LARGER
+    /// absolute exposure — for a cap check the conservative reading is the
+    /// safe one.
+    ///
+    /// If broker data is unavailable we fall back to the local sum (blocking
+    /// all trading whenever the poller is cold would be worse), but we report
+    /// it: a position guard running on degraded input must not be silent.
+    fn net_position_for(&self, symbol: &str) -> i64 {
+        let local: i64 = self.orders.iter()
+            .filter(|o| o.symbol == symbol && o.state == OrderState::Filled)
+            .map(|o| match o.side {
+                OrderSide::Buy | OrderSide::TriggerBuy => o.filled_qty as i64,
+                _ => -(o.filled_qty as i64),
+            }).sum();
+
+        // Paper mode has no broker position to reconcile against.
+        if self.paper_mode { return local; }
+
+        match super::read_account_data() {
+            Some((_, positions, _)) => {
+                let broker = positions.iter()
+                    .find(|p| p.symbol == symbol)
+                    .map(|p| p.qty as i64)
+                    .unwrap_or(0);
+                if broker.unsigned_abs() >= local.unsigned_abs() { broker } else { local }
+            }
+            None => {
+                report(ErrorLevel::Warn, "order_manager", "position_source_degraded",
+                    format!("no broker account data — position cap for {symbol} is \
+                             using local fills only, which read 0 after a restart"));
+                local
+            }
+        }
+    }
+
     fn validate_risk(&mut self, intent: &OrderIntent, paper: bool) -> Result<(), OrderResult> {
         // ── T1: reset daily accumulator on date rollover ─────────────────────
         let today = today_day_index();
@@ -1088,13 +1142,8 @@ impl OrderManager {
             return Err(OrderResult::Rejected(format!("Qty {} exceeds max {}", intent.qty, self.risk_limits.max_order_qty)));
         }
 
-        // 2a. Net position cap (filled orders)
-        let net_position: i64 = self.orders.iter()
-            .filter(|o| o.symbol == intent.symbol && o.state == OrderState::Filled)
-            .map(|o| match o.side {
-                OrderSide::Buy | OrderSide::TriggerBuy => o.filled_qty as i64,
-                _ => -(o.filled_qty as i64),
-            }).sum();
+        // 2a. Net position cap
+        let net_position: i64 = self.net_position_for(&intent.symbol);
         let new_position = match intent.side {
             OrderSide::Buy | OrderSide::TriggerBuy => net_position + intent.qty as i64,
             _ => net_position - intent.qty as i64,
@@ -1624,12 +1673,14 @@ impl OrderManager {
         // ── 2.5 Oversell protection (can't sell more contracts than you hold) ──
         // Recompute net position now that validate_risk may have reset the daily
         // accumulator; orders themselves are unchanged.
-        let net_position: i64 = self.orders.iter()
-            .filter(|o| o.symbol == intent.symbol && o.state == OrderState::Filled)
-            .map(|o| match o.side {
-                OrderSide::Buy | OrderSide::TriggerBuy => o.filled_qty as i64,
-                _ => -(o.filled_qty as i64),
-            }).sum();
+        //
+        // AUDIT 2026-08-02 (AT-007, P0): this summed local `Filled` rows, which
+        // are never persisted and are GC'd after an hour — so after a restart it
+        // read 0 and the guard silently stopped protecting anything. Worse than
+        // the position cap: reading 0 here makes `net_position > 0` false, so
+        // the oversell check is skipped ENTIRELY rather than merely being loose.
+        // Now shares `net_position_for`, which prefers the broker's position.
+        let net_position: i64 = self.net_position_for(&intent.symbol);
         let is_sell = matches!(intent.side, OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::TriggerSell);
         if !paper && is_sell && net_position > 0 {
             let sell_qty = intent.qty as i64;
@@ -6771,6 +6822,93 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.state, OrderState::Draft,
             "order state must remain Draft after halted confirm");
+    }
+
+    // ── AT-007: position guards must read the BROKER, not local Filled rows ───
+
+    /// Seed the process-global broker account snapshot with a single position.
+    /// `ACCOUNT_DATA` is `pub(crate)` and normally written by the account
+    /// poller; tests drive it directly.
+    fn seed_broker_position(symbol: &str, qty: i32) {
+        use crate::chart_renderer::trading::{ACCOUNT_DATA, AccountSummary, Position};
+        let slot = ACCOUNT_DATA.get_or_init(|| std::sync::Mutex::new(None));
+        let pos = Position {
+            symbol: symbol.to_string(), qty, avg_price: 100.0, current_price: 100.0,
+            market_value: 0.0, unrealized_pnl: 0.0, con_id: 1,
+        };
+        if let Ok(mut g) = slot.lock() {
+            *g = Some((AccountSummary::default(), vec![pos], vec![]));
+        }
+    }
+
+    fn clear_broker_positions() {
+        use crate::chart_renderer::trading::ACCOUNT_DATA;
+        let slot = ACCOUNT_DATA.get_or_init(|| std::sync::Mutex::new(None));
+        if let Ok(mut g) = slot.lock() { *g = None; }
+    }
+
+    /// AUDIT 2026-08-02 (AT-007, P0): the position cap summed local `Filled`
+    /// rows, which `save_to_disk` never persists and `gc_orders` drops after an
+    /// hour. So after a restart the cap computed position 0 and would authorise
+    /// a full fresh position on top of one still held at the broker.
+    ///
+    /// This test reproduces exactly that state: zero local orders (as after a
+    /// restart) but a real 900-share broker position. The old code computed 0
+    /// and allowed the order; the fix reads 900 and rejects.
+    #[test]
+    fn position_cap_reads_broker_position_when_local_fills_are_gone() {
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_position_qty = 1_000;
+        m.risk_limits.max_order_qty = 10_000;
+        m.risk_limits.max_notional = 0.0; // keep the notional gate out of the way
+
+        // Post-restart reality: no local fill history at all.
+        assert!(m.orders.is_empty(), "precondition: no local orders");
+        seed_broker_position("AAPL", 900);
+
+        let intent = limit_intent("AAPL", OrderSide::Buy, 100.0, 200);
+        let err = m.validate_risk(&intent, false);
+
+        clear_broker_positions();
+
+        assert!(err.is_err(),
+            "900 held at the broker + 200 new = 1100 > 1000 cap must reject; \
+             reading local Filled rows alone would compute 0 and allow it");
+    }
+
+    /// The converse: with no broker data the guard must still function on local
+    /// fills rather than silently permitting everything.
+    #[test]
+    fn position_cap_falls_back_to_local_fills_without_broker_data() {
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_position_qty = 1_000;
+        m.risk_limits.max_order_qty = 10_000;
+        m.risk_limits.max_notional = 0.0;
+        clear_broker_positions();
+
+        let now = epoch_ms();
+        m.orders.push(ManagedOrder {
+            id: 1, client_order_id: "filled-1".into(),
+            symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+            order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+            qty: 900, filled_qty: 900, avg_fill_price: Price::from_f32(100.0),
+            state: OrderState::Filled, pair_id: None,
+            trail_amount: None, trail_percent: None,
+            option_symbol: None, option_con_id: None,
+            source: OrderSource::OrderPanel,
+            created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
+            tif: 0, outside_rth: false,
+            state_history: vec![(OrderState::Filled, ts_from_ms(now))],
+            rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
+        });
+        m.next_id = 2;
+
+        let intent = limit_intent("AAPL", OrderSide::Buy, 100.0, 200);
+        assert!(m.validate_risk(&intent, false).is_err(),
+            "with no broker data the local 900 fill must still enforce the cap");
     }
 
     // ── AT-009: validate_risk coverage for the BRACKET path ───────────────────

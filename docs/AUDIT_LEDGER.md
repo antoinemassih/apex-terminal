@@ -34,7 +34,7 @@ Verdict key: `C` confirmed · `W` weakened · `?` unverified (re-check before ac
 
 ## W1 — risk-gate integrity  (9 items)
 
-- [ ] **AT-007** `P0` `C` `TRADING` — Position caps and oversell protection read local `Filled` rows that are never persisted and are GC'd hourly — every position-based guard reads zero after a restart, while broker positions are explicitly discarded
+- [x] **AT-007** `P0` `C` `TRADING` — Position caps and oversell protection read local `Filled` rows that are never persisted and are GC'd hourly — every position-based guard reads zero after a restart, while broker positions are explicitly discarded
 - [x] **AT-008** `P0` `C` `TRADING` — `confirm()` marks the order Working before the broker Ack, drops the broker Err, and writes no journal event — the exact defect A2 fixed in `submit()`
 - [x] **AT-009** `P0` `C` `TRADING` — `submit_bracket` bypasses `validate_risk` entirely — no position cap, notional, buying power, daily-loss, dedup, or max-open-orders check on a 3-leg live order
 - [x] **AT-010** `P0` `C` `UX` — Orders panel Place All / Cancel All / per-row cancel never reach OrderManager or the broker — they flip a local field a per-frame reconcile immediately reverts
