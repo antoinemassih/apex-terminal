@@ -67,9 +67,66 @@ pub(crate) fn compute_atr(bars: &[crate::chart_renderer::types::Bar], period: us
         .unwrap_or(0.0)
 }
 
+/// Lookback periods behind the seven trend-grid / RSI-multi rows.
+///
+/// AUDIT 2026-08-02 (AT-014, P1): these are periods on the PANE'S OWN
+/// timeframe, not seven different timeframes. The widgets used to label the
+/// rows `["5m","15m","30m","1h","4h","1D","1W"]` regardless, which is wrong in
+/// both directions: on a 5m chart the "1W" row is period 140 x 5m ≈ 11.7 hours,
+/// and on a 1D chart the "5m" row is period 7 x 1D ≈ 7 days. A trader reading
+/// "1W bullish" was being shown something between half a day and seven months
+/// depending on the pane.
+///
+/// Kept as periods-on-current-timeframe (computing seven real timeframes would
+/// mean seven source fetches per widget). The labels are now DERIVED from the
+/// actual horizon instead of asserted — see [`horizon_label`].
+pub(crate) const TREND_GRID_PERIODS: [usize; 7] = [7, 10, 14, 21, 42, 70, 140];
+
+/// Minutes per bar for a timeframe string. `None` for anything unrecognised,
+/// so callers can fall back rather than invent a number.
+pub(crate) fn timeframe_minutes(tf: &str) -> Option<f32> {
+    Some(match tf {
+        "1m" => 1.0, "2m" => 2.0, "3m" => 3.0, "5m" => 5.0, "10m" => 10.0,
+        "15m" => 15.0, "30m" => 30.0,
+        "1h" => 60.0, "2h" => 120.0, "4h" => 240.0,
+        "1d" | "1D" => 1440.0,
+        "1wk" | "1W" => 10080.0,
+        "1mo" | "1M" => 43200.0,
+        _ => return None,
+    })
+}
+
+/// Human label for "`period` bars of `tf`" — the real lookback horizon.
+///
+/// AT-014: this replaces the hardcoded timeframe labels. It tells the trader
+/// what the row actually covers, which is both honest and more useful than a
+/// bare period count.
+pub(crate) fn horizon_label(tf: &str, period: usize) -> String {
+    let Some(per_bar) = timeframe_minutes(tf) else {
+        // Unknown timeframe: state the period rather than guess a duration.
+        return format!("P{period}");
+    };
+    let mins = per_bar * period as f32;
+    if mins < 60.0 {
+        format!("{}m", mins.round() as i64)
+    } else if mins < 1440.0 {
+        let h = mins / 60.0;
+        if (h - h.round()).abs() < 0.05 { format!("{}h", h.round() as i64) }
+        else { format!("{h:.1}h") }
+    } else if mins < 10080.0 {
+        let d = mins / 1440.0;
+        if (d - d.round()).abs() < 0.05 { format!("{}D", d.round() as i64) }
+        else { format!("{d:.1}D") }
+    } else {
+        let w = mins / 10080.0;
+        if (w - w.round()).abs() < 0.05 { format!("{}W", w.round() as i64) }
+        else { format!("{w:.1}W") }
+    }
+}
+
 pub(crate) fn compute_trend_grid(bars: &[crate::chart_renderer::types::Bar]) -> [[bool; 4]; 7] {
     let n = bars.len();
-    let periods = [7, 10, 14, 21, 42, 70, 140]; // map to 7 timeframes
+    let periods = TREND_GRID_PERIODS;
     let mut grid = [[false; 4]; 7];
     for (ti, &p) in periods.iter().enumerate() {
         if n < p + 5 { continue; }
@@ -281,5 +338,50 @@ mod at012_tests {
         let b = bars(&[100.0, 101.0, 102.0]);
         assert_eq!(super::compute_rsi(&b, 14), 50.0, "neutral RSI when data is short");
         assert_eq!(super::compute_atr(&b, 14), 0.0, "zero ATR when data is short");
+    }
+}
+
+#[cfg(test)]
+mod at014_tests {
+    use super::{horizon_label, timeframe_minutes, TREND_GRID_PERIODS};
+
+    /// AUDIT 2026-08-02 (AT-014, P1): the seven trend-grid rows are periods on
+    /// the PANE'S timeframe, but were labelled with fixed timeframe names. The
+    /// labels were wrong in both directions.
+    #[test]
+    fn labels_reflect_the_real_horizon_not_a_fixed_timeframe() {
+        // The old hardcoded label for the last row was "1W".
+        // On a 5m chart that row is period 140 → 700 minutes ≈ 11.7 hours.
+        assert_eq!(horizon_label("5m", 140), "11.7h",
+            "the last row on a 5m chart is under half a day, not a week");
+        // On a 1D chart the FIRST row was labelled "5m"; 7 daily bars is a week.
+        assert_eq!(horizon_label("1d", 7), "1W",
+            "the first row on a daily chart is a week, not five minutes");
+        // And the row the old labels called "1W" is really seven months there.
+        assert_eq!(horizon_label("1d", 140), "20W",
+            "the last row on a daily chart is ~5 months, not one week");
+    }
+
+    #[test]
+    fn label_units_step_sensibly() {
+        assert_eq!(horizon_label("1m", 30), "30m");
+        assert_eq!(horizon_label("1m", 120), "2h");
+        assert_eq!(horizon_label("1h", 24), "1D");
+        assert_eq!(horizon_label("1d", 14), "2W");
+    }
+
+    /// An unrecognised timeframe must not invent a duration.
+    #[test]
+    fn unknown_timeframe_states_the_period_instead_of_guessing() {
+        assert!(timeframe_minutes("3wk").is_none());
+        assert_eq!(horizon_label("3wk", 14), "P14");
+    }
+
+    #[test]
+    fn every_grid_row_gets_a_label() {
+        for &p in TREND_GRID_PERIODS.iter() {
+            assert!(!horizon_label("5m", p).is_empty());
+        }
+        assert_eq!(TREND_GRID_PERIODS.len(), 7, "the widgets render exactly 7 rows");
     }
 }

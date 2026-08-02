@@ -861,8 +861,11 @@ pub(crate) struct WidgetData {
     econ_next_days: i32,
     // RSI Multi-timeframe: [5m, 15m, 30m, 1h, 4h, 1d, 1w]
     rsi_multi: [f32; 7],
-    // Trend alignment: 7 TFs × 4 indicators (EMA slope, MACD, price>VWAP, RSI>50)
+    // Trend alignment: 7 lookback horizons × 4 indicators (EMA slope, MACD, price>VWAP, RSI>50)
     trend_grid: [[bool; 4]; 7],
+    /// AT-014: labels for the 7 rows, DERIVED from the pane timeframe ×
+    /// `TREND_GRID_PERIODS` rather than hardcoded to fixed timeframes.
+    horizon_labels: [String; 7],
     // Momentum ROC across 8 lookbacks
     roc_bars: [f32; 8],
     // Volume shelves: (price, volume_pct, is_support)
@@ -1091,6 +1094,11 @@ impl WidgetData {
             }).unwrap_or(-1),
             // ── Computed analytics for new widgets ──
             trend_grid: compute_trend_grid(bars),
+            horizon_labels: {
+                let tf = chart.timeframe.as_str();
+                let mut it = TREND_GRID_PERIODS.iter().map(|&p| horizon_label(tf, p));
+                std::array::from_fn(|_| it.next().unwrap_or_default())
+            },
             roc_bars: compute_roc_bars(bars),
             vol_shelves: compute_vol_shelves(bars),
             confluence_zones: compute_confluence(bars, last_close),
@@ -1454,7 +1462,8 @@ fn draw_market_breadth(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let cx = body.center().x;
     let cy = body.center().y - 4.0;
-    let tf_labels = ["5m", "15m", "30m", "1h", "4h", "1D", "1W"];
+    // AT-014: real lookback horizons for this pane, not fixed timeframe names.
+    let tf_labels: [&str; 7] = std::array::from_fn(|i| wd.horizon_labels[i].as_str());
 
     let n = 7;
     let max_r = (body.width().min(body.height()) * 0.44).min(88.0);
@@ -1541,7 +1550,8 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 
 /// Trend Alignment — dot grid (inspired by chart9 dot matrix)
 fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    let tf_labels = ["5m", "15m", "30m", "1h", "4h", "1D", "1W"];
+    // AT-014: real lookback horizons for this pane, not fixed timeframe names.
+    let tf_labels: [&str; 7] = std::array::from_fn(|i| wd.horizon_labels[i].as_str());
     let ind_labels = ["EMA", "SMA", "RSI", "HH"];
     let rows = 7; let cols = 4;
     let dot_r = 4.5;
