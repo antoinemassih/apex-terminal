@@ -568,26 +568,31 @@ impl Broker for LiveBroker {
         })
     }
 
+    // AUDIT 2026-08-02 (P0): all three risk controls ended in `.map(|_| ())`,
+    // which discards the HTTP status. A broker-side failure to engage the kill
+    // switch — the single most safety-critical call in the app — returned Ok,
+    // and the caller reported "ENGAGED (local + broker)" for a kill that never
+    // took effect at the broker. Only a 2xx counts as engaged.
     fn kill(&self) -> Result<(), String> {
         let client = crate::foundation::http::blocking_client();
-        client.post(format!("{}/risk/kill", APEXIB_URL))
+        let resp = client.post(format!("{}/risk/kill", APEXIB_URL))
             .timeout(std::time::Duration::from_secs(10)).send()
-            .map(|_| ())
-            .map_err(|e| format!("kill http: {e}"))
+            .map_err(|e| format!("kill http: {e}"))?;
+        Self::error_for_status(resp, "kill").map(|_| ())
     }
     fn halt(&self) -> Result<(), String> {
         let client = crate::foundation::http::blocking_client();
-        client.post(format!("{}/risk/halt", APEXIB_URL))
+        let resp = client.post(format!("{}/risk/halt", APEXIB_URL))
             .timeout(std::time::Duration::from_secs(5)).send()
-            .map(|_| ())
-            .map_err(|e| format!("halt http: {e}"))
+            .map_err(|e| format!("halt http: {e}"))?;
+        Self::error_for_status(resp, "halt").map(|_| ())
     }
     fn resume(&self) -> Result<(), String> {
         let client = crate::foundation::http::blocking_client();
-        client.post(format!("{}/risk/resume", APEXIB_URL))
+        let resp = client.post(format!("{}/risk/resume", APEXIB_URL))
             .timeout(std::time::Duration::from_secs(5)).send()
-            .map(|_| ())
-            .map_err(|e| format!("resume http: {e}"))
+            .map_err(|e| format!("resume http: {e}"))?;
+        Self::error_for_status(resp, "resume").map(|_| ())
     }
 
     // ── Multi-leg paths (Wave 4) ────────────────────────────────────────────
@@ -620,17 +625,35 @@ impl Broker for LiveBroker {
         let resp = client.post(format!("{}/orders/bracket", APEXIB_URL))
             .json(&body).timeout(std::time::Duration::from_secs(5)).send()
             .map_err(|e| format!("bracket http: {e}"))?;
+        // AUDIT 2026-08-02 (P0): this path used to go straight to `resp.json()`,
+        // so a 4xx/5xx parsed fine, every `pick` returned None, and the fn
+        // returned Ok(all-None). The manager's Ok branch then transitioned
+        // entry/tp/sl PendingSubmit -> Working with `backend_order_id = None`,
+        // painting three phantom legs for an order the broker had REJECTED.
+        // Cancelling those took the `(_, None)` arm and marked them Cancelled
+        // locally without ever contacting the broker, so nothing corrected it.
+        let resp = Self::error_for_status(resp, "bracket")?;
         let json: serde_json::Value = resp.json()
             .map_err(|e| format!("bracket json: {e}"))?;
         let pick = |k: &str| -> Option<String> {
             json[k].as_str().map(|s| s.to_string())
                 .or_else(|| json[k].as_i64().map(|n| n.to_string()))
         };
-        Ok(BracketSubmitResponse {
+        let out = BracketSubmitResponse {
             parent_backend_id:      pick("parentOrderId"),
             take_profit_backend_id: pick("takeProfitOrderId"),
             stop_loss_backend_id:   pick("stopLossOrderId"),
-        })
+        };
+        // A 2xx carrying no ids at all is not a success — without a parent id
+        // there is nothing to cancel, modify or reconcile against. Fail so the
+        // legs land in Rejected rather than Working.
+        if out.parent_backend_id.is_none()
+            && out.take_profit_backend_id.is_none()
+            && out.stop_loss_backend_id.is_none()
+        {
+            return Err("bracket: broker returned no order ids".into());
+        }
+        Ok(out)
     }
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(oca_group = %args.oca_group, n_legs = args.legs.len()))]
@@ -665,6 +688,10 @@ impl Broker for LiveBroker {
         let resp = client.post(format!("{}/orders/oco", APEXIB_URL))
             .json(&body).timeout(std::time::Duration::from_secs(5)).send()
             .map_err(|e| format!("oco http: {e}"))?;
+        // AUDIT 2026-08-02 (P0): see `submit_bracket` — a rejected OCO used to
+        // return Ok with an empty leg list and the manager marked every leg
+        // Working with no backend id.
+        let resp = Self::error_for_status(resp, "oco")?;
         let json: serde_json::Value = resp.json()
             .map_err(|e| format!("oco json: {e}"))?;
         let mut leg_backend_ids = Vec::new();
@@ -673,6 +700,9 @@ impl Broker for LiveBroker {
                 if let Some(s) = bid.as_str() { leg_backend_ids.push(s.to_string()); }
                 else if let Some(n) = bid.as_i64() { leg_backend_ids.push(n.to_string()); }
             }
+        }
+        if leg_backend_ids.is_empty() {
+            return Err("oco: broker returned no order ids".into());
         }
         Ok(OcoSubmitResponse { leg_backend_ids })
     }
@@ -708,6 +738,9 @@ impl Broker for LiveBroker {
         let resp = client.post(format!("{}/orders/conditional", APEXIB_URL))
             .json(&body).timeout(std::time::Duration::from_secs(5)).send()
             .map_err(|e| format!("conditional http: {e}"))?;
+        // AUDIT 2026-08-02 (P0): status was ignored, so a broker rejection
+        // surfaced only as the vague "no orderId" and lost the broker's reason.
+        let resp = Self::error_for_status(resp, "conditional")?;
         let json: serde_json::Value = resp.json()
             .map_err(|e| format!("conditional json: {e}"))?;
         Self::extract_order_id(&json)
@@ -734,12 +767,19 @@ impl Broker for LiveBroker {
         let resp = client.post(format!("{}/orders/options-trigger", APEXIB_URL))
             .json(&body).timeout(std::time::Duration::from_secs(5)).send()
             .map_err(|e| format!("options-trigger http: {e}"))?;
+        // AUDIT 2026-08-02 (P0): see `submit_bracket` — status was ignored, so a
+        // rejected options trigger returned Ok with entry_backend_id = None.
+        let resp = Self::error_for_status(resp, "options-trigger")?;
         let json: serde_json::Value = resp.json()
             .map_err(|e| format!("options-trigger json: {e}"))?;
-        Ok(OptionsTriggerResponse {
+        let out = OptionsTriggerResponse {
             entry_backend_id: json["entryOrderId"].as_str().map(|s| s.to_string()),
             option_con_id:    json["optionConId"].as_i64(),
-        })
+        };
+        if out.entry_backend_id.is_none() {
+            return Err("options-trigger: broker returned no entryOrderId".into());
+        }
+        Ok(out)
     }
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, n_legs = args.legs.len(), qty = args.qty))]
@@ -763,6 +803,8 @@ impl Broker for LiveBroker {
         let resp = client.post(&url).json(&legs_json)
             .timeout(std::time::Duration::from_secs(5)).send()
             .map_err(|e| format!("combo http: {e}"))?;
+        // AUDIT 2026-08-02 (P0): status was ignored, losing the broker's reason.
+        let resp = Self::error_for_status(resp, "combo")?;
         let json: serde_json::Value = resp.json()
             .map_err(|e| format!("combo json: {e}"))?;
         Self::extract_order_id(&json)

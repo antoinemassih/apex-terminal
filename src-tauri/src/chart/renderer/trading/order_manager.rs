@@ -3367,6 +3367,23 @@ impl OrderManager {
 /// refused); every other outcome bumps a counter-only metric so the reject RATE
 /// is computable without flooding the 200-entry UI error ring. Exhaustive match
 /// so a new `OrderResult` variant forces a metrics decision here.
+/// Single choke point for "what happened to this submit". Every `submit_order`
+/// / `submit_bracket_order` / scale-out path funnels through here, which is why
+/// it is the right place to enforce that a non-Accepted outcome is never silent.
+///
+/// AUDIT 2026-08-02 (P0): `Duplicate` and `NeedsApproval` used to `count()`,
+/// which bumps a Prometheus counter but pushes NOTHING to the UI. That is fine
+/// when the caller inspects the returned `OrderResult` — but four call sites
+/// discard it outright (`fetch.rs:1593/1595/1598` `submit_ib_order`, which runs
+/// on a background thread, and `core.rs:11212`). On those paths a submit that
+/// was deduped or soft-blocked did nothing at all and told the trader nothing at
+/// all: they saw a click, no order, and no message.
+///
+/// Both are now `report(Warn, ..)`, which pushes to the error ring AND toasts
+/// (see `errors_sink::report` — level >= Warn routes a toast). UI call sites
+/// that already render a NeedsApproval modal now also get a toast and an audit
+/// record; that redundancy is deliberate — in a live-money path a duplicate
+/// notification is strictly better than a silent no-op.
 fn record_submit_outcome(r: &OrderResult) {
     use crate::data::connectivity::errors_sink::count;
     match r {
@@ -3375,9 +3392,11 @@ fn record_submit_outcome(r: &OrderResult) {
         OrderResult::Accepted(_) | OrderResult::NeedsConfirmation(_) =>
             count(ErrorLevel::Info, "broker", "order_submitted"),
         OrderResult::Duplicate =>
-            count(ErrorLevel::Info, "broker", "order_duplicate"),
-        OrderResult::NeedsApproval { .. } =>
-            count(ErrorLevel::Info, "broker", "order_needs_approval"),
+            report(ErrorLevel::Warn, "broker", "order_duplicate",
+                   "Duplicate order suppressed — an identical intent is already in flight"),
+        OrderResult::NeedsApproval { reason, .. } =>
+            report(ErrorLevel::Warn, "broker", "order_needs_approval",
+                   format!("Order needs approval: {reason}")),
     }
 }
 
@@ -4700,6 +4719,43 @@ mod tests {
         record_submit_outcome(&OrderResult::Accepted(1));
         assert_eq!(get("order_rejected"), rej0 + 1, "reject must bump order_rejected");
         assert_eq!(get("order_submitted"), sub0 + 1, "accept must bump order_submitted");
+    }
+
+    /// AUDIT 2026-08-02 (P0): `Duplicate` and `NeedsApproval` must reach the UI
+    /// error ring, not just a Prometheus counter. Four call sites discard the
+    /// returned `OrderResult` (`fetch.rs` `submit_ib_order` runs on a background
+    /// thread), so a counter-only outcome meant the trader clicked submit and
+    /// got no order and no message. `report()` at Warn also routes a toast.
+    #[test]
+    fn duplicate_and_needs_approval_reach_the_error_ring() {
+        use crate::data::connectivity::errors_sink::drain_recent;
+
+        // Clear anything an earlier test left behind so the assertions below
+        // only see what this test produced.
+        let _ = drain_recent();
+
+        record_submit_outcome(&OrderResult::Duplicate);
+        record_submit_outcome(&OrderResult::NeedsApproval {
+            reason: "notional over cap".into(),
+            intent_id: 7,
+        });
+
+        let seen = drain_recent();
+        let codes: Vec<&str> = seen.iter().map(|e| e.code.as_str()).collect();
+
+        assert!(codes.contains(&"order_duplicate"),
+            "Duplicate must push to the error ring (counter-only is invisible to \
+             callers that discard the OrderResult); got codes {codes:?}");
+        assert!(codes.contains(&"order_needs_approval"),
+            "NeedsApproval must push to the error ring; got codes {codes:?}");
+
+        // The approval reason must survive — a bare "needs approval" with no
+        // cause is not actionable.
+        let approval = seen.iter().find(|e| e.code == "order_needs_approval")
+            .expect("order_needs_approval present");
+        assert!(approval.message.contains("notional over cap"),
+            "the approval reason must be carried through to the operator, got {:?}",
+            approval.message);
     }
 
     fn fresh_manager() -> OrderManager {
