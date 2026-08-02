@@ -3089,6 +3089,34 @@ impl Chart {
                     if self.timestamps.last() == Some(&timestamp) {
                         if let Some(l) = self.bars.last_mut() { *l = bar; }
                         self.sim_price = bar.close;
+                    } else if self.timestamps.last().map_or(false, |last| timestamp < *last) {
+                        // AUDIT 2026-08-02 (AT-002, P0): monotonicity guard.
+                        //
+                        // Only the exact-duplicate timestamp was handled above;
+                        // anything else was pushed unconditionally, including
+                        // timestamps OLDER than the current last bar. That
+                        // silently corrupts the series: `bars`/`timestamps` are
+                        // index-parallel and every renderer, indicator and
+                        // hit-test assumes they ascend.
+                        //
+                        // The live trigger is gap-fill on reconnect
+                        // (`subscription_manager::gap_fill_on_reconnect`), which
+                        // replays a historical range straight into this append
+                        // path. It requests [last_seen_ts, now] — but the bar
+                        // cache key carries no range dimension (AT-118), so a
+                        // cache hit can serve a much older span, which then lands
+                        // here as a block of stale bars appended AFTER the
+                        // current one.
+                        //
+                        // Guarding here rather than only at the source is
+                        // deliberate: this is the single funnel every bar enters
+                        // through, so it protects against any future out-of-order
+                        // producer too. Counted, not reported — a reconnect can
+                        // deliver many of these at once and a toast storm during
+                        // recovery is its own failure.
+                        crate::data::connectivity::errors_sink::count(
+                            crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                            "chart", "append_bar_out_of_order");
                     } else {
                         self.bars.push(bar); self.timestamps.push(timestamp);
                         // Cap live bar growth to avoid unbounded memory accumulation.

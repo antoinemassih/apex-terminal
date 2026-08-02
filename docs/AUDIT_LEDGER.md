@@ -62,7 +62,7 @@ Verdict key: `C` confirmed · `W` weakened · `?` unverified (re-check before ac
 ## W3 — data-layer correctness  (4 items)
 
 - [ ] **AT-001** `P0` `C` `DATA` — ABBA lock inversion between ApexData ROUTES mutex and SubscriptionManager maps can deadlock the WS reader against any chart-load thread
-- [ ] **AT-002** `P0` `C` `DATA` — gap_fill_on_reconnect replays a FULL historical bar series into the live chart append path, appending stale out-of-order bars after the current bar
+- [x] **AT-002** `P0` `C` `DATA` — gap_fill_on_reconnect replays a FULL historical bar series into the live chart append path, appending stale out-of-order bars after the current bar
 - [x] **AT-005** `P0` `C` `REDUND` — Chain cache short-circuit is keyed on underlying only — a 30/60-DTE request silently renders the nearest ≤14-DTE expiry under a "30D" label
 - [ ] **AT-011** `P1` `?` `DATA` — ApexData watchdog never counts pong/control frames as liveness, contradicting its own comment — a healthy but quiet feed is force-reconnected every ~30s
 
@@ -200,7 +200,7 @@ Verdict key: `C` confirmed · `W` weakened · `?` unverified (re-check before ac
 - [ ] **AT-102** `P2` `C` `UX` — Spread strategy presets build strikes around hardcoded stale prices (SPY 580, NVDA 900) instead of the live underlying
 - [ ] **AT-105** `P3` `C` `ARCH` — `foundation/design_inspector.rs` is 181 KB of chart UI living in the base layer, and is the sole source of the foundation→chart back-edge
 - [ ] **AT-107** `P3` `W` `DATA` — Option-chain cache is invalidated on a server `resync` frame but NOT on a client-side reconnect, and a non-empty cache hard-short-circuits the REST re-seed
-- [ ] **AT-108** `P3` `W` `DATA` — bar_cache key has no range dimension, so a cache hit serves whatever range happened to be stored first, ignoring start_ms/end_ms/limit
+- [x] **AT-108** `P3` `W` `DATA` — bar_cache key has no range dimension, so a cache hit serves whatever range happened to be stored first, ignoring start_ms/end_ms/limit
 - [ ] **AT-121** `P3` `C` `ENGINES` — RSI returns 99.01 instead of 100 when there are no losses in the window
 - [ ] **AT-122** `P3` `C` `ENGINES` — Simulated option chain prices time in trading days while discounting at an annual rate; bs_delta is dead
 - [ ] **AT-123** `P3` `W` `FAILSILENT` — Greeks poller swallows the standing 404 with an empty Err arm — the feature is permanently dead and nothing reports degraded capability

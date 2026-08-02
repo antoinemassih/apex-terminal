@@ -46,6 +46,36 @@ fn to_bar_wires(bars: Vec<crate::data::Bar>, sym: &str, tf: &str) -> Vec<BarWire
         .collect()
 }
 
+/// Clip a cached bar series to the range/limit the caller actually asked for.
+///
+/// AUDIT 2026-08-02 (AT-118 / AT-002, P0): the bar cache is keyed on
+/// `{symbol}:{timeframe}` with no range dimension, so a hit could serve any
+/// stored span. Returning it unclipped is what let a small gap-fill window
+/// receive the entire cached history. Pure fn so the boundary behaviour is
+/// testable without Redis.
+///
+/// `start_ms`/`end_ms` of `<= 0` mean "unbounded" — several callers pass 0 for
+/// "whatever you have". `limit` means "the most recent N".
+fn window_cached(
+    wires: Vec<BarWire>,
+    start_ms: i64,
+    end_ms: i64,
+    limit: Option<usize>,
+) -> Vec<BarWire> {
+    let mut out: Vec<BarWire> = wires
+        .into_iter()
+        .filter(|b| (start_ms <= 0 || b.time >= start_ms)
+                 && (end_ms   <= 0 || b.time <= end_ms))
+        .collect();
+    if let Some(n) = limit {
+        if out.len() > n {
+            let excess = out.len() - n;
+            out.drain(..excess);
+        }
+    }
+    out
+}
+
 fn to_internal_bars(bars: &[BarWire]) -> Vec<crate::data::Bar> {
     bars.iter()
         .map(|b| crate::data::Bar {
@@ -67,9 +97,34 @@ impl MarketDataProvider for CachedProvider {
         limit: Option<usize>,
     ) -> Result<Vec<BarWire>, ApiError> {
         // Cache hit?
+        //
+        // AUDIT 2026-08-02 (AT-118 / AT-002, P0): this used to return the cached
+        // blob verbatim, ignoring start_ms, end_ms AND limit. The cache key is
+        // `apex:bars:{sym}:{tf}` with no range dimension (bar_cache.rs:58), so
+        // whatever range happened to be stored first was served for EVERY
+        // subsequent request regardless of what was asked for.
+        //
+        // That is what made the gap-fill replay a P0: on reconnect,
+        // `subscription_manager::gap_fill_on_reconnect` asks for
+        // [last_seen_ts, now] — a small catch-up window — and got back the full
+        // cached history (potentially years of daily bars). Every one of those
+        // was then pushed through `send_to_native_chart(AppendBar)`, appending
+        // stale bars after the current one and corrupting the series.
+        //
+        // Honour the requested window. The cache is a superset, so slicing it
+        // keeps the cache benefit while respecting the contract. A `start`/`end`
+        // of <= 0 means "unbounded" — several callers pass 0 for "whatever you
+        // have" and must keep working.
         if let Some(cached) = crate::data::bar_cache::get(symbol, timeframe) {
             if !cached.is_empty() {
-                return Ok(to_bar_wires(cached, symbol, timeframe));
+                let wires = to_bar_wires(cached, symbol, timeframe);
+                let windowed = window_cached(wires, start_ms, end_ms, limit);
+                // An empty slice is NOT a cache hit — it means the cache holds
+                // nothing for the requested window. Fall through to the provider
+                // rather than reporting "no bars exist".
+                if !windowed.is_empty() {
+                    return Ok(windowed);
+                }
             }
         }
         let bars = self.inner.bars(symbol, timeframe, start_ms, end_ms, limit).await?;
@@ -98,4 +153,69 @@ impl MarketDataProvider for CachedProvider {
     fn subscribe_chain(&self, u: &str) -> Result<ChainStream, ApiError> { self.inner.subscribe_chain(u) }
     fn unsubscribe_chain(&self, u: &str) { self.inner.unsubscribe_chain(u) }
     fn capabilities(&self) -> ProviderCapabilities { self.inner.capabilities() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wire(time_ms: i64) -> BarWire {
+        BarWire {
+            symbol: "SPY".into(),
+            asset_class: AssetClass::from_symbol("SPY"),
+            timeframe: "1m".into(),
+            time: time_ms,
+            open: 1.0, high: 1.0, low: 1.0, close: 1.0, volume: 1.0,
+            vwap: 0.0, trades: 0, closed: true,
+        }
+    }
+
+    /// AUDIT 2026-08-02 (AT-118 / AT-002, P0): the cache key has no range
+    /// dimension, so a hit could serve any stored span. Returning it unclipped
+    /// is what turned a small gap-fill catch-up window into a replay of the
+    /// entire cached history straight down the live AppendBar path.
+    #[test]
+    fn cached_bars_are_clipped_to_the_requested_window() {
+        // A cache holding a long history, minute bars from t=1000 to t=10000.
+        let cached: Vec<BarWire> = (1..=10).map(|i| wire(i * 1000)).collect();
+
+        // Gap-fill asks only for the catch-up window [8000, 10000].
+        let got = window_cached(cached.clone(), 8000, 10000, None);
+
+        assert_eq!(got.len(), 3, "only bars inside the window may be returned");
+        assert_eq!(got.first().map(|b| b.time), Some(8000));
+        assert_eq!(got.last().map(|b| b.time), Some(10000));
+        assert!(got.iter().all(|b| b.time >= 8000 && b.time <= 10000),
+            "a bar outside the requested window is exactly the P0: replayed \
+             into the live append path it lands AFTER the current bar");
+    }
+
+    #[test]
+    fn unbounded_start_and_end_are_honoured() {
+        let cached: Vec<BarWire> = (1..=5).map(|i| wire(i * 1000)).collect();
+        // Several callers pass 0 meaning "whatever you have" — must not clip.
+        assert_eq!(window_cached(cached.clone(), 0, 0, None).len(), 5);
+        assert_eq!(window_cached(cached.clone(), 0, 3000, None).len(), 3);
+        assert_eq!(window_cached(cached, 3000, 0, None).len(), 3);
+    }
+
+    #[test]
+    fn limit_keeps_the_most_recent_bars() {
+        let cached: Vec<BarWire> = (1..=10).map(|i| wire(i * 1000)).collect();
+        let got = window_cached(cached, 0, 0, Some(3));
+        assert_eq!(got.len(), 3);
+        assert_eq!(got.first().map(|b| b.time), Some(8000),
+            "limit means the most RECENT n — trim from the front, not the back");
+        assert_eq!(got.last().map(|b| b.time), Some(10000));
+    }
+
+    #[test]
+    fn a_window_the_cache_cannot_cover_yields_empty_so_the_caller_refetches() {
+        let cached: Vec<BarWire> = (1..=5).map(|i| wire(i * 1000)).collect();
+        // Requested window is entirely newer than anything cached.
+        let got = window_cached(cached, 50_000, 60_000, None);
+        assert!(got.is_empty(),
+            "an empty result must fall through to the provider rather than \
+             being reported as 'no bars exist'");
+    }
 }
