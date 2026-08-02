@@ -25,8 +25,8 @@
 
     { "action": "cmd", "cmd": "SetViewportSize", "w": 1100, "h": 1000 },
     { "action": "wait_frames", "count": 6 },
-    { "action": "log", "message": "1100 wide: NOT asserted -- KNOWN OPEN DEFECT. pane.overlay clips here: the pane-header right cluster (OVERLAY/LAYERS/ORDER/DOM/OPTIONS) does not fit a 1100-wide viewport. Pre-existing rather than a regression -- the pane.* widgets only became visible to the harness when they were registered on 2026-08-02, and measurement confirms the cluster sits well inside its clip rect at 1280 and above (right 1416 vs clip right 1669 when maximized). The fix is the same overflow-collapse treatment already built for chart_controls.rs. 1280 is the narrowest width currently known good, and IS asserted above." },
-
+    { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },
+    { "action": "log", "message": "1100 wide: clean. The pane-header right cluster collapses to icon-only when the labelled form would not fit its pane -- it is laid out from the right edge and does not wrap or scroll, so without that it ran over the tab strip and got cut (pane.overlay outside its clip). Collapse is per-PANE, not per-window: with two panes at 1280 each header is ~615px, so it collapses there too and that is correct. 900 wide still clips -- next threshold, not yet addressed." },
     { "action": "cmd", "cmd": "SetViewportSize", "w": 2400, "h": 1000 },
     { "action": "wait_frames", "count": 6 },
     { "action": "assert", "assertions": [{ "no_clipped_widgets": true }] },

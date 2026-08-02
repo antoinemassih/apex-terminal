@@ -1007,16 +1007,37 @@ impl<'a> PainterPaneHeader<'a> {
         // Measured, not pinned — and it MUST use the same widths the cluster is
         // laid out with below, or the cluster's left edge (and its divider) lands
         // somewhere the buttons don't actually start.
-        let icon_btn_widths: Vec<(PaneBtn, f32)> = BTN_TABLE.iter()
-            .filter(|(btn, ..)| self.buttons[*btn as usize].show)
-            .map(|&(btn, label, icon, pinned)| {
-                let natural = crate::ui_kit::widgets::Button::new(label)
-                    .leading_icon(icon)
-                    .status(true)
-                    .intrinsic_width(ui);
-                (btn, natural.max(pinned))
-            })
-            .collect();
+        let measure_cluster = |collapsed: bool| -> Vec<(PaneBtn, f32)> {
+            BTN_TABLE.iter()
+                .filter(|(btn, ..)| self.buttons[*btn as usize].show)
+                .map(|&(btn, label, icon, pinned)| {
+                    let w = crate::ui_kit::widgets::Button::new(if collapsed { "" } else { label })
+                        .leading_icon(icon)
+                        .status(true)
+                        .intrinsic_width(ui);
+                    // The pinned floor only applies to the LABELLED form — it was
+                    // sized for "[icon] LABEL". Applying it to the icon-only form
+                    // would defeat the collapse entirely.
+                    (btn, if collapsed { w } else { w.max(pinned) })
+                })
+                .collect()
+        };
+
+        // Collapse to icon-only when the labelled cluster would not fit.
+        //
+        // The cluster is hand-laid-out from the right edge, so when it outgrows
+        // the header it does not wrap or scroll — it silently runs left over the
+        // tab strip and gets cut by the clip rect. That is what put
+        // `pane.overlay` outside its clip at a 1100-wide viewport. Dropping the
+        // labels keeps every control REACHABLE, which matters more than the text:
+        // these are the pane's order/DOM/options affordances.
+        const HEADER_MIN_LEFT: f32 = 300.0; // symbol + tabs + nav need this much
+        let budget = (rect.width() - close_total - pane_ctrls_total - HEADER_MIN_LEFT).max(0.0);
+        let labelled = measure_cluster(false);
+        let labelled_total: f32 = labelled.iter().map(|(_, w)| *w).sum();
+        let cluster_collapsed = labelled_total > budget;
+        let icon_btn_widths: Vec<(PaneBtn, f32)> =
+            if cluster_collapsed { measure_cluster(true) } else { labelled };
         let order_dom_total: f32 = icon_btn_widths.iter().map(|(_, w)| *w).sum();
 
         // Strong divider at the left edge of the entire right cluster.
@@ -1059,7 +1080,7 @@ impl<'a> PainterPaneHeader<'a> {
                     pos2(rx, rect.center().y - icon_h / 2.0),
                     Vec2::new(width, icon_h),
                 );
-                let resp = Button::new(label)
+                let resp = Button::new(if cluster_collapsed { "" } else { label })
                     .leading_icon(icon)
                     .status(true)
                     .active(self.buttons[btn as usize].active)
