@@ -367,6 +367,7 @@ impl StyleSystem {
             family_ui:      read_string_or(&typ_sec, "family_ui",      "typography", &d_typ.family_ui),
             family_mono:    read_string_or(&typ_sec, "family_mono",    "typography", &d_typ.family_mono),
             family_display: read_string_or(&typ_sec, "family_display", "typography", &d_typ.family_display),
+            ..Typography::default()
         };
 
         let d_sp = Spacing::default();
@@ -385,6 +386,7 @@ impl StyleSystem {
             button_height:    read_f32_or(&sp_sec, "button_height",    "spacing", d_sp.button_height),
             button_padding_x: read_f32_or(&sp_sec, "button_padding_x", "spacing", d_sp.button_padding_x),
             tab_height:       read_f32_or(&sp_sec, "tab_height",       "spacing", d_sp.tab_height),
+            ..Spacing::default()
         };
 
         let d_r = Radii::default();
@@ -714,11 +716,13 @@ mod tests {
                 family_ui: "Roboto".into(),
                 family_mono: "Fira Code".into(),
                 family_display: "Playfair Display".into(),
+                ..Typography::default()
             },
             spacing: Spacing {
                 xs: 3.0, sm: 6.0, xs_mid: 5.0, md: 10.0, lg: 14.0, xl: 18.0, xxl: 22.0,
                 gmd: 7.0, cta_height: 30.0, cta_padding_x: 14.0,
                 button_height: 26.0, button_padding_x: 11.0, tab_height: 30.0,
+                ..Spacing::default()
             },
             radii: Radii { none: 0.0, xs: 3.0, sm: 5.0, md: 8.0, lg: 14.0, full: 9999.0, pill: 50.0, chip: 3.0 },
             strokes: Strokes { hair: 0.25, thin: 0.4, medium: 0.7, std: 0.9, bold: 1.3, thick: 1.8, md: 1.3, heavy: 1.8 },

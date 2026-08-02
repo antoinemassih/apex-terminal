@@ -158,6 +158,29 @@ pub struct Typography {
     /// Default: `"Inter"` (fallback to UI family when no separate display font is loaded).
     #[serde(default = "Typography::default_family_display")]
     pub family_display: String,
+
+    // ── M1: authorable UI type ladder (backs `font_2xs()..font_xl()`) ────────
+    #[serde(default = "Typography::default_ui_2xs")]
+    pub ui_2xs: f32,   //  9
+    #[serde(default = "Typography::default_ui_xs")]
+    pub ui_xs:  f32,   // 10
+    #[serde(default = "Typography::default_ui_sm")]
+    pub ui_sm:  f32,   // 12
+    #[serde(default = "Typography::default_ui_md")]
+    pub ui_md:  f32,   // 14
+    #[serde(default = "Typography::default_ui_lg")]
+    pub ui_lg:  f32,   // 16
+    #[serde(default = "Typography::default_ui_xl")]
+    pub ui_xl:  f32,   // 22
+}
+
+impl Typography {
+    fn default_ui_2xs() -> f32 {  9.0 }
+    fn default_ui_xs()  -> f32 { 10.0 }
+    fn default_ui_sm()  -> f32 { 12.0 }
+    fn default_ui_md()  -> f32 { 14.0 }
+    fn default_ui_lg()  -> f32 { 16.0 }
+    fn default_ui_xl()  -> f32 { 22.0 }
 }
 
 impl Typography {
@@ -188,6 +211,12 @@ impl Default for Typography {
             family_ui:      "Inter".to_owned(),
             family_mono:    "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
+            ui_2xs: Self::default_ui_2xs(),
+            ui_xs:  Self::default_ui_xs(),
+            ui_sm:  Self::default_ui_sm(),
+            ui_md:  Self::default_ui_md(),
+            ui_lg:  Self::default_ui_lg(),
+            ui_xl:  Self::default_ui_xl(),
         }
     }
 }
@@ -226,6 +255,32 @@ pub struct Spacing {
     /// Tab strip height (`tab_height`).
     #[serde(default = "Spacing::default_tab_height")]
     pub tab_height: f32,
+
+    // ── M1: the authorable GAP LADDER (backs `gap_*()` / TokenSnapshot) ──────
+    //
+    // These are the fields `begin_frame()` sources the per-frame gap tokens
+    // from (precedence: hot-reload override ▸ design-mode dt ▸ these). They
+    // are DISTINCT from `xs..xxl` above, which predate the P2.2 type-scale
+    // lift, carry stale authored values in the builtin systems, and feed the
+    // adapter's card-padding mapping — repurposing them would have changed
+    // card padding for every style. Defaults equal the previous hard literals
+    // in `begin_frame`, so a style that doesn't author these renders
+    // byte-identically to before the wire-up. Theme packs may now author the
+    // whitespace axis (e.g. Meridien's airier 6/12/18/24/32 ladder).
+    #[serde(default = "Spacing::default_gap_xs")]
+    pub gap_xs:  f32,   //  4
+    #[serde(default = "Spacing::default_gap_sm")]
+    pub gap_sm:  f32,   //  8
+    #[serde(default = "Spacing::default_gap_md")]
+    pub gap_md:  f32,   // 12
+    #[serde(default = "Spacing::default_gap_lg")]
+    pub gap_lg:  f32,   // 16
+    #[serde(default = "Spacing::default_gap_xl")]
+    pub gap_xl:  f32,   // 20
+    #[serde(default = "Spacing::default_gap_2xl")]
+    pub gap_2xl: f32,   // 24
+    #[serde(default = "Spacing::default_gap_3xl")]
+    pub gap_3xl: f32,   // 32
 }
 
 impl Spacing {
@@ -233,6 +288,13 @@ impl Spacing {
     fn default_button_height()   -> f32 { 24.0 }
     fn default_button_padding_x()-> f32 { 10.0 }
     fn default_tab_height()      -> f32 { 28.0 }
+    fn default_gap_xs()  -> f32 {  4.0 }
+    fn default_gap_sm()  -> f32 {  8.0 }
+    fn default_gap_md()  -> f32 { 12.0 }
+    fn default_gap_lg()  -> f32 { 16.0 }
+    fn default_gap_xl()  -> f32 { 20.0 }
+    fn default_gap_2xl() -> f32 { 24.0 }
+    fn default_gap_3xl() -> f32 { 32.0 }
 }
 
 impl Default for Spacing {
@@ -254,6 +316,13 @@ impl Default for Spacing {
             button_height:   24.0,
             button_padding_x:10.0,
             tab_height:      28.0,
+            gap_xs:   Self::default_gap_xs(),
+            gap_sm:   Self::default_gap_sm(),
+            gap_md:   Self::default_gap_md(),
+            gap_lg:   Self::default_gap_lg(),
+            gap_xl:   Self::default_gap_xl(),
+            gap_2xl:  Self::default_gap_2xl(),
+            gap_3xl:  Self::default_gap_3xl(),
         }
     }
 }

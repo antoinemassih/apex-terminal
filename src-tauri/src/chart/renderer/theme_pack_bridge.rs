@@ -205,9 +205,15 @@ pub fn activate_theme_pack(ctx: &Context, pack: &ThemePack) {
     let presets = list_style_presets();
     let style_idx: u8 = if let Some((id, _)) = presets.iter().find(|(_, n)| n == &pack_name) {
         set_style_settings(*id, settings);
+        // M1: keep the full-StyleSystem store in lockstep so the token
+        // ladders (gaps / UI type scale / alphas) go live for this pack.
+        crate::chart_renderer::ui::style::set_style_system(*id, pack.style_system.clone());
         *id
     } else {
-        add_style_preset(&pack_name, settings)
+        let id = add_style_preset(&pack_name, settings);
+        let sys_id = crate::chart_renderer::ui::style::add_style_system(pack.style_system.clone());
+        debug_assert_eq!(id, sys_id, "STYLE_STORE and STYLE_SYSTEM_STORE must stay index-aligned");
+        id
     };
     set_active_style(style_idx);
 

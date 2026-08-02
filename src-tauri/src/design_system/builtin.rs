@@ -859,6 +859,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             family_ui: "Inter".to_owned(),
             family_mono: "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
+            ..Typography::default()
         },
         spacing: Spacing {
             xs: 2.0,
@@ -871,6 +872,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             gmd: 8.0,
             cta_height: 36.0, // cta_height_px
             cta_padding_x: 16.0, button_height: 24.0, button_padding_x: 10.0, tab_height: 28.0,
+            ..Spacing::default()
         },
         // radii + strokes aligned to the LIVE default style (style_defaults(0)).
         // The Phase B source-swap deliberately defined Meridien-the-default as
@@ -982,6 +984,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             family_ui: "Inter".to_owned(),
             family_mono: "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
+            ..Typography::default()
         },
         spacing: Spacing {
             xs: 2.0,
@@ -994,6 +997,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             gmd: 8.0,
             cta_height: 40.0, // cta_height_px = 40
             cta_padding_x: 12.0, button_height: 28.0, button_padding_x: 14.0, tab_height: 32.0,
+            ..Spacing::default()
         },
         radii: Radii {
             none: 0.0,
@@ -1108,6 +1112,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             family_ui: "Inter".to_owned(),
             family_mono: "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
+            ..Typography::default()
         },
         spacing: Spacing {
             xs: 2.0,
@@ -1120,6 +1125,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             gmd: 8.0,
             cta_height: 32.0, // cta_height_px = 32
             cta_padding_x: 12.0, button_height: 22.0, button_padding_x: 8.0, tab_height: 26.0,
+            ..Spacing::default()
         },
         radii: Radii {
             none: 0.0,

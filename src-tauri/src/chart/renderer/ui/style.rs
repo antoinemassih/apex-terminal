@@ -78,6 +78,14 @@ pub fn begin_frame() {
     // Active style's StyleSettings — the live per-style dimension source.
     let st = current();
 
+    // M1: the active style's FULL StyleSystem — sources the token ladders
+    // (gap_*, ui type scale, alpha tiers) that `StyleSettings` never carried.
+    // Unauthored styles hold the serde-default ladder (= the previous hard
+    // literals), so this wire-up is byte-identical until a style AUTHORS a
+    // ladder — at which point the whitespace/type axes finally go live.
+    let ass = active_style_system();
+    let (sp, ty, al) = (&ass.spacing, &ass.typography, &ass.alphas);
+
     // Resolve radii — precedence order:
     //   1. Hot-reload override (workspace JSON → watcher).
     //   2. DesignTokens (design-mode inspector slider — live).
@@ -124,21 +132,21 @@ pub fn begin_frame() {
         // every call site at once (and keeps the scale as the single source of
         // truth) instead of touching 400+ sites. Steps kept ≥1px apart so the
         // tiers stay visually distinct.
-        font_2xs:      crate::dt_f32!(font.xxs,      9.0),   // was 8
-        font_xs:       crate::dt_f32!(font.xs,      10.0),   // was 9
-        font_sm:       crate::dt_f32!(font.sm,      12.0),   // was 11
-        font_md:       crate::dt_f32!(font.md,      14.0),   // was 13 — matches watchlist row
-        font_lg:       crate::dt_f32!(font.lg,      16.0),
-        font_xl:       crate::dt_f32!(font.xl,      22.0),
+        font_2xs:      if let Some(ref ov) = override_style { ov.typography.ui_2xs } else { crate::dt_f32!(font.xxs, ty.ui_2xs) },
+        font_xs:       if let Some(ref ov) = override_style { ov.typography.ui_xs  } else { crate::dt_f32!(font.xs,  ty.ui_xs)  },
+        font_sm:       if let Some(ref ov) = override_style { ov.typography.ui_sm  } else { crate::dt_f32!(font.sm,  ty.ui_sm)  },
+        font_md:       if let Some(ref ov) = override_style { ov.typography.ui_md  } else { crate::dt_f32!(font.md,  ty.ui_md)  },
+        font_lg:       if let Some(ref ov) = override_style { ov.typography.ui_lg  } else { crate::dt_f32!(font.lg,  ty.ui_lg)  },
+        font_xl:       if let Some(ref ov) = override_style { ov.typography.ui_xl  } else { crate::dt_f32!(font.xl,  ty.ui_xl)  },
         // Spacing.
-        gap_xs:        crate::dt_f32!(spacing.xs,     4.0),
-        gap_xs_mid:    crate::dt_f32!(spacing.xs_mid, 6.0),
-        gap_sm:        crate::dt_f32!(spacing.sm,     8.0),
-        gap_md:        crate::dt_f32!(spacing.md,    12.0),
-        gap_lg:        crate::dt_f32!(spacing.lg,    16.0),
-        gap_xl:        crate::dt_f32!(spacing.xl,    20.0),
-        gap_2xl:       crate::dt_f32!(spacing.xxl,   24.0),
-        gap_3xl:       crate::dt_f32!(spacing.xxxl,  32.0),
+        gap_xs:        if let Some(ref ov) = override_style { ov.spacing.gap_xs  } else { crate::dt_f32!(spacing.xs,     sp.gap_xs)  },
+        gap_xs_mid:    if let Some(ref ov) = override_style { ov.spacing.xs_mid  } else { crate::dt_f32!(spacing.xs_mid, sp.xs_mid)  },
+        gap_sm:        if let Some(ref ov) = override_style { ov.spacing.gap_sm  } else { crate::dt_f32!(spacing.sm,     sp.gap_sm)  },
+        gap_md:        if let Some(ref ov) = override_style { ov.spacing.gap_md  } else { crate::dt_f32!(spacing.md,     sp.gap_md)  },
+        gap_lg:        if let Some(ref ov) = override_style { ov.spacing.gap_lg  } else { crate::dt_f32!(spacing.lg,     sp.gap_lg)  },
+        gap_xl:        if let Some(ref ov) = override_style { ov.spacing.gap_xl  } else { crate::dt_f32!(spacing.xl,     sp.gap_xl)  },
+        gap_2xl:       if let Some(ref ov) = override_style { ov.spacing.gap_2xl } else { crate::dt_f32!(spacing.xxl,    sp.gap_2xl) },
+        gap_3xl:       if let Some(ref ov) = override_style { ov.spacing.gap_3xl } else { crate::dt_f32!(spacing.xxxl,   sp.gap_3xl) },
         // Radii (already resolved with override + DesignTokens precedence above).
         radius_xs:     r_xs,
         radius_sm:     r_sm,
@@ -153,19 +161,19 @@ pub fn begin_frame() {
         stroke_bold,
         stroke_thick,
         // Alphas.
-        alpha_faint:   crate::dt_u8!(alpha.faint,   10),
-        alpha_ghost:   crate::dt_u8!(alpha.ghost,   15),
-        alpha_soft:    crate::dt_u8!(alpha.soft,    20),
-        alpha_subtle:  crate::dt_u8!(alpha.subtle,  40),
-        alpha_tint:    crate::dt_u8!(alpha.tint,    48),
-        alpha_muted:   crate::dt_u8!(alpha.muted,   60),
-        alpha_dim:     crate::dt_u8!(alpha.dim,     60),
-        alpha_line:    crate::dt_u8!(alpha.line,    80),
-        alpha_strong:  crate::dt_u8!(alpha.strong,  80),
-        alpha_active:  crate::dt_u8!(alpha.active, 100),
-        alpha_heavy:   crate::dt_u8!(alpha.heavy,  120),
-        alpha_scrim:   crate::dt_u8!(alpha.scrim,  140),
-        alpha_solid:   crate::dt_u8!(alpha.solid,  200),
+        alpha_faint:   if let Some(ref ov) = override_style { ov.alphas.faint     } else { crate::dt_u8!(alpha.faint,  al.faint)     },
+        alpha_ghost:   if let Some(ref ov) = override_style { ov.alphas.ghost     } else { crate::dt_u8!(alpha.ghost,  al.ghost)     },
+        alpha_soft:    if let Some(ref ov) = override_style { ov.alphas.soft_u8   } else { crate::dt_u8!(alpha.soft,   al.soft_u8)   },
+        alpha_subtle:  if let Some(ref ov) = override_style { ov.alphas.subtle_u8 } else { crate::dt_u8!(alpha.subtle, al.subtle_u8) },
+        alpha_tint:    if let Some(ref ov) = override_style { ov.alphas.tint      } else { crate::dt_u8!(alpha.tint,   al.tint)      },
+        alpha_muted:   if let Some(ref ov) = override_style { ov.alphas.muted_u8  } else { crate::dt_u8!(alpha.muted,  al.muted_u8)  },
+        alpha_dim:     if let Some(ref ov) = override_style { ov.alphas.dim       } else { crate::dt_u8!(alpha.dim,    al.dim)       },
+        alpha_line:    if let Some(ref ov) = override_style { ov.alphas.line      } else { crate::dt_u8!(alpha.line,   al.line)      },
+        alpha_strong:  if let Some(ref ov) = override_style { ov.alphas.strong_u8 } else { crate::dt_u8!(alpha.strong, al.strong_u8) },
+        alpha_active:  if let Some(ref ov) = override_style { ov.alphas.active    } else { crate::dt_u8!(alpha.active, al.active)    },
+        alpha_heavy:   if let Some(ref ov) = override_style { ov.alphas.heavy_u8  } else { crate::dt_u8!(alpha.heavy,  al.heavy_u8)  },
+        alpha_scrim:   if let Some(ref ov) = override_style { ov.alphas.scrim     } else { crate::dt_u8!(alpha.scrim,  al.scrim)     },
+        alpha_solid:   if let Some(ref ov) = override_style { ov.alphas.solid     } else { crate::dt_u8!(alpha.solid,  al.solid)     },
         // Shadows.
         shadow_offset: crate::dt_f32!(shadow.offset, 2.0),
         shadow_alpha:  crate::dt_u8!(shadow.alpha,   60),
@@ -2642,6 +2650,59 @@ pub fn style_system_to_style_settings(
 static STYLE_STORE: std::sync::OnceLock<std::sync::RwLock<Vec<(String, StyleSettings)>>> =
     std::sync::OnceLock::new();
 
+// -- M1: the parallel StyleSystem store -- the design system's own type, live --
+//
+// STYLE_STORE (above) holds the flattened legacy `StyleSettings`; this store
+// holds the FULL `StyleSystem` at the same indices, so `begin_frame()` can
+// source the token ladders (gaps, UI type scale, alpha tiers) from fields the
+// legacy adapter never carried. Populated from `builtin_style_systems()` at
+// init and kept index-aligned with STYLE_STORE by the shared setters below.
+// Slots edited only through `set_style_settings` (design-inspector path) keep
+// their last-known StyleSystem -- the inspector edits legacy fields the ladder
+// doesn't read yet.
+static STYLE_SYSTEM_STORE: std::sync::OnceLock<
+    std::sync::RwLock<Vec<std::sync::Arc<crate::design_system::StyleSystem>>>,
+> = std::sync::OnceLock::new();
+
+fn style_system_store()
+-> &'static std::sync::RwLock<Vec<std::sync::Arc<crate::design_system::StyleSystem>>> {
+    STYLE_SYSTEM_STORE.get_or_init(|| {
+        use crate::design_system::builtin_style_systems;
+        let systems = builtin_style_systems();
+        let mut v: Vec<std::sync::Arc<crate::design_system::StyleSystem>> =
+            systems.into_iter().map(std::sync::Arc::new).collect();
+        // Mirror STYLE_STORE's "Contour" alias slot (a Meridien clone).
+        if let Some(first) = v.first().cloned() {
+            v.push(first);
+        }
+        std::sync::RwLock::new(v)
+    })
+}
+
+/// The ACTIVE style's full `StyleSystem` (Arc clone -- cheap, once per frame).
+/// Falls back to slot 0 (Meridien) when the active id is out of range.
+pub fn active_style_system() -> std::sync::Arc<crate::design_system::StyleSystem> {
+    let id = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire) as usize;
+    let store = style_system_store().read().unwrap_or_else(|e| e.into_inner());
+    store.get(id).or_else(|| store.first()).cloned()
+        .unwrap_or_else(|| std::sync::Arc::new(crate::design_system::StyleSystem::default()))
+}
+
+/// Overwrite the StyleSystem for slot `id` (index-aligned with STYLE_STORE).
+pub fn set_style_system(id: u8, ss: crate::design_system::StyleSystem) {
+    let mut store = style_system_store().write().unwrap_or_else(|e| e.into_inner());
+    let idx = id as usize;
+    if idx < store.len() { store[idx] = std::sync::Arc::new(ss); }
+}
+
+/// Append a StyleSystem slot (call in lockstep with `add_style_preset`).
+pub fn add_style_system(ss: crate::design_system::StyleSystem) -> u8 {
+    let mut store = style_system_store().write().unwrap_or_else(|e| e.into_inner());
+    let id = store.len() as u8;
+    store.push(std::sync::Arc::new(ss));
+    id
+}
+
 fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
     STYLE_STORE.get_or_init(|| {
         // Source the 3 canonical styles from design_system::builtin_style_systems()
@@ -3809,5 +3870,86 @@ mod data_driven_proof {
         assert_eq!(loaded.resolved_success(), [1, 2, 3, 255], "explicit success lost in round-trip");
         // danger was never set -> resolver must fall back to the bear trading alias.
         assert_eq!(loaded.resolved_danger(), loaded.bear, "unset danger should alias bear");
+    }
+}
+
+// ── M1 ladder-wiring proof tests ─────────────────────────────────────────────
+#[cfg(test)]
+mod m1_ladder_tests {
+    use super::*;
+
+    /// The serde-default ladder on `Spacing`/`Typography`/`Alphas` must equal
+    /// the literals `begin_frame` shipped before the M1 wire-up — this is the
+    /// byte-identical guarantee for every style that does not author a ladder.
+    #[test]
+    fn default_ladders_match_pre_m1_literals() {
+        use crate::design_system::StyleSystem;
+        let ss = StyleSystem::default();
+        // gaps (old dt_f32 defaults: 4/6/8/12/16/20/24/32)
+        assert_eq!(ss.spacing.gap_xs, 4.0);
+        assert_eq!(ss.spacing.xs_mid, 6.0);
+        assert_eq!(ss.spacing.gap_sm, 8.0);
+        assert_eq!(ss.spacing.gap_md, 12.0);
+        assert_eq!(ss.spacing.gap_lg, 16.0);
+        assert_eq!(ss.spacing.gap_xl, 20.0);
+        assert_eq!(ss.spacing.gap_2xl, 24.0);
+        assert_eq!(ss.spacing.gap_3xl, 32.0);
+        // UI type ladder (old: 9/10/12/14/16/22)
+        assert_eq!(ss.typography.ui_2xs, 9.0);
+        assert_eq!(ss.typography.ui_xs, 10.0);
+        assert_eq!(ss.typography.ui_sm, 12.0);
+        assert_eq!(ss.typography.ui_md, 14.0);
+        assert_eq!(ss.typography.ui_lg, 16.0);
+        assert_eq!(ss.typography.ui_xl, 22.0);
+        // alpha u8 tiers (old: 10/15/20/40/48/60/60/80/80/100/120/140/200)
+        let a = &ss.alphas;
+        assert_eq!(
+            [a.faint, a.ghost, a.soft_u8, a.subtle_u8, a.tint, a.muted_u8, a.dim,
+             a.line, a.strong_u8, a.active, a.heavy_u8, a.scrim, a.solid],
+            [10, 15, 20, 40, 48, 60, 60, 80, 80, 100, 120, 140, 200],
+        );
+    }
+
+    /// Every BUILTIN style system must hold the default ladder (none of the 9
+    /// authored one yet) — proves the wire-up cannot change today's rendering.
+    /// When a theme track (T1+) deliberately authors a ladder, it updates this
+    /// test to exempt that style BY NAME with a comment.
+    #[test]
+    fn builtin_style_systems_hold_default_ladders() {
+        use crate::design_system::builtin_style_systems;
+        let d = crate::design_system::StyleSystem::default();
+        for ss in builtin_style_systems() {
+            assert_eq!(ss.spacing.gap_md, d.spacing.gap_md, "{} authored gap_md", ss.meta.name);
+            assert_eq!(ss.typography.ui_sm, d.typography.ui_sm, "{} authored ui_sm", ss.meta.name);
+            assert_eq!(ss.alphas.soft_u8, d.alphas.soft_u8, "{} authored soft_u8", ss.meta.name);
+        }
+    }
+
+    /// The "move one token" proof: an AUTHORED ladder value must reach the
+    /// per-frame `TokenSnapshot`. This is exit criterion P-2 in miniature —
+    /// the axis that was inert (adapter dropped it) is now live.
+    #[test]
+    fn authored_gap_reaches_frame_tokens() {
+        use crate::design_system::StyleSystem;
+        let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
+
+        let mut ss = StyleSystem::default();
+        ss.meta.name = "m1-proof".into();
+        ss.spacing.gap_md = 99.0;
+        ss.typography.ui_sm = 33.0;
+        let sys_id = add_style_system(ss);
+        // Keep STYLE_STORE aligned (same slot count) so `current()` stays sane.
+        let set_id = add_style_preset("m1-proof", get_style_settings(0));
+        assert_eq!(sys_id, set_id, "stores must stay index-aligned");
+
+        set_active_style(set_id);
+        begin_frame();
+        let snap = crate::ui_kit::style::frame_tokens();
+        // restore BEFORE asserting so a failure doesn't poison other tests
+        set_active_style(prev_active);
+        begin_frame();
+
+        assert_eq!(snap.gap_md, 99.0, "authored gap_md must reach TokenSnapshot");
+        assert_eq!(snap.font_sm, 33.0, "authored ui_sm must reach TokenSnapshot");
     }
 }

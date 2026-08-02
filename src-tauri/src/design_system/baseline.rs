@@ -124,6 +124,7 @@ pub fn baseline_style_system() -> StyleSystem {
             family_ui: "Inter".to_owned(),
             family_mono: "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
+            ..Typography::default()
         },
 
         spacing: Spacing {
@@ -146,6 +147,7 @@ pub fn baseline_style_system() -> StyleSystem {
             // cta_height_px = 36.0 (style_defaults(0))
             cta_height: 36.0,
             cta_padding_x: 16.0, button_height: 24.0, button_padding_x: 10.0, tab_height: 28.0,
+            ..Spacing::default()
         },
 
         radii: Radii {
