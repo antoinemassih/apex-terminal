@@ -135,6 +135,17 @@ pub fn color_scheme_to_theme(cs: &ColorScheme) -> Theme {
 
     // ── Assemble Theme ────────────────────────────────────────────────────────
     Theme {
+        // M1 Change A/C: authored ramp + bevel tints flow through (None = derive).
+        bg_panel:        cs.bg_panel.map(c32),
+        bg_elevated:     cs.bg_elevated.map(c32),
+        bg_hover:        cs.bg_hover.map(c32),
+        fg_xmuted:       cs.fg_xmuted.map(c32),
+        accent_sub:      cs.accent_sub.map(c32),
+        bull_alpha:      cs.bull_alpha.map(c32),
+        bear_alpha:      cs.bear_alpha.map(c32),
+        border_dim:      cs.border_dim.map(c32),
+        bevel_highlight: cs.bevel_highlight.map(c32),
+        bevel_shadow:    cs.bevel_shadow.map(c32),
         name: Box::leak(cs.meta.name.clone().into_boxed_str()),
         bg,
         toolbar_bg,

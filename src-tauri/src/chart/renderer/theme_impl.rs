@@ -28,6 +28,35 @@ impl ComponentTheme for Theme {
     fn surface(&self) -> Color32 { self.toolbar_bg }
     // Per-style: editorial styles (Mariner/Alto/Relay) render section headers
     // monospace; others proportional. Read from the active StyleSystem token.
+    // -- M1 Change A: authored surface ramp wins over elevate() derivation --
+    fn panel_surface(&self) -> egui::Color32 {
+        self.bg_panel.unwrap_or_else(|| crate::ui_kit::style::elevate(
+            self.bg, crate::ui_kit::style::ELEVATE_PANEL_BODY))
+    }
+    fn header_surface(&self) -> egui::Color32 {
+        self.bg_elevated.unwrap_or_else(|| crate::ui_kit::style::elevate(
+            self.bg, crate::ui_kit::style::ELEVATE_PANEL_HEADER))
+    }
+    fn section_header_surface(&self) -> egui::Color32 {
+        self.bg_elevated.unwrap_or_else(|| crate::ui_kit::style::elevate(
+            self.bg, crate::ui_kit::style::ELEVATE_PANEL_SECTION))
+    }
+    fn surface_raised(&self) -> egui::Color32 {
+        self.bg_elevated.unwrap_or_else(|| {
+            // pre-M1 heuristic (unchanged for unauthored themes)
+            let base = self.toolbar_bg;
+            let bg = self.bg;
+            let is_dark = (bg.r() as i16 + bg.g() as i16 + bg.b() as i16) < 384;
+            let shift: i16 = if is_dark { 18 } else { -18 };
+            let c = |v: i16| v.clamp(0, 255) as u8;
+            egui::Color32::from_rgb(
+                c(base.r() as i16 + shift),
+                c(base.g() as i16 + shift),
+                c(base.b() as i16 + shift),
+            )
+        })
+    }
+
     fn section_header_mono(&self) -> bool {
         crate::chart_renderer::ui::style::current().section_header_mono
     }
@@ -128,5 +157,49 @@ pub fn theme_to_portable(t: &Theme) -> PortableTheme {
         // frame in setup_theme, so this stays in sync).
         section_header_mono: crate::chart_renderer::ui::style::current().section_header_mono,
         cards_float:         crate::chart_renderer::ui::style::current().region_gap > 0.0,
+    }
+}
+
+// ── M1 Change A/C proof tests ────────────────────────────────────────────────
+#[cfg(test)]
+mod m1_ramp_tests {
+    use super::*;
+
+    /// The design-brief's flagship case: Aperture authors a WARM panel
+    /// (#141311, R>G>B) on a pure-black canvas. The achromatic `elevate()`
+    /// can only produce neutral #141414 from #000000 — the warm tint was
+    /// unreachable by construction. Authored `bg_panel` must win.
+    #[test]
+    fn authored_warm_panel_beats_achromatic_derivation() {
+        let mut cs = crate::design_system::builtin_color_schemes()
+            .into_iter().find(|c| c.meta.id == "aperture").expect("aperture scheme");
+        assert!(cs.bg_panel.is_none(), "not yet authored in builtins (T1 authors it)");
+        cs.bg_panel = Some([0x14, 0x13, 0x11, 255]);
+        let t = crate::chart_renderer::theme_adapter::color_scheme_to_theme(&cs);
+        let p = t.panel_surface();
+        assert_eq!((p.r(), p.g(), p.b()), (0x14, 0x13, 0x11), "authored warm panel must win");
+        assert!(p.r() > p.b(), "warmth (R>B) must survive to the trait boundary");
+    }
+
+    /// Unauthored themes keep the derived surfaces byte-for-byte.
+    #[test]
+    fn unauthored_ramp_falls_back_to_elevate() {
+        let cs = crate::design_system::builtin_color_schemes().into_iter().next().unwrap();
+        let t = crate::chart_renderer::theme_adapter::color_scheme_to_theme(&cs);
+        assert!(t.bg_panel.is_none());
+        let expected = crate::ui_kit::style::elevate(t.bg, crate::ui_kit::style::ELEVATE_PANEL_BODY);
+        assert_eq!(t.panel_surface(), expected, "None must reproduce the pre-M1 derivation");
+    }
+
+    /// DTCG round-trip carries the authored ramp (loader read + export).
+    #[test]
+    fn authored_ramp_survives_dtcg_round_trip() {
+        let mut cs = crate::design_system::builtin_color_schemes().into_iter().next().unwrap();
+        cs.bg_panel = Some([1, 2, 3, 255]);
+        cs.bevel_highlight = Some([255, 238, 210, 255]); // Alto's warm cream
+        let json = cs.to_dtcg();
+        let back = crate::design_system::ColorScheme::from_dtcg(&json).expect("parse");
+        assert_eq!(back.bg_panel, Some([1, 2, 3, 255]));
+        assert_eq!(back.bevel_highlight, Some([255, 238, 210, 255]));
     }
 }

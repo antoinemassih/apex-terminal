@@ -189,6 +189,10 @@ pub fn begin_frame() {
         surface_bevel:         current().surface_bevel,
         bevel_highlight_alpha: current().bevel_highlight_alpha,
         bevel_shadow_alpha:    current().bevel_shadow_alpha,
+        // M1 Change C: dimension-side defaults; `setup_theme` patches in the
+        // ACTIVE PANE's authored tints right after (palette axis joins there).
+        bevel_highlight_tint:  egui::Color32::WHITE,
+        bevel_shadow_tint:     egui::Color32::BLACK,
         // Default tab treatment — Filled for Aperture/Cadence/Glass, Line for others.
         panel_tab_treatment:   current().panel_tab_treatment,
         // List row shape — pill for Aperture/Glass, hairlines for Alto/Mariner/Relay.
@@ -1715,8 +1719,10 @@ pub(crate) fn paint_gradient_highlight(painter: &egui::Painter, rect: egui::Rect
 pub(crate) fn paint_bevel(painter: &egui::Painter, rect: egui::Rect, radius: egui::CornerRadius) {
     use crate::design_system::style_system::BevelStyle;
     let st = current();
-    let hi = Color32::from_rgba_unmultiplied(255, 255, 255, st.bevel_highlight_alpha);
-    let sh = Color32::from_rgba_unmultiplied(0, 0, 0, st.bevel_shadow_alpha);
+    let ht = crate::ui_kit::style::frame_tokens().bevel_highlight_tint;
+    let stn = crate::ui_kit::style::frame_tokens().bevel_shadow_tint;
+    let hi = Color32::from_rgba_unmultiplied(ht.r(), ht.g(), ht.b(), st.bevel_highlight_alpha);
+    let sh = Color32::from_rgba_unmultiplied(stn.r(), stn.g(), stn.b(), st.bevel_shadow_alpha);
     let (top_col, bot_col) = match st.surface_bevel {
         BevelStyle::None => return,
         BevelStyle::Raised => (hi, sh),

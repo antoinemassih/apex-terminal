@@ -346,6 +346,9 @@ pub fn baseline_color_scheme() -> ColorScheme {
         success: None, danger: None, warning: None, info: None,
         pane_gap_color: None,
         cmd_palette:      crate::design_system::color_scheme::CMD_PALETTE_DEFAULT,
+        bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
     }
 }
 

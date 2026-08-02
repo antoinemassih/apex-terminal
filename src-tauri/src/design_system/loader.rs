@@ -236,6 +236,18 @@ impl ColorScheme {
         let info         = read_color_opt(&pal, "info",          "palette");
         let pane_gap_color = read_color_opt(&pal, "pane_gap_color", "palette");
 
+        // M1 Change A/C: authored ramp + bevel tints — all optional.
+        let bg_panel        = read_color_opt(&pal, "bg_panel",        "palette");
+        let bg_elevated     = read_color_opt(&pal, "bg_elevated",     "palette");
+        let bg_hover        = read_color_opt(&pal, "bg_hover",        "palette");
+        let fg_xmuted       = read_color_opt(&pal, "fg_xmuted",       "palette");
+        let accent_sub      = read_color_opt(&pal, "accent_sub",      "palette");
+        let bull_alpha      = read_color_opt(&pal, "bull_alpha",      "palette");
+        let bear_alpha      = read_color_opt(&pal, "bear_alpha",      "palette");
+        let border_dim      = read_color_opt(&pal, "border_dim",      "palette");
+        let bevel_highlight = read_color_opt(&pal, "bevel_highlight", "palette");
+        let bevel_shadow    = read_color_opt(&pal, "bevel_shadow",    "palette");
+
         // cmd_palette — optional 11-element array of color tokens.
         // Missing or malformed entries in the array fall back to CMD_PALETTE_DEFAULT slots.
         let cmd_palette = if let Some(arr) = pal.get("cmd_palette").and_then(|v| v.as_array()) {
@@ -257,6 +269,8 @@ impl ColorScheme {
             pinned_row_tint, text_muted, hud_bg, hud_border,
             // Extended semantic palette — None if absent in DTCG file.
             success, danger, warning, info, pane_gap_color,
+            bg_panel, bg_elevated, bg_hover, fg_xmuted, accent_sub,
+            bull_alpha, bear_alpha, border_dim, bevel_highlight, bevel_shadow,
             cmd_palette,
         })
     }
@@ -310,6 +324,16 @@ impl ColorScheme {
         opt_color_token!(warning,       "warning");
         opt_color_token!(info,          "info");
         opt_color_token!(pane_gap_color, "pane_gap_color");
+        opt_color_token!(bg_panel,        "bg_panel");
+        opt_color_token!(bg_elevated,     "bg_elevated");
+        opt_color_token!(bg_hover,        "bg_hover");
+        opt_color_token!(fg_xmuted,       "fg_xmuted");
+        opt_color_token!(accent_sub,      "accent_sub");
+        opt_color_token!(bull_alpha,      "bull_alpha");
+        opt_color_token!(bear_alpha,      "bear_alpha");
+        opt_color_token!(border_dim,      "border_dim");
+        opt_color_token!(bevel_highlight, "bevel_highlight");
+        opt_color_token!(bevel_shadow,    "bevel_shadow");
 
         // cmd_palette — emit all 11 slots as an array of color tokens.
         let cmd_arr: serde_json::Value = self.cmd_palette

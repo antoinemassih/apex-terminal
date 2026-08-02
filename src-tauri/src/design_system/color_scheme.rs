@@ -177,6 +177,54 @@ pub struct ColorScheme {
     #[serde(default)]
     pub pane_gap_color: Option<Rgba>,
 
+    // ── M1 Change A: the AUTHORED SURFACE RAMP (design-brief 4.1) ────────────
+    //
+    // Design systems hand-author a 4-step background ramp and 4-step ink ramp;
+    // previously we derived them via the achromatic `elevate()`, which cannot
+    // produce Aperture's warm #141311 from #000000 and cannot express Lucid's
+    // non-monotonic paper ramp (panel LIGHTER than canvas, surface darker).
+    // `None` keeps today's derived behaviour byte-for-byte; authored values
+    // win at the ComponentTheme boundary.
+
+    /// Panel surface — one step off the canvas (DS `--ds-bg-panel`).
+    #[serde(default)]
+    pub bg_panel: Option<Rgba>,
+    /// Elevated surface — popovers, raised cards (DS `--ds-bg-elevated`).
+    #[serde(default)]
+    pub bg_elevated: Option<Rgba>,
+    /// Hover wash carrying HUE, not just alpha (DS `--ds-bg-hover`) —
+    /// Aperture's hover is accent-tinted; Cadence's is neutral white.
+    #[serde(default)]
+    pub bg_hover: Option<Rgba>,
+    /// Fourth ink step below `text_muted` (DS `--ds-fg-xmuted`).
+    #[serde(default)]
+    pub fg_xmuted: Option<Rgba>,
+    /// Secondary accent — gradients, sub-emphasis (DS `--ds-accent-sub`).
+    #[serde(default)]
+    pub accent_sub: Option<Rgba>,
+    /// Authored bull/bear washes — row tints, depth bars
+    /// (DS `--ds-bull-alpha` / `--ds-bear-alpha`).
+    #[serde(default)]
+    pub bull_alpha: Option<Rgba>,
+    #[serde(default)]
+    pub bear_alpha: Option<Rgba>,
+    /// Dimmer hairline distinct from `border` (DS `--ds-border-dim`).
+    #[serde(default)]
+    pub border_dim: Option<Rgba>,
+
+    // ── M1 Change C: AUTHORED BEVEL TINTS ────────────────────────────────────
+    // `Treatments.surface_bevel` geometry exists; its tint was luminance-
+    // derived (achromatic), which made Alto's WARM rgba(255,238,210) highlight
+    // vs Mariner's COOL rgba(190,215,245) inexpressible — the single palette-
+    // level difference between those sibling themes. Colour belongs on the
+    // palette axis; intensity (`bevel_*_alpha`) stays on Treatments.
+    /// Bevel top-highlight tint. `None` → luminance-derived (today's look).
+    #[serde(default)]
+    pub bevel_highlight: Option<Rgba>,
+    /// Bevel bottom-shadow tint. `None` → luminance-derived.
+    #[serde(default)]
+    pub bevel_shadow: Option<Rgba>,
+
     // ── Shadow ─────────────────────────────────────────────────────────────
     /// Shadow tint colour (used by elevation helpers). Typically near-black
     /// for dark themes, near-neutral for light themes.
@@ -254,6 +302,9 @@ impl ColorScheme {
             hud_bg:           rgba::rgba(  0,   0,   0, 230),
             hud_border:       rgba::rgb( 50,  50,  60),
             cmd_palette:      CMD_PALETTE_DEFAULT,
+            bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
         }
     }
 
@@ -322,6 +373,9 @@ pub fn builtin_dark() -> ColorScheme {
         hud_bg:           rgba::rgba(  0,   0,   0, 230),
         hud_border:       rgba::rgb( 50,  50,  60),
         cmd_palette:      CMD_PALETTE_DEFAULT,
+        bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
     }
 }
 
@@ -357,5 +411,8 @@ pub fn builtin_light() -> ColorScheme {
         hud_bg:           rgba::rgba( 20,  20,  20, 220),
         hud_border:       rgba::rgb( 80,  80,  88),
         cmd_palette:      CMD_PALETTE_DEFAULT,
+        bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
     }
 }

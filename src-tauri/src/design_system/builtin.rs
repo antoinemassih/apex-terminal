@@ -146,6 +146,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [1] Nord ─────────────────────────────────────────────────────────
@@ -179,6 +182,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [2] Monokai ───────────────────────────────────────────────────────
@@ -212,6 +218,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [3] Solarized ─────────────────────────────────────────────────────
@@ -245,6 +254,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [4] Dracula ───────────────────────────────────────────────────────
@@ -278,6 +290,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [5] Gruvbox ───────────────────────────────────────────────────────
@@ -311,6 +326,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [6] Catppuccin ────────────────────────────────────────────────────
@@ -344,6 +362,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [7] Tokyo Night ───────────────────────────────────────────────────
@@ -377,6 +398,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [8] Kanagawa ─────────────────────────────────────────────────────
@@ -410,6 +434,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [9] Everforest ────────────────────────────────────────────────────
@@ -443,6 +470,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [10] Vesper ───────────────────────────────────────────────────────
@@ -476,6 +506,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [11] Rosé Pine ────────────────────────────────────────────────────
@@ -510,6 +543,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [12] Bauhaus (light) ──────────────────────────────────────────────
@@ -543,6 +579,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [13] Peach (light) ────────────────────────────────────────────────
@@ -576,6 +615,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [14] Ivory (light) ────────────────────────────────────────────────
@@ -609,6 +651,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
         // ── [15] Newsprint (light) ────────────────────────────────────────────
@@ -642,6 +687,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
 
@@ -681,6 +729,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
 
@@ -714,6 +765,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
 
@@ -747,6 +801,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
 
@@ -780,6 +837,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
 
@@ -813,6 +873,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
+                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
+            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
+            bevel_highlight: None, bevel_shadow: None,
             }
         },
     ]

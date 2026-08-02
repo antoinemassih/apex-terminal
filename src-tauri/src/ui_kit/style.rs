@@ -124,6 +124,10 @@ pub struct TokenSnapshot {
     pub surface_bevel: crate::design_system::style_system::BevelStyle,
     pub bevel_highlight_alpha: u8, // white inner top-edge alpha (0 = no highlight)
     pub bevel_shadow_alpha:    u8, // black inner bottom-edge alpha (0 = no shadow)
+    /// M1 Change C: authored bevel tint (RGB; alpha from the knobs above).
+    /// Defaults WHITE/BLACK — the pre-M1 hardcoded look.
+    pub bevel_highlight_tint: Color32,
+    pub bevel_shadow_tint: Color32,
 }
 
 /// Compile-time defaults — match every token fn's non-design-mode constant
@@ -162,6 +166,8 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     surface_bevel:         crate::design_system::style_system::BevelStyle::None,
     bevel_highlight_alpha: 0,
     bevel_shadow_alpha:    0,
+    bevel_highlight_tint: Color32::WHITE,
+    bevel_shadow_tint:    Color32::BLACK,
 };
 
 thread_local! {
@@ -173,6 +179,19 @@ thread_local! {
 #[inline]
 pub fn set_frame_tokens(snap: TokenSnapshot) {
     FRAME_TOKENS_LOCAL.with(|c| c.set(snap));
+}
+
+/// M1 Change C: patch the ACTIVE PANE's authored bevel tints into the frame
+/// snapshot. Called from `setup_theme` (which knows the palette) after the
+/// dimension-side `begin_frame` has pushed the snapshot — geometry from the
+/// style axis, tint from the colour axis, joined here once per frame.
+pub fn set_frame_bevel_tints(highlight: Color32, shadow: Color32) {
+    FRAME_TOKENS_LOCAL.with(|c| {
+        let mut snap = c.get();
+        snap.bevel_highlight_tint = highlight;
+        snap.bevel_shadow_tint = shadow;
+        c.set(snap);
+    });
 }
 
 /// Widget-side: read the current frame's `TokenSnapshot`. Returns
@@ -892,8 +911,11 @@ pub fn panel_tab_treatment_typed() -> crate::design_system::style_system::PanelH
 pub fn paint_bevel_portable(painter: &egui::Painter, rect: egui::Rect, radius: egui::CornerRadius) {
     use crate::design_system::style_system::BevelStyle;
     let snap = frame_tokens();
-    let hi = Color32::from_rgba_unmultiplied(255, 255, 255, snap.bevel_highlight_alpha);
-    let sh = Color32::from_rgba_unmultiplied(0,   0,   0,   snap.bevel_shadow_alpha);
+    // M1 Change C: tint is authorable per palette (WHITE/BLACK when unauthored).
+    let ht = snap.bevel_highlight_tint;
+    let stn = snap.bevel_shadow_tint;
+    let hi = Color32::from_rgba_unmultiplied(ht.r(), ht.g(), ht.b(), snap.bevel_highlight_alpha);
+    let sh = Color32::from_rgba_unmultiplied(stn.r(), stn.g(), stn.b(), snap.bevel_shadow_alpha);
     let (top_col, bot_col) = match snap.surface_bevel {
         BevelStyle::None  => return,
         BevelStyle::Raised => (hi, sh),
