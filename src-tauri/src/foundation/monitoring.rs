@@ -1105,7 +1105,18 @@ fn start_http_server(metrics: Arc<Mutex<Snapshot>>) {
         // interfaces — that non-loopback bind is what triggers the Windows
         // Firewall "allow this app" prompt on every rebuilt binary, which blocks
         // the screenshot/dev loop. Release keeps 0.0.0.0 for remote scraping.
-        let bind_addr = if cfg!(debug_assertions) { "127.0.0.1:9091" } else { "0.0.0.0:9091" };
+        // AUDIT 2026-08-02 (W2): the release 0.0.0.0 bind is a DELIBERATE ops
+        // decision — Grafana scrapes this endpoint over the LAN, so clamping it
+        // to loopback would silently break monitoring. It is made overridable
+        // instead: set APEX_METRICS_BIND (e.g. "127.0.0.1:9091") to lock it down
+        // on an untrusted network without a rebuild. Default behaviour is
+        // unchanged.
+        let default_addr = if cfg!(debug_assertions) { "127.0.0.1:9091" } else { "0.0.0.0:9091" };
+        let bind_owned = std::env::var("APEX_METRICS_BIND").ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| default_addr.to_string());
+        let bind_addr: &str = &bind_owned;
         let listener = match TcpListener::bind(bind_addr) {
             Ok(l) => l,
             Err(e) => { eprintln!("[monitoring] Failed to bind {bind_addr} — {e}"); return; }
@@ -1133,8 +1144,16 @@ fn start_http_server(metrics: Arc<Mutex<Snapshot>>) {
                 ("text/plain; version=0.0.4; charset=utf-8", body)
             };
 
+            // AUDIT 2026-08-02 (W2): `Access-Control-Allow-Origin: *` removed.
+            // Prometheus scrapes server-side and never needs CORS, but the
+            // wildcard let ANY page the operator happened to visit read this
+            // endpoint from JavaScript — order counts, reject rates, feed
+            // states and daily-loss counters for a live trading account. In
+            // release this listener is on 0.0.0.0, so the header turned a
+            // LAN-scoped metrics port into one readable by any website the
+            // operator opened. Nothing legitimate consumed it.
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 body.len(), body
             );
             let _ = stream.write_all(response.as_bytes());

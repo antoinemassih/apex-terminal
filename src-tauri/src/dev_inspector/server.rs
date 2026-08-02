@@ -157,13 +157,35 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
         (path_raw, String::new())
     };
 
-    // Read body if Content-Length is set
+    // Read body if Content-Length is set.
+    //
+    // AUDIT 2026-08-02 (W2): reject any request carrying an `Origin` header.
+    //
+    // This server is already debug-only (`#[cfg(debug_assertions)]` in
+    // native_main.rs) and bound to 127.0.0.1, so it is NOT the release-reachable
+    // control plane the audit described. But loopback is not a security
+    // boundary against a *browser*: any page the developer has open can issue
+    // cross-origin requests to 127.0.0.1:7892, and this API can synthesize real
+    // clicks and drive AppCommands into a window that may be running against a
+    // live trading account.
+    //
+    // Browsers attach `Origin` to exactly those cross-origin requests. The
+    // legitimate clients here — curl, the corpus runner, dev scripts — never
+    // send it. So refusing any request that has one blocks the browser-driven
+    // attack without touching the harness.
     let mut content_len = 0usize;
+    let mut has_origin = false;
     for line in lines {
         let lower = line.to_lowercase();
         if lower.starts_with("content-length:") {
             content_len = lower["content-length:".len()..].trim().parse().unwrap_or(0);
         }
+        if lower.starts_with("origin:") {
+            has_origin = true;
+        }
+    }
+    if has_origin {
+        return None;
     }
     // Clamp to MAX_BODY_BYTES — reject oversized bodies to prevent memory exhaustion.
     if content_len > MAX_BODY_BYTES {
