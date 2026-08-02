@@ -11,6 +11,7 @@
 use egui::{Color32, Response, Sense, Stroke, Ui};
 use super::super::super::style::*;
 use crate::ui_kit::icons::Icon;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -150,6 +151,8 @@ impl<'a, T> Table<'a, T> {
         let header_h = self.row_height;
         let header_rect = egui::Rect::from_min_size(rect.min, egui::vec2(avail_w, header_h));
         ui.painter().rect_filled(header_rect, 0.0, color_alpha(border, alpha_subtle()));
+        // One cascade lookup for the whole header strip, cloned per label.
+        let hdr_font = TextStyle::MonoSm.font_id_in(ui);
         for (i, c) in self.columns.iter().enumerate() {
             let (cx, cw) = col_xs[i];
             let cell = egui::Rect::from_min_size(
@@ -167,12 +170,12 @@ impl<'a, T> Table<'a, T> {
             } else {
                 egui::pos2(cell.left() + pad, cell.center().y)
             };
-            ui.painter().text(pos, align, c.label, mono_sm(), col_text);
+            ui.painter().text(pos, align, c.label, hdr_font.clone(), col_text);
             if active {
                 let gx = if c.right_align { cell.right() - pad - (c.label.len() as f32) * 6.0 - 8.0 } else { cell.left() + pad + (c.label.len() as f32) * 6.0 + 4.0 };
                 ui.painter().text(egui::pos2(gx, cell.center().y),
                     egui::Align2::CENTER_CENTER,
-                    self.state.sort_dir.glyph(), mono_sm(), accent);
+                    self.state.sort_dir.glyph(), hdr_font.clone(), accent);
             }
             if c.sortable && resp.clicked() {
                 if self.state.sort_col == Some(i) {

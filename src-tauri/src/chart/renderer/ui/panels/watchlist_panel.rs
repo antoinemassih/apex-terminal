@@ -22,6 +22,7 @@ use crate::ui_kit::widgets::{Input, MenuItem, PanelEmpty, PanelLoading, PanelSec
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 /// Map between `WatchlistTab` and the rail's instance-tab `u8` (for duplicates).
 fn wl_tab_to_u8(t: WatchlistTab) -> u8 {
@@ -1191,7 +1192,7 @@ if is_spawn || watchlist.open {
                                     ui.painter().rect_filled(float_rect, radius_sm(), tint(t, Tone::Accent, alpha_muted()));
                                     ui.painter().rect_stroke(float_rect, radius_sm(), egui::Stroke::new(stroke_std(), t.accent), egui::StrokeKind::Outside);
                                     ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
-                                        drag_sym, mono_md(), t.text);
+                                        drag_sym, TextStyle::MonoMd.font_id_in(ui), t.text);
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                                 }
                             }
@@ -1403,7 +1404,7 @@ if is_spawn || watchlist.open {
                                         let y_c = rect.center().y;
                                         // C/P badge
                                         painter.text(egui::pos2(rect.left() + 6.0, y_c), egui::Align2::LEFT_CENTER,
-                                            badge, mono_md(), color);
+                                            badge, TextStyle::MonoMd.font_id_in(ui), color);
                                         // Contract name
                                         painter.text(egui::pos2(rect.left() + 22.0, y_c), egui::Align2::LEFT_CENTER,
                                             &format!("{} {:.0} {}", item_underlying, item_strike, item_expiry),
@@ -1537,7 +1538,7 @@ if is_spawn || watchlist.open {
                             strip_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             "PLACEHOLDER DATA — real chain unavailable",
-                            mono_sm(),
+                            TextStyle::MonoSm.font_id_in(ui),
                             t.warn,
                         );
                         ui.add_space(gap_xs());
@@ -1747,7 +1748,7 @@ if is_spawn || watchlist.open {
                         else { let _ = write!(s, "{}", row.oi); }
                         let oi_x = x;
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &s, mono_sm(), color_half(t.dim));
+                            &s, TextStyle::MonoSm.font_id_in(ui), color_half(t.dim));
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
@@ -1942,7 +1943,7 @@ if is_spawn || watchlist.open {
                                 format!("${:.2}", price)
                             };
                             ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER,
-                                &badge_text, mono_md(),
+                                &badge_text, TextStyle::MonoMd.font_id_in(ui),
                                 t.text);
                         }
                         ui.add_space(gap_xl());

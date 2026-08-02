@@ -167,7 +167,7 @@ pub(crate) fn draw(
     let header_h = 24.0_f32;
     let hy = inner.top() + 2.0;
     let label_y = hy + header_h * 0.5;
-    let hf = egui::FontId::monospace(font_md());
+    let hf = TextStyle::MonoMd.font_id_in(ui);
     let hc = color_muted(t.dim);
     let pad_x = gap_xs();
     if show_delta {
@@ -357,7 +357,7 @@ pub(crate) fn draw(
         egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_strong())),
     );
 
-    let fm = egui::FontId::monospace(font_md());
+    let fm = TextStyle::MonoMd.font_id_in(ui);
     let is_mkt = *dom_order_type == DomOrderType::Market;
 
     // Row 1: [stepper: − qty +]  [MKT/LMT combo]  [A]
@@ -580,10 +580,7 @@ pub(crate) fn draw(
     let ms = mb.max(ma) as f32;
     let mv = levels.iter().map(|l| l.volume).max().unwrap_or(1).max(1);
     let ao: Vec<&OrderLevel> = orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).collect();
-    let font = mono_md();
-    let font_sm = mono_sm();
     let lp = ui.painter_at(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), body_top), egui::pos2(dom_rect.right(), body_top+body_h)));
-    let _ = (font, font_sm); // retained imports above; widget owns its fonts now
 
     // Shared column geometry — computed once, passed to every row.
     let col_layout = ColumnLayout {

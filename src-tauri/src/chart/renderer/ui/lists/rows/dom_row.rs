@@ -277,10 +277,10 @@ impl<'a> DomRow<'a> {
                 }
                 let find = |k: DomColumn| col_rects.iter().find(|(kk, _)| *kk == k).map(|(_, r)| *r);
 
-                let f_lg = mono_md();
-                // Hot path (a ladder paints ~40 rungs/frame): one cascade lookup,
-                // cloned per string. `f_lg` stays on mono_md() — see the module
-                // note; no tier sits within 1px of 14px monospace.
+                // Hot path (a ladder paints ~40 rungs/frame): one cascade lookup
+                // per tier, cloned per string. `MonoMd` is the 14px tabular-data
+                // rung — added specifically so this ladder could join the cascade.
+                let f_lg = TextStyle::MonoMd.font_id_in(ui);
                 let f_sm = TextStyle::MonoSm.font_id_in(ui);
                 let dark = theme_ref.overlay_text;
                 let cy = rect.center().y;
@@ -482,8 +482,8 @@ impl<'a> DomRow<'a> {
         let ry = rr.min.y;
         let cy = rr.center().y;
 
-        let font = mono_md();
         // Hot path: hoisted once per row, cloned per painted string.
+        let font = TextStyle::MonoMd.font_id_in(ui);
         let font_sm = TextStyle::MonoSm.font_id_in(ui);
         let dark = theme_ref.overlay_text;
 
@@ -552,7 +552,9 @@ impl<'a> DomRow<'a> {
         } else if self.price >= 1.0 && (self.price.fract() == 0.0) {
             format!("{:.0}", self.price)
         } else { format!("{:.2}", self.price) };
-        let price_font = if self.current_price { mono_md() } else { font.clone() };
+        // Current-price rows used a separate mono_md() here — identical to
+        // `font` now that both resolve through the MonoMd cascade tier.
+        let price_font = font.clone();
         painter.text(egui::pos2(xp + cp * 0.5, cy), egui::Align2::CENTER_CENTER, &ps, price_font, pc);
 
         // ASK
