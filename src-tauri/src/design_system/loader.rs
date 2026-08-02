@@ -489,6 +489,7 @@ impl StyleSystem {
             modal:    parse_shadow_spec(sh_sec.get("modal"),    "shadows.modal",    &d_sh.modal),
             tooltip:  parse_shadow_spec(sh_sec.get("tooltip"),  "shadows.tooltip",  &d_sh.tooltip),
             dropdown: parse_shadow_spec(sh_sec.get("dropdown"), "shadows.dropdown", &d_sh.dropdown),
+            card_layers: Vec::new(), modal_layers: Vec::new(),
         };
 
         let d_tr = Treatments::default();
@@ -762,6 +763,7 @@ mod tests {
                 modal:    ShadowSpec { blur: 20.0, spread: 2.0, offset_x: 0.0, offset_y: 6.0, alpha: 0.45 },
                 tooltip:  ShadowSpec { blur: 5.0,  spread: 0.0, offset_x: 0.0, offset_y: 1.5, alpha: 0.35 },
                 dropdown: ShadowSpec { blur: 10.0, spread: 0.0, offset_x: 0.0, offset_y: 3.0, alpha: 0.38 },
+                card_layers: Vec::new(), modal_layers: Vec::new(),
             },
             treatments: Treatments {
                 solid_active_fills: true,

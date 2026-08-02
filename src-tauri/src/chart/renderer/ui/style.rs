@@ -204,6 +204,11 @@ pub fn begin_frame() {
     // `frame_tokens()` reads this back for `radius_*` / `stroke_*` /
     // `alpha_*` helpers across the kit.
     crate::ui_kit::style::set_frame_tokens(snap);
+    // M1 Change E: hand the authored shadow stacks to ui_kit (empty = legacy).
+    crate::ui_kit::style::set_card_shadow_layers(
+        ass.shadows.card_layers.clone(),
+        ass.shadows.modal_layers.clone(),
+    );
 }
 
 // ─── Typography scale ─────────────────────────────────────────────────────────
@@ -2687,6 +2692,10 @@ fn style_system_store()
 
 /// The ACTIVE style's full `StyleSystem` (Arc clone -- cheap, once per frame).
 /// Falls back to slot 0 (Meridien) when the active id is out of range.
+// M1 Change E: per-frame shadow stacks. Vec is not Copy, so these live in
+// their own thread-local (TokenSnapshot stays a Copy Cell). Pushed by
+// `begin_frame`; consumed by the layered card-shadow painter in ui_kit via
+// `crate::ui_kit::style::set_card_shadow_layers`' getter twin.
 pub fn active_style_system() -> std::sync::Arc<crate::design_system::StyleSystem> {
     let id = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire) as usize;
     let store = style_system_store().read().unwrap_or_else(|e| e.into_inner());
@@ -3957,5 +3966,43 @@ mod m1_ladder_tests {
 
         assert_eq!(snap.gap_md, 99.0, "authored gap_md must reach TokenSnapshot");
         assert_eq!(snap.font_sm, 33.0, "authored ui_sm must reach TokenSnapshot");
+    }
+}
+
+// ── M1 Change E proof test ───────────────────────────────────────────────────
+#[cfg(test)]
+mod m1_shadow_stack_tests {
+    use super::*;
+    use crate::design_system::style_system::{ShadowLayer, ShadowTint};
+
+    /// An authored card stack must reach ui_kit's per-frame getter, and the
+    /// empty default must leave the legacy path in charge.
+    #[test]
+    fn authored_card_stack_reaches_ui_kit() {
+        let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
+
+        // Alto's 4-layer Zed bevel, transcribed from the DS spec.
+        let mut ss = crate::design_system::StyleSystem::default();
+        ss.meta.name = "m1-shadow-proof".into();
+        ss.shadows.card_layers = vec![
+            ShadowLayer { inset: true,  offset_x: 0.0, offset_y:  1.0, blur: 0.0,  spread: 0.0,   tint: ShadowTint::Highlight, alpha: 15 },
+            ShadowLayer { inset: true,  offset_x: 0.0, offset_y: -1.0, blur: 0.0,  spread: 0.0,   tint: ShadowTint::Shadow,    alpha: 115 },
+            ShadowLayer { inset: false, offset_x: 0.0, offset_y:  1.0, blur: 0.0,  spread: 0.0,   tint: ShadowTint::Shadow,    alpha: 102 },
+            ShadowLayer { inset: false, offset_x: 0.0, offset_y: 12.0, blur: 28.0, spread: -16.0, tint: ShadowTint::Shadow,    alpha: 153 },
+        ];
+        let sys_id = add_style_system(ss);
+        let set_id = add_style_preset("m1-shadow-proof", get_style_settings(0));
+        assert_eq!(sys_id, set_id);
+
+        set_active_style(set_id);
+        begin_frame();
+        let stack = crate::ui_kit::style::card_shadow_layers();
+        set_active_style(prev_active);
+        begin_frame();
+        let restored = crate::ui_kit::style::card_shadow_layers();
+
+        assert_eq!(stack.len(), 4, "authored 4-layer stack must arrive");
+        assert!(stack[0].inset && matches!(stack[0].tint, ShadowTint::Highlight));
+        assert!(restored.is_empty(), "unauthored styles keep the legacy single-shadow path");
     }
 }

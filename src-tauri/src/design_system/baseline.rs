@@ -242,6 +242,7 @@ pub fn baseline_style_system() -> StyleSystem {
             modal:    ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
             tooltip:  ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
             dropdown: ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
+            card_layers: Vec::new(), modal_layers: Vec::new(),
         },
 
         treatments: Treatments {

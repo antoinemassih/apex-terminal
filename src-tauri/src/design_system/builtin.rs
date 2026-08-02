@@ -987,6 +987,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             modal:    ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
             tooltip:  ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
             dropdown: ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
+            card_layers: Vec::new(), modal_layers: Vec::new(),
         },
         treatments: Treatments {
             solid_active_fills:       true,  // solid_active_fills = true
@@ -1112,6 +1113,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             modal:    ShadowSpec { blur: 36.0, spread: 0.0, offset_x: 0.0, offset_y: 12.0, alpha: 40.0 / 255.0 },
             tooltip:  ShadowSpec { blur: 12.0, spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 40.0 / 255.0 },
             dropdown: ShadowSpec { blur: 24.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 40.0 / 255.0 },
+            card_layers: Vec::new(), modal_layers: Vec::new(),
         },
         treatments: Treatments {
             solid_active_fills:       false, // solid_active_fills = false
@@ -1238,6 +1240,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             modal:    ShadowSpec { blur: 16.0, spread: 0.0, offset_x: 0.0, offset_y: 6.0, alpha: 20.0 / 255.0 },
             tooltip:  ShadowSpec { blur: 6.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 20.0 / 255.0 },
             dropdown: ShadowSpec { blur: 8.0,  spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 20.0 / 255.0 },
+            card_layers: Vec::new(), modal_layers: Vec::new(),
         },
         treatments: Treatments {
             solid_active_fills:       true,  // solid_active_fills = true
@@ -1293,6 +1296,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             modal:    ShadowSpec { blur: 16.0, spread: 0.0, offset_x: 0.0, offset_y: 6.0, alpha: 90.0/255.0 },
             tooltip:  ShadowSpec { blur: 6.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 90.0/255.0 },
             dropdown: ShadowSpec { blur: 8.0,  spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 90.0/255.0 },
+            card_layers: Vec::new(), modal_layers: Vec::new(),
         },
         treatments: Treatments {
             hairline_borders: true, uppercase_section_labels: true, segmented_filled_idle: true,
@@ -1429,6 +1433,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             modal:    ShadowSpec { blur: 48.0, spread: 0.0, offset_x: 0.0, offset_y: 12.0, alpha: 30.0/255.0 },
             tooltip:  ShadowSpec { blur: 16.0, spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 30.0/255.0 },
             dropdown: ShadowSpec { blur: 24.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 30.0/255.0 },
+            card_layers: Vec::new(), modal_layers: Vec::new(),
         },
         treatments: Treatments {
             segmented_filled_idle: true, surface_bevel: BevelStyle::None,

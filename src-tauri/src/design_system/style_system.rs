@@ -543,6 +543,43 @@ pub struct ShadowSpec {
     /// Alpha multiplier applied on top of `ColorScheme.shadow`.
     pub alpha: f32,
 }
+// ── M1 Change E: multi-layer shadow stacks (additive; legacy specs stay) ────
+//
+// The DS card treatments are STACKS — e.g. Alto's four-layer "Zed warm-dark
+// bevel": inset warm highlight + inset shadow + contact line + ambient drop.
+// Even the light themes need TWO outer layers (Lucid's paper drop), and the
+// single `ShadowSpec` cannot express either. `*_layers` is additive with
+// `#[serde(default)]` (empty = use the legacy single spec), so no schema
+// bump and no pack migration — v1 packs load unchanged.
+
+/// Semantic tint for a shadow layer. NEVER a literal colour at a call site —
+/// resolution happens against the active palette at paint time.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ShadowTint {
+    /// Modulates the palette's `shadow` colour.
+    Shadow,
+    /// Modulates the palette's authored `bevel_highlight` tint
+    /// (WARM on Alto, COOL on Mariner; WHITE when unauthored).
+    Highlight,
+    /// Explicit RGBA (rare; prefer the semantic variants).
+    Custom([u8; 4]),
+}
+
+/// One layer of a shadow stack. `inset` layers with `blur == 0` (every DS
+/// inset in the six systems) render as 1px edge strokes clipped to the rect
+/// — cheap, no blur pass.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShadowLayer {
+    pub inset:    bool,
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub blur:     f32,
+    pub spread:   f32,
+    pub tint:     ShadowTint,
+    /// 0-255 over the resolved tint.
+    pub alpha:    u8,
+}
+
 
 /// Named shadow roles — geometry only, no colour.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -555,6 +592,13 @@ pub struct Shadows {
     pub tooltip: ShadowSpec,
     /// Dropdown menu shadow.
     pub dropdown: ShadowSpec,
+
+    // M1 Change E: authored stacks. Empty = derive from the legacy spec
+    // above (byte-identical). A DS authors e.g. Alto's 4-layer card bevel.
+    #[serde(default)]
+    pub card_layers: Vec<ShadowLayer>,
+    #[serde(default)]
+    pub modal_layers: Vec<ShadowLayer>,
 }
 
 impl Default for Shadows {
@@ -564,6 +608,8 @@ impl Default for Shadows {
             modal:    ShadowSpec { blur: 24.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 0.5 },
             tooltip:  ShadowSpec { blur: 6.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 0.4 },
             dropdown: ShadowSpec { blur: 12.0, spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 0.4 },
+            card_layers: Vec::new(),
+            modal_layers: Vec::new(),
         }
     }
 }

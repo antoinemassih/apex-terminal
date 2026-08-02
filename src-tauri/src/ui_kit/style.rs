@@ -190,6 +190,93 @@ pub fn set_frame_tokens(snap: TokenSnapshot) {
 pub const BEVEL_TINT_DEFAULT_HIGHLIGHT: Color32 = Color32::WHITE;
 pub const BEVEL_TINT_DEFAULT_SHADOW:    Color32 = Color32::BLACK;
 
+// ── M1 Change E: per-frame shadow stacks (non-Copy → own thread-local) ──────
+thread_local! {
+    static CARD_SHADOW_LAYERS: std::cell::RefCell<
+        std::sync::Arc<Vec<crate::design_system::style_system::ShadowLayer>>
+    > = std::cell::RefCell::new(std::sync::Arc::new(Vec::new()));
+    static MODAL_SHADOW_LAYERS: std::cell::RefCell<
+        std::sync::Arc<Vec<crate::design_system::style_system::ShadowLayer>>
+    > = std::cell::RefCell::new(std::sync::Arc::new(Vec::new()));
+}
+
+/// Push the active style's authored shadow stacks (called from `begin_frame`).
+pub fn set_card_shadow_layers(
+    card: Vec<crate::design_system::style_system::ShadowLayer>,
+    modal: Vec<crate::design_system::style_system::ShadowLayer>,
+) {
+    CARD_SHADOW_LAYERS.with(|c| *c.borrow_mut() = std::sync::Arc::new(card));
+    MODAL_SHADOW_LAYERS.with(|c| *c.borrow_mut() = std::sync::Arc::new(modal));
+}
+
+/// The authored card shadow stack for this frame (empty = use the legacy
+/// single-spec `shadow_card_themed` path).
+pub fn card_shadow_layers()
+-> std::sync::Arc<Vec<crate::design_system::style_system::ShadowLayer>> {
+    CARD_SHADOW_LAYERS.with(|c| c.borrow().clone())
+}
+
+/// The authored modal shadow stack for this frame.
+pub fn modal_shadow_layers()
+-> std::sync::Arc<Vec<crate::design_system::style_system::ShadowLayer>> {
+    MODAL_SHADOW_LAYERS.with(|c| c.borrow().clone())
+}
+
+/// Resolve a layer tint against the active palette snapshot.
+/// `Shadow` → the caller-supplied palette shadow colour; `Highlight` → the
+/// frame's bevel-highlight tint (authored per palette, WHITE default).
+pub fn resolve_shadow_tint(
+    tint: crate::design_system::style_system::ShadowTint,
+    palette_shadow: Color32,
+) -> Color32 {
+    use crate::design_system::style_system::ShadowTint as T;
+    match tint {
+        T::Shadow    => palette_shadow,
+        T::Highlight => frame_tokens().bevel_highlight_tint,
+        T::Custom(c) => Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]),
+    }
+}
+
+/// Paint an authored multi-layer card shadow stack around/inside `rect`.
+/// OUTER layers approximate the CSS drop with egui's epaint Shadow tessellation
+/// per layer; INSET layers (all blur==0 in the six DS specs) paint as 1px edge
+/// strokes clipped to the rect — no blur pass. Returns true when it painted
+/// (caller then SKIPS the legacy single-shadow path).
+pub fn paint_shadow_stack(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    radius: egui::CornerRadius,
+    layers: &[crate::design_system::style_system::ShadowLayer],
+    palette_shadow: Color32,
+) -> bool {
+    if layers.is_empty() || !rect.is_finite() { return false; }
+    for l in layers {
+        let base = resolve_shadow_tint(l.tint, palette_shadow);
+        let col = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), l.alpha);
+        if l.inset {
+            // Inset: top edge (positive offset_y) or bottom edge (negative),
+            // 1px stroke inside the rect — matches the CSS inset hairlines.
+            let y = if l.offset_y >= 0.0 { rect.top() + 0.5 + l.offset_y - 1.0 }
+                    else { rect.bottom() - 0.5 + l.offset_y + 1.0 };
+            let r = radius.nw.max(radius.ne) as f32;
+            let inset_x = (r * 0.5).clamp(0.0, 3.0);
+            painter.line_segment(
+                [egui::pos2(rect.left() + inset_x, y), egui::pos2(rect.right() - inset_x, y)],
+                egui::Stroke::new(1.0, col),
+            );
+        } else {
+            let sh = egui::epaint::Shadow {
+                offset: [l.offset_x as i8, l.offset_y as i8],
+                blur:   l.blur as u8,
+                spread: l.spread.max(0.0) as u8, // egui Shadow has no negative spread; clamp (CSS -16px approximated by blur)
+                color:  col,
+            };
+            painter.add(sh.as_shape(rect, radius));
+        }
+    }
+    true
+}
+
 pub fn set_frame_bevel_tints(highlight: Color32, shadow: Color32) {
     FRAME_TOKENS_LOCAL.with(|c| {
         let mut snap = c.get();

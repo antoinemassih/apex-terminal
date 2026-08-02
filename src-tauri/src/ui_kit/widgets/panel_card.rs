@@ -110,11 +110,35 @@ impl PanelCard {
             });
         // Slight soft drop shadow on FLOATING styles (Aperture/Cadence/Glass) or
         // when toned. Flat styles rely on border + fill only.
-        if float || self.tone != Tone::Default {
+        //
+        // M1 Change E: when the active style AUTHORS a card shadow stack
+        // (e.g. Alto's 4-layer Zed bevel, Lucid's 2-layer paper drop), the
+        // stack replaces the legacy single Frame shadow. OUTER layers paint
+        // before the frame (under the fill); INSET layers paint after (inside
+        // the rect) — matching CSS box-shadow semantics.
+        let stack = crate::ui_kit::style::card_shadow_layers();
+        let use_stack = (float || self.tone != Tone::Default) && !stack.is_empty();
+        if (float || self.tone != Tone::Default) && !use_stack {
             frame = frame.shadow(t.shadow_card());
         }
 
-        let resp = frame.show(ui, |ui| body(ui, t));
+        let resp = if use_stack {
+            // Outer layers need the rect before the frame paints; egui gives
+            // us the rect only after. Paint the whole stack AFTER instead:
+            // outer layers under-draw slightly over neighbors (acceptable for
+            // soft ambient drops), inset hairlines land exactly.
+            let r = frame.show(ui, |ui| body(ui, t));
+            let outer: Vec<_> = stack.iter().copied().filter(|l| !l.inset).collect();
+            let inset: Vec<_> = stack.iter().copied().filter(|l| l.inset).collect();
+            let rect = r.response.rect;
+            let painter = ui.painter();
+            // ambient drops first (behind-ish), then inset hairlines on top
+            crate::ui_kit::style::paint_shadow_stack(painter, rect, radius, &outer, t.shadow_color());
+            crate::ui_kit::style::paint_shadow_stack(painter, rect, radius, &inset, t.shadow_color());
+            r
+        } else {
+            frame.show(ui, |ui| body(ui, t))
+        };
 
         // Texture / elevation cue: a 1px top-highlight bevel just inside the top
         // edge (lighter than the surface) so the card catches a hint of light —
