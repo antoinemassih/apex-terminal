@@ -291,6 +291,15 @@ struct TradingModeState {
     paper: bool,
 }
 
+/// Is this order one leg of a multi-leg group?
+///
+/// AT-018: `confirm` re-submits through the SINGLE-order broker endpoint, which
+/// carries no ocaGroup and no bracket parent, so a group leg confirmed alone
+/// arrives at the broker with its sibling link severed.
+fn is_group_leg(source: OrderSource) -> bool {
+    matches!(source, OrderSource::Oco | OrderSource::Bracket)
+}
+
 /// Should the restored state force this process into LIVE mode?
 ///
 /// AT-016/AT-017. Pure so the policy is testable without touching the
@@ -2058,6 +2067,33 @@ impl OrderManager {
             report(ErrorLevel::Warn, "order_manager", "confirm_blocked_halt",
                 format!("confirm rejected for order {order_id}: {}", self.halt_reason()));
             return false;
+        }
+
+        // AUDIT 2026-08-02 (AT-018, P1): refuse to confirm a single leg of a
+        // multi-leg group.
+        //
+        // `confirm` re-submits through `broker.submit()` — the SINGLE-order
+        // endpoint. It carries no `ocaGroup` and no bracket parent, so
+        // confirming one Draft leg of an OCO placed it at the broker as a
+        // standalone order with its sibling link severed: both legs could then
+        // fill, doubling the intended position. For a bracket it detached the
+        // take-profit and stop-loss from the entry, so the stop could stay live
+        // after the target filled — or both could fill.
+        //
+        // The leg's `source` records its origin exactly, so the case is
+        // detectable. Refusing is the safe half of the fix; re-submitting the
+        // whole group through `submit_oco` / `submit_bracket` is the completion
+        // path, and needs the group reassembled from its siblings rather than
+        // resurrected one leg at a time.
+        if let Some(o) = self.orders.iter().find(|o| o.id == order_id && o.state == OrderState::Draft) {
+            if is_group_leg(o.source) {
+                let kind = if o.source == OrderSource::Oco { "OCO" } else { "bracket" };
+                report(ErrorLevel::Warn, "order_manager", "confirm_leg_refused",
+                    format!("order {order_id} is a {kind} leg — confirming it alone would \
+                             submit it without its group link, so both legs could fill. \
+                             Confirm or cancel the whole group instead."));
+                return false;
+            }
         }
 
         // T2: re-run financial risk validation against the draft's stored fields.
@@ -6968,6 +7004,57 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.state, OrderState::Draft,
             "order state must remain Draft after halted confirm");
+    }
+
+    // ── AT-018: a group leg must not be confirmed alone ──────────────────────
+
+    /// AUDIT 2026-08-02 (AT-018, P1): `confirm` re-submits through the
+    /// SINGLE-order broker endpoint, which carries no ocaGroup and no bracket
+    /// parent. Confirming one Draft leg placed it standalone with its sibling
+    /// link severed — both OCO legs could then fill, doubling the position.
+    #[test]
+    fn confirming_a_single_oco_or_bracket_leg_is_refused() {
+        for src in [OrderSource::Oco, OrderSource::Bracket] {
+            let mut m = fresh_manager();
+            m.armed = false; // so the order lands in Draft
+            let now = epoch_ms();
+            let id = m.next_id; m.next_id += 1;
+            m.orders.push(ManagedOrder {
+                id, client_order_id: format!("leg-{id}"),
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Sell,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(105.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
+                state: OrderState::Draft, pair_id: None,
+                trail_amount: None, trail_percent: None,
+                option_symbol: None, option_con_id: None,
+                source: src,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
+                tif: 0, outside_rth: false,
+                state_history: vec![(OrderState::Draft, ts_from_ms(now))],
+                rejection_reason: None,
+                modify_version: 0, modify_inflight: false, modify_pending_price: None,
+            });
+
+            assert!(!m.confirm(id),
+                "{src:?} leg must not be confirmable alone — the single-order \
+                 endpoint would drop its group link and both legs could fill");
+            assert_eq!(m.orders.iter().find(|o| o.id == id).map(|o| o.state),
+                Some(OrderState::Draft),
+                "a refused confirm must leave the leg in Draft, not half-submitted");
+        }
+    }
+
+    /// Only OCO and bracket legs are group members — every other source is a
+    /// standalone order and must stay confirmable.
+    #[test]
+    fn only_group_sources_are_treated_as_legs() {
+        assert!(is_group_leg(OrderSource::Oco));
+        assert!(is_group_leg(OrderSource::Bracket));
+        for src in [OrderSource::ChartClick, OrderSource::DomLadder, OrderSource::DomButton,
+                    OrderSource::OrderPanel, OrderSource::Hotkey, OrderSource::Api] {
+            assert!(!is_group_leg(src),
+                "{src:?} is a standalone order — the group guard must not block it");
+        }
     }
 
     // ── AT-016/AT-017: live orders must never be restored as paper ───────────
