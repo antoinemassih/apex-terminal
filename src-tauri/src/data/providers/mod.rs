@@ -31,7 +31,6 @@ pub mod provider;
 pub mod subscription_manager;
 pub mod fallback;
 pub mod cached;
-pub mod replay;
 pub mod apex_data;
 pub mod ib;
 pub mod crypto;
@@ -47,6 +46,5 @@ pub use provider::{
 pub use subscription_manager::SubscriptionManager;
 pub use fallback::FallbackProvider;
 pub use cached::CachedProvider;
-pub use replay::ReplayProvider;
 pub use http_fallback::HttpFallbackProvider;
 pub use mock::{MockFrame, MockMarketDataProvider};

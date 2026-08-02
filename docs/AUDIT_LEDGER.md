@@ -42,6 +42,43 @@ themselves are already pushed and left as-is; use this table to read them.
 Correct as cited: AT-002, AT-004, AT-005, AT-007, AT-008, AT-009, AT-010,
 AT-026, AT-073, AT-075, AT-124.
 
+
+## New findings from verification (2026-08-02) — not in the original audit
+
+Surfaced while verifying existing items. Ids continue the AT- sequence.
+
+- [ ] **AT-142** `P1` `C` `TRADING` — `gpu.rs::tick_pane_frame` contains a LIVE synthetic
+  tick/candle generator (random walk, Box-Muller) that writes invented candles into
+  `chart.bars`. Gated at RUNTIME, not compile time: `!symbol_meta.is_crypto() &&
+  !apex_data::is_enabled()`. So a release build with ApexData disabled fabricates
+  price data on a non-crypto symbol — and unlike the chain/gamma/CVD paths it threads
+  NO `placeholder`/`synthetic` flag out to a badge. Bigger accident surface than the
+  four dead generators removed in this pass.
+- [ ] **AT-143** `P1` `C` `DATA` — `dom_feed.rs:99` tags each inbound frame with the
+  CURRENT global `ACTIVE_SYMBOL` rather than the symbol the socket was dialled with,
+  so `ChartCommand::DomLevels` can carry the wrong symbol during a switch or reconnect
+  storm — one instrument's ladder routed into another's DOM panel.
+- [ ] **AT-144** `P2` `C` `STATE` — `persist_supervisor`'s `SHUTDOWN` is a process-global
+  `OnceLock<AtomicBool>` that is never reset, so after all windows close and
+  `open_window` restarts the event loop, the new supervisor reads the latched flag and
+  dies immediately. Persistence is dead for the rest of the process lifetime.
+- [ ] **AT-145** `P2` `C` `UX` — `news_panel::draw_content` renders the headline list
+  TWICE (a `NewsRow` loop outside the scroll area, then a `PanelListRow` loop inside).
+  Every headline appears twice; only the first copy's click was wired.
+
+### Corrections to original findings
+
+- **AT-064 / ThemeRegistry** — the audit counted `registry.rs` (266) twice. Real total
+  is **979 LOC** (registry.rs 266 + snapshot.rs 713), not 1,245.
+- **Subpixel text** — the audit's 2,105 LOC is three whole files summed. Only
+  **~1,230** is subpixel-specific; the remaining ~1,660 in `text_engine.rs` /
+  `polished_label.rs` is the live grayscale cosmic-text backend with real consumers.
+- **`chart/state`** — the audit's "delete it, it is unreachable" premise is **WRONG**.
+  `persistence/drawing_db.rs` consumes `DrawingKind` / `DrawingFlags` / `Point` and
+  `codec::db::points_packing` at ~40 call sites. Roughly 1,481 of the 2,583 LOC are in
+  the live compile closure. Only the XOL/file_io/commands trio (~1,102 LOC) is
+  genuinely dead.
+
 ## Progress
 
 - Total: **141**

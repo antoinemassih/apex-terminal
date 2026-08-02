@@ -42,8 +42,7 @@ use crate::chart_renderer::ui::style as style;
 use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
 use crate::chart_renderer::compute::{
     compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic,
-    compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike,
-    get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku,
+    compute_vwap, detect_divergences, compute_atr, compute_bollinger, compute_ichimoku,
     compute_psar, compute_supertrend, compute_keltner, compute_adx,
     compute_cci, compute_williams_r,
 };
