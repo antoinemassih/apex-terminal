@@ -150,7 +150,8 @@ fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
 
     let result;
     // Deferred work to execute after the ORDER_MANAGER guard drops (CC1).
-    let deferred_snapshot: Option<Vec<ManagedOrder>>;
+    // AT-097: carries the publish sequence alongside the clone.
+    let deferred_snapshot: Option<(u64, Vec<ManagedOrder>)>;
     let deferred_journal: Vec<JournalEvent>;
 
     {
@@ -164,7 +165,11 @@ fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
         // consistent snapshot clone while still holding the lock.
         deferred_snapshot = if g.needs_snapshot {
             g.needs_snapshot = false;
-            Some(g.orders.clone())
+            // AT-097: stamp the clone WHILE holding the guard, so ordering
+            // reflects when the data was taken rather than when this thread
+            // happens to reach the snapshot slot after releasing the lock.
+            g.snapshot_seq += 1;
+            Some((g.snapshot_seq, g.orders.clone()))
         } else {
             None
         };
@@ -177,8 +182,8 @@ fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
     // guard has been dropped. This breaks the nested tri-lock chain:
     //   ORDER_MANAGER → ORDERS_SNAPSHOT (snapshot::publish)
     //   ORDER_MANAGER → WAL_LOCK        (journal::append)
-    if let Some(orders) = deferred_snapshot {
-        snapshot::publish(&orders);
+    if let Some((seq, orders)) = deferred_snapshot {
+        snapshot::publish(seq, &orders);
     }
     for ev in deferred_journal {
         journal::append(ev);
@@ -999,6 +1004,11 @@ pub(crate) struct OrderManager {
     // `deferred_journal`: journal events queued by `transition`/`submit`/
     // `cancel` that should be appended after the guard drops.
     needs_snapshot: bool,
+    /// AT-097: monotonic publish sequence, assigned under the ORDER_MANAGER
+    /// guard so `snapshot::publish` can discard a clone that was taken earlier
+    /// but reached the slot later. Never reset — wrapping would take ~584 years
+    /// of continuous publishing at 1 GHz.
+    snapshot_seq: u64,
     deferred_journal: Vec<JournalEvent>,
 }
 
@@ -1034,6 +1044,7 @@ impl OrderManager {
             realized_pnl_today: 0.0,
             daily_loss_date: today_day_index(),
             needs_snapshot: false,
+            snapshot_seq: 0,
             deferred_journal: Vec::new(),
         }
     }

@@ -269,7 +269,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [ ] **AT-086** `P2` `W` `STATE` — Closing ANY chart window permanently kills debounced persistence for the whole process
 - [ ] **AT-087** `P2` `C` `STATE` — Every chart window creates its own 6 Stores pointed at the SAME 6 file paths, and they are never unregistered — closed windows overwrite live ones on quit
 - [ ] **AT-088** `P2` `C` `STATE` — The designed state architecture covers 6 of ~193 module-level globals — the rest is ad-hoc accretion with no ownership model
-- [ ] **AT-089** `P2` `C` `STATE` — atomic_write uses a fixed shared `<path>.tmp` sibling, and two threads can write the same store path concurrently
+- [x] **AT-089** `P2` `C` `STATE` — atomic_write uses a fixed shared `<path>.tmp` sibling, and two threads can write the same store path concurrently
 - [ ] **AT-090** `P2` `C` `STATE` — dom_feed's single global ACTIVE_SYMBOL is driven per-frame from per-pane state — two open DOM ladders on different symbols cause a permanent reconnect storm
 - [ ] **AT-091** `P2` `C` `TRADING` — A partially-filled order books P&L on its FULL size — `filled_qty.max(qty)` — feeding a wrong number into the daily-loss circuit breaker
 - [ ] **AT-092** `P2` `C` `TRADING` — An OCO leg whose conId lookup fails is silently dropped, and the surviving legs' backend ids are then mapped positionally onto the local orders
@@ -286,6 +286,6 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [ ] **AT-127** `P3` `C` `OTHER` — A full Taffy flexbox engine is a hard dependency for 5 of 217 chart UI files
 - [ ] **AT-130** `P3` `C` `OTHER` — Nine kit widgets are single-consumer domain code parked in the design system
 - [ ] **AT-134** `P3` `W` `STATE` — CountingAlloc is installed as the global allocator in release builds — 4 contended atomic RMWs on adjacent statics for every heap allocation
-- [ ] **AT-135** `P3` `W` `STATE` — ORDERS_SNAPSHOT publish-after-unlock has no ordering guard — the order ledger and on-chart order lines can go permanently stale
+- [x] **AT-135** `P3` `W` `STATE` — ORDERS_SNAPSHOT publish-after-unlock has no ordering guard — the order ledger and on-chart order lines can go permanently stale
 - [ ] **AT-136** `P3` `C` `STATE` — Per-pane and per-window UI state parked in single-slot process globals — the options-chain seat set is cleared by whichever surface renders last
 - [ ] **AT-141** `P3` `C` `UX` — Seasonality month attribution drifts across leap-year boundaries, misfiling early-January bars as December
