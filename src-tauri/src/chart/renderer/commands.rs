@@ -769,22 +769,43 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             }
         }
 
+        // AUDIT 2026-08-02 (AT-010, P0): these two reducers used to mutate ONLY
+        // `p.orders` — the pane's local `ChartOrder` view objects. They never
+        // touched OrderManager and therefore never reached the broker. Clicking
+        // "Cancel All" on live working orders repainted them as Cancelled while
+        // they stayed live at the broker; the per-frame reconcile from
+        // `orders_snapshot()` then restored the true status, so the lie was
+        // brief but the orders were never cancelled.
+        //
+        // `commands.rs` had ZERO `order_manager::` references — the whole
+        // AppCommand order-action layer was a local-state simulator sitting in
+        // front of a live-money system.
+        //
+        // Both now drive the manager and let the reconcile reflect real state.
+        // We deliberately do NOT write `o.status` here: the manager is the
+        // source of truth and the snapshot is what publishes it. Writing local
+        // status too would just re-create the same lie for one frame.
         AppCommand::PlaceAllDraftOrders => {
-            for p in panes.iter_mut() {
-                for o in &mut p.orders {
-                    if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; }
-                }
+            use crate::chart_renderer::trading::order_manager::{self, OrderState};
+            let draft_ids: Vec<u64> = order_manager::orders_snapshot()
+                .orders.iter()
+                .filter(|o| o.state == OrderState::Draft)
+                .map(|o| o.id)
+                .collect();
+            for id in draft_ids {
+                // confirm_order re-runs the kill/halt gate and full risk
+                // validation per order, so a bulk place cannot slip an order
+                // past a gate that a single place would have caught.
+                order_manager::confirm_order(id);
             }
         }
 
         AppCommand::CancelAllOrders => {
-            for p in panes.iter_mut() {
-                for o in &mut p.orders {
-                    if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed {
-                        o.status = OrderStatus::Cancelled;
-                    }
-                }
-            }
+            use crate::chart_renderer::trading::order_manager;
+            // Cancels every non-terminal order through the guarded path and
+            // persists. Drafts are local-only until confirmed, so cancelling
+            // them is a manager-side state change, not a broker call.
+            order_manager::cancel_all_working();
         }
 
         AppCommand::ClearOrderHistory => {

@@ -1913,11 +1913,19 @@ impl OrderManager {
 
         if let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state == OrderState::Draft) {
             let now = epoch_ms();
+            // AUDIT 2026-08-02 (AT-008, P0): this used to push PendingSubmit and
+            // then Working on the SAME tick, before the broker was called — the
+            // exact optimistic Working-before-Ack defect that A2 fixed in
+            // `submit()`. Combined with the spawned thread's `if let Ok(..)`
+            // (no else), a broker rejection left the order persisted as Working
+            // with `backend_order_id: None`: uncancelable (cancel takes the
+            // `(_, None)` arm), unreconcilable, and invisible as a failure.
+            //
+            // Now: stay in PendingSubmit and let the broker Ack drive the
+            // transition, exactly as `submit()` does.
             o.state = OrderState::PendingSubmit;
             o.updated_at = ts_from_ms(now);
             o.state_history.push((OrderState::PendingSubmit, ts_from_ms(now)));
-            o.state = OrderState::Working;
-            o.state_history.push((OrderState::Working, ts_from_ms(now)));
             // Submit to ApexIB
             let sym = o.symbol.clone();
             let side_str = match o.side { OrderSide::Buy | OrderSide::TriggerBuy => "buy", _ => "sell" };
@@ -1934,7 +1942,23 @@ impl OrderManager {
             let idem_key = o.client_order_id.clone();
             let order_id_copy = order_id;
             let side_owned: String = side_str.to_string();
+            // AT-008: the WAL needs the client id on both the Attempt and the
+            // Ack/Fail so a confirm can be replayed and reconciled like a submit.
+            let cid_thread = idem_key.clone();
             let broker = Arc::clone(&self.broker);
+            // AT-008: record the attempt BEFORE the broker call. Without this the
+            // WAL had no record a confirm was ever tried, so orphan recovery
+            // could not tell "never sent" from "sent and lost".
+            self.deferred_journal.push(JournalEvent::Attempt {
+                client_id: idem_key.clone(),
+                kind: AttemptKind::Submit,
+                ts_ms: now,
+                payload: serde_json::json!({
+                    "symbol": sym.clone(), "side": side_str, "qty": qty,
+                    "order_type": ot_idx, "price": price, "stop_price": stop_price,
+                    "via": "confirm",
+                }),
+            });
             crate::foundation::guard::spawn_guarded("order_manager", move || {
                 // P0-3: kill/halt re-check before the broker call (confirm path).
                 if kill_recheck_abort(&[order_id_copy]) { return; }
@@ -1950,14 +1974,53 @@ impl OrderManager {
                     tif: intent_tif,
                     outside_rth,
                 };
-                if let Ok(ib_oid) = broker.submit(&args) {
-                    with_mgr(|mgr| {
-                        if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
-                            o.backend_order_id = Some(ib_oid);
-                        }
-                        // CC1: defer snapshot publish until ORDER_MANAGER guard drops.
-                        mgr.needs_snapshot = true;
-                    });
+                // AUDIT 2026-08-02 (AT-008, P0): this was `if let Ok(..)` with no
+                // else — the broker's Err was dropped on the floor and no journal
+                // event was written either way, so a rejected confirm was
+                // indistinguishable from a successful one in both the UI and the
+                // WAL. Mirrors `submit()`'s Ok/Err arms exactly.
+                match broker.submit(&args) {
+                    Ok(ib_oid) => {
+                        with_mgr(|mgr| {
+                            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
+                                o.backend_order_id = Some(ib_oid.clone());
+                                // Only the Ack promotes to Working, and only from
+                                // PendingSubmit — a poller-driven reconcile that
+                                // landed first must not be clobbered.
+                                if o.state == OrderState::PendingSubmit {
+                                    let now = epoch_ms();
+                                    o.state = OrderState::Working;
+                                    o.updated_at = ts_from_ms(now);
+                                    o.state_history.push((OrderState::Working, ts_from_ms(now)));
+                                }
+                            }
+                            mgr.needs_snapshot = true;
+                            mgr.save_to_disk();
+                        });
+                        journal::append(JournalEvent::Ack {
+                            client_id: cid_thread, backend_id: Some(ib_oid), ts_ms: epoch_ms(),
+                        });
+                    }
+                    Err(reason) => {
+                        journal::append(JournalEvent::Fail {
+                            client_id: cid_thread.clone(), reason: reason.clone(),
+                            ts_ms: epoch_ms(),
+                        });
+                        with_mgr(|mgr| {
+                            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
+                                if !o.state.is_terminal() {
+                                    let now = epoch_ms();
+                                    o.state = OrderState::Rejected;
+                                    o.rejection_reason = Some(reason.clone());
+                                    o.updated_at = ts_from_ms(now);
+                                    o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
+                                }
+                            }
+                            mgr.needs_snapshot = true;
+                        });
+                        report(ErrorLevel::Warn, "broker", "confirm_rejected",
+                            format!("confirm of order {order_id_copy} rejected: {reason}"));
+                    }
                 }
             });
             // CC1: defer snapshot publish — Draft -> Working transition will be
@@ -1997,6 +2060,27 @@ impl OrderManager {
         }
         if intent.qty > self.risk_limits.max_order_qty {
             return (OrderResult::Rejected(format!("Qty {} exceeds max {}", intent.qty, self.risk_limits.max_order_qty)), None, None);
+        }
+
+        // AUDIT 2026-08-02 (AT-009, P0): a bracket is three LIVE legs and used to
+        // reach the broker having passed only kill / halt / rate-limit / qty.
+        // Every financial gate lived in `validate_risk` and was skipped entirely:
+        // net position cap, in-flight working-qty cap, fat-finger, max notional
+        // (per-order soft gate AND the working+new aggregate hard reject), the
+        // market-notional backstop, the daily-loss breaker and buying power.
+        //
+        // The practical consequence was that a bracket could open a position an
+        // identical single-leg order would have been rejected for — the richer
+        // order type had the weaker gate.
+        //
+        // Validate the ENTRY intent, exactly as `submit()` does. The tp/sl legs
+        // are exits on the opposite side: they reduce exposure rather than add
+        // it, so validating them against a position cap would reject the very
+        // orders that protect the position (see AT-013, the same bug in the
+        // halt path). Entry is the only risk-bearing leg.
+        let paper = self.paper_mode;
+        if let Err(rejection) = self.validate_risk(&intent, paper) {
+            return (rejection, None, None);
         }
 
         // Create entry order
@@ -6687,6 +6771,59 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.state, OrderState::Draft,
             "order state must remain Draft after halted confirm");
+    }
+
+    // ── AT-009: validate_risk coverage for the BRACKET path ───────────────────
+
+    /// AUDIT 2026-08-02 (AT-009, P0): `submit_bracket` used to check only
+    /// kill / halt / rate-limit / qty and then push three LIVE legs at the
+    /// broker. Every gate inside `validate_risk` was bypassed.
+    ///
+    /// This test deliberately exercises the in-flight working-qty cap rather
+    /// than `max_order_qty`: the old code already checked `max_order_qty`
+    /// inline, so asserting on that would pass against the unfixed build and
+    /// prove nothing. The working-qty aggregate lives ONLY in `validate_risk`,
+    /// so it fails without the fix and passes with it.
+    #[test]
+    fn submit_bracket_enforces_position_cap_via_validate_risk() {
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_position_qty = 1_000;
+        // Keep the per-order gate out of the way — this is about the aggregate.
+        m.risk_limits.max_order_qty = 10_000;
+
+        // Pre-load 900 working buys in AAPL.
+        let now = epoch_ms();
+        m.orders.push(ManagedOrder {
+            id: 1, client_order_id: "pre-bracket-1".into(),
+            symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+            order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+            qty: 900, filled_qty: 0, avg_fill_price: Price::ZERO,
+            state: OrderState::Working, pair_id: None,
+            trail_amount: None, trail_percent: None,
+            option_symbol: None, option_con_id: None,
+            source: OrderSource::OrderPanel,
+            created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
+            tif: 0, outside_rth: false,
+            state_history: vec![(OrderState::Working, ts_from_ms(now))],
+            rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
+        });
+        m.next_id = 2;
+
+        let orders_before = m.orders.len();
+
+        // 900 working + 200 new = 1100 > 1000 cap → must reject.
+        let intent = limit_intent("AAPL", OrderSide::Buy, 100.0, 200);
+        let (result, tp, sl) = m.submit_bracket(intent, 110.0, 90.0);
+
+        assert!(matches!(result, OrderResult::Rejected(_)),
+            "a bracket that breaches the position cap must be rejected — the \
+             richer order type must not have the weaker gate; got {result:?}");
+        assert!(tp.is_none() && sl.is_none(),
+            "a rejected bracket must not hand back take-profit/stop-loss ids");
+        assert_eq!(m.orders.len(), orders_before,
+            "a rejected bracket must not leave any of its three legs in orders[]");
     }
 
     // ── Wave 2: validate_risk coverage for OCO path ───────────────────────────
