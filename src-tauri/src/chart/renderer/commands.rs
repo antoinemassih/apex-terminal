@@ -320,6 +320,12 @@ pub enum AppCommand {
     /// maximized state, else every later scenario in the same app instance runs
     /// at a size it was not written against.
     SetWindowMaximized { on: bool },
+    /// Switch the watchlist side panel's tab (stocks | chain | heat | scan).
+    ///
+    /// Added so the harness can actually OPEN the options-chain grid. Without
+    /// it the grid's code path could not be exercised at all, so any claim
+    /// about its quote-seat behaviour was untestable.
+    SetWatchlistTab { tab: String },
     /// Set a spreadsheet cell's raw text (grows the grid as needed).
     #[cfg(debug_assertions)]
     SetCell { pane: usize, row: usize, col: usize, text: String },
@@ -1259,6 +1265,21 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         AppCommand::SetWindowMaximized { on } => {
             crate::chart_renderer::bug_anchor::request_maximized(on);
+        }
+
+        AppCommand::SetWatchlistTab { tab } => {
+            use crate::chart_renderer::gpu::WatchlistTab as T;
+            let t = match tab.to_ascii_lowercase().as_str() {
+                "chain"  => Some(T::Chain),
+                "heat"   => Some(T::Heat),
+                "scan"   => Some(T::Scan),
+                "stocks" => Some(T::Stocks),
+                other => { tracing::warn!("SetWatchlistTab: unknown tab {other:?}"); None }
+            };
+            if let Some(t) = t {
+                watchlist.tab = t;
+                watchlist.open = true;
+            }
         }
 
         AppCommand::SetObjectTree { open } => {

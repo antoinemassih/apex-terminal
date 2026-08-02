@@ -2345,6 +2345,10 @@ fn parse_app_command(
                 .unwrap_or(1080.0) as f32;
             Ok(AppCommand::SetViewportSize { w, h })
         }
+        "SetWatchlistTab" | "set_watchlist_tab" => {
+            let tab = body["tab"].as_str().unwrap_or("chain").to_string();
+            Ok(AppCommand::SetWatchlistTab { tab })
+        }
         "SetWindowMaximized" | "set_window_maximized" | "maximize" => {
             let on = body["on"].as_bool().unwrap_or(true);
             Ok(AppCommand::SetWindowMaximized { on })

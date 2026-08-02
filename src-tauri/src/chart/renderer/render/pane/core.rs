@@ -80,6 +80,46 @@ const PANE_POPUP_RIGHT_INSET: f32 = 30.0;
 /// trader actually reads at a glance, not to what the chain contains.
 pub(crate) const NEAR_STRIKE_SEATS: usize = 10;
 
+/// Contracts the options-chain GRID actually drew this frame.
+///
+/// The grid's visible window depends on num_strikes, a center offset, a
+/// Count-vs-Pct strike mode and an nmf sigma mode. Recomputing that in the seat
+/// request would duplicate non-trivial logic and drift out of sync — the same
+/// mistake as two places computing a button width. So the RENDERER publishes
+/// what it drew and the seat request consumes it: one source of truth, correct
+/// for every mode by construction, and naturally empty when the panel is closed
+/// (a closed panel needs no seats).
+///
+/// Replaces a `+/-8% of spot` filter that seated ~120 strikes x 2 sides x 2
+/// expiries — about 480 contracts against a ~1000 account-wide pool with half
+/// reserved. That was the dominant draw on the shared pool, far larger than the
+/// strike pills it sat next to.
+static VISIBLE_CHAIN_CONTRACTS: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+/// Start a new frame's visible-contract collection. Called by the grid before
+/// it draws; if the grid never runs, the set stays empty and nothing is seated.
+pub(crate) fn chain_visible_begin() {
+    if let Ok(mut g) = VISIBLE_CHAIN_CONTRACTS.lock() {
+        g.get_or_insert_with(Default::default).clear();
+    }
+}
+
+/// Record a contract the grid is drawing.
+pub(crate) fn chain_visible_add(contract: &str) {
+    if contract.starts_with("O:") {
+        if let Ok(mut g) = VISIBLE_CHAIN_CONTRACTS.lock() {
+            g.get_or_insert_with(Default::default).insert(contract.to_string());
+        }
+    }
+}
+
+pub(crate) fn chain_visible_snapshot() -> std::collections::HashSet<String> {
+    VISIBLE_CHAIN_CONTRACTS.lock().ok()
+        .and_then(|g| g.clone())
+        .unwrap_or_default()
+}
+
 static REVEALED_STRIKES: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
     std::sync::Mutex::new(None);
 
@@ -10350,12 +10390,19 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         // chain's bid/ask tick sub-second off the quotes WS instead of waiting
         // for the ~6s REST re-seed. The grid render overlays these per row.
         {
-            let spot_hint = watchlist.chain.underlying_price;
-            for ch in [&watchlist.chain.near, &watchlist.chain.far] {
-                for r in ch.calls.iter().chain(ch.puts.iter()) {
-                    if !r.contract.starts_with("O:") { continue; }
-                    if spot_hint > 0.0 && (r.strike - spot_hint).abs() > spot_hint * 0.08 { continue; }
-                    quote_set.insert(r.contract.clone());
+            // Exactly the rows the grid drew — see chain_visible_begin/add.
+            //
+            // Gated on the panel actually being open. The published set is only
+            // RESET when the grid renders, so when the panel closes it freezes
+            // at its last contents rather than emptying — measured: seats stayed
+            // at 45 after closing the tab, holding seats for rows nobody can
+            // see. Seats idle out after 5 minutes upstream, but until then that
+            // is pool taken from every other client for nothing.
+            let chain_open = watchlist.open
+                && matches!(watchlist.tab, crate::chart_renderer::gpu::WatchlistTab::Chain);
+            if chain_open {
+                for c in chain_visible_snapshot() {
+                    quote_set.insert(c);
                 }
             }
         }

@@ -1905,7 +1905,16 @@ if is_spawn || watchlist.open {
                         };
 
                         // Calls (OTM at top, ATM at bottom)
-                        for row in &sorted_calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
+                        for row in &sorted_calls {
+                            // Publish what we DRAW so the quote-seat request asks
+                            // for exactly these rows. Previously the seat request
+                            // recomputed a +/-8%-of-spot window of its own, which
+                            // seated ~480 contracts against a ~1000 account-wide
+                            // pool -- rows nobody was looking at, taken from a
+                            // pool every client shares.
+                            crate::chart_renderer::render::pane::chain_visible_add(&row.contract);
+                            render_row(ui, row, true, &exp_label, sym, saved, select_mode, w);
+                        }
 
                         // ── ATM price badge divider ──
                         ui.add_space(gap_xs());
@@ -1938,7 +1947,10 @@ if is_spawn || watchlist.open {
                         ui.add_space(gap_xl());
 
                         // Puts (ATM at top, OTM at bottom)
-                        for row in &sorted_puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }
+                        for row in &sorted_puts {
+                            crate::chart_renderer::render::pane::chain_visible_add(&row.contract);
+                            render_row(ui, row, false, &exp_label, sym, saved, select_mode, w);
+                        }
                         ui.add_space(gap_sm());
                     };
 
@@ -1948,6 +1960,12 @@ if is_spawn || watchlist.open {
                         // min_width removed — was preventing sidebar resize
                         let sym = watchlist.chain.symbol.clone();
                         let sel = watchlist.chain.select_mode;
+                        // Reset the drawn-contract set for this frame BEFORE either
+                        // expiry block runs. Without this it only ever grows, so
+                        // scrolling away from strikes would keep their seats alive
+                        // forever and the set would creep back toward the ~480 this
+                        // change exists to remove.
+                        crate::chart_renderer::render::pane::chain_visible_begin();
                         let calls_0 = watchlist.chain.near.calls.clone();
                         let puts_0 = watchlist.chain.near.puts.clone();
                         let calls_f = watchlist.chain.far.calls.clone();

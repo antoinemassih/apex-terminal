@@ -24,6 +24,10 @@
 //! the decision to defer it indefinitely.
 
 mod core;
+// The options-chain grid (watchlist_panel) publishes the rows it draws here so
+// the quote-seat request asks for exactly those contracts. Re-exported rather
+// than making the whole module public.
+pub(crate) use core::{chain_visible_add, chain_visible_begin};
 mod deferred;
 mod pane_context_menu;
 mod keyboard_shortcuts;
