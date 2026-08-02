@@ -59,6 +59,70 @@ const PANE_POPUP_GAP_Y: f32 = 4.0;
 /// template popup. Was a magic `- 30.0`.
 const PANE_POPUP_RIGHT_INSET: f32 = 30.0;
 
+// ── Option-pill seat policy ──────────────────────────────────────────────────
+//
+// We used to request a quote SEAT for every row in the strikes overlay — 302
+// contracts from a single pane, against an account-wide pool of ~1000 with half
+// reserved for standing coverage. One pane was asking for roughly 60% of what
+// is available, two panes would exceed it, and the spec lists this exactly:
+// "Seat every contract in the chain — blows the shared ~1,000 budget." Seat
+// denial is silent, so over-asking degrades the feed for every client on the
+// account without ever surfacing an error.
+//
+// Policy now: seat only the strikes NEAR the money, plus anything the user has
+// explicitly revealed by clicking. Far strikes render greyed with no price
+// until asked for. That keeps the request proportional to what is actually
+// being read, and makes a revealed strike a deliberate act.
+/// Strikes each side of spot that get a live seat without being asked for.
+pub(crate) const NEAR_STRIKE_SEATS: usize = 12;
+
+static REVEALED_STRIKES: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+/// Mark a contract as user-revealed: it gains a seat and starts showing a price.
+pub(crate) fn reveal_strike(contract: &str) {
+    if let Ok(mut g) = REVEALED_STRIKES.lock() {
+        g.get_or_insert_with(Default::default).insert(contract.to_string());
+    }
+}
+
+pub(crate) fn strike_revealed(contract: &str) -> bool {
+    REVEALED_STRIKES.lock().ok()
+        .and_then(|g| g.as_ref().map(|s| s.contains(contract)))
+        .unwrap_or(false)
+}
+
+/// The contracts that should hold a seat: the `NEAR_STRIKE_SEATS` strikes
+/// closest to `spot` on each side, plus every user-revealed contract.
+///
+/// Called by the seat request AND by the pill renderer, so "is this pill live?"
+/// and "did we ask for it?" can never disagree — a pill showing a price we
+/// never seated would be showing a stale seed quote as if it were live.
+pub(crate) fn seatable_contracts<'a, I>(rows: I, spot: f32) -> std::collections::HashSet<String>
+where I: Iterator<Item = (&'a str, f32, bool)> {
+    let mut calls: Vec<(&str, f32)> = Vec::new();
+    let mut puts:  Vec<(&str, f32)> = Vec::new();
+    let mut out = std::collections::HashSet::new();
+    for (contract, strike, is_call) in rows {
+        if contract.is_empty() { continue; }
+        if strike_revealed(contract) { out.insert(contract.to_string()); }
+        // Match the RENDERER's sides exactly: it draws calls above spot and puts
+        // at/below spot. Ranking every strike purely by distance spent half the
+        // put budget on puts above spot — which are never drawn — and starved
+        // the ones that are, so pills well inside the near window came up greyed.
+        // A seat we never display is a seat taken from the shared pool for
+        // nothing.
+        if is_call && strike > spot { calls.push((contract, strike)) }
+        else if !is_call && strike <= spot { puts.push((contract, strike)) }
+    }
+    for side in [&mut calls, &mut puts] {
+        side.sort_by(|a, b| (a.1 - spot).abs().partial_cmp(&(b.1 - spot).abs())
+            .unwrap_or(std::cmp::Ordering::Equal));
+        for (c, _) in side.iter().take(NEAR_STRIKE_SEATS) { out.insert(c.to_string()); }
+    }
+    out
+}
+
 pub(crate) fn render_toolbar(
     ctx: &egui::Context,
     panes: &mut Vec<Chart>,
@@ -3045,6 +3109,14 @@ fn render_chart_pane(
 
             // Collect visible strikes with their natural Y positions
             struct StrikeInfo { strike: f32, bid: f32, ask: f32, is_call: bool, natural_y: f32, display_y: f32, contract: String }
+            // Same seat policy the quote request uses, so a pill can never show a
+            // price for a contract we never asked to be seated.
+            let seat_set = seatable_contracts(
+                calls.iter().map(|r| (r.contract.as_str(), r.strike, true))
+                    .chain(puts.iter().map(|r| (r.contract.as_str(), r.strike, false))),
+                last_price,
+            );
+
             let mut strikes: Vec<StrikeInfo> = Vec::new();
             for (row, is_call) in calls.iter().map(|r| (r, true)).chain(puts.iter().map(|r| (r, false))) {
                 let sy = py(row.strike);
@@ -3129,13 +3201,22 @@ fn render_chart_pane(
                 // Bid × Ask — max-contrast fg over the pill fill, larger font.
                 // Stale quotes are dimmed so they cannot be mistaken for live
                 // prices at a glance.
-                let px_col = if is_stale {
-                    color_alpha(contrast_fg(base_col), 90)
+                // Far strikes hold no seat, so their price is a stale seed quote.
+                // Showing it would be indistinguishable from a live one, so it is
+                // withheld until the user asks — click reveals (and seats) it.
+                let seated = seat_set.contains(&si.contract);
+                if seated {
+                    let px_col = if is_stale {
+                        color_alpha(contrast_fg(base_col), 90)
+                    } else {
+                        contrast_fg(base_col)
+                    };
+                    painter.text(egui::pos2(split_x + 5.0, si.display_y), egui::Align2::LEFT_CENTER,
+                        &format!("{:.2} × {:.2}", si.bid, si.ask), mono_xs(), px_col);
                 } else {
-                    contrast_fg(base_col)
-                };
-                painter.text(egui::pos2(split_x + 5.0, si.display_y), egui::Align2::LEFT_CENTER,
-                    &format!("{:.2} × {:.2}", si.bid, si.ask), mono_xs(), px_col);
+                    painter.text(egui::pos2(split_x + 5.0, si.display_y), egui::Align2::LEFT_CENTER,
+                        "· · ·", mono_xs(), color_alpha(contrast_fg(base_col), 70));
+                }
 
                 // Right-edge freshness marker, outside the pill:
                 //   .  live theo (sub-second motion, modelled off a real NBBO)
@@ -3146,7 +3227,11 @@ fn render_chart_pane(
                 // which is absent from the mono face and therefore rendered as
                 // NOTHING — a staleness warning that is invisible is worse than
                 // no warning at all, because it reads as "checked, fine".
-                let (mark, mark_col) = if chart.overlay_chain_placeholder {
+                let (mark, mark_col) = if !seat_set.contains(&si.contract) {
+                    // Deliberately unseated: not a fault, not live. No marker —
+                    // the greyed "· · ·" already says "ask and I will fetch it".
+                    ("", egui::Color32::TRANSPARENT)
+                } else if chart.overlay_chain_placeholder {
                     ("?", t.warn)
                 } else if fresh.is_none() {
                     // No cache entry for this contract — provenance UNKNOWN.
@@ -3203,6 +3288,12 @@ fn render_chart_pane(
                             if chart_btn_rect.contains(pos) {
                                 watchlist.pending_opt_chart = Some(PendingOptionChart { symbol: chart.symbol.clone(), strike: si.strike, is_call: si.is_call, expiry: String::new() });
                                 watchlist.pending_opt_chart_contract = Some(si.contract.clone());
+                            } else if pill_rect.contains(pos) && !seat_set.contains(&si.contract) {
+                                // First click on a far strike REVEALS it: request a
+                                // seat and start showing a price. Opening an order
+                                // ticket for a contract whose price we are not
+                                // showing would be trading blind.
+                                reveal_strike(&si.contract);
                             } else if pill_rect.contains(pos) {
                                 // Open floating order pane
                                 let opt_type = if si.is_call { "C" } else { "P" };
@@ -10272,10 +10363,18 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             // overlay_calls/overlay_puts row — subscribe their OCCs so each
             // pill's bid/ask/IV is live, not stale from the seed fetch.
             if p.show_strikes_overlay {
-                for r in p.overlay_calls.iter().chain(p.overlay_puts.iter()) {
-                    if r.contract.starts_with("O:") {
-                        quote_set.insert(r.contract.clone());
-                    }
+                // NOT every row — see seatable_contracts. Seating the whole
+                // overlay asked for ~302 contracts from one pane against a
+                // ~1000 account-wide pool (half reserved), which is the spec's
+                // named anti-pattern and degrades dispatch for every client.
+                let spot = p.bars.last().map(|b| b.close).unwrap_or(0.0);
+                let seatable = seatable_contracts(
+                    p.overlay_calls.iter().map(|r| (r.contract.as_str(), r.strike, true))
+                        .chain(p.overlay_puts.iter().map(|r| (r.contract.as_str(), r.strike, false))),
+                    spot,
+                );
+                for c in seatable {
+                    if c.starts_with("O:") { quote_set.insert(c); }
                 }
             }
             // Floating order tickets / DOM sidebar / ladder all read live data

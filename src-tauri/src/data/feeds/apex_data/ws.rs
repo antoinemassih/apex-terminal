@@ -298,6 +298,29 @@ pub fn set_tape(symbols: &[String]) {
     with_subs(|s| { s.tape = symbols.iter().cloned().collect(); });
     push_subs();
 }
+/// How many quote SEATS we are currently asking ApexData for.
+///
+/// The number that matters for shared-pool etiquette: the account has ~1000
+/// subscription strings with half reserved, so this is the client's draw on a
+/// resource every other client shares.
+pub fn quotes_requested() -> usize {
+    manager().subs.lock().map(|g| g.quotes.len()).unwrap_or(0)
+}
+
+/// Of those seats, how many are OPTION contracts (OCC "O:" prefix).
+///
+/// Split out because stocks and options draw on the same request but behave
+/// completely differently: a handful of stock symbols is unavoidable and cheap,
+/// while options are where a client can quietly consume the whole shared pool.
+/// Reporting only the total hid that distinction — the first measurement after
+/// capping the strike seats read HIGHER than before, purely because stock
+/// symbols dominate the number.
+pub fn option_quotes_requested() -> usize {
+    manager().subs.lock()
+        .map(|g| g.quotes.iter().filter(|s| s.starts_with("O:")).count())
+        .unwrap_or(0)
+}
+
 pub fn set_quotes(symbols: &[String]) {
     with_subs(|s| { s.quotes = symbols.iter().cloned().collect(); });
     push_subs();

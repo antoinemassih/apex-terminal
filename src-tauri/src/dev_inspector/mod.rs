@@ -1262,6 +1262,11 @@ pub fn end_frame(
         "apex_data_subs": {
             "sent":       crate::apex_data::ws::SUBS_PUSH_SENT.load(std::sync::atomic::Ordering::Relaxed),
             "suppressed": crate::apex_data::ws::SUBS_PUSH_SUPPRESSED.load(std::sync::atomic::Ordering::Relaxed),
+            // Seats currently requested. Against a ~1000 account-wide pool with
+            // half reserved, this is the client's draw on a shared resource --
+            // seating the whole strikes overlay asked for 302 from ONE pane.
+            "quotes_requested": crate::apex_data::ws::quotes_requested(),
+            "option_quotes_requested": crate::apex_data::ws::option_quotes_requested(),
         },
         "panes":           panes_json,
         "watchlist": {
