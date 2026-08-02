@@ -543,14 +543,37 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                        };
 
             // 0a. Cache hit? (already seeded by prior REST or chain_delta)
+            //
+            // AUDIT 2026-08-02 (AT-005, P0): this short-circuit used to fire on
+            // ANY non-empty cache for the underlying. The cache key carries no
+            // expiry dimension, and `apex_data_chain_to_tuples` resolves the
+            // target by `min_by_key(|d| (d - target).abs())` — nearest available
+            // expiry, with no bound on how far off it may be.
+            //
+            // So: the cache is normally seeded by the default REST query
+            // (dte_max = 14). Ask for the 30D or 60D chain and the short-circuit
+            // hit, the resolver picked the furthest expiry it had — a ≤14-DTE
+            // one — and the grid rendered it under a "30D" label. Wrong
+            // expiry, wrong greeks, wrong theta, presented as the requested one.
+            //
+            // The cache may only satisfy the request if it actually holds an
+            // expiry at or beyond the target (minus a week of slack, since
+            // expiries are weekly/monthly and the nearest legitimate one can sit
+            // slightly inside the target). Otherwise fall through to REST, which
+            // queries with `dte_max = max(dte, 14)` and covers it.
             let cached = crate::apex_data::live_state::get_chain(&symbol);
-            if !cached.is_empty() {
+            if !cached.is_empty() && cache_covers_target_dte(&cached, dte) {
                 if let Some((calls, puts, spot)) = render_from(&cached, hint) {
                     crate::apex_log!("chain", "{} dte={} from cache: {} calls, {} puts",
                         symbol, dte, calls.len(), puts.len());
                     send_chain(calls, puts, spot);
                     return;
                 }
+            } else if !cached.is_empty() {
+                crate::apex_log!("chain",
+                    "{} dte={}: cache holds no expiry that far out — refetching \
+                     rather than rendering a nearer expiry under the wrong label",
+                    symbol, dte);
             }
 
             // 0b. REST with default filters (small payload, gzip).
@@ -693,6 +716,32 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
 /// ApexData doesn't expose per-contract volume or open interest today (spec §4.7) so those
 /// fields are zero — the existing UI handles zeros gracefully (shown as "-").
 /// Returns (calls, puts, effective_spot).
+/// Slack allowed when deciding whether a cached chain covers a requested DTE.
+///
+/// Expiries are weekly/monthly, so the nearest legitimate expiry to a 30-day
+/// request can sit a few days inside it. A week absorbs that without letting a
+/// ≤14-DTE cache masquerade as a 30- or 60-day chain.
+pub(crate) const DTE_CACHE_SLACK_DAYS: i64 = 7;
+
+/// True when `rows` contain an expiry far enough out to legitimately answer a
+/// request for `target_dte` days.
+///
+/// AUDIT 2026-08-02 (AT-005, P0): the chain cache is keyed on the underlying
+/// only — no expiry dimension — so "is there anything cached for SPY?" was
+/// being used to answer "is the 30-day chain cached?". See the call site in
+/// `fetch_chain_background` for the failure that allowed.
+pub(crate) fn cache_covers_target_dte(
+    rows: &[crate::apex_data::ChainRow],
+    target_dte: i32,
+) -> bool {
+    use chrono::{Utc, NaiveDate};
+    let today = Utc::now().date_naive();
+    let target = today + chrono::Duration::days(target_dte as i64);
+    rows.iter()
+        .filter_map(|r| NaiveDate::parse_from_str(&r.expiry, "%Y-%m-%d").ok())
+        .any(|d| (d - target).num_days() >= -DTE_CACHE_SLACK_DAYS)
+}
+
 pub(crate) fn apex_data_chain_to_tuples(
     rows: &[crate::apex_data::ChainRow],
     target_dte: i32,
@@ -2155,6 +2204,58 @@ pub(crate) fn fetch_overlay_bars_background(sym: String, tf: String) {
 mod tests {
     use super::*;
     use crate::apex_data::{StockSnapshot, DayAgg, PrevDayAgg, LastTrade, MinAgg, GroupedDailyBar};
+
+    // ── AT-005: chain cache must not answer for an expiry it does not hold ──
+
+    /// Build a minimal `ChainRow` at `days_out` from today. Only the fields the
+    /// DTE check reads need to be real; the rest are serde defaults.
+    fn row_at(days_out: i64) -> crate::apex_data::ChainRow {
+        let d = chrono::Utc::now().date_naive() + chrono::Duration::days(days_out);
+        serde_json::from_value(serde_json::json!({
+            "ticker": "O:SPY000000C00000000",
+            "underlying": "SPY",
+            "expiry": d.format("%Y-%m-%d").to_string(),
+            "side": "C",
+            "strike": 500.0,
+        })).expect("minimal ChainRow must deserialize")
+    }
+
+    /// AUDIT 2026-08-02 (AT-005, P0): the cache is keyed on the underlying with
+    /// no expiry dimension, and the expiry resolver picks the NEAREST available
+    /// date with no bound. A cache seeded by the default `dte_max = 14` query
+    /// therefore answered a 30D or 60D request with a ≤14-DTE chain rendered
+    /// under the requested label.
+    #[test]
+    fn chain_cache_does_not_answer_for_an_expiry_it_lacks() {
+        // A cache holding only short-dated expiries, as the default
+        // `dte_max = 14` REST query produces.
+        let short = vec![row_at(1), row_at(7), row_at(14)];
+
+        assert!(cache_covers_target_dte(&short, 0),
+            "0DTE request is covered by a cache holding a 1-day expiry");
+        assert!(cache_covers_target_dte(&short, 7),
+            "7DTE request is covered exactly");
+        assert!(cache_covers_target_dte(&short, 14),
+            "14DTE request is covered exactly");
+
+        assert!(!cache_covers_target_dte(&short, 30),
+            "a cache topping out at 14 DTE must NOT satisfy a 30D request — \
+             this is the P0: it used to render the 14-day chain labelled 30D");
+        assert!(!cache_covers_target_dte(&short, 60),
+            "nor a 60D request");
+    }
+
+    /// The slack exists because expiries are weekly/monthly — the nearest
+    /// legitimate expiry to a 30-day request can sit a few days inside it.
+    #[test]
+    fn chain_cache_dte_slack_absorbs_normal_expiry_spacing() {
+        // Nearest expiry is 26 days out for a 30-day request: within slack.
+        assert!(cache_covers_target_dte(&[row_at(26)], 30),
+            "26-day expiry must satisfy a 30D request (within the 7-day slack)");
+        // 20 days out is beyond slack — a materially shorter-dated chain.
+        assert!(!cache_covers_target_dte(&[row_at(20)], 30),
+            "20-day expiry is too far inside a 30D request to substitute");
+    }
 
     // ── is_stock_symbol filter ────────────────────────────────────────────
 
