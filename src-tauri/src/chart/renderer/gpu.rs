@@ -5457,11 +5457,23 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         style.visuals.window_corner_radius           = popup_r;
         style.visuals.menu_corner_radius             = popup_r;
 
-        // Spacing — more padding, balanced sides, taller items
-        style.spacing.button_padding                 = egui::vec2(12.0, 6.0);
-        style.spacing.menu_margin                    = egui::Margin { left: 10, right: 10, top: 8, bottom: 8 };
-        style.spacing.interact_size.y                = 26.0;
-        style.spacing.item_spacing                   = egui::vec2(6.0, 4.0);
+        // Spacing — more padding, balanced sides, taller items.
+        // M2.6: the CASCADE ROOT is on tokens now. These were hard literals
+        // (12/6 · 10/8 · 26 · 6/4), which meant egui-native widgets ignored
+        // both the per-style gap ladder AND the user's SpacingScale override
+        // while every ui_kit widget respected them. Token equivalents chosen
+        // value-identical at defaults: gap_md=12, gap_xs_mid=6, gap_sm=8,
+        // gap_xs=4 — so unauthored styles render byte-for-byte as before.
+        {
+            use crate::ui_kit::style::{gap_xs, gap_xs_mid, gap_sm, gap_md};
+            style.spacing.button_padding  = egui::vec2(gap_md(), gap_xs_mid());
+            style.spacing.menu_margin     = egui::Margin {
+                left:  (gap_sm() + 2.0) as i8, right:  (gap_sm() + 2.0) as i8,
+                top:   gap_sm() as i8,         bottom: gap_sm() as i8,
+            };
+            style.spacing.interact_size.y = gap_md() + gap_md() + 2.0; // 26 at defaults
+            style.spacing.item_spacing    = egui::vec2(gap_xs_mid(), gap_xs());
+        }
 
         // Crisp text rendering
         style.visuals.text_cursor.on_duration = 0.5;
