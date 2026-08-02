@@ -729,9 +729,19 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
-                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
-            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
-            bevel_highlight: None, bevel_shadow: None,
+                // T-track: AUTHORED ramp (brief §5.1). THE flagship case: pure-black
+                // canvas with a WARM panel ramp (R>G>B) that the achromatic elevate()
+                // could never produce, and an ACCENT-TINTED hover (orange @0.06).
+                bg_panel:        Some([0x14, 0x13, 0x11, 255]),
+                bg_elevated:     Some([0x1f, 0x1d, 0x1a, 255]),
+                bg_hover:        Some([239,  91,  59,  15]),
+                fg_xmuted:       Some([0x4a, 0x43, 0x37, 255]),
+                accent_sub:      Some([0xff, 0x8a, 0x4c, 255]),
+                bull_alpha:      Some([ 78, 192, 122,  31]),
+                bear_alpha:      Some([216,  80,  62,  31]),
+                border_dim:      Some([255, 255, 255,  15]),
+                bevel_highlight: None, // flat colour-block tiles — no bevel
+                bevel_shadow:    None,
             }
         },
 
@@ -765,9 +775,19 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
-                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
-            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
-            bevel_highlight: None, bevel_shadow: None,
+                // T-track: AUTHORED ramp (brief §5.2). Neutral Spotify stack —
+                // deliberately NEUTRAL hover (the contrast case to Aperture's
+                // orange; proves hue-carrying hover is per-theme, not global).
+                bg_panel:        Some([0x12, 0x12, 0x12, 255]),
+                bg_elevated:     Some([0x1f, 0x1f, 0x1f, 255]),
+                bg_hover:        Some([255, 255, 255,  15]),
+                fg_xmuted:       Some([0x53, 0x53, 0x53, 255]),
+                accent_sub:      Some([0x16, 0x9c, 0x46, 255]),
+                bull_alpha:      Some([ 30, 215,  96,  31]),
+                bear_alpha:      Some([241,  94, 108,  31]),
+                border_dim:      Some([255, 255, 255,   9]),
+                bevel_highlight: Some([255, 255, 255, 255]), // Spotify's faint white inset
+                bevel_shadow:    Some([0, 0, 0, 255]),
             }
         },
 
@@ -894,10 +914,71 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             success: None, danger: None, warning: None, info: None,
             pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
-                bg_panel: None, bg_elevated: None, bg_hover: None, fg_xmuted: None,
-            accent_sub: None, bull_alpha: None, bear_alpha: None, border_dim: None,
-            bevel_highlight: None, bevel_shadow: None,
+                // T-track: AUTHORED ramp (brief §5.5). The NON-MONOTONIC paper ramp:
+                // panel (#f7f3ea) is LIGHTER than canvas (#f1ede4), then surface/
+                // elevated go DARKER — unreachable by any single-direction derivation.
+                bg_panel:        Some([0xf7, 0xf3, 0xea, 255]),
+                bg_elevated:     Some([0xe3, 0xdc, 0xcd, 255]),
+                bg_hover:        Some([ 20,  20,  15,  10]),
+                fg_xmuted:       Some([0xb3, 0xad, 0x9c, 255]),
+                accent_sub:      Some([0xc4, 0x3a, 0x1f, 255]),
+                bull_alpha:      Some([ 31, 111,  59,  36]),
+                bear_alpha:      Some([196,  58,  31,  36]),
+                border_dim:      Some([0xd8, 0xd0, 0xbd, 255]),
+                bevel_highlight: None, // editorial paper — no inset bevel on light
+                bevel_shadow:    None,
             }
+
+        },
+        // -- Meridien (id=21) -- T2: registered as a SCHEME. Palette is
+        // BYTE-IDENTICAL to Lucid BY DESIGN (shared editorial palette); every
+        // Meridien differentiator (mono-CAPS labels, square controls, airier
+        // ladder, dark top chrome) lives on the STYLE axis. Selection-model
+        // (named presets vs matrix) remains brief §11 Q1.
+        {
+            let bg   = rgb(241, 237, 228); // #f1ede4 cream paper
+            let surf = rgb(247, 243, 234); // #f7f3ea bg-panel (lighter)
+            ColorScheme {
+                meta: Meta { id: "meridien".into(), name: "Meridien".into(), is_dark: false },
+                bg, surface: surf,
+                text:   rgb( 20,  20,  15), // #14140f near-black ink
+                dim:    rgb(108, 105,  91), // was #8a8675; darkened for WCAG AA dim/bg
+                border: rgb(191, 181, 154), // #bfb59a
+                accent: rgb(214,  85,  43), // #d6552b terracotta
+                bull:   rgb( 31, 111,  59), // #1f6f3b deep green
+                bear:   rgb(196,  58,  31), // #c43a1f venetian red
+                warn:   rgb(196,  58,  31), // same as bear (editorial)
+                shadow: c(120, 110, 90, 100),
+                notification_red: rgb(196, 58, 31),
+                gold:             rgb(170, 120,  20),
+                overlay_text:     rgb( 20,  20,  15),
+                rrg_leading:      rgb( 31, 111,  59),
+                rrg_improving:    rgb(100, 160,  80),
+                rrg_weakening:    rgb(180, 130,  20),
+                rrg_lagging:      rgb(196,  58,  31),
+                pinned_row_tint:  pre_rgba(214, 85, 43, 12),
+                text_muted:       rgb(179, 173, 156), // #b3ad9c
+                hud_bg:           pre_rgba(241, 237, 228, 230),
+                hud_border:       rgb(191, 181, 154),
+                // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
+            cmd_palette:      CMD_PALETTE_DEFAULT,
+                // T-track: AUTHORED ramp (brief §5.5). The NON-MONOTONIC paper ramp:
+                // panel (#f7f3ea) is LIGHTER than canvas (#f1ede4), then surface/
+                // elevated go DARKER — unreachable by any single-direction derivation.
+                bg_panel:        Some([0xf7, 0xf3, 0xea, 255]),
+                bg_elevated:     Some([0xe3, 0xdc, 0xcd, 255]),
+                bg_hover:        Some([ 20,  20,  15,  10]),
+                fg_xmuted:       Some([0xb3, 0xad, 0x9c, 255]),
+                accent_sub:      Some([0xc4, 0x3a, 0x1f, 255]),
+                bull_alpha:      Some([ 31, 111,  59,  36]),
+                bear_alpha:      Some([196,  58,  31,  36]),
+                border_dim:      Some([0xd8, 0xd0, 0xbd, 255]),
+                bevel_highlight: None, // editorial paper — no inset bevel on light
+                bevel_shadow:    None,
+            }
+
         },
     ]
 }
