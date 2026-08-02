@@ -1696,7 +1696,8 @@ if is_spawn || watchlist.open {
                         let is_saved = saved.iter().any(|s| s.contract == row.contract);
                         let color = if is_call { t.bull } else { t.bear };
                         let base_tint = if is_call { tint(t, Tone::Bull, 8) } else { tint(t, Tone::Bear, 8) };
-                        let itm_bg = if row.itm { color.gamma_multiply(0.06) } else { base_tint };
+                        // M0.6: was gamma_multiply(0.06) — alpha tint composes over any bg.
+                        let itm_bg = if row.itm { color_alpha(color, alpha_ghost()) } else { base_tint };
                         let saved_bg = if is_saved { tint(t, Tone::Accent, alpha_muted()) } else { itm_bg };
 
                         // Reserve a clickable rect for the whole row

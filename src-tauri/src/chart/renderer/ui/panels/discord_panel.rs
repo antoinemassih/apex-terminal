@@ -153,7 +153,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             egui::Layout::top_down(egui::Align::Center),
             |ui| {
                 ui.add_space(avail.y * 0.25);
-                ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(32.0).color(color_half(discord_blurple)));
+                ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(font_display_md()).color(color_half(discord_blurple)));
                 ui.add_space(gap_md());
                 if !crate::discord::is_configured() {
                     PanelEmpty::new("Discord not configured")
@@ -288,7 +288,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 egui::Layout::top_down(egui::Align::Center),
                 |ui| {
                     ui.add_space(avail.y * 0.2);
-                    ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(32.0).color(color_half(t.dim)));
+                    ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(font_display_md()).color(color_half(t.dim)));
                     ui.add_space(gap_sm());
                     ui.add(widgets_text::MonospaceCode::new("Bot not in this server").xs().color(t.dim));
                     ui.add_space(gap_xs());
@@ -346,7 +346,10 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 for (cat_name, text_chs) in &buckets {
                     if text_chs.is_empty() { continue; }
                     PanelSection::new(cat_name).rule(false).show(ui, t, |ui, t| {
-                        let ch_text = t.dim.gamma_multiply(1.3);
+                        // M0.6: was t.dim.gamma_multiply(1.3) — direction-blind on light
+                        // themes (brightening dim REDUCES contrast there). Faded text
+                        // reads as "between dim and text" on any palette.
+                        let ch_text = tint(t, Tone::Text, alpha_solid());
                         for ch in text_chs {
                             let name = ch.name.as_deref().unwrap_or("unknown").to_string();
                             let dim = t.dim;

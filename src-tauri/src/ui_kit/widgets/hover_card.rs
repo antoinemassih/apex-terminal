@@ -14,7 +14,7 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 
 use crate::ui_kit::tokens::{
-    alpha_line, color_alpha, gap_sm, radius_sm, stroke_thin,
+    alpha_line, color_alpha, elevate, gap_sm, radius_sm, stroke_thin, ELEVATE_RAISED,
 };
 
 const DEFAULT_DELAY_MS: u64 = (motion::DELAY_HOVER_CARD * 1000.0) as u64;
@@ -102,9 +102,11 @@ impl HoverCard {
 
         let appear_t = motion::ease_bool(&ctx, id.with("anim"), true, motion::FAST);
 
-        // elevation_2: HoverCard is a mid-tier overlay (bg × 0.88), same tier
-        // as Tooltip. Inlined via ComponentTheme::bg() — no concrete &Theme needed.
-        let bg = palette_ct(theme).base(Tone::Bg).gamma_multiply(0.88);
+        // elevation_2: HoverCard is a mid-tier overlay (elevate(bg,
+        // ELEVATE_RAISED)), same tier as Tooltip. Direction-aware: dark bg →
+        // lighter, light bg → darker (was bg × 0.88, which collapsed on
+        // near-black themes). Inlined via ComponentTheme::bg().
+        let bg = elevate(palette_ct(theme).base(Tone::Bg), ELEVATE_RAISED);
         let border = color_alpha(palette_ct(theme).base(Tone::Border), alpha_line());
 
         let size_id = id.with("size");

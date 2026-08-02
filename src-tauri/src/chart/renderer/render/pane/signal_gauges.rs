@@ -143,7 +143,7 @@ pub(super) fn render_signal_gauges(
         // Title
         painter.text(egui::pos2(text_x, card_y + 12.0), egui::Align2::LEFT_CENTER,
             format!("VIX EXPIRY — {} days ({})", chart.vix_expiry_days, chart.vix_expiry_date),
-            egui::FontId::monospace(9.5), accent);
+            mono_2xs(), accent);
 
         // VIX spot vs future
         let y = card_y + 28.0;

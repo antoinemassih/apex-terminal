@@ -222,6 +222,7 @@ def main():
     ap.add_argument("--probe", action="store_true",
                     help="just GET /health and /state and print the result")
     args = ap.parse_args()
+    args.out = str(Path(args.out).resolve())  # M0 gate fix: relative --out broke relative_to()
 
     if args.probe:
         sys.exit(probe(args.port))

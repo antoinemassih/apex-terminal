@@ -5458,7 +5458,7 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         // of two (halves the per-frame Style allocation). Must run AFTER the rich
         // visual block so per-style tweaks win (#3).
         let st = super::ui::style::current();
-        super::ui::style::apply_ui_style(&mut style, &st, t.toolbar_border, t.toolbar_bg, t.accent);
+        super::ui::style::apply_ui_style(&mut style, &st, t.toolbar_border, t.toolbar_bg, t.accent, t.shadow_color);
         ctx.set_style(style);
     }
     // native_dpi_scale is the floor (never render below display resolution).

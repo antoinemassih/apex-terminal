@@ -187,7 +187,7 @@ fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
         ui.vertical(|ui| {
             ui.label(egui::RichText::new("TOTAL P&L").monospace().size(font_xs()).color(color_half(t.dim)));
             let sign = if total_pnl >= 0.0 { "+" } else { "" };
-            ui.label(egui::RichText::new(format!("{}${:.0}", sign, total_pnl)).size(34.0).color(pnl_col));
+            ui.label(egui::RichText::new(format!("{}${:.0}", sign, total_pnl)).size(font_display_md()).color(pnl_col));
         });
     });
     ui.add_space(gap_sm());

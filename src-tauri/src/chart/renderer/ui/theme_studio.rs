@@ -818,6 +818,8 @@ fn color_scheme_to_portable(cs: &ColorScheme) -> PortableTheme {
         icon_disabled:    c32(cs.dim).gamma_multiply(0.5),
         icon_accent:      acc_c,
         shadow_color:     c32(cs.shadow),
+        section_header_mono: crate::chart_renderer::ui::style::current().section_header_mono,
+        cards_float:         crate::chart_renderer::ui::style::current().region_gap > 0.0,
     }
 }
 
@@ -847,6 +849,8 @@ fn theme_to_portable(t: &Theme) -> PortableTheme {
         icon_disabled:    ca(t.text,  102),
         icon_accent:      t.accent,
         shadow_color:     t.shadow_color,
+        section_header_mono: crate::chart_renderer::ui::style::current().section_header_mono,
+        cards_float:         crate::chart_renderer::ui::style::current().region_gap > 0.0,
     }
 }
 

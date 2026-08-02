@@ -288,6 +288,15 @@ pub struct PortableTheme {
     pub icon_accent: Color32,
 
     pub shadow_color: Color32,
+
+    // M0.4: per-style behavioural flags carried as REAL fields. Previously
+    // these fell back to the `ComponentTheme` trait defaults (false / true)
+    // while the full `Theme`'s impl read `StyleSettings::current()` live —
+    // so `PanelSection` headers and `PanelCard` floating differed depending
+    // on WHICH ambient object type a widget happened to resolve. One theme,
+    // one answer.
+    pub section_header_mono: bool,
+    pub cards_float: bool,
 }
 
 impl PortableTheme {
@@ -316,6 +325,8 @@ impl PortableTheme {
             icon_disabled:    Color32::from_rgb( 88,  88,  92),
             icon_accent:      Color32::from_rgb( 70, 130, 220),
             shadow_color:     Color32::BLACK,
+            section_header_mono: false,
+            cards_float:      true,
         }
     }
 
@@ -343,6 +354,8 @@ impl PortableTheme {
             icon_disabled:    Color32::from_rgb(180, 180, 184),
             icon_accent:      Color32::from_rgb( 30,  90, 180),
             shadow_color:     Color32::from_rgb(120, 120, 124),
+            section_header_mono: false,
+            cards_float:      true,
         }
     }
 }
@@ -353,6 +366,9 @@ impl Default for PortableTheme {
 
 impl ComponentTheme for PortableTheme {
     fn accent(&self) -> Color32 { self.accent }
+    // M0.4: carry the per-style flags instead of inheriting trait defaults.
+    fn section_header_mono(&self) -> bool { self.section_header_mono }
+    fn cards_float(&self) -> bool { self.cards_float }
     // P5b: bull/bear now have dedicated fields so the ambient-stashed
     // PortableTheme can carry the chart-app's actual bull/bear values
     // (previously these collapsed to accent/warn, which made widgets like

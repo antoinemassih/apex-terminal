@@ -203,7 +203,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 ui.allocate_ui_with_layout(
                     egui::vec2(58.0, 24.0),
                     egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| { ui.label(egui::RichText::new(label).size(11.0).color(t.dim)); },
+                    |ui| { ui.label(egui::RichText::new(label).size(font_xs()).color(t.dim)); },
                 );
                 for size in ["sm", "md", "lg"] {
                     crate::ui_kit::sx::recipes::button(ui, t, size, &[("intent", intent), ("size", size)]);
@@ -215,7 +215,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         use crate::ui_kit::sx::{Shade, Tone};
         ui.label(egui::RichText::new(
             "via ui_kit::sx — utilities + cva recipe + motion, resolved against the active theme ramps. Hover for the eased accent ring."
-        ).size(9.0).italics().color(shade(t, Tone::Dim, Shade::S300)));
+        ).size(font_2xs()).italics().color(shade(t, Tone::Dim, Shade::S300)));
     });
 
     // ── DENSITY override (Compact / Standard / Spacious) — P4.3 ──

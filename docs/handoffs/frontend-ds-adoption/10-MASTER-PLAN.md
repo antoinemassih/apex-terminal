@@ -109,7 +109,7 @@ from `09` Phase 0.
 | M0.6 | 9 non-core `gamma_multiply(lit)` → direction-aware | `09` 0.6 | light-theme hover correct off-canvas |
 | M0.7 | 29 literal font sizes → tokens | `09` 0.7 | typography 100 % |
 | M0.8 | Gate hygiene: exempt `tps_overlay`/`bug_anchor`; add `Stroke::new(<lit>` + `gamma_multiply(<lit>` patterns; fix-or-retire `sx_ratchet.sh`; **all gates into CI** | `09` 0.8 | gates green in CI; honest baseline ≈479 |
-| M0.9 | Registry decision: delete `ThemeRegistry`/`ActiveTheme` **or** commit to wiring in M1 (write the decision) | `09` 0.5 | no dead scaffolding advertising itself |
+| M0.9 | Registry decision: delete `ThemeRegistry`/`ActiveTheme` **or** commit to wiring in M1 (write the decision) | `09` 0.5 | ✅ **DECIDED (2026-08-02): DELETE in M1.** `begin_frame()` will call `design_system::snapshot::snapshot()` directly — the registry adds an indirection layer with zero external consumers. `DesignSnapshot` itself IS wired (M1.1); `ThemeRegistry`/`live_registry()`/`ActiveTheme` are deleted as part of M1.5 cleanup. |
 | M0.10 | Doc truth-sync (CLAUDE.md buttons/Density; UI_WORKFLOW Taffy; 903 figure) | `09` 0.9 | P-14 partial |
 
 **Gate to M1:** harness demo + all M0 fixes screenshot-verified + CI green.

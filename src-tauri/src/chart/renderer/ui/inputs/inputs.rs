@@ -151,7 +151,7 @@ impl<'a> ThicknessPicker<'a> {
             value,
             values: &[0.5, 1.0, 1.5, 2.0, 3.0],
             height: 18.0,
-            font_size: 8.0,
+            font_size: font_3xs(),
             min_btn_w: 26.0,
             accent: None,
             dim: None,

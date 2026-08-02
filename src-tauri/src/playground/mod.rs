@@ -77,6 +77,8 @@ pub fn midnight() -> PortableTheme {
         icon_disabled:    Color32::from_rgb( 70,  78,  98),
         icon_accent:      Color32::from_rgb( 88, 160, 255),
         shadow_color:     Color32::BLACK,
+        section_header_mono: false,
+        cards_float:         true,
     }
 }
 
@@ -104,6 +106,8 @@ fn bauhaus() -> PortableTheme {
         icon_disabled:    Color32::from_rgb(190, 178, 162),
         icon_accent:      Color32::from_rgb(200,  80,  30),
         shadow_color:     Color32::from_rgb(160, 140, 120),
+        section_header_mono: false,
+        cards_float:         true,
     }
 }
 

@@ -71,7 +71,7 @@ Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 60)
 
 Token sources:
 - `src/chart/renderer/ui/style.rs` — fonts, spacing, strokes, alpha, radii, shadows, semantic colors
-- `src/ui_kit/widgets/tokens.rs` — `Size`, `Variant`, `Density` enums (use these in new components)
+- `src/ui_kit/widgets/tokens.rs` — `Size`, `Variant` enums (use these in new components; density is currently a global `DensityMode` in `ui_kit/style.rs`, not a per-component enum — scoped density lands in M2)
 - `src/chart/renderer/gpu.rs::Theme` — palette (use `t.accent`, `t.bull`, `t.bear`, `t.dim`, `t.text`, `t.warn` — not raw RGB)
 
 ### 4. Prefer `ui_kit::Button` over `egui::Button`
@@ -89,8 +89,8 @@ Button::new(label)
 ```
 
 Audited 2026-05-24: hand-rolled `egui::Button` calls in
-`chart/renderer/ui/` (non-sacred) are down to **2 sites** —
-`inputs/select.rs` and `inputs/inputs.rs` — both intentional
+`chart/renderer/ui/` (non-sacred) are down to **~11 sites** (audited 2026-08-02; 5 concentrated in
+`panels/screener_heatmap.rs`, plus `inputs/select.rs` and `inputs/inputs.rs`) — the latter two intentional
 low-level uses (per-corner-radius pill segments that `ui_kit::Button`'s
 Variant system doesn't expose). Comments at those sites explain why
 they're kept.

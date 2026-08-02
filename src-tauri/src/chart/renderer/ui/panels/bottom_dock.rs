@@ -187,7 +187,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
                     ui.painter().text(
                         egui::pos2(strip_rect.right() - 8.0, strip_rect.center().y),
                         egui::Align2::RIGHT_CENTER, "▴",
-                        egui::FontId::proportional(11.0), tint(t, Tone::Dim, 150),
+                        egui::FontId::proportional(font_xs()), tint(t, Tone::Dim, 150),
                     );
                 });
             }

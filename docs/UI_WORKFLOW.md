@@ -108,7 +108,14 @@ printf '\nfn _p() -> egui::Color32 { egui::Color32::from_rgb(1,2,3) }\n' >> some
 git checkout some_panel.rs
 ```
 
-## Not done: a real layout engine
+## Layout engine: SHIPPED but unadopted (updated 2026-08-02)
+
+> **Status correction:** the Taffy binding described below as future work has
+> SHIPPED at `ui_kit/layout/flex.rs` (Taffy 0.12, flexbox, headless-tested; the
+> `grid` feature is compiled in and unused). Adoption is ~10 call sites — the
+> blocker is intrinsic sizing (`Size::Auto` resolves to 0). See
+> `docs/handoffs/frontend-ds-adoption/08-ARCHITECTURE-AUDIT.md` §4 and the M4
+> milestone in `10-MASTER-PLAN.md`. Original text kept below for context.
 
 Flexbox/grid would remove hand-computed alignment arithmetic (`rect.left() +
 16.0`, `cy - h * 0.5`), which is where pixel drift comes from. The realistic

@@ -1465,13 +1465,15 @@ pub fn render_annotations(ctx: &egui::Context) {
             let label_color = if ann.color[3] > 100 {
                 egui::Color32::WHITE
             } else {
+                // M0.6 exempt: brightens a client-supplied annotation RGBA (dev
+                // overlay, not a theme color) so translucent fills stay legible.
                 color.gamma_multiply(3.0)
             };
             painter.text(
                 rect.min + egui::vec2(3.0, 2.0),
                 egui::Align2::LEFT_TOP,
                 &ann.label,
-                egui::FontId::monospace(10.0),
+                egui::FontId::monospace(crate::ui_kit::style::font_xs()),
                 label_color,
             );
         }

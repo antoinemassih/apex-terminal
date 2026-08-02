@@ -240,7 +240,7 @@ fn draw_step_welcome(ui: &mut egui::Ui, theme: &Theme) {
     ui.horizontal_centered(|ui| {
         ui.label(
             RichText::new("APEX TERMINAL")
-                .font(FontId::new(28.0, egui::FontFamily::Monospace))
+                .font(FontId::new(st::font_display_sm(), egui::FontFamily::Monospace))
                 .color(theme.accent)
                 .strong(),
         );
@@ -426,7 +426,7 @@ fn draw_step_done(ui: &mut egui::Ui, theme: &Theme) {
     ui.horizontal_centered(|ui| {
         ui.label(
             RichText::new("You're all set!")
-                .font(FontId::new(24.0, egui::FontFamily::Monospace))
+                .font(FontId::new(st::font_xl(), egui::FontFamily::Monospace))
                 .color(theme.bull)
                 .strong(),
         );

@@ -122,5 +122,11 @@ pub fn theme_to_portable(t: &Theme) -> PortableTheme {
         icon_disabled:    color_alpha(t.text,  102),
         icon_accent:      t.accent,
         shadow_color:     t.shadow_color,
+        // M0.4: snapshot the per-style flags at conversion time so the
+        // ambient PortableTheme answers these the same way the full Theme
+        // does (Theme reads `current()` live; the stash is refreshed every
+        // frame in setup_theme, so this stays in sync).
+        section_header_mono: crate::chart_renderer::ui::style::current().section_header_mono,
+        cards_float:         crate::chart_renderer::ui::style::current().region_gap > 0.0,
     }
 }

@@ -33,7 +33,7 @@ use crate::ui_kit::widgets::frames::{
     PaneHeaderWithClose, PanelHeaderWithClose, PopupFrame,
 };
 use crate::ui_kit::widgets::frames::SectionLabelSize;
-use crate::ui_kit::tokens::{self, alpha_line, color_alpha, gap_sm, r_lg_cr};
+use crate::ui_kit::tokens::{self, alpha_line, color_alpha, elevate, gap_sm, r_lg_cr, ELEVATE_MODAL};
 
 /// How the modal is anchored on screen.
 #[derive(Clone, Copy)]
@@ -280,10 +280,12 @@ impl<'a> Modal<'a> {
             motion::ease_bool(ctx, anim_id, true, motion::MED)
         };
 
-        // elevation_3: modal is the deepest overlay layer (bg × 0.85).
+        // elevation_3: modal is the deepest overlay layer (elevate(bg,
+        // ELEVATE_MODAL)). Direction-aware: dark bg → lighter, light bg →
+        // darker (was bg × 0.85, which collapsed on near-black themes).
         // Inlined from style::elevation_3 — ComponentTheme exposes bg() so we
-        // don't need the concrete &Theme to replicate the gamma-multiply.
-        let bg = palette_ct(t).base(Tone::Bg).gamma_multiply(0.85);
+        // don't need the concrete &Theme.
+        let bg = elevate(palette_ct(t).base(Tone::Bg), ELEVATE_MODAL);
         let border = palette_ct(t).base(Tone::Border);
 
         let frame = match self.frame_kind {

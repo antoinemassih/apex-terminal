@@ -162,6 +162,8 @@ pub fn color_scheme_to_portable(cs: &ColorScheme) -> PortableTheme {
         icon_disabled: border,
         icon_accent: accent,
         shadow_color: rgba_to_c(cs.shadow),
+        section_header_mono: false,
+        cards_float:         true,
     }
 }
 

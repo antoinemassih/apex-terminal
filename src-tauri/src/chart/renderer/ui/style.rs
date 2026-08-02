@@ -2865,7 +2865,7 @@ pub fn hero_text(text: &str, color: egui::Color32) -> egui::RichText {
 /// This is intentionally a *supplement* to the rich visual block already
 /// applied in `setup_theme`; it only overrides the fields that differ
 /// between styles so that non-Meridien themes remain visually unchanged.
-pub fn apply_ui_style(style: &mut egui::Style, settings: &StyleSettings, toolbar_border: egui::Color32, toolbar_bg: egui::Color32, accent: egui::Color32) {
+pub fn apply_ui_style(style: &mut egui::Style, settings: &StyleSettings, toolbar_border: egui::Color32, toolbar_bg: egui::Color32, accent: egui::Color32, shadow_color: egui::Color32) {
     let is_meridien = settings.hairline_borders && settings.serif_headlines;
 
     if is_meridien {
@@ -2905,8 +2905,11 @@ pub fn apply_ui_style(style: &mut egui::Style, settings: &StyleSettings, toolbar
     // menus, tooltips, and any egui-native widget match the per-theme radius.
     // Meridien's ZERO is already set above in its block; handle others here.
     if !is_meridien {
-        let cr_md = egui::CornerRadius::same(settings.r_md);
-        let cr_sm = egui::CornerRadius::same(settings.r_sm);
+        // M0.3: resolve through the ui_kit accessors (CornerScale + hot-reload aware)
+        // instead of raw `settings.r_*` — egui-native widgets (ComboBox, menus) now
+        // follow the same radius resolution as ui_kit widgets.
+        let cr_md = egui::CornerRadius::same(crate::ui_kit::style::radius_md() as u8);
+        let cr_sm = egui::CornerRadius::same(crate::ui_kit::style::radius_sm() as u8);
         style.visuals.window_corner_radius  = cr_md;
         style.visuals.menu_corner_radius    = cr_sm;
         for state in [
@@ -2932,7 +2935,11 @@ pub fn apply_ui_style(style: &mut egui::Style, settings: &StyleSettings, toolbar
     // ── Drop shadow for popup panels ─────────────────────────────────────
     // Glass and Aperture have large soft shadows; Octave/Meridien flatten them.
     if settings.shadows_enabled && settings.shadow_blur > 0.0 {
-        let sh_color = color_alpha(egui::Color32::BLACK, settings.shadow_alpha);
+        // M0.2: was `color_alpha(Color32::BLACK, …)` — hardcoded black clobbered the
+        // theme-aware `t.shadow_color` shadows set in setup_theme 100 lines earlier
+        // (CLAUDE.md rule 2), turning every light-theme popup shadow into a black
+        // smudge. The caller now passes the palette's shadow colour through.
+        let sh_color = color_alpha(shadow_color, settings.shadow_alpha);
         style.visuals.popup_shadow = egui::epaint::Shadow {
             offset: [0, settings.shadow_offset_y as i8],
             blur:   settings.shadow_blur as u8,

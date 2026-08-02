@@ -162,8 +162,7 @@ pub fn activate_by_id(ctx: &Context, id: &str) -> Result<(), RegistryError> {
         // Builtin: activate only the color axis.
         let schemes = crate::design_system::builtin_color_schemes();
         if let Some(cs) = schemes.iter().find(|cs| cs.meta.id == id || cs.meta.name == id) {
-            let theme = color_scheme_to_theme(cs);
-            let idx = upsert_theme_into_live_store(theme);
+            let idx = upsert_theme_into_live_store(cs);
             commands::push(AppCommand::SetThemeIdx { pane: 0, idx });
         }
         // If not found as a builtin either, we still persist the intent (maybe
@@ -183,8 +182,7 @@ pub fn activate_by_id(ctx: &Context, id: &str) -> Result<(), RegistryError> {
 /// **Idempotent**: calling with the same pack name reuses the same slots.
 pub fn activate_theme_pack(ctx: &Context, pack: &ThemePack) {
     // ── 1. Color axis → THEMES store ─────────────────────────────────────────
-    let theme = color_scheme_to_theme(&pack.color_scheme);
-    let theme_idx = upsert_theme_into_live_store(theme);
+    let theme_idx = upsert_theme_into_live_store(&pack.color_scheme);
 
     // Apply to every pane via the command queue.
     commands::push(AppCommand::SetThemeIdx { pane: 0, idx: theme_idx });
@@ -259,24 +257,35 @@ where
     Some(f(&mut guard))
 }
 
-/// Insert or overwrite `theme` in the live THEMES store by name.
-/// Returns the store index of the (possibly-new) slot.
-fn upsert_theme_into_live_store(theme: crate::chart_renderer::gpu::Theme) -> usize {
+/// Insert or overwrite the theme derived from `cs` in the live THEMES store
+/// by name. Returns the store index of the (possibly-new) slot.
+///
+/// M0.5: takes the ORIGINAL `ColorScheme` instead of a pre-flattened `Theme`.
+/// Both callers (pack activation, scheme hot-reload) already hold the authored
+/// scheme; the old flow flattened it to `Theme` and then FABRICATED a scheme
+/// back via `reverse_theme_to_color_scheme`, which hardcoded
+/// `success/danger/warning/info/pane_gap_color` to `None` — destroying
+/// authored data on every append. The append path now hands the true scheme
+/// straight to `upsert_installed_themes`. (The overwrite branch still stores a
+/// flattened `Theme` because LIVE_THEMES is `Vec<Theme>` — full preservation
+/// of the five optional fields lands with the M1 resolver unification.)
+fn upsert_theme_into_live_store(
+    cs: &crate::design_system::color_scheme::ColorScheme,
+) -> usize {
     use crate::chart_renderer::gpu::{get_all_themes, set_theme};
 
+    let theme = color_scheme_to_theme(cs);
     let all = get_all_themes();
     if let Some(idx) = all.iter().position(|t| t.name == theme.name) {
         set_theme(idx, theme);
         idx
     } else {
-        // Append via the existing public helper by constructing a single-element
-        // ColorScheme that round-trips to an identical Theme.
-        let cs = reverse_theme_to_color_scheme(&theme);
-        crate::chart_renderer::gpu::upsert_installed_themes(vec![cs]);
+        let name = theme.name;
+        crate::chart_renderer::gpu::upsert_installed_themes(vec![cs.clone()]);
         // Find the index of the newly-appended slot.
         let all2 = get_all_themes();
         all2.iter()
-            .position(|t| t.name == theme.name)
+            .position(|t| t.name == name)
             .unwrap_or(0)
     }
 }
@@ -287,6 +296,7 @@ fn upsert_theme_into_live_store(theme: crate::chart_renderer::gpu::Theme) -> usi
 /// Only the base fields that `color_scheme_to_theme` reads are populated;
 /// derived fields (toolbar_border, element_hover, …) are recomputed by the
 /// adapter on the next round-trip so the result is lossless for what matters.
+#[cfg(test)] // M0.5: no production callers — the live flow passes the original ColorScheme through.
 fn reverse_theme_to_color_scheme(
     t: &crate::chart_renderer::gpu::Theme,
 ) -> crate::design_system::color_scheme::ColorScheme {
@@ -346,11 +356,10 @@ mod tests {
     #[test]
     fn upsert_is_idempotent() {
         let cs = builtin_color_schemes().into_iter().next().unwrap();
-        let theme = color_scheme_to_theme(&cs);
-        let name = theme.name;
+        let name = color_scheme_to_theme(&cs).name;
 
-        let idx1 = upsert_theme_into_live_store(theme.clone());
-        let idx2 = upsert_theme_into_live_store(theme);
+        let idx1 = upsert_theme_into_live_store(&cs);
+        let idx2 = upsert_theme_into_live_store(&cs);
 
         assert_eq!(idx1, idx2, "same theme name must reuse the same slot");
 

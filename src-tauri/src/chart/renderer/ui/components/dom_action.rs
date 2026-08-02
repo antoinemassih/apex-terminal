@@ -183,7 +183,9 @@ pub fn paint_dom_action(
         Buy | Sell => {
             let semantic = if matches!(tier, Buy) { t.bull } else { t.bear };
             let (fill, text_col) = if ctx.is_light {
-                (if hover { semantic } else { semantic.gamma_multiply(0.92) }, contrast_fg(semantic))
+                // M0.6: idle fill was semantic × 0.92 — elevate() keeps the
+                // hover/idle nudge direction-aware and visible on any luminance.
+                (if hover { semantic } else { elevate(semantic, 10) }, contrast_fg(semantic))
             } else {
                 (if hover { color_alpha(semantic, 70) } else { color_alpha(semantic, alpha_tint()) }, semantic)
             };

@@ -251,7 +251,10 @@ impl<'a> PopupFrame<'a> {
         let ctx = self.ctx.expect("PopupFrame::build requires a Context — call .ctx(ctx) first");
 
         let pop_bg = if st.hairline_borders {
-            self.bg.gamma_multiply(1.10)
+            // M0.6: was gamma_multiply(1.10) — direction-blind (near-invisible
+            // on dark bgs, washes out light ones). Additive direction-aware
+            // nudge of equivalent mid-tone weight (255 × 0.10 × 0.5 ≈ 13).
+            elevate(self.bg, 13)
         } else {
             self.bg
         };

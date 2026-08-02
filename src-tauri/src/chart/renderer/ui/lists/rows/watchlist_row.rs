@@ -749,7 +749,7 @@ impl<'a> WatchlistRow<'a> {
                     ui.label(
                         egui::RichText::new(symbol)
                             .strong()
-                            .size(18.0)
+                            .size(font_lg())
                             .color(card_fg),
                     );
                     ui.add_space(gap_2xs());
@@ -775,7 +775,7 @@ impl<'a> WatchlistRow<'a> {
                     ui.label(
                         egui::RichText::new(&chg_str)
                             .monospace()
-                            .size(12.0)
+                            .size(font_sm())
                             .color(chg_col),
                     );
                     ui.add_space(gap_xs_mid());

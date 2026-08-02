@@ -15,25 +15,29 @@ use crate::ui_kit::widgets::tokens::Size;
 
 // ─── Radius (inlined from former tokens.rs P3.1) ─────────────────────────────
 //
-// Pill reads `StyleSettings.r_pill` which varies per style preset (e.g.
-// Meridien r_pill = 0); the ui_kit equivalent `radius_pill()` is a fixed
-// 999.0 constant with no preset awareness. Unifying requires the style-axis
-// decision deferred to Phase 5.
+// M0.3: unified onto the ui_kit `radius_*()` accessors. Previously this enum
+// read `current().r_*` raw, which skipped BOTH the user's CornerScale override
+// (Sharp/Subtle/Standard/Round) AND hot-reload `styles/*.json` overrides — so
+// a foundation `RowShell` and a `ui_kit::Button` beside it could disagree on
+// corner radius in the same theme. The ui_kit accessors resolve
+// THEME_OVERRIDE ▸ design-mode dt_* ▸ StyleSettings, then apply CornerScale —
+// one resolver for every radius in the app.
 
-/// Radius scale for foundation shells. `Pill` reads the per-preset `r_pill` knob.
+/// Radius scale for foundation shells. All tiers resolve through the ui_kit
+/// token accessors (per-style, CornerScale-aware, hot-reloadable).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Radius { None, Xs, Sm, Md, Lg, Pill }
 
 impl Radius {
     pub fn corner(self) -> egui::CornerRadius {
-        let st = current();
+        use crate::ui_kit::style as ut;
         match self {
             Radius::None => egui::CornerRadius::ZERO,
-            Radius::Xs   => egui::CornerRadius::same(st.r_xs),
-            Radius::Sm   => egui::CornerRadius::same(st.r_sm),
-            Radius::Md   => egui::CornerRadius::same(st.r_md),
-            Radius::Lg   => egui::CornerRadius::same(st.r_lg),
-            Radius::Pill => egui::CornerRadius::same(st.r_pill),
+            Radius::Xs   => egui::CornerRadius::same(ut::radius_xs() as u8),
+            Radius::Sm   => egui::CornerRadius::same(ut::radius_sm() as u8),
+            Radius::Md   => egui::CornerRadius::same(ut::radius_md() as u8),
+            Radius::Lg   => egui::CornerRadius::same(ut::radius_lg() as u8),
+            Radius::Pill => egui::CornerRadius::same(ut::radius_pill().min(255.0) as u8),
         }
     }
 }

@@ -89,7 +89,7 @@ pub fn draw(ctx: &egui::Context, t: &Theme) {
                         .show(ui, |ui| {
                             for (chord, desc) in rows {
                                 Kbd::new(chord.clone()).show(ui, t);
-                                ui.label(egui::RichText::new(*desc).color(t.text).size(12.0));
+                                ui.label(egui::RichText::new(*desc).color(t.text).size(font_sm()));
                                 ui.end_row();
                             }
                         });

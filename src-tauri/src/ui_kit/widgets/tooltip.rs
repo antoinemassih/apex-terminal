@@ -27,7 +27,8 @@ use super::PolishedLabel;
 use super::tokens::Size as KitSize;
 
 use crate::ui_kit::tokens::{
-    alpha_line, alpha_strong, color_alpha, gap_sm, gap_xs, radius_sm, stroke_thin,
+    alpha_line, alpha_strong, color_alpha, elevate, gap_sm, gap_xs, radius_sm, stroke_thin,
+    ELEVATE_RAISED,
 };
 
 const DEFAULT_DELAY_MS: u64 = (motion::DELAY_TOOLTIP * 1000.0) as u64;
@@ -124,10 +125,11 @@ impl<'a> Tooltip<'a> {
 
         let appear_t = motion::ease_bool(&ctx, id.with("anim"), true, motion::FAST);
 
-        // elevation_2: tooltip is a mid-tier overlay (bg × 0.88).
-        // Inlined from style::elevation_2 — ComponentTheme::bg() is sufficient;
-        // no concrete &Theme needed.
-        let bg = palette_ct(theme).base(Tone::Bg).gamma_multiply(0.88);
+        // elevation_2: tooltip is a mid-tier overlay (elevate(bg, ELEVATE_RAISED)).
+        // Direction-aware: dark bg → lighter, light bg → darker (was bg × 0.88,
+        // which collapsed on near-black themes). ComponentTheme::bg() is
+        // sufficient; no concrete &Theme needed.
+        let bg = elevate(palette_ct(theme).base(Tone::Bg), ELEVATE_RAISED);
         let border = color_alpha(palette_ct(theme).base(Tone::Border), alpha_line());
         let fg = palette_ct(theme).base(Tone::Text);
 
@@ -244,10 +246,10 @@ pub fn paint_tooltip_card(
         );
     }
 
-    // Surface fill — elevation_2 (bg × 0.88) at near-solid alpha so the chart
-    // bleeds through faintly behind text, matching the previous 240-alpha
-    // fidelity while applying the correct depth tier.
-    let surf = palette_ct(theme).base(Tone::Bg).gamma_multiply(0.88);
+    // Surface fill — elevation_2 (elevate(bg, ELEVATE_RAISED)) at near-solid
+    // alpha so the chart bleeds through faintly behind text, matching the
+    // previous 240-alpha fidelity while applying the correct depth tier.
+    let surf = elevate(palette_ct(theme).base(Tone::Bg), ELEVATE_RAISED);
     painter.rect_filled(
         rect,
         cr,
