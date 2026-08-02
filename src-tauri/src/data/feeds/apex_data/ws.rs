@@ -36,6 +36,24 @@ pub(crate) static SUBS_PUSH_SUPPRESSED: AtomicU64 = AtomicU64::new(0);
 pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
 pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
 
+/// Last time a DATA frame (binary/text) arrived, as opposed to any frame.
+///
+/// AUDIT 2026-08-02 (AT-036): the watchdog used to reconnect on
+/// `LAST_MESSAGE_AT_MS` alone — but that atomic is only written by
+/// `handle_binary`/`handle_text`, never by the pong arm, despite the comment at
+/// the heartbeat claiming pongs are "counted in LAST_MESSAGE_AT_MS via the
+/// default Message arm". They are not: that arm is `Some(Ok(_)) => {}`.
+///
+/// So a socket that was perfectly healthy but simply quiet — a thin symbol, or
+/// any time outside RTH — was force-reconnected every 30s, forever.
+///
+/// Splitting the two signals is the fix, and it is not merely cosmetic:
+/// reconnecting cannot cure "socket alive, no data". That condition means the
+/// subscription or the entitlement is wrong upstream, and churning the
+/// connection just hides it behind a reconnect loop. Socket death forces a
+/// reconnect; data starvation is reported and left alone.
+pub(crate) static LAST_DATA_AT_MS: AtomicI64 = AtomicI64::new(0);
+
 // ── Wave 7E: WS resilience ───────────────────────────────────────────────────
 // Heartbeat: send a tungstenite Ping every HEARTBEAT_SECS to keep the socket
 // warm and surface dead peers fast (OS TCP keep-alive is ≥2hr by default).
@@ -557,7 +575,11 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
                         Some(Ok(Message::Binary(bytes))) => handle_binary(&mgr, &bytes),
                         Some(Ok(Message::Text(text)))   => handle_text(&mgr, &text),
                         Some(Ok(Message::Close(_))) => { report(ErrorLevel::Warn, "apex_data.ws", "ws_close", "close frame"); break; }
-                        Some(Ok(_))  => {}
+                        // AT-036: Pong / Ping / Frame. These prove the SOCKET is
+                        // alive even when no market data is flowing, so they must
+                        // count toward socket liveness — previously this arm was
+                        // an empty no-op and a quiet feed reconnected every 30s.
+                        Some(Ok(_))  => { LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed); }
                         Some(Err(e)) => { report(ErrorLevel::Warn, "apex_data.ws", "recv_error", e.to_string()); break; }
                         None         => { report(ErrorLevel::Warn, "apex_data.ws", "stream_ended", "no more frames"); break; }
                     }
@@ -633,8 +655,36 @@ async fn run_watchdog() {
     let mut tick = tokio::time::interval(Duration::from_secs(WATCHDOG_TICK_SECS));
     loop {
         tick.tick().await;
-        let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
         let now = now_ms();
+
+        // AT-036: data starvation on a LIVE socket is reported, never
+        // reconnected. If pongs are arriving but no market data is, the
+        // subscription or entitlement is wrong upstream — churning the
+        // connection cannot fix that and only hides it behind a reconnect loop.
+        // This is the condition that previously masqueraded as a dead feed.
+        let last_data = LAST_DATA_AT_MS.load(Ordering::Relaxed);
+        let last_any = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
+        if last_data > 0
+            && now - last_data > STALE_TIMEOUT_MS
+            && now - last_any <= STALE_TIMEOUT_MS
+        {
+            let quiet_secs = (now - last_data) / 1000;
+            let last_toast = LAST_STALL_TOAST_AT.load(Ordering::Relaxed);
+            if now - last_toast >= STALL_TOAST_COOLDOWN_MS {
+                LAST_STALL_TOAST_AT.store(now, Ordering::Relaxed);
+                report(
+                    ErrorLevel::Warn,
+                    "apex_data.ws",
+                    "data_starved",
+                    format!(
+                        "socket alive but no market data for {quiet_secs}s — \
+                         check subscriptions/entitlement, not the connection"
+                    ),
+                );
+            }
+        }
+
+        let last = last_any;
         if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
             let stall_secs = (now - last) / 1000;
             LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
@@ -700,7 +750,10 @@ fn broadcast(mgr: &Arc<Manager>, f: &Frame) {
 
 fn handle_text(mgr: &Arc<Manager>, text: &str) {
     MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+    // AT-036: a data frame proves BOTH that the socket is alive and that the
+    // feed is actually delivering. Pongs only prove the former.
     LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
+    LAST_DATA_AT_MS.store(now_ms(), Ordering::Relaxed);
     match serde_json::from_str::<InEnvelope>(text) {
         Ok(env) => dispatch(mgr, env),
         Err(e) => {
@@ -712,7 +765,9 @@ fn handle_text(mgr: &Arc<Manager>, text: &str) {
 
 fn handle_binary(mgr: &Arc<Manager>, bytes: &[u8]) {
     MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+    // AT-036: see handle_text.
     LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
+    LAST_DATA_AT_MS.store(now_ms(), Ordering::Relaxed);
     match rmp_serde::from_slice::<InEnvelope>(bytes) {
         Ok(env) => dispatch(mgr, env),
         Err(e) => {
