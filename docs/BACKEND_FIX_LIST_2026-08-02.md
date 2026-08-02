@@ -494,6 +494,42 @@ idle one. This is the same fail-silent class as **B-2**.
 
 **Ask:** emit a real `last_emit_ms` per channel so consumers can tell dead from idle.
 
+## B-16 — **P2** — Bar volume is fractional; share counts should be integers
+
+Bar **price** data passed every quality check — this is a volume-only defect.
+
+Quality results (1920 × 1m bars, 1001 × 1d bars):
+
+| Check | 1m | 1d |
+|---|---|---|
+| OHLC invariant (`low ≤ open,close ≤ high`) | **0 violations** / 1920 | **0 violations** / 1001 |
+| Zero-volume bars | 0 | 0 |
+| Spacing | 60 s × 1867, 120 s × 39, 180 s × 11 (normal thin minutes) | 86400 × 779, 259200 × 172 (weekends), 345600 × 28 (long weekends) |
+| Coverage | 2026-07-29 → 2026-07-31 | 2022-08-04 → 2026-07-31 (4 yrs) |
+
+Daily close 747.03 and high 748.895 cross-check exactly against
+`/api/snap/stocks/SPY`. **Price data is trustworthy.**
+
+The anomaly is volume:
+
+```json
+1m: {"time":1785365940,"close":731.257,"volume":274.344449}
+1m: {"time":1785542340,"close":744.2,  "volume":8070.024458}
+1d: {"time":1785470400,"close":747.03, "volume":62445899.13312}
+```
+
+Share volume is a **count** and must be an integer. `62,445,899.13312` shares is
+not a meaningful quantity. The magnitude is right for SPY (~62 M/day), so this
+looks like a float accumulation or a scaling/aggregation step introducing
+fractional error — not a wrong data source.
+
+**Why it matters:** RVOL, OBV and MFI are all volume-derived, and
+`/api/indicators` already publishes `obv: -5956940.508311999` and `rvol: 2.1046…`
+built on these numbers. Small per-bar error compounds through OBV's running sum.
+
+**Ask:** confirm whether volume is being averaged/scaled somewhere in the
+aggregation path, and emit integer share counts.
+
 ---
 
 # Priority queue
@@ -516,6 +552,7 @@ idle one. This is the same fail-silent class as **B-2**.
 | 14 | **B-15** engine classification static since 2026-06-14 | apex-signals | P2 |
 | 15 | **B-9** GEX `:8412` down (see also B-11) | signals | P2 |
 | 16 | **B-14** crypto routes absent | ApexData | P2 |
+| 16b | **B-16** fractional bar volume (feeds OBV/RVOL/MFI) | ApexData | P2 |
 | 17 | **C-2** DOM always mock (blocked on B-5 `/api/dom`) | terminal | P2 |
 | 18 | **C-5** backtest engine | terminal | P2 |
 
