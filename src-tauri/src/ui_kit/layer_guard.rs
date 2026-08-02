@@ -114,6 +114,56 @@ fn violation_count(src: &str) -> usize {
     code.matches("chart_renderer::").count() + code.matches("chart::renderer::").count()
 }
 
+/// Files allowed to import the `tokens::*` glob bridge.
+///
+/// AUDIT 2026-08-02 (AT-060, W2): the main guard below counts literal
+/// `chart_renderer::` references per file. `tokens.rs` is pinned at 1 for its
+/// `pub use crate::chart_renderer::ui::style::*` re-export — but that single
+/// pinned reference is a GLOB. Any ui_kit file can write `use ...tokens::*`
+/// and pull chart-layer items in transitively while containing zero
+/// `chart_renderer::` text of its own, so the main guard scores it clean.
+///
+/// That is the hole: the boundary was enforced on spelling, not on reachability.
+///
+/// Severing the glob outright is a per-callsite import sweep across ~40 chart
+/// callers — out of scope here. Pinning the consumers is not: it cannot widen
+/// without this list changing, which makes the next one a deliberate decision
+/// instead of an accident.
+const GLOB_BRIDGE_CONSUMERS: &[&str] = &[
+    "widgets/context_menu.rs",
+    "widgets/shell_variants.rs",
+];
+
+/// AUDIT 2026-08-02 (AT-060, W2): pin the glob-bridge consumer set.
+#[test]
+fn ui_kit_glob_bridge_consumers_do_not_grow() {
+    let files = ui_kit_sources();
+    let mut found: Vec<String> = Vec::new();
+    for (rel, src) in &files {
+        if rel == "layer_guard.rs" || rel == "tokens.rs" {
+            continue;
+        }
+        if strip_comments(src).contains("tokens::*") {
+            found.push(rel.clone());
+        }
+    }
+    found.sort();
+    let mut expected: Vec<String> =
+        GLOB_BRIDGE_CONSUMERS.iter().map(|s| (*s).to_string()).collect();
+    expected.sort();
+
+    assert_eq!(
+        found, expected,
+        "\nThe `tokens::*` glob bridge re-exports `chart_renderer::ui::style::*`, so \
+         importing it pulls the chart layer into ui_kit WITHOUT any literal \
+         `chart_renderer::` reference for the main layer guard to catch.\n\n\
+         If you added a file here: import the specific items you need from \
+         `ui_kit::style` instead, or — if the item only exists on the chart side — \
+         it does not belong in ui_kit.\n\n\
+         If you REMOVED one: delete it from GLOB_BRIDGE_CONSUMERS to lock the gain in.\n"
+    );
+}
+
 /// THE layer-boundary test.
 ///
 /// Every file under `src/ui_kit/` must be free of `chart_renderer::` /
