@@ -260,6 +260,53 @@ fn daily_loss_state_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("daily_loss.json"))
 }
 
+/// Sidecar recording which trading mode wrote `orders.json`.
+///
+/// AUDIT 2026-08-02 (AT-016/AT-017, P1): the mode was NOT persisted. It came
+/// only from `APEX_TRADING_MODE`, read once at startup, defaulting to paper.
+///
+/// `OrderManager::new()` starts with `paper_mode: true`, so the guard in
+/// `set_paper_mode` — `if paper && !mgr.paper_mode` — evaluates
+/// `true && !true` = false at startup and never fires. A restart without the
+/// env var therefore restored LIVE working orders into a paper-mode manager,
+/// where two things then went wrong:
+///
+///   * `cancel` is a local no-op in paper mode: the order is marked Cancelled
+///     locally while it stays live at the broker. The trader believes they
+///     cancelled it.
+///   * `apply_paper_fills` runs only in paper mode and FABRICATES fills, with
+///     synthetic prices booked into realized P&L — against real broker orders.
+///
+/// Recording the mode alongside the orders lets the loader detect the mismatch.
+fn trading_mode_state_path() -> PathBuf {
+    orders_state_path()
+        .parent()
+        .map(|p| p.join("trading_mode.json"))
+        .unwrap_or_else(|| PathBuf::from("trading_mode.json"))
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TradingModeState {
+    /// Mode that wrote the accompanying `orders.json`.
+    paper: bool,
+}
+
+/// Should the restored state force this process into LIVE mode?
+///
+/// AT-016/AT-017. Pure so the policy is testable without touching the
+/// filesystem — the three inputs are the whole decision:
+///
+/// * `sidecar_paper`  — mode that wrote `orders.json`
+/// * `live_active`    — restored orders still active (i.e. live at the broker)
+/// * `currently_paper`— this process's mode before adopting
+///
+/// Only escalates: a paper-written file can never turn this process live, so a
+/// stale or hand-edited sidecar cannot enable live trading on its own. It takes
+/// a live-written file AND outstanding active orders.
+fn should_force_live(sidecar_paper: bool, live_active: usize, currently_paper: bool) -> bool {
+    !sidecar_paper && live_active > 0 && currently_paper
+}
+
 /// W0-05 (audit): the persisted daily-loss state. The realized-P&L accumulator
 /// and its date must survive a restart — otherwise the daily-loss circuit
 /// breaker resets to $0 on every process start and silently re-arms trading
@@ -1559,6 +1606,47 @@ impl OrderManager {
         let (pnl, date) = restored_daily_loss(&dl, today_day_index());
         self.realized_pnl_today = pnl;
         self.daily_loss_date = date;
+    }
+
+    /// AT-016/AT-017: record the mode that owns the current `orders.json`.
+    fn save_trading_mode(&self) {
+        let st = TradingModeState { paper: self.paper_mode };
+        if let Ok(bytes) = serde_json::to_vec(&st) {
+            if let Err(e) = crate::state::persistence::atomic_write(&trading_mode_state_path(), &bytes) {
+                report(ErrorLevel::Error, "order_manager", "mode_save_failed", e.to_string());
+            }
+        }
+    }
+
+    /// Adopt the persisted mode when the restored orders were placed LIVE.
+    ///
+    /// AT-016/AT-017: called at the end of `load_from_disk`, once the orders are
+    /// in memory. If the file was written by a LIVE session and any restored
+    /// order is still active, this process must treat them as live regardless of
+    /// `APEX_TRADING_MODE` — those orders exist at the broker whether or not
+    /// this process believes in them, and a paper-mode cancel would lie about
+    /// killing them while the paper fill engine invented fills for them.
+    ///
+    /// Deliberate choice: reality wins over the fail-safe default. The env-var
+    /// default to paper exists to stop us accidentally PLACING live orders;
+    /// here live orders already exist, and the danger is failing to manage them.
+    /// It is reported at Error level so the mode flip is never silent.
+    fn adopt_persisted_mode(&mut self) {
+        let Ok(bytes) = std::fs::read(trading_mode_state_path()) else { return; };
+        let Ok(st) = serde_json::from_slice::<TradingModeState>(&bytes) else { return; };
+        let live_active = self.orders.iter().filter(|o| o.state.is_active()).count();
+        if !should_force_live(st.paper, live_active, self.paper_mode) { return; }
+        self.paper_mode = false;
+        report(
+            ErrorLevel::Error,
+            "order_manager",
+            "live_mode_restored",
+            format!(
+                "{live_active} LIVE order(s) restored from a live session — forcing LIVE mode. \
+                 Running them as paper would fake their cancels and invent fills for them. \
+                 Set APEX_TRADING_MODE=live to make this explicit, or cancel them at the broker."
+            ),
+        );
     }
 
     /// Engage the kill switch: cancel all locally + flip gate + fire broker /risk/kill.
@@ -3446,6 +3534,9 @@ impl OrderManager {
         if let Err(e) = crate::state::save(&orders_envelope_path(), &snapshot) {
             report(ErrorLevel::Error, "order_manager", "save_envelope_failed", e.to_string());
         }
+        // AT-016/AT-017: record which mode owns this file so a restart cannot
+        // silently adopt live orders as paper.
+        self.save_trading_mode();
         // W0-05: checkpoint the daily-loss accumulator alongside orders (also
         // captures a rollover-reset that happened without a fill).
         self.persist_daily_loss();
@@ -3500,6 +3591,10 @@ impl OrderManager {
             };
             self.pending_toasts.push(msg);
         }
+        // AT-016/AT-017: the orders are in memory now, so the persisted mode can
+        // be checked against them. Must run AFTER the restore — the whole defect
+        // was that the startup mode decision happened when `orders` was empty.
+        self.adopt_persisted_mode();
         // CC1: defer snapshot publish until ORDER_MANAGER guard drops.
         self.needs_snapshot = true;
     }
@@ -6873,6 +6968,43 @@ mod tests {
         let o = m.orders.iter().find(|o| o.id == id).unwrap();
         assert_eq!(o.state, OrderState::Draft,
             "order state must remain Draft after halted confirm");
+    }
+
+    // ── AT-016/AT-017: live orders must never be restored as paper ───────────
+
+    /// AUDIT 2026-08-02 (AT-016/AT-017, P1): the trading mode was not persisted.
+    /// `OrderManager::new()` starts paper, so the `set_paper_mode` guard
+    /// (`paper && !paper_mode`) could never fire at startup, and a restart
+    /// without APEX_TRADING_MODE=live restored LIVE working orders into a
+    /// paper-mode manager — where cancel is a local no-op that lies, and
+    /// `apply_paper_fills` invents fills with synthetic prices booked into
+    /// realized P&L.
+    ///
+    /// Tested as a pure policy: the filesystem version of these cases would
+    /// share one sidecar path across parallel tests and race.
+    #[test]
+    fn live_orders_restored_from_a_live_session_force_live_mode() {
+        assert!(should_force_live(false, 3, true),
+            "orders placed live exist at the broker regardless of what this              process believes — running them as paper fakes their cancels");
+    }
+
+    #[test]
+    fn a_paper_written_file_can_never_escalate_to_live() {
+        assert!(!should_force_live(true, 3, true),
+            "a paper sidecar must not enable live trading");
+        assert!(!should_force_live(true, 0, true));
+    }
+
+    #[test]
+    fn a_live_sidecar_with_no_active_orders_does_not_escalate() {
+        assert!(!should_force_live(false, 0, true),
+            "with nothing outstanding at the broker the fail-safe paper default wins");
+    }
+
+    #[test]
+    fn already_live_needs_no_adoption() {
+        assert!(!should_force_live(false, 3, false),
+            "no change when the process is already live");
     }
 
     // ── AT-015: a halt must stop new risk, not trap the trader ───────────────

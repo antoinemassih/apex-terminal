@@ -5472,9 +5472,23 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
                 Ok("live") => false,
                 Ok("paper") | _ => true, // unset, invalid, or "paper" → paper (fail-safe)
             };
-            // The guard in set_paper_mode only blocks switching TO paper when live
-            // orders exist.  At startup there are none, so this is always Ok.
-            let _ = super::trading::order_manager::set_paper_mode(is_paper);
+            // AUDIT 2026-08-02 (AT-016/AT-017): the old comment here claimed
+            // "at startup there are none, so this is always Ok" and discarded
+            // the Result. That was the bug — `load_from_disk` restores live
+            // working orders before this runs, and because the manager starts
+            // with paper_mode=true the guard `paper && !paper_mode` could never
+            // fire, so live orders were silently adopted as paper.
+            //
+            // `adopt_persisted_mode` now flips to live first when the restored
+            // orders came from a live session, which makes this guard real. A
+            // refusal is a meaningful event, not noise — surface it.
+            if let Err(e) = super::trading::order_manager::set_paper_mode(is_paper) {
+                crate::data::connectivity::errors_sink::report(
+                    crate::data::connectivity::errors_sink::ErrorLevel::Error,
+                    "order_manager", "mode_switch_refused",
+                    format!("APEX_TRADING_MODE requested paper but it was refused: {e}"),
+                );
+            }
         }
     }
     super::trading::order_manager::gc_orders(); // periodic cleanup
