@@ -1321,8 +1321,12 @@ pub(crate) fn render(
     if watchlist.account_strip_open {
         let mut do_cancel_all = false;
         let mut do_flatten    = false;
+        // M5 — frozen-chrome fix: the strip height is DERIVED (authored token
+        // as a floor, raised to fit the hero glyph) rather than pinned. Reading
+        // `style_current().account_strip_height` here clipped Meridien's NAV
+        // number, because that style authors a 36px hero into a 36px strip.
         egui::TopBottomPanel::top("account_strip")
-            .exact_height(style_current().account_strip_height)
+            .exact_height(crate::chart::renderer::ui::style::account_strip_height())
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 2, bottom: 2 })
                 .stroke(egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_dim()))))

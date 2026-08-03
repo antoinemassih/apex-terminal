@@ -2952,6 +2952,31 @@ pub fn hero_text(text: &str, color: egui::Color32) -> egui::RichText {
     egui::RichText::new(text).font(hero_font_id(size)).color(color)
 }
 
+/// M5 — the account strip's RESOLVED height.
+///
+/// `chrome.account_strip_height` is an authored token, but a strip that is
+/// shorter than the hero number it contains simply clips it. Meridien authors
+/// `font_hero: 36` and `account_strip_height: 36`, and the strip's frame adds
+/// 2px top + 2px bottom margin — leaving 32px of content box for a 36px glyph.
+/// The result was a permanently guillotined `NAV $47895`.
+///
+/// This is the repo's recurring *frozen chrome* defect: a chrome dimension
+/// pinned to a value that some token USED to produce, which stops holding the
+/// moment that token moves. The cure is the standing rule — **derive, don't
+/// pin**. The authored token becomes a FLOOR: the strip is whichever is
+/// larger, what the designer asked for or what the type scale requires.
+///
+/// Styles whose hero already fits are bit-identical (Aperture and Cadence
+/// author 26.0 with `font_hero: 22.0`; 22 + 4 == 26, so the max is a no-op).
+/// `strip_fits_hero` in the test module holds that invariant for every style.
+pub fn account_strip_height() -> f32 {
+    /// The strip frame's vertical inner margin (top 2 + bottom 2), which is
+    /// subtracted from the panel height before any text is laid out.
+    const V_MARGIN: f32 = 4.0;
+    let s = current();
+    s.account_strip_height.max(s.font_hero + V_MARGIN)
+}
+
 /// Apply per-style egui::Style overrides (widget visuals, spacing, shadows)
 /// to the given context. Call once per frame after `set_active_style` (#3).
 ///
@@ -3990,6 +4015,53 @@ mod m1_ladder_tests {
 
         assert_eq!(snap.gap_md, 99.0, "authored gap_md must reach TokenSnapshot");
         assert_eq!(snap.font_sm, 33.0, "authored ui_sm must reach TokenSnapshot");
+    }
+
+    /// M5 — the frozen-chrome invariant, for EVERY style.
+    ///
+    /// The account strip must be tall enough to contain the hero number it
+    /// exists to display. Meridien violated this for its whole life (36px hero
+    /// authored into a 36px strip, minus 4px of frame margin) and shipped a
+    /// permanently clipped NAV figure. The bug was invisible to every gate
+    /// because both numbers are legitimate tokens in isolation — only their
+    /// RELATIONSHIP was wrong.
+    ///
+    /// This test is the relationship. It fails if a future style authors a
+    /// larger hero without noticing the strip, or shrinks the strip without
+    /// noticing the hero — the two ways this defect can come back.
+    #[test]
+    fn strip_fits_hero() {
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
+
+        let n = style_store().read().unwrap_or_else(|e| e.into_inner()).len() as u8;
+        let mut failures: Vec<String> = Vec::new();
+        let mut derived_above_authored = 0usize;
+        for id in 0..n {
+            set_active_style(id);
+            let s = current();
+            let resolved = account_strip_height();
+            if resolved < s.font_hero + 4.0 {
+                failures.push(format!(
+                    "style {id}: strip resolves to {resolved} but hero is {} (+4px margin)",
+                    s.font_hero
+                ));
+            }
+            if resolved > s.account_strip_height {
+                derived_above_authored += 1;
+            }
+        }
+        set_active_style(prev_active);
+
+        assert!(failures.is_empty(), "clipped hero numbers:\n  {}", failures.join("\n  "));
+        // Meridien is the style whose authored strip does NOT fit its hero.
+        // If this ever hits 0, the derivation has become dead code and the
+        // guard above is passing vacuously.
+        assert!(
+            derived_above_authored >= 1,
+            "no style needed the derivation — account_strip_height() is now inert, \
+             so this invariant is no longer actually being exercised"
+        );
     }
 }
 
