@@ -1225,11 +1225,17 @@ fn paint_secondary_with_treatment(
 /// their built-in look — recipes may only override the documented surface.
 fn recipe_key_for(v: Variant) -> Option<&'static str> {
     match v {
-        Variant::Primary   => Some("button.primary"),
-        Variant::Secondary => Some("button.secondary"),
-        Variant::Ghost     => Some("button.ghost"),
-        Variant::Danger    => Some("button.danger"),
-        Variant::Chip      => Some("button.chip"),
+        Variant::Primary => Some("button.primary"),
+        Variant::Danger  => Some("button.danger"),
+        // Registered and AUTHORED by all six styles — the inverted-block active
+        // states are a top-3 visual signature on aperture/lucid/meridien.
+        // (M3.1 first shipped this as None, silently inerting ~12 recipes;
+        // caught by the recipe-authoring agent's registry cross-check.)
+        Variant::Chrome  => Some("button.chrome"),
+        // `button.secondary` / `button.chip` are NOT in the registry. Secondary
+        // shares the outline/face treatment authored under `button.ghost`, so
+        // both map there rather than inventing keys the registry doesn't list.
+        Variant::Ghost | Variant::Secondary => Some("button.ghost"),
         _ => None,
     }
 }
@@ -1678,14 +1684,25 @@ mod m31_recipe_tests {
     #[test]
     fn variant_recipe_keys_match_the_registry() {
         assert_eq!(recipe_key_for(Variant::Primary),   Some("button.primary"));
-        assert_eq!(recipe_key_for(Variant::Secondary), Some("button.secondary"));
-        assert_eq!(recipe_key_for(Variant::Ghost),     Some("button.ghost"));
         assert_eq!(recipe_key_for(Variant::Danger),    Some("button.danger"));
-        assert_eq!(recipe_key_for(Variant::Chip),      Some("button.chip"));
+        assert_eq!(recipe_key_for(Variant::Chrome),    Some("button.chrome"));
+        // Secondary shares Ghost's registered key (no `button.secondary` exists).
+        assert_eq!(recipe_key_for(Variant::Ghost),     Some("button.ghost"));
+        assert_eq!(recipe_key_for(Variant::Secondary), Some("button.ghost"));
         // Unregistered -> built-in look preserved.
         assert_eq!(recipe_key_for(Variant::Link),      None);
-        assert_eq!(recipe_key_for(Variant::Chrome),    None);
         assert_eq!(recipe_key_for(Variant::Tab),       None);
+        assert_eq!(recipe_key_for(Variant::Chip),      None);
+
+        // Every key this widget can emit MUST exist in the registry doc.
+        for v in [Variant::Primary, Variant::Danger, Variant::Chrome,
+                  Variant::Ghost, Variant::Secondary] {
+            let k = recipe_key_for(v).unwrap();
+            assert!(
+                ["button.primary", "button.ghost", "button.danger",
+                 "button.success", "button.chrome"].contains(&k),
+                "{k} is not a registered key (docs/migration/recipe-keys.md)");
+        }
     }
 
     /// An authored recipe must beat the built-in default through the documented
