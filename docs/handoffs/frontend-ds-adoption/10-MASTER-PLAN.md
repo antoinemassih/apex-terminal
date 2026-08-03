@@ -114,6 +114,29 @@ from `09` Phase 0.
 
 **Gate to M1:** harness demo + all M0 fixes screenshot-verified + CI green.
 
+> **EXECUTION STATUS (2026-08-03, session 3):**
+> **M3 ✅ COMPLETE.**
+> · M3.2 Sx vocabulary closed the top-3 evidence-ranked blockers: per-side
+>   borders (`Edges`/`EdgesRef`, ~35 CSS rules — every tab underline and ledger
+>   hairline), inset bevels (`BevelSpec`/`BevelSpecRef`, ~25 rules — Alto/
+>   Mariner's raised-face identity), font-weight (~30 rules, advisory pending
+>   per-weight families), plus `gap` on `RecipeDelta` (the free win). All
+>   additive; `edges` defaults ALL so existing recipes are byte-identical.
+> · M3.6 **recipe-adoption gate** — the metric the audit said never existed.
+>   Three FLOORS that may only rise (widgets consulting 7, keys authored 23,
+>   styles with data 6), self-tested and in CI. Every other gate is a ceiling
+>   on a bad pattern; this one makes "the layer went dormant" a build failure.
+> **M4 started:**
+> · M4.1 **the layout adoption unblock** — `Size::Content(px)` gives real
+>   intrinsic sizing (CSS flex-basis: holds its width, may shrink where `Fixed`
+>   never does) plus `Item::{content,galley,text,text_tier}` so callers stop
+>   hand-measuring. This is why adoption stalled at 10 sites; the cost of
+>   migrating a header is now lower than the arithmetic it replaces.
+> · M4.2 `Surface` padding fixed — it inferred pad from the first child's left
+>   edge (wrong under `Justify::Center` and for columns) while discarding the
+>   authored `Space` it already held.
+> Sweep: ui_kit 213, design_system 91, four gates green.
+>
 > **EXECUTION STATUS (2026-08-03, session 2):**
 > **M2 ✅ COMPLETE** — M2.3/M2.7 landed: `ThemeScope` + `TokenScope` RAII
 > guards give the palette and tokens CSS-subtree semantics. Wired into the pane
