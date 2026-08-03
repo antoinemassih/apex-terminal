@@ -128,7 +128,7 @@ impl<'a, T: Copy + PartialEq> SplitTabs<'a, T> {
             let hr = header.response.rect;
             pane.painter().line_segment(
                 [egui::pos2(hr.left(), hr.bottom() - 0.5), egui::pos2(hr.right(), hr.bottom() - 0.5)],
-                egui::Stroke::new(1.0, t.header_border()),
+                egui::Stroke::new(crate::ui_kit::style::stroke_std(), t.header_border()),
             );
             pane.add_space(gap_xs());
 
@@ -144,14 +144,14 @@ impl<'a, T: Copy + PartialEq> SplitTabs<'a, T> {
                         let x = sub.right() + gap * 0.5;
                         ui.painter().line_segment(
                             [egui::pos2(x, sub.top()), egui::pos2(x, sub.bottom())],
-                            egui::Stroke::new(1.0, col),
+                            egui::Stroke::new(crate::ui_kit::style::stroke_std(), col),
                         );
                     }
                     SplitAxis::Vertical => {
                         let y = sub.bottom() + gap * 0.5;
                         ui.painter().line_segment(
                             [egui::pos2(sub.left(), y), egui::pos2(sub.right(), y)],
-                            egui::Stroke::new(1.0, col),
+                            egui::Stroke::new(crate::ui_kit::style::stroke_std(), col),
                         );
                     }
                 }

@@ -162,7 +162,7 @@ impl PanelCard {
             ui.painter().line_segment(
                 [egui::pos2(r.left() + inset, r.top() + 0.5),
                  egui::pos2(r.right() - inset, r.top() + 0.5)],
-                Stroke::new(1.0, crate::ui_kit::style::color_alpha(t.text(), 12)),
+                Stroke::new(crate::ui_kit::style::stroke_std(), crate::ui_kit::style::color_alpha(t.text(), 12)),
             );
         }
 

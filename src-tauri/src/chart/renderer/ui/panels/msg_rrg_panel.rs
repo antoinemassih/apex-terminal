@@ -398,7 +398,7 @@ fn draw_rrg_scatter(
             painter.arrow(
                 prev_pos,
                 egui::vec2(pos.x - prev_pos.x, pos.y - prev_pos.y),
-                egui::Stroke::new(1.5, egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha_active())),
+                egui::Stroke::new(crate::ui_kit::style::stroke_bold(), egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha_active())),
             );
         }
         // Marker radius proportional to weight (min 4, max 12 px).

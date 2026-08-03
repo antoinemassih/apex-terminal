@@ -432,7 +432,7 @@ impl<'a> WatchlistRow<'a> {
                     let dy = rect.bottom() - 0.5;
                     painter.line_segment(
                         [egui::pos2(rect.left(), dy), egui::pos2(rect.right(), dy)],
-                        egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(
+                        egui::Stroke::new(crate::ui_kit::style::stroke_thin(), egui::Color32::from_rgba_unmultiplied(
                             border.r(), border.g(), border.b(), wl_divider,
                         )),
                     );
@@ -664,7 +664,7 @@ impl<'a> WatchlistRow<'a> {
                             egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5),
                             egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5),
                         ],
-                        Stroke::new(stroke_thin(), color_alpha(border, alpha_muted())),
+                        Stroke::new(crate::ui_kit::style::stroke_thin(), color_alpha(border, alpha_muted())),
                     );
                 }
 

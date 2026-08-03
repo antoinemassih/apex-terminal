@@ -90,7 +90,7 @@ pub(super) fn render_signal_gauges(
                 let pulse = ((ctx.input(|i| i.time) * 3.0).sin() * 0.3 + 0.7) as f32;
                 painter.rect_stroke(
                     egui::Rect::from_min_size(egui::pos2(gauge_x - 1.0, gauge_y - 1.0), egui::vec2(pill_w + 2.0, pill_h + 2.0)),
-                    pill_r, egui::Stroke::new(1.0, color_alpha(t.bear, (pulse * 120.0) as u8)), egui::StrokeKind::Outside,
+                    pill_r, egui::Stroke::new(crate::ui_kit::style::stroke_std(), color_alpha(t.bear, (pulse * 120.0) as u8)), egui::StrokeKind::Outside,
                 );
                 ctx.request_repaint();
             }
@@ -111,7 +111,7 @@ pub(super) fn render_signal_gauges(
             let pulse = ((ctx.input(|i| i.time) * 2.5).sin() * 0.3 + 0.7) as f32;
             painter.rect_stroke(
                 egui::Rect::from_min_size(egui::pos2(gauge_x - 1.0, gauge_y - 1.0), egui::vec2(pill_w + 2.0, pill_h + 2.0)),
-                pill_r, egui::Stroke::new(1.0, color_alpha(pr_color, (pulse * 80.0) as u8)), egui::StrokeKind::Outside,
+                pill_r, egui::Stroke::new(crate::ui_kit::style::stroke_std(), color_alpha(pr_color, (pulse * 80.0) as u8)), egui::StrokeKind::Outside,
             );
             ctx.request_repaint();
         }
@@ -193,6 +193,6 @@ pub(super) fn render_signal_gauges(
 
         // Subtle border
         painter.rect_stroke(card_rect, 6.0,
-            egui::Stroke::new(1.0, color_alpha(accent, 40)), egui::StrokeKind::Outside);
+            egui::Stroke::new(crate::ui_kit::style::stroke_std(), color_alpha(accent, 40)), egui::StrokeKind::Outside);
     }
 }

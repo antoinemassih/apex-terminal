@@ -357,7 +357,7 @@ fn collapsed_chip(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> 
     ui.painter().rect_filled(rect, radius, fill);
     if is_active {
         ui.painter().rect_stroke(rect, radius,
-            egui::Stroke::new(1.5, t.accent), egui::StrokeKind::Outside);
+            egui::Stroke::new(crate::ui_kit::style::stroke_bold(), t.accent), egui::StrokeKind::Outside);
     }
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, initials(name),
         egui::FontId::monospace(font_sm()),

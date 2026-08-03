@@ -119,7 +119,7 @@ pub(crate) fn draw(
     let edge_x = if on_left { dom_rect.right() } else { dom_rect.left() };
     painter.line_segment(
         [egui::pos2(edge_x, dom_rect.top()), egui::pos2(edge_x, dom_rect.bottom())],
-        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_heavy())),
+        egui::Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, alpha_heavy())),
     );
     if !*dom_fullscreen {
         let hr = egui::Rect::from_min_size(
@@ -274,7 +274,7 @@ pub(crate) fn draw(
     let sep_y = hy + header_h;
     painter.line_segment(
         [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
-        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())),
+        egui::Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, alpha_strong())),
     );
 
     // ── LIVE / SIMULATED data badge ───────────────────────────────────────────
@@ -348,7 +348,7 @@ pub(crate) fn draw(
     for i in 0..4u32 {
         painter.line_segment(
             [egui::pos2(inner.left(), ctrl_top - i as f32), egui::pos2(inner.right(), ctrl_top - i as f32)],
-            egui::Stroke::new(stroke_std(), shadow_color_alpha(t, 20u8.saturating_sub(i as u8 * 5))),
+            egui::Stroke::new(crate::ui_kit::style::stroke_std(), shadow_color_alpha(t, 20u8.saturating_sub(i as u8 * 5))),
         );
     }
     // Hairline divider between DOM ladder and the controls.
@@ -744,7 +744,7 @@ pub(crate) fn draw(
                 lp.rect_filled(egui::Rect::from_min_size(egui::pos2(rr.left(), ry), egui::vec2(3.0, ROW_H)), 0.0, pc);
                 lp.line_segment(
                     [egui::pos2(rr.left(), ry + ROW_H * 0.5), egui::pos2(rr.right(), ry + ROW_H * 0.5)],
-                    egui::Stroke::new(1.0, color_alpha(pc, 110)));
+                    egui::Stroke::new(crate::ui_kit::style::stroke_std(), color_alpha(pc, 110)));
                 let tag = format!("{}{}", if long { "L" } else { "S" }, pos_qty.unsigned_abs());
                 lp.text(egui::pos2(rr.left() + 5.0, ry + ROW_H * 0.5), egui::Align2::LEFT_CENTER, &tag, f_ovl.clone(), pc);
             }
@@ -815,7 +815,7 @@ pub(crate) fn draw(
         let ts_top = ctrl_top - tape_h + 2.0;
         painter.line_segment(
             [egui::pos2(inner.left(), ts_top), egui::pos2(inner.right(), ts_top)],
-            egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())),
+            egui::Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, alpha_strong())),
         );
         // Same tier `tape_row_h` was derived from — see above.
         let tsf = TextStyle::MonoSm.font_id_in(ui);

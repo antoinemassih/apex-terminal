@@ -214,7 +214,7 @@ pub(crate) fn render(
             let hx = handle.center().x;
             ui.painter().line_segment(
                 [egui::pos2(hx, handle.top()), egui::pos2(hx, handle.bottom())],
-                egui::Stroke::new(2.0, tint(t, Tone::Accent, if active { alpha_solid() } else { alpha_heavy() })),
+                egui::Stroke::new(crate::ui_kit::style::stroke_thick(), tint(t, Tone::Accent, if active { alpha_solid() } else { alpha_heavy() })),
             );
             r
         }).inner;
@@ -243,7 +243,7 @@ pub(crate) fn render(
             let (rects, _) = compute_rail_rects(&heights, area.min, col_w, gap, area.height());
             // Visible border (border_variant @ alpha_solid — the same color the
             // inter-tab dividers use, so it reads clearly on the panel surface).
-            let border = egui::Stroke::new(1.0, color_alpha(t.border_variant, alpha_solid()));
+            let border = egui::Stroke::new(crate::ui_kit::style::stroke_std(), color_alpha(t.border_variant, alpha_solid()));
             for r in &rects {
                 let slot_rect = r.rect.intersect(area);
                 if !slot_rect.is_finite() || slot_rect.height() < 24.0 { continue; }

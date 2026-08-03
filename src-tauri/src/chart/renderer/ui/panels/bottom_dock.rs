@@ -99,7 +99,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
         frame = frame
             .outer_margin(egui::Margin { left: rgap as i8, right: rgap as i8, top: 0, bottom: rgap as i8 })
             .corner_radius(egui::CornerRadius::same(rr))
-            .stroke(egui::Stroke::new(1.0, tint(t, Tone::Border, 150)));
+            .stroke(egui::Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, 150)));
     }
 
     // Seed the split slots from the persisted primary tab on first use.
@@ -140,7 +140,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
                 let cx = full.center().x;
                 ui.painter().line_segment(
                     [egui::pos2(cx - 14.0, gy), egui::pos2(cx + 14.0, gy)],
-                    egui::Stroke::new(2.0, tint(t, Tone::Dim, if gresp.hovered() { 210 } else { 90 })),
+                    egui::Stroke::new(crate::ui_kit::style::stroke_thick(), tint(t, Tone::Dim, if gresp.hovered() { 210 } else { 90 })),
                 );
                 ui.add_space(DOCK_GRIP_H);
 
@@ -177,7 +177,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
                     ui.painter().line_segment(
                         [egui::pos2(strip_rect.left(), strip_rect.bottom() - 0.5),
                          egui::pos2(strip_rect.right(), strip_rect.bottom() - 0.5)],
-                        egui::Stroke::new(1.0, t.header_border()),
+                        egui::Stroke::new(crate::ui_kit::style::stroke_std(), t.header_border()),
                     );
                     if ui.rect_contains_pointer(strip_rect) {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

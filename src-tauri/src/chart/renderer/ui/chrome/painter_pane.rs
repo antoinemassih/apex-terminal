@@ -581,7 +581,7 @@ impl<'a> PainterPaneHeader<'a> {
             if self.is_active && st.pane_active_indicator & 1 != 0 {
                 painter.line_segment(
                     [pos2(rect.left(), rect.top() + 1.0), pos2(rect.right(), rect.top() + 1.0)],
-                    Stroke::new(2.0, t.accent),
+                    Stroke::new(crate::ui_kit::style::stroke_thick(), t.accent),
                 );
             }
         }

@@ -361,7 +361,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         fp.rect_filled(box_rect.translate(vec2(0.0, 2.0)).expand(1.0), cr,
             { let s = t.shadow_color; egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), (70.0 * app) as u8) });
         fp.rect_filled(box_rect, cr, tint(t, Tone::Surface, 252).gamma_multiply(app.max(0.001)));
-        fp.rect_stroke(box_rect, cr, Stroke::new(1.0, tint(t, Tone::Border, 160).gamma_multiply(app)), StrokeKind::Inside);
+        fp.rect_stroke(box_rect, cr, Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, 160).gamma_multiply(app)), StrokeKind::Inside);
         fp.rect_filled(Rect::from_min_size(box_rect.min, vec2(ACCENT_W, box_rect.height())),
             CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, accent.gamma_multiply(app));
 
@@ -449,7 +449,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let top  = bell_rect.bottom() + 6.0;
         let frame = egui::Frame::popup(&ctx.style())
             .fill(tint(t, Tone::Surface, 255))
-            .stroke(Stroke::new(1.0, tint(t, Tone::Border, 150)))
+            .stroke(Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, 150)))
             .corner_radius(CornerRadius::same(radius_md() as u8))
             .inner_margin(egui::Margin::same(gap_sm() as i8));
         let area = egui::Area::new(Id::new("alert_history_pop"))
