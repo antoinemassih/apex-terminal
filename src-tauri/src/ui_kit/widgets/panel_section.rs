@@ -74,6 +74,7 @@ use crate::ui_kit::tokens::{
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::text_style::TextStyle;
 use crate::ui_kit::sx::{palette_ct, Sx, StyleState, Tone as SxTone};
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 
 /// Shared semantic tone for the panel body primitives. Resolves to a theme
 /// color via [`Tone::color`]. Defined here so the seven panel-body widgets
@@ -156,6 +157,11 @@ fn rule_color<T: ComponentTheme + ?Sized>(t: &T) -> Color32 {
 const CARET_GLYPH_PT: f32 = 12.0;
 /// Height (and, for the delete button, width) of the trailing ghost buttons.
 const SECTION_BTN_H: f32 = 16.0;
+/// Hover-fill alpha for the trailing ghost buttons. Sits between the global
+/// `alpha_ghost` (15) and `alpha_soft` (20) because these buttons are tiny and
+/// need a slightly firmer plate to read as hit targets — kept as a named
+/// override fed to `InteractionTokens::hover_alpha` rather than a bare literal.
+const SECTION_BTN_HOVER_ALPHA: u8 = 24;
 
 /// Which header piece a solved flex slot belongs to. `Gap` slots are pure
 /// spacing (the old `ui.add_space(..)` calls and the elastic middle) and render
@@ -717,9 +723,16 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
     let size = Vec2::splat(SECTION_BTN_H);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     Tooltip::new("Delete section").show(ui, &resp, &active_theme(ui.ctx()));
+    // M3.3: hover fill from the ONE interaction table (accent tint at 24 —
+    // the alpha this button has always drawn).
+    let v = apply_interaction(
+        rect,
+        InteractionState::new().hovered(resp.hovered()),
+        color,
+        &InteractionTokens::borderless().hover_alpha(SECTION_BTN_HOVER_ALPHA),
+    );
     let draw_color = if resp.hovered() {
-        ui.painter()
-            .rect_filled(rect, 2.0, color_alpha(color, 24));
+        ui.painter().rect_filled(rect, 2.0, v.fill);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         color
     } else {
@@ -759,9 +772,15 @@ fn section_action_button(ui: &mut Ui, label: &str, color: Color32) -> bool {
         .color(color);
     let size = section_action_button_size(ui, label);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    // M3.3: same hover treatment as `section_delete_button`, same table.
+    let v = apply_interaction(
+        rect,
+        InteractionState::new().hovered(resp.hovered()),
+        color,
+        &InteractionTokens::borderless().hover_alpha(SECTION_BTN_HOVER_ALPHA),
+    );
     if resp.hovered() {
-        ui.painter()
-            .rect_filled(rect, 2.0, color_alpha(color, 24));
+        ui.painter().rect_filled(rect, 2.0, v.fill);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     ui.painter().text(

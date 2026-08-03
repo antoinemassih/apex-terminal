@@ -53,6 +53,9 @@
 //! - [`registry`] — `ThemeRegistry`: scaffolding for global active-pair tracking
 //!   (not wired to the per-pane runtime model).
 //! - [`builtin`] — the 16 built-in `ColorScheme`s and 3 built-in `StyleSystem`s.
+//! - [`builtin_recipes`] — per-style `RecipeSet`s (the component-level payload
+//!   that makes a style switch restyle COMPONENTS, not just colours). Authored
+//!   from the React port's `html[data-ds="…"] .ds-…` rules.
 //! - [`baseline`] — golden snapshot used by equivalence tests.
 //! - [`equivalence_tests`] — `#[cfg(test)]` parity proof against `gpu::THEMES`.
 //!
@@ -69,6 +72,7 @@
 // chart_renderer side at `chart_renderer::theme_adapter::color_scheme_to_theme`.
 pub mod baseline;
 pub mod builtin;
+pub mod builtin_recipes;
 pub mod color_scheme;
 pub mod equivalence_tests;
 pub mod export;
@@ -87,6 +91,7 @@ pub mod theme_pack;
 // pointing the right way (chart_renderer → design_system, never reverse).
 pub use baseline::{baseline_color_scheme, baseline_style_system};
 pub use builtin::{builtin_color_schemes, builtin_style_systems};
+pub use builtin_recipes::builtin_recipes;
 pub use color_scheme::{ColorScheme, Meta, Rgba};
 pub use export::{export_builtin_themes, scan_theme_dir};
 pub use hot_reload::{active_override, start_theme_watcher, themes_dir};

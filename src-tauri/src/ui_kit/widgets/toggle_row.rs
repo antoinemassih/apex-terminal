@@ -26,6 +26,11 @@ use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use super::{Switch, Tooltip};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
+
+/// Hover-tint alpha for a settings row. Deliberately under `alpha_ghost` (15) —
+/// these rows are tall and a full ghost plate reads as a selection.
+const ROW_HOVER_ALPHA: u8 = 12;
 
 type InfoFn<'a> = Box<dyn FnOnce(&mut Ui, &dyn ComponentTheme) + 'a>;
 
@@ -145,11 +150,17 @@ fn paint_toggle_row<'a>(
         return response;
     }
 
-    // Hover tint background — covers full row.
-    if response.hovered() && !disabled {
-        // TODO: switch to theme.element_hover() once the trait getter lands
-        let tint = st::color_alpha(palette_ct(theme).base(Tone::Text), 12);
-        ui.painter().rect_filled(rect, 4.0, tint);
+    // Hover tint background — covers full row. M3.3: fill from the ONE
+    // interaction table (which also enforces "disabled suppresses hover"),
+    // replacing the hand-picked `color_alpha(text, 12)`.
+    let ix = apply_interaction(
+        rect,
+        InteractionState::new().hovered(response.hovered()).disabled(disabled),
+        palette_ct(theme).base(Tone::Text),
+        &InteractionTokens::borderless().hover_alpha(ROW_HOVER_ALPHA),
+    );
+    if ix.fill != Color32::TRANSPARENT {
+        ui.painter().rect_filled(rect, 4.0, ix.fill);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 

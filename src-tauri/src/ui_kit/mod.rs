@@ -10,6 +10,11 @@ pub mod symbols;
 pub mod tokens;
 pub mod style;
 pub mod text_style;
+/// M3.3: THE interaction-state table — hover / pressed / focus / selected /
+/// disabled → paint-ready `Visuals`. Owned here (was chart-side foundation)
+/// so widgets can reach it; the chart layer re-exports it via
+/// `chart::renderer::ui::foundation::interaction`.
+pub mod interaction;
 /// Taffy-backed flexbox layout (geometry only; styling stays in the tokens).
 pub mod layout;
 /// Typed design scales (Space/Radius/Weight/Level) — the constraint layer.

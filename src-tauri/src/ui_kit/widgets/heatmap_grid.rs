@@ -16,6 +16,7 @@ use egui::{Color32, Response, Ui};
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
@@ -102,11 +103,16 @@ impl<'a> HeatmapGrid<'a> {
             let is_active = self.active_symbol.map_or(false, |s| s == item.symbol);
             let is_hovered = hover_idx == Some(i);
 
-            // Hover highlight
+            // Hover highlight — M3.3: fill from the ONE interaction table.
             if is_hovered {
-                painter.rect_filled(
-                    egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(col_w, cell_h)),
-                    2.0, st::color_alpha(palette_ct(theme).base(Tone::Text), 12));
+                let cell = egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(col_w, cell_h));
+                let v = apply_interaction(
+                    cell,
+                    InteractionState::new().hovered(true),
+                    palette_ct(theme).base(Tone::Text),
+                    &InteractionTokens::borderless().hover_alpha(12),
+                );
+                painter.rect_filled(cell, 2.0, v.fill);
             }
             // Active symbol border
             if is_active {

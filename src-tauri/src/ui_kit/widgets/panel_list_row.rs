@@ -108,6 +108,7 @@ use crate::ui_kit::tokens::{
 use crate::ui_kit::widgets::theme::{ComponentTheme, get_ambient_recipes};
 use crate::ui_kit::sx::{palette_ct, Fill, Sx, StyleState, Tone as SxTone};
 use crate::ui_kit::widgets::{motion, Tooltip};
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 use crate::ui_kit::text_style::TextStyle;
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.
@@ -655,8 +656,21 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 motion::FAST,
             );
             if hover_t > 0.0 {
-                let bg = color_alpha(pal.base(SxTone::Text), (alpha_ghost() as f32 * hover_t).round() as u8);
-                painter.rect_filled(bg_rect, cr, bg);
+                // M3.3: the hover fill comes from the ONE interaction table; the
+                // ease only scales it in from transparent. `lerp_color` works in
+                // premultiplied space, so lerping TRANSPARENT -> fill is exactly
+                // the old `color_alpha(text, ghost * hover_t)`.
+                let hovered_fill = apply_interaction(
+                    bg_rect,
+                    InteractionState::new().hovered(true),
+                    pal.base(SxTone::Text),
+                    &InteractionTokens::borderless().hover_alpha(alpha_ghost()),
+                ).fill;
+                painter.rect_filled(
+                    bg_rect,
+                    cr,
+                    motion::lerp_color(Color32::TRANSPARENT, hovered_fill, hover_t),
+                );
             }
         }
 

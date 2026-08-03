@@ -20,6 +20,9 @@ use crate::ui_kit::tokens as st;
 // it previews deliberately keeps raw `preview_theme.*` reads (it's showing a
 // *different* theme's colors, so it must not route through the active palette).
 use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::interaction::{
+    apply_interaction, HoverTreatment, InteractionState, InteractionTokens,
+};
 
 const DEFAULT_SIZE: Vec2 = Vec2::new(132.0, 80.0);
 const BORDER_WIDTH: f32 = 2.0;
@@ -93,12 +96,18 @@ impl<'a> ThemePreviewCard<'a> {
         painter.rect_filled(card_rect, CornerRadius::same(CARD_RADIUS as u8), preview_theme.bg());
 
         // Hover overlay (subtle, on top of bg, before mock editor).
-        if response.hovered() {
-            painter.rect_filled(
-                card_rect,
-                CornerRadius::same(CARD_RADIUS as u8),
-                theme.element_hover(),
-            );
+        // M3.3: routed through the ONE interaction table. The overlay colour is
+        // the theme's own `element_hover()` (alpha already baked in), so the
+        // treatment is `Custom` rather than an accent tint.
+        let ix = apply_interaction(
+            card_rect,
+            InteractionState::new().hovered(response.hovered()),
+            theme.element_hover(),
+            &InteractionTokens::borderless()
+                .treatment(HoverTreatment::Custom(theme.element_hover())),
+        );
+        if ix.fill != Color32::TRANSPARENT {
+            painter.rect_filled(card_rect, CornerRadius::same(CARD_RADIUS as u8), ix.fill);
         }
 
         // Inset from card edges.

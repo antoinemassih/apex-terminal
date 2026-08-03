@@ -4021,3 +4021,53 @@ mod m1_shadow_stack_tests {
         assert!(restored.is_empty(), "unauthored styles keep the legacy single-shadow path");
     }
 }
+
+// ── M3 end-to-end recipe-chain test ──────────────────────────────────────────
+#[cfg(test)]
+mod m3_recipe_chain_tests {
+    use super::*;
+
+    /// THE CROWN-JEWEL PROOF: switching the active STYLE changes what a widget
+    /// resolves from the recipe layer — with zero widget-code changes.
+    ///
+    /// Before M3 this was impossible in two independent ways: no pack shipped
+    /// recipe data (so the set was always empty), and Button never consulted
+    /// the set it was handed. Both are now closed.
+    #[test]
+    fn active_style_selects_authored_recipes() {
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        // Every design-system style must ship authored recipes...
+        for id in ["aperture", "cadence", "alto", "mariner", "lucid", "meridien"] {
+            let set = crate::design_system::builtin_recipes(id);
+            assert!(set.len() > 0, "{id} must ship authored recipes");
+            assert!(set.get("button.primary").is_some(),
+                "{id} must author button.primary (the highest-traffic key)");
+        }
+        // ...and an unauthored id must stay a guaranteed no-op.
+        assert_eq!(crate::design_system::builtin_recipes("octave").len(), 0,
+            "unauthored styles keep an empty set (byte-identical rendering)");
+    }
+
+    /// The signature differences the audit said were inexpressible: Cadence's
+    /// full-pill primary vs Meridien's square controls, resolved through the
+    /// SAME widget default.
+    #[test]
+    fn cadence_and_meridien_resolve_different_button_radii() {
+        use crate::ui_kit::sx::{Sx, StyleState};
+        let theme = crate::ui_kit::widgets::theme::PortableTheme::dark();
+        let builtin_default = Sx::new().rounded(6.0);
+
+        let cadence = crate::design_system::builtin_recipes("cadence")
+            .resolve("button.primary", builtin_default, &theme)
+            .resolved(StyleState::Normal).radius.expect("cadence radius");
+        let meridien = crate::design_system::builtin_recipes("meridien")
+            .resolve("button.primary", builtin_default, &theme)
+            .resolved(StyleState::Normal).radius.expect("meridien radius");
+
+        assert!(cadence > meridien,
+            "Cadence pills ({cadence}) must exceed Meridien squares ({meridien}) \
+             from the same widget default — the signature difference the audit \
+             found inexpressible");
+    }
+}

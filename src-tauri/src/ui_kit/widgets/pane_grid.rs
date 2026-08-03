@@ -52,6 +52,7 @@ use super::context_menu::{ContextMenu, DangerMenuItem, MenuItem};
 use super::motion;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::text_style::TextStyle;
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 
 // ─── Identifiers ─────────────────────────────────────────────────────────────
 
@@ -800,8 +801,15 @@ fn paint_node<T, R>(
                 div_resp.hovered() || div_resp.dragged(),
                 motion::FAST,
             );
+            // M3.3: the "hot" splitter colour is an accent hover tint — take it
+            // from the ONE interaction table instead of hand-picking the alpha.
             let idle_c   = st::color_alpha(splitter_color, st::alpha_strong());
-            let hot_c    = st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_heavy());
+            let hot_c    = apply_interaction(
+                rect_div,
+                InteractionState::new().hovered(true),
+                palette_ct(theme).base(Tone::Accent),
+                &InteractionTokens::borderless().hover_alpha(st::alpha_heavy()),
+            ).fill;
             let line_col = motion::lerp_color(idle_c, hot_c, hover_t);
             ui.painter().rect_filled(rect_div, CornerRadius::ZERO, line_col);
         }

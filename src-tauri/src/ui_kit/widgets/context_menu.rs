@@ -303,9 +303,16 @@ fn paint_row(
     ui.spacing_mut().button_padding = prev_pad;
 
     crate::ui_kit::cursor::clickable(ui, &resp);
-    if resp.hovered() {
-        ui.painter()
-            .rect_filled(resp.rect, radius_sm(), color_alpha(theme.accent, alpha_ghost()));
+    // M3.3: hover fill derived from the ONE interaction table (accent tint at
+    // the hover-bg token) instead of a hand-picked `color_alpha(accent, ghost)`.
+    let v = crate::ui_kit::interaction::apply_interaction(
+        resp.rect,
+        crate::ui_kit::interaction::InteractionState::new().hovered(resp.hovered()),
+        theme.accent,
+        &crate::ui_kit::interaction::InteractionTokens::borderless(),
+    );
+    if v.fill != Color32::TRANSPARENT {
+        ui.painter().rect_filled(resp.rect, radius_sm(), v.fill);
     }
     resp
 }

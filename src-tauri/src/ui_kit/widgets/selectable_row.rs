@@ -32,6 +32,7 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 
 #[must_use = "SelectableRow does nothing until `.show(ui, theme)` or `ui.add(row)` is called"]
 pub struct SelectableRow<'a> {
@@ -129,13 +130,22 @@ impl<'a> SelectableRow<'a> {
         let painter = ui.painter_at(rect);
         let cr = CornerRadius::same(st::radius_sm() as u8);
 
-        // Background fill.
-        if selected {
-            let bg = st::color_alpha(pal.base(Tone::Accent), st::alpha_soft());
-            painter.rect_filled(rect, cr, bg);
-        } else if response.hovered() && !disabled {
-            let bg = st::color_alpha(pal.base(Tone::Text), st::alpha_faint());
-            painter.rect_filled(rect, cr, bg);
+        // Background fill — M3.3: one call to the interaction table replaces the
+        // selected / hover / disabled branch ladder. Selected reads as an accent
+        // tint; hover as a neutral text tint; disabled suppresses hover.
+        let ix = apply_interaction(
+            rect,
+            InteractionState::new()
+                .selected(selected)
+                .hovered(response.hovered())
+                .disabled(disabled),
+            if selected { pal.base(Tone::Accent) } else { pal.base(Tone::Text) },
+            &InteractionTokens::borderless()
+                .selected_alpha(st::alpha_soft())
+                .hover_alpha(st::alpha_faint()),
+        );
+        if ix.fill != egui::Color32::TRANSPARENT {
+            painter.rect_filled(rect, cr, ix.fill);
         }
 
         // Cursor affordance.

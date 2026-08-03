@@ -19,6 +19,7 @@ use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CheckState {
@@ -157,8 +158,14 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
     let mut bg = motion::lerp_color(off_bg, on_bg, on_t);
 
     // Hover tint when off (additive ghost), brighter accent when on.
+    // M3.3: the off-state hover fill comes from the ONE interaction table.
     if !is_marked && hover_t > 0.001 {
-        let hover_bg = st::color_alpha(accent, st::alpha_ghost());
+        let hover_bg = apply_interaction(
+            box_rect,
+            InteractionState::new().hovered(true),
+            accent,
+            &InteractionTokens::borderless(),
+        ).fill;
         bg = motion::lerp_color(bg, hover_bg, hover_t);
     } else if is_marked && hover_t > 0.001 {
         bg = motion::lerp_color(bg, lighten(accent, 0.10), hover_t);

@@ -55,6 +55,7 @@ use crate::ui_kit::tokens::{
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 use crate::ui_kit::text_style::TextStyle;
 
 /// Alpha (out of 255) of the bottom hairline rule. Higher than the L2
@@ -358,12 +359,15 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
                 t.header_surface(),
             );
             // Hover overlay — faint warm tint on top of the recessed base.
-            if resp.hovered() {
-                painter.rect_filled(
-                    rect,
-                    CornerRadius::ZERO,
-                    color_alpha(palette_ct(t).base(Tone::Text), HOVER_BG_ALPHA),
-                );
+            // M3.3: fill derived from the ONE interaction table.
+            let hov = apply_interaction(
+                rect,
+                InteractionState::new().hovered(resp.hovered()),
+                palette_ct(t).base(Tone::Text),
+                &InteractionTokens::borderless().hover_alpha(HOVER_BG_ALPHA),
+            );
+            if hov.fill != egui::Color32::TRANSPARENT {
+                painter.rect_filled(rect, CornerRadius::ZERO, hov.fill);
             }
 
             if let Some(r) = slot_rect_of(SubSlot::Caret) {

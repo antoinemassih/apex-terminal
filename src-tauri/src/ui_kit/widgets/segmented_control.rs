@@ -20,6 +20,11 @@ use super::tokens::Size;
 use super::motion;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
+
+/// Hover-fill alpha for an inactive segment. Slightly firmer than the global
+/// `alpha_ghost` because the pill sits on the control's own surface fill.
+const SEGMENT_HOVER_ALPHA: u8 = 18;
 
 /// Horizontal connected-pill selector for picking one of N fixed options.
 ///
@@ -182,9 +187,22 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             let active_t = motion::ease_bool(ui.ctx(), seg_id.with("a"), is_active, motion::MED);
 
             // Background
+            // M3.3: the hover and active fills come from the ONE interaction
+            // table — `selected` for the active pill (accent @ alpha_tint) and
+            // `hover` for the neutral text tint this control has always used.
             let idle_bg   = if self.connected { Color32::TRANSPARENT } else { pal.base(Tone::Surface) };
-            let active_bg = st::color_alpha(accent, st::alpha_tint());
-            let hover_bg  = st::color_alpha(pal.base(Tone::Text), 18);
+            let active_bg = apply_interaction(
+                seg_rect,
+                InteractionState::new().selected(true),
+                accent,
+                &InteractionTokens::borderless(),
+            ).fill;
+            let hover_bg  = apply_interaction(
+                seg_rect,
+                InteractionState::new().hovered(true),
+                pal.base(Tone::Text),
+                &InteractionTokens::borderless().hover_alpha(SEGMENT_HOVER_ALPHA),
+            ).fill;
 
             let mut bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
             bg = motion::lerp_color(bg, active_bg, active_t);

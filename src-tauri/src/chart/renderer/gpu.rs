@@ -5349,9 +5349,19 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
             ).is_some()
         });
         if !has_pack_recipes {
+            // M3: BUILTIN RECIPES. Previously this installed an EMPTY set
+            // unless a `.apextheme` pack shipped one — and no pack ships, so
+            // the whole recipe layer resolved to "return default" 100% of the
+            // time (the audit's dormant-layer finding). The six design systems
+            // now carry authored recipe data keyed by the ACTIVE STYLE, so
+            // switching styles restyles components structurally with zero
+            // widget-code changes. Styles without authored data get an empty
+            // set, exactly as before.
+            let style_id = crate::chart_renderer::ui::style::active_style_system()
+                .meta.id.clone();
             crate::ui_kit::widgets::theme::set_ambient_recipes(
                 ctx,
-                crate::ui_kit::widgets::theme::empty_recipe_arc(),
+                std::sync::Arc::new(crate::design_system::builtin_recipes(&style_id)),
             );
         }
     }
