@@ -197,6 +197,36 @@ impl SxDelta {
     pub fn text_color(&self, pal: &Palette) -> Option<Color32> {
         self.text.map(|(tone, s)| pal.shade(tone, s))
     }
+
+    /// M3.1: resolve the fill against a palette. Was copy-pasted as a 10-line
+    /// `match fill { Solid | Shade | Alpha }` at every recipe consumer
+    /// (panel_list_row, tabs ×2, panel_section, tag) because `SxDelta` exposed
+    /// `text_color` but no fill twin — the audit flagged the duplication.
+    /// Every new recipe consumer uses this.
+    pub fn fill_color(&self, pal: &Palette) -> Option<Color32> {
+        self.fill.map(|fill| match fill {
+            Fill::Solid(c)        => c,
+            Fill::Shade(tone, s)  => pal.shade(tone, s),
+            Fill::Alpha(tone, a)  => {
+                let b = pal.base(tone);
+                Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        })
+    }
+
+    /// Border colour resolved against a palette (same rationale as `fill_color`).
+    /// Named `resolved_border_color` to avoid colliding with the `border_color`
+    /// BUILDER on `Sx`.
+    pub fn resolved_border_color(&self, pal: &Palette) -> Option<Color32> {
+        self.border.map(|b| match b.color {
+            Fill::Solid(c)        => c,
+            Fill::Shade(tone, s)  => pal.shade(tone, s),
+            Fill::Alpha(tone, a)  => {
+                let base = pal.base(tone);
+                Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), a)
+            }
+        })
+    }
 }
 
 /// A utility style value with optional per-state overrides.

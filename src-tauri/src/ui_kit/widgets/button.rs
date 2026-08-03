@@ -894,10 +894,51 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
             fg = with_alpha_scale(fg, 0.5);
         }
 
+        // M3.1: RECIPES. The highest-traffic widget in the app (295 call sites,
+        // 532 `Variant::` references) received a StyleCtx carrying the active
+        // RecipeSet and never read it — the single biggest reason theme packs
+        // couldn't restyle components. `DefaultButtonStyle` is now the recipe
+        // DEFAULT, per the documented chain:
+        //   recipe override -> widget built-in Sx default -> no paint
+        // Unauthored themes hold an empty set, so this is byte-identical.
+        let recipe_delta = {
+            use crate::ui_kit::sx::{Sx, StyleState};
+            let key = recipe_key_for(variant);
+            let recipes = super::theme::get_ambient_recipes(ui.ctx());
+            key.and_then(|k| {
+                // Built-in default carries the historical radius so a recipe
+                // that omits `radius` inherits today's per-style value.
+                let default_sx = Sx::new()
+                    .rounded(corner_radius.unwrap_or(default_radius(variant)));
+                let resolved = recipes.resolve(k, default_sx, theme);
+                let state = if disabled { StyleState::Disabled }
+                            else if pressed { StyleState::Active }
+                            else if hovered { StyleState::Hover }
+                            else { StyleState::Normal };
+                Some(resolved.resolved(state))
+            })
+        };
+
         let cr = btn.corner_radius_override.unwrap_or_else(|| {
-            let radius = corner_radius.unwrap_or(default_radius(variant));
-            CornerRadius::same(radius as u8)
+            // Recipe radius wins over the built-in default (Cadence authors a
+            // full pill for button.primary; Meridien authors square).
+            let radius = recipe_delta
+                .and_then(|d| d.radius)
+                .or(corner_radius)
+                .unwrap_or_else(|| default_radius(variant));
+            CornerRadius::same(radius.clamp(0.0, 255.0).round() as u8)
         });
+
+        // Recipe fill / text / border override the style table when authored.
+        let (bg, fg, recipe_border) = {
+            let pal = crate::ui_kit::sx::palette_ct(theme);
+            let d = recipe_delta;
+            (
+                d.and_then(|d| d.fill_color(&pal)).unwrap_or(bg),
+                d.and_then(|d| d.text_color(&pal)).unwrap_or(fg),
+                d.and_then(|d| d.resolved_border_color(&pal)),
+            )
+        };
 
         let owned_painter = match placed {
             Some(_) => None,
@@ -923,7 +964,11 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
                     painter.rect_stroke(rect, cr, s, StrokeKind::Inside);
                 }
             } else {
+                // M3.1: an authored recipe border wins over the variant default
+                // (e.g. a theme giving Ghost a visible hairline ring).
+                let border_col = recipe_border.unwrap_or(border_col);
                 let border_w = match variant { Variant::Secondary | Variant::Toggle => 1.0, _ => 0.0 };
+                let border_w = if recipe_border.is_some() && border_w == 0.0 { 1.0 } else { border_w };
                 if border_col.a() > 0 && (border_w > 0.0 || active_t > 0.001) {
                     let w = if border_w > 0.0 { border_w } else { 1.0 };
                     painter.rect_stroke(rect, cr, Stroke::new(w, border_col), StrokeKind::Inside);
@@ -1173,6 +1218,20 @@ fn paint_secondary_with_treatment(
         );
     }
     resp
+}
+
+/// M3.1: map a `Variant` to its registered recipe key (docs/migration/
+/// recipe-keys.md). Variants without a registered key return `None` and keep
+/// their built-in look — recipes may only override the documented surface.
+fn recipe_key_for(v: Variant) -> Option<&'static str> {
+    match v {
+        Variant::Primary   => Some("button.primary"),
+        Variant::Secondary => Some("button.secondary"),
+        Variant::Ghost     => Some("button.ghost"),
+        Variant::Danger    => Some("button.danger"),
+        Variant::Chip      => Some("button.chip"),
+        _ => None,
+    }
 }
 
 fn default_radius(v: Variant) -> f32 {
@@ -1605,5 +1664,57 @@ mod tests {
     fn default_tone_is_neutral() {
         let b = Button::icon(crate::ui_kit::icons::Icon::GEAR);
         assert_eq!(b.icon_tone, IconTone::Neutral);
+    }
+}
+
+// ── M3.1 recipe-consumption tests ────────────────────────────────────────────
+#[cfg(test)]
+mod m31_recipe_tests {
+    use super::*;
+
+    /// Every variant with a registered key must map to it, and unregistered
+    /// variants must map to None (recipes may only override the documented
+    /// surface in docs/migration/recipe-keys.md).
+    #[test]
+    fn variant_recipe_keys_match_the_registry() {
+        assert_eq!(recipe_key_for(Variant::Primary),   Some("button.primary"));
+        assert_eq!(recipe_key_for(Variant::Secondary), Some("button.secondary"));
+        assert_eq!(recipe_key_for(Variant::Ghost),     Some("button.ghost"));
+        assert_eq!(recipe_key_for(Variant::Danger),    Some("button.danger"));
+        assert_eq!(recipe_key_for(Variant::Chip),      Some("button.chip"));
+        // Unregistered -> built-in look preserved.
+        assert_eq!(recipe_key_for(Variant::Link),      None);
+        assert_eq!(recipe_key_for(Variant::Chrome),    None);
+        assert_eq!(recipe_key_for(Variant::Tab),       None);
+    }
+
+    /// An authored recipe must beat the built-in default through the documented
+    /// chain (recipe -> built-in Sx default -> no paint). This is the unit-level
+    /// proof of the crown-jewel behaviour: a pack restyles Button with zero
+    /// widget-code changes.
+    #[test]
+    fn authored_recipe_radius_beats_builtin_default() {
+        use crate::ui_kit::sx::{Sx, StyleState};
+        use crate::ui_kit::sx::recipe_spec::{RecipeSpec, RecipeDelta, RadiusTier};
+        use crate::design_system::recipes::RecipeSet;
+
+        let theme = super::super::theme::PortableTheme::dark();
+        let mut set = RecipeSet::new();
+        // Cadence-style: full pill on the primary button.
+        set.insert("button.primary", RecipeSpec {
+            base: RecipeDelta { radius: Some(RadiusTier::Pill), ..Default::default() },
+            ..Default::default()
+        });
+
+        let builtin_default = Sx::new().rounded(4.0);
+        let resolved = set.resolve("button.primary", builtin_default, &theme);
+        let got = resolved.resolved(StyleState::Normal).radius.expect("radius resolved");
+        assert!(got > 4.0,
+            "authored pill recipe must beat the 4px built-in default (got {got})");
+
+        // A key the pack does NOT author falls through to the built-in.
+        let untouched = set.resolve("button.ghost", Sx::new().rounded(2.0), &theme);
+        assert_eq!(untouched.resolved(StyleState::Normal).radius, Some(2.0),
+            "unauthored keys must keep the widget's built-in look");
     }
 }
