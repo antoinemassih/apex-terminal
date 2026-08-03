@@ -318,12 +318,31 @@ fn draw_positions(ui: &mut egui::Ui, t: &Theme, account: &AccountData) {
 // ── Account ─────────────────────────────────────────────────────────────────
 
 fn draw_account(ui: &mut egui::Ui, t: &Theme, account: &AccountData) {
+    // T5/D-4: this dock's frame is `Frame::NONE`, whose inner margin is ZERO,
+    // so nothing here had a left gutter. On tiling styles the dock's OUTER
+    // margin insets the whole card and masks it; Mariner does not tile, so
+    // "NET LIQ / $47.9K" sat at literally x=0 against the window edge while
+    // every other column had its spacing. It was never Mariner-specific —
+    // the gutter was always missing, just usually hidden.
+    //
+    // Applied to this tab's content rather than to the frame: the frame also
+    // wraps the resize grip and the SplitTabs strip, both of which span the
+    // full dock width deliberately, and insetting those would shrink the drag
+    // target and pull the split dividers off the edges.
+    //
+    // `tile()` adds its gap AFTER each tile, so the first tile never had a
+    // leading inset of its own. card_padding_x is per-style (Aperture 14 /
+    // Cadence 8 / Meridien 10), so the gutter breathes with the style.
+    let pad_x = style::current().card_padding_x;
     let Some((acct, _, _)) = account.as_ref() else {
         ui.add_space(gap_sm());
+        ui.horizontal(|ui| {
+            ui.add_space(pad_x);
         // U0-4: read as a problem (bear tint), not a neutral dim shrug. Kept as
         // an inline note (not a full PanelError block) — this is a compact
         // status row, and the OFFLINE StatusPill above already flags the state.
-        ui.add(MonospaceCode::new("Broker not connected").size_px(font_sm()).color(t.bear).gamma(0.85));
+            ui.add(MonospaceCode::new("Broker not connected").size_px(font_sm()).color(t.bear).gamma(0.85));
+        });
         return;
     };
 
@@ -335,15 +354,19 @@ fn draw_account(ui: &mut egui::Ui, t: &Theme, account: &AccountData) {
     } else {
         ("OFFLINE", crate::ui_kit::widgets::panel_section::Tone::Bear)
     };
-    crate::ui_kit::widgets::StatusPill::new(label)
-        .tone(tone)
-        .dot(true)
-        .size(crate::ui_kit::widgets::tokens::Size::Xs)
-        .show(ui, t);
+    ui.horizontal(|ui| {
+        ui.add_space(pad_x);
+        crate::ui_kit::widgets::StatusPill::new(label)
+            .tone(tone)
+            .dot(true)
+            .size(crate::ui_kit::widgets::tokens::Size::Xs)
+            .show(ui, t);
+    });
     ui.add_space(gap_sm());
 
     // Metric tiles, wrapped across the wide footer.
     ui.horizontal_wrapped(|ui| {
+        ui.add_space(pad_x);
         tile(ui, t, "NET LIQ",      &money(acct.nav),                 t.text);
         tile(ui, t, "BUYING POWER", &money(acct.buying_power),        t.text);
         tile(ui, t, "EXCESS LIQ",   &money(acct.excess_liquidity),    t.text);
