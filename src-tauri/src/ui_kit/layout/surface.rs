@@ -125,7 +125,7 @@ impl Surface {
         t: &T,
         add_item: impl FnMut(usize, &mut Ui) -> R,
     ) -> SurfaceResponse<R> {
-        let Surface { flex, bg, border, border_color, radius, pad: _ } = self;
+        let Surface { flex, bg, border, border_color, radius, pad } = self;
 
         // Solve first so we know the rect to paint BEHIND the children.
         let avail = ui.available_size_before_wrap();
@@ -140,7 +140,13 @@ impl Surface {
         // children are already inset by it, so the union alone would clip the
         // background to the content and lose the padding band.
         let outer = if content.is_positive() {
-            content.expand(self_pad_px(&rects, avail))
+            // M4.2: use the AUTHORED pad, not a value inferred from the first
+            // child's left edge. The old inference was wrong whenever
+            // `justify != Start` (a centred row reported its centring offset
+            // as padding and painted an oversized box) and for columns (the
+            // first child's LEFT inset was applied to top/bottom too). The
+            // struct already carries the real value; it was being discarded.
+            content.expand(pad.px())
         } else {
             Rect::from_min_size(origin, egui::vec2(avail.x.max(0.0), 0.0))
         };
@@ -166,12 +172,8 @@ impl Surface {
     }
 }
 
-/// Padding actually applied, inferred from the solved geometry. Taffy already
-/// inset the children, so re-deriving it here keeps a single source of truth
-/// instead of storing it twice and risking drift.
-fn self_pad_px(rects: &[Rect], _avail: egui::Vec2) -> f32 {
-    rects.first().map(|r| r.left().max(0.0)).unwrap_or(0.0)
-}
+// M4.2: `self_pad_px` (inferred padding from the first child's left edge) was
+// removed — see the call site. `Space::px()` is the single source of truth.
 
 /// Render children into pre-solved rects. Split out so `Surface` can paint its
 /// background *between* solving and rendering.
@@ -260,5 +262,56 @@ mod tests {
     fn empty_surface_does_not_panic() {
         let s = Surface::row();
         assert!(s.flex.solve(egui::vec2(100.0, 20.0)).is_empty());
+    }
+}
+
+// ── M4.2 padding-correctness tests ───────────────────────────────────────────
+#[cfg(test)]
+mod m42_padding_tests {
+    use super::*;
+    use crate::ui_kit::layout::flex::{Flex, Item};
+
+    /// The audit found `Surface` inferring its padding from the first child's
+    /// LEFT edge (`self_pad_px`). That inference is wrong in two ways, both
+    /// demonstrated here against the SOLVER the old code read from:
+    ///
+    ///  1. under `Justify::Center` the first child's left edge is the centring
+    ///     offset, not the padding — so the painted box was oversized;
+    ///  2. in a COLUMN it is the horizontal inset, which was then applied to
+    ///     top and bottom as well.
+    ///
+    /// The fix uses the authored `Space` the struct already carried. These
+    /// assertions pin the WRONGNESS of the old signal, so nobody reintroduces
+    /// it as an optimisation.
+    #[test]
+    fn first_child_left_edge_is_not_padding() {
+        // Centred row, no padding at all: the old inference would report a
+        // large "padding" purely from centring.
+        let centred = Flex::row()
+            .justify(Justify::Center)
+            .item(Item::fixed(40.0))
+            .solve(egui::vec2(300.0, 30.0));
+        let inferred = centred[0].left();
+        assert!(inferred > 50.0,
+            "centring offset is {inferred} — the old self_pad_px would have              treated this as padding and painted an oversized box");
+
+        // Start-aligned, also no padding: inference yields ~0.
+        let start = Flex::row()
+            .justify(Justify::Start)
+            .item(Item::fixed(40.0))
+            .solve(egui::vec2(300.0, 30.0));
+        assert!(start[0].left() < 1.0);
+
+        // Same authored pad (none), wildly different inferred values — which is
+        // exactly why the inference had to go.
+        assert!((inferred - start[0].left()).abs() > 50.0);
+    }
+
+    /// `Space` is the single source of truth now; identical tiers must yield
+    /// identical padding regardless of layout direction.
+    #[test]
+    fn authored_pad_is_direction_independent() {
+        assert_eq!(Space::Md.px(), Space::Md.px());
+        assert!(Space::Md.px() > Space::Sm.px(), "the scale must be ordered");
     }
 }

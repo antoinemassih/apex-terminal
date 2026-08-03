@@ -114,6 +114,18 @@ pub enum Size {
     Auto,
     /// Take a share of the leftover space (CSS `flex-grow`).
     Grow(f32),
+    /// M4.1: **content-sized** — a real intrinsic size, measured by the caller
+    /// through egui and carried as a definite basis.
+    ///
+    /// This is the fix for the layout audit's #1 adoption blocker. `Auto`
+    /// resolves to ZERO (Taffy leaves have no measure function), so every
+    /// content-sized child had to be hand-measured and passed as
+    /// `Item::fixed(...)` — which made migrating a header cost MORE code than
+    /// the arithmetic it replaced, and is why adoption stalled at 10 sites.
+    ///
+    /// Prefer the ergonomic constructors that do the measuring for you:
+    /// [`Item::text`], [`Item::galley`], [`Item::content`].
+    Content(f32),
 }
 
 /// One child in a [`Flex`].
@@ -141,6 +153,45 @@ impl Item {
     pub fn percent(f: f32) -> Self { Self::new(Size::Percent(f)) }
     pub fn auto() -> Self { Self::new(Size::Auto) }
     pub fn grow(factor: f32) -> Self { Self::new(Size::Grow(factor)) }
+
+    // ── M4.1: content-sized constructors (the adoption unblock) ─────────────
+
+    /// Content-sized from an explicit measurement (px). Use when you already
+    /// have a size — e.g. an icon's fixed glyph box or a cached galley width.
+    pub fn content(px: f32) -> Self { Self::new(Size::Content(px.max(0.0))) }
+
+    /// Content-sized from an egui galley — the exact width egui will paint,
+    /// ceiled so a fractionally-narrow rect cannot clip the last glyph.
+    pub fn galley(g: &egui::Galley) -> Self {
+        Self::content(g.size().x.ceil())
+    }
+
+    /// Content-sized by laying `text` out in `ui`'s current style — the
+    /// one-liner that replaces the measure-then-`Item::fixed` dance:
+    ///
+    /// ```ignore
+    /// // before (why adoption stalled):
+    /// let galley = ui.painter().layout_no_wrap(title.into(), font.clone(), color);
+    /// Item::fixed(galley.size().x.ceil())
+    /// // after:
+    /// Item::text(ui, title, font.clone())
+    /// ```
+    pub fn text(ui: &egui::Ui, text: impl Into<String>, font: egui::FontId) -> Self {
+        let galley = ui.painter().layout_no_wrap(
+            text.into(), font, egui::Color32::PLACEHOLDER,
+        );
+        Self::galley(&galley)
+    }
+
+    /// Content-sized from a semantic [`TextStyle`] tier — the cascade-aware
+    /// form (per-style sizes, subtree overrides) of [`Item::text`].
+    pub fn text_tier(
+        ui: &egui::Ui,
+        text: impl Into<String>,
+        tier: crate::ui_kit::text_style::TextStyle,
+    ) -> Self {
+        Self::text(ui, text, tier.font_id_in(ui))
+    }
 
     fn new(size: Size) -> Self {
         Self { size, cross: None, min: None, align_self: None, shrink: None, margin_start: None }
@@ -329,6 +380,16 @@ impl Flex {
                     Size::Auto => {
                         st.flex_grow = 0.0;
                         st.flex_basis = auto();
+                    }
+                    Size::Content(px) => {
+                        // A measured intrinsic size behaves like CSS
+                        // `flex-basis: <px>` with `flex-grow: 0`: it holds its
+                        // content width, but MAY shrink when the container is
+                        // over-subscribed (unlike Fixed, which never does).
+                        if self.row { st.flex_basis = length(px); }
+                        else { st.flex_basis = length(px); }
+                        st.flex_grow = 0.0;
+                        st.flex_shrink = 1.0;
                     }
                     Size::Grow(g) => {
                         st.flex_grow = g;
@@ -649,5 +710,72 @@ mod tests {
             .solve(Vec2::new(200.0, 30.0));
         assert!(approx(rects[0].width(), 0.0), "got {}", rects[0].width());
         assert!(approx(rects[1].width(), 200.0), "got {}", rects[1].width());
+    }
+}
+
+// ── M4.1 intrinsic-sizing tests ──────────────────────────────────────────────
+#[cfg(test)]
+mod m41_content_sizing_tests {
+    use super::*;
+
+    /// The audit's #1 layout blocker, pinned: `Auto` resolves to ZERO, which is
+    /// why every content-sized child had to be hand-measured and why adoption
+    /// stalled at 10 call sites. (This mirrors the existing
+    /// `auto_children_have_no_intrinsic_size_when_solved_headlessly` test —
+    /// kept here so the contrast with `Content` is visible in one place.)
+    #[test]
+    fn auto_still_resolves_to_zero() {
+        let rects = Flex::row()
+            .item(Item::auto())
+            .item(Item::grow(1.0))
+            .solve(egui::vec2(200.0, 20.0));
+        assert_eq!(rects[0].width(), 0.0, "Auto has no intrinsic size");
+    }
+
+    /// `Content` holds a measured intrinsic width — the fix.
+    #[test]
+    fn content_holds_its_measured_width() {
+        let rects = Flex::row()
+            .item(Item::content(80.0))
+            .item(Item::grow(1.0))
+            .solve(egui::vec2(200.0, 20.0));
+        assert!((rects[0].width() - 80.0).abs() < 0.01,
+            "Content must keep its measured width, got {}", rects[0].width());
+        assert!((rects[1].width() - 120.0).abs() < 0.01,
+            "the Grow sibling takes the remainder");
+    }
+
+    /// Content sits BETWEEN Fixed and Grow: it may shrink when the container is
+    /// over-subscribed (CSS flex-basis semantics), where Fixed never does.
+    #[test]
+    fn content_shrinks_when_oversubscribed_but_fixed_does_not() {
+        let content = Flex::row()
+            .item(Item::content(150.0))
+            .item(Item::content(150.0))
+            .solve(egui::vec2(200.0, 20.0));
+        let total: f32 = content.iter().map(|r| r.width()).sum();
+        assert!(total <= 200.5, "Content items must shrink to fit, got {total}");
+
+        let fixed = Flex::row()
+            .item(Item::fixed(150.0))
+            .item(Item::fixed(150.0))
+            .solve(egui::vec2(200.0, 20.0));
+        assert!((fixed[0].width() - 150.0).abs() < 0.01,
+            "Fixed must NOT shrink — that is the distinction");
+    }
+
+    /// A row of content-sized items keeps them in order and non-overlapping —
+    /// the header/label/value/chip shape these constructors exist for.
+    #[test]
+    fn content_row_lays_out_in_order() {
+        let rects = Flex::row()
+            .gap(4.0)
+            .item(Item::content(30.0))
+            .item(Item::content(50.0))
+            .item(Item::grow(1.0))
+            .solve(egui::vec2(300.0, 20.0));
+        assert!(rects[0].right() <= rects[1].left() + 0.01, "no overlap");
+        assert!(rects[1].right() <= rects[2].left() + 0.01, "no overlap");
+        assert!(rects[2].width() > 200.0, "grow child takes the rest");
     }
 }

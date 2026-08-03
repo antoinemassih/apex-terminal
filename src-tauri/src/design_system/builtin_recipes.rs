@@ -29,7 +29,11 @@
 //!    so a recipe survives being paired with any of the 16 palettes. The CSS
 //!    says `#1a1612` for "ink on the orange bar"; the palette-agnostic spelling
 //!    of that is `Tone::Bg` (the canvas colour), which is correct in both dark
-//!    and light palettes.
+//!    and light palettes. The same substitution carries the bevel rules:
+//!    `rgba(255,238,210,.06)` (Alto's warm highlight) and
+//!    `rgba(180,210,240,.08)` (Mariner's cool one) are both *"the text colour at
+//!    a low alpha"* → `Tone::Text`; `rgba(0,0,0,.35)` is *"the canvas at a high
+//!    alpha"* → `Tone::Bg`.
 //! 3. **Tiers over pixels.** `RadiusTier::Pill` / `PadTier::Md` track the active
 //!    style's ramp. `Px(_)` is reserved for values the CSS states literally and
 //!    that no tier expresses (e.g. Aperture's 1.5px outline, Cadence's 3px tab
@@ -38,11 +42,19 @@
 //! # What is intentionally NOT here
 //!
 //! CSS properties with no representation in [`RecipeSpec`] are skipped rather
-//! than approximated. The running list (input to the M3.2 Sx-vocabulary
-//! ticket): `font-weight`, `font-family`, `text-transform`, `letter-spacing`,
-//! `box-shadow` (both inset bevels and drop shadows), `linear-gradient` fills,
-//! `filter: brightness`, `transform: translateY`, fixed `height`, per-side
-//! borders (`border-bottom` / `border-left` / `border-top`), and `min-width`.
+//! than approximated. M3.2 closed four of them — per-side borders
+//! (`border-bottom` / `border-left` / `border-top`), inset `box-shadow` bevels,
+//! `font-weight`, and `gap` — and those rules are now authored below. The
+//! **still-open** list (input to a future Sx-vocabulary ticket):
+//! `font-family`, `text-transform`, `letter-spacing`, DROP (non-inset)
+//! `box-shadow`, `linear-gradient` fills, `filter: brightness`,
+//! `transform: translateY`, fixed `height`, `margin`, and `min-width`.
+//!
+//! Two second-order limits remain even inside the new vocabulary and are
+//! called out at each site: `BorderSpecRef` carries exactly **one** edge
+//! selection, so a rule that sets `border-top` *and* `border-bottom` (the DOM
+//! "current price" band) lands only its dominant edge; and `BevelSpecRef` has
+//! a single width, so the 0.5px chip hairlines collapse onto the 1px line.
 //!
 //! # Coverage
 //!
@@ -82,6 +94,13 @@ fn tint(t: ToneRef, a: u8) -> ColorSpec {
     ColorSpec::Alpha { tone: t, alpha: a }
 }
 
+/// Fully transparent — the second stop of a one-sided CSS inset shadow, where
+/// `bevel_raised` wants a bottom line but the CSS only declares a top one.
+#[inline]
+fn nothing() -> ColorSpec {
+    ColorSpec::Alpha { tone: ToneRef::Bg, alpha: 0 }
+}
+
 /// Chainable setters for [`RecipeDelta`]. The struct is a plain bag of
 /// `Option`s; this turns authoring into `d().radius(Pill).fill(...)`.
 #[allow(dead_code)] // authoring vocabulary — not every setter is used by every style
@@ -103,6 +122,8 @@ trait DeltaExt: Sized {
     fn bevel_marker(self, bottom: ColorSpec, width: f32) -> Self;
     /// M3.2: font weight (advisory until per-weight families are registered).
     fn weight(self, w: u16) -> Self;
+    /// M3.2: inter-element gap (`RecipeDelta.gap`, CSS `gap:`).
+    fn gap(self, g: PadTier) -> Self;
 }
 
 impl DeltaExt for RecipeDelta {
@@ -139,6 +160,7 @@ impl DeltaExt for RecipeDelta {
         self
     }
     fn weight(mut self, w: u16) -> Self { self.weight = Some(w); self }
+    fn gap(mut self, g: PadTier) -> Self { self.gap = Some(g); self }
 }
 
 /// A fresh empty delta.
@@ -207,29 +229,41 @@ pub fn builtin_recipes(style_id: &str) -> RecipeSet {
 fn aperture() -> RecipeSet {
     set(vec![
         // `.ds-btn { border-radius: pill }` + `.ds-btn--primary { background:
-        // accent; color: #1a1612 }` — orange block, canvas-dark ink.
+        // accent; color: #1a1612; font-weight: 600 }` — orange block,
+        // canvas-dark ink, semibold face.
         (
             "button.primary",
-            spec(d().radius(RadiusTier::Pill).fill(tone(ToneRef::Accent)).ink(ToneRef::Bg).px(PadTier::Lg))
-                .on_hover(d().fill(shade(ToneRef::Accent, ShadeRef::S400))),
+            spec(
+                d().radius(RadiusTier::Pill)
+                    .fill(tone(ToneRef::Accent))
+                    .ink(ToneRef::Bg)
+                    .px(PadTier::Lg)
+                    .weight(600),
+            )
+            .on_hover(d().fill(shade(ToneRef::Accent, ShadeRef::S400))),
         ),
         // `.ds-btn--secondary { border: 1.5px solid border; background:
-        // transparent }`, `.is-active` → inverted block.
+        // transparent }` + `.ds-btn { font-weight: 500 }`, `.is-active` →
+        // inverted block.
         (
             "button.ghost",
-            spec(d().radius(RadiusTier::Pill).border(tone(ToneRef::Border), BorderWidthTier::Px(1.5)))
-                .on_select(
-                    d().fill(tone(ToneRef::Text))
-                        .ink(ToneRef::Bg)
-                        .border(tone(ToneRef::Text), BorderWidthTier::Px(1.5)),
-                ),
+            spec(
+                d().radius(RadiusTier::Pill)
+                    .border(tone(ToneRef::Border), BorderWidthTier::Px(1.5))
+                    .weight(500),
+            )
+            .on_select(
+                d().fill(tone(ToneRef::Text))
+                    .ink(ToneRef::Bg)
+                    .border(tone(ToneRef::Text), BorderWidthTier::Px(1.5)),
+            ),
         ),
         // `.ds-btn--chrome { padding: 0 14px }`, `.is-active { background: fg;
-        // color: bg }` — the Aperture inverted-block signature.
+        // color: bg; font-weight: 600 }` — the Aperture inverted-block signature.
         (
             "button.chrome",
             spec(d().radius(RadiusTier::Pill).px(PadTier::Px(14.0)))
-                .on_select(d().fill(tone(ToneRef::Text)).ink(ToneRef::Bg)),
+                .on_select(d().fill(tone(ToneRef::Text)).ink(ToneRef::Bg).weight(600)),
         ),
         // `.ds-tab--underline { border-radius: pill; border-bottom: none;
         // padding: 0 14px }` — tabs stop being tabs and become pills.
@@ -237,20 +271,26 @@ fn aperture() -> RecipeSet {
             "tab.line",
             spec(d().radius(RadiusTier::Pill).px(PadTier::Px(14.0)).no_border()),
         ),
-        // `.ds-tab--underline.is-selected { background: fg; color: bg }`.
+        // `.ds-tab--underline.is-selected { background: fg; color: bg;
+        // font-weight: 600 }`.
         (
             "tab.line.active",
             spec(d().radius(RadiusTier::Pill))
-                .on_select(d().fill(tone(ToneRef::Text)).ink(ToneRef::Bg)),
+                .on_select(d().fill(tone(ToneRef::Text)).ink(ToneRef::Bg).weight(600)),
         ),
-        // `.ds-pill { border-radius: pill; border-width: 1.5px }`,
-        // `.ds-pill--md { padding: 0 14px }`.
+        // `.ds-pill { border-radius: pill; border-width: 1.5px;
+        // font-weight: 500 }`, `.ds-pill--md { padding: 0 14px }`, and
+        // `.ds-chip-row { gap: 6px }` — the row gap rides on the chip recipe
+        // because there is no registered `chip.row` key; the container that
+        // lays chips out reads `gap` from the same set.
         (
             "tag",
             spec(
                 d().radius(RadiusTier::Pill)
                     .border(tone(ToneRef::Border), BorderWidthTier::Px(1.5))
-                    .px(PadTier::Px(10.0)),
+                    .px(PadTier::Px(10.0))
+                    .gap(PadTier::Px(6.0))
+                    .weight(500),
             ),
         ),
         // `--ds-card-radius: radius-lg` + `--ds-card-border: none` +
@@ -260,10 +300,11 @@ fn aperture() -> RecipeSet {
             spec(d().radius(RadiusTier::Lg).no_border().px(PadTier::Px(16.0)).py(PadTier::Px(16.0))),
         ),
         // `.ds-wl-row { border-radius: pill; padding: 0 10px; border-bottom:
-        // none }`, `:hover { background: rgba(255,255,255,0.05) }`.
+        // none }`, `:hover { background: rgba(255,255,255,0.05) }`, and
+        // `.ds-wl-sym { font-weight: 700 }`.
         (
             "row.list",
-            spec(d().radius(RadiusTier::Pill).px(PadTier::Px(10.0)).no_border())
+            spec(d().radius(RadiusTier::Pill).px(PadTier::Px(10.0)).no_border().weight(700))
                 .on_hover(d().fill(tint(ToneRef::Text, 13))),
         ),
         (
@@ -271,10 +312,14 @@ fn aperture() -> RecipeSet {
             spec(d()).on_hover(d().fill(tint(ToneRef::Text, 13))),
         ),
         // `.ds-panel__header { background: transparent; border-bottom: 1px
-        // solid border-dim }`.
+        // solid border-dim }` + `.ds-panel__title { font-weight: 600 }`.
         (
             "panel.header",
-            spec(d().border(tint(ToneRef::Border, 90), BorderWidthTier::Std).py(PadTier::Px(8.0))),
+            spec(
+                d().border_edge(tint(ToneRef::Border, 90), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .py(PadTier::Px(8.0))
+                    .weight(600),
+            ),
         ),
         // `.ds-pane-header .ds-btn--chrome { border-radius: pill }` +
         // `.is-active { background: #1a1612; color: accent }`.
@@ -298,41 +343,61 @@ fn cadence() -> RecipeSet {
     set(vec![
         // `.ds-btn--primary { border-radius: pill; box-shadow: inset 0 1px 0
         // rgba(255,255,255,.10), 0 2px 6px rgba(0,0,0,.4); font-weight: 700 }`
-        // — THE Cadence signature. Bevel + weight are unmappable (see module
-        // doc); the pill is the load-bearing half.
+        // — THE Cadence signature, now fully authored: pill + top highlight +
+        // bold face. The second (drop) shadow is still unmappable.
         (
             "button.primary",
-            spec(d().radius(RadiusTier::Pill).fill(tone(ToneRef::Accent)).ink(ToneRef::Bg).px(PadTier::Lg))
-                .on_hover(d().fill(shade(ToneRef::Accent, ShadeRef::S400))),
+            spec(
+                d().radius(RadiusTier::Pill)
+                    .fill(tone(ToneRef::Accent))
+                    .ink(ToneRef::Bg)
+                    .px(PadTier::Lg)
+                    .bevel_raised(tint(ToneRef::Text, 26), nothing())
+                    .weight(700),
+            )
+            .on_hover(d().fill(shade(ToneRef::Accent, ShadeRef::S400))),
         ),
         // `.ds-btn--secondary { background: bg-surface; border-radius:
-        // radius-md }`.
+        // radius-md; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04) }`.
         (
             "button.ghost",
-            spec(d().radius(RadiusTier::Md).fill(tone(ToneRef::Surface))),
+            spec(
+                d().radius(RadiusTier::Md)
+                    .fill(tone(ToneRef::Surface))
+                    .bevel_raised(tint(ToneRef::Text, 10), nothing()),
+            ),
         ),
         // `.ds-btn--chrome.is-active { background: bg-surface; color: fg;
-        // border-bottom: 2px solid accent }`.
+        // border-bottom: 2px solid accent; box-shadow: inset 0 -1px 0
+        // rgba(0,0,0,0.3) }` — an underline PLUS a sunken bottom line.
         (
             "button.chrome",
             spec(d().radius(RadiusTier::Pill)).on_select(
                 d().fill(tone(ToneRef::Surface))
                     .ink(ToneRef::Text)
-                    .border(tone(ToneRef::Accent), BorderWidthTier::Px(2.0)),
+                    .border_edge(tone(ToneRef::Accent), BorderWidthTier::Px(2.0), EdgesRef::Bottom)
+                    .bevel_marker(tint(ToneRef::Bg, 77), 1.0),
             ),
         ),
         // `.ds-tab--underline.is-selected { border-bottom-width: 3px }` — the
-        // thickest underline of any style. `tabs.rs` reads the fill as the
-        // indicator colour and the border width as its thickness.
+        // thickest underline of any style, and now authored as an actual
+        // bottom-only edge rather than a four-sided box.
         (
             "tab.line.active",
             spec(d()).on_select(
                 d().fill(tone(ToneRef::Accent))
-                    .border(tone(ToneRef::Accent), BorderWidthTier::Px(3.0)),
+                    .border_edge(tone(ToneRef::Accent), BorderWidthTier::Px(3.0), EdgesRef::Bottom),
             ),
         ),
-        // `.ds-pill { border-radius: pill; text-transform: uppercase }` +
-        // `.ds-ind-chip { border-radius: pill; background: bg-surface;
+        // `.ds-pane-tab.is-active { box-shadow: inset 0 -2px 0 accent }` — the
+        // green marker under the active symbol tab.
+        (
+            "tab.pill.active",
+            spec(d()).on_select(d().bevel_marker(tone(ToneRef::Accent), 2.0)),
+        ),
+        // `.ds-pill { border-radius: pill; text-transform: uppercase;
+        // font-weight: 700 }` + `.ds-pill.is-filled { box-shadow: inset 0 1px 0
+        // rgba(255,255,255,0.06) }` + `.ds-ind-chip { background: bg-surface;
         // border: 1px solid border }`.
         (
             "tag",
@@ -340,7 +405,9 @@ fn cadence() -> RecipeSet {
                 d().radius(RadiusTier::Pill)
                     .fill(tone(ToneRef::Surface))
                     .border(tint(ToneRef::Text, 18), BorderWidthTier::Std)
-                    .px(PadTier::Px(10.0)),
+                    .px(PadTier::Px(10.0))
+                    .bevel_raised(tint(ToneRef::Text, 15), nothing())
+                    .weight(700),
             ),
         ),
         // `--ds-card-radius: radius-lg` + `--ds-card-pad: 16px` +
@@ -355,30 +422,40 @@ fn cadence() -> RecipeSet {
             ),
         ),
         // `.ds-panel__header { background: var(--ds-bg); border-bottom: 1px
-        // solid rgba(255,255,255,0.04); height: 32px }` — the header sits on
-        // the PURE BLACK canvas, not on the panel surface. Cadence-specific.
+        // solid rgba(255,255,255,0.04); height: 32px }` + `.ds-panel__title
+        // { font-weight: 700 }` — the header sits on the PURE BLACK canvas,
+        // not on the panel surface. Cadence-specific.
         (
             "panel.header",
             spec(
                 d().fill(tone(ToneRef::Bg))
-                    .border(tint(ToneRef::Text, 10), BorderWidthTier::Std)
-                    .py(PadTier::Px(6.0)),
+                    .border_edge(tint(ToneRef::Text, 10), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .py(PadTier::Px(6.0))
+                    .weight(700),
             ),
         ),
-        // Flush rows (no gaps, no radius) — the Spotify list read.
+        // Flush rows (no gaps, no radius) — the Spotify list read — plus
+        // `.ds-wl-sym { font-weight: 700 }`.
         (
             "row.list",
-            spec(d().radius(RadiusTier::None).px(PadTier::Px(8.0)).no_border()),
+            spec(d().radius(RadiusTier::None).px(PadTier::Px(8.0)).no_border().weight(700)),
         ),
         // `.ds-wl-row:hover { background: color-mix(accent 8%, transparent) }`.
         (
             "row.list.hover",
             spec(d()).on_hover(d().fill(tint(ToneRef::Accent, 20))),
         ),
-        // `.ds-wl-section { background: color-mix(accent 6%, bg-surface) }`.
+        // `.ds-wl-section { background: color-mix(accent 6%, bg-surface);
+        // border-top: 1px solid border }` + `.ds-wl-section span
+        // { font-weight: 700 }`.
         (
             "section.header.fill",
-            spec(d().fill(tint(ToneRef::Accent, 16)).py(PadTier::Px(6.0))),
+            spec(
+                d().fill(tint(ToneRef::Accent, 16))
+                    .py(PadTier::Px(6.0))
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Top)
+                    .weight(700),
+            ),
         ),
         // `.ds-pane-header .ds-btn--chrome.is-active { background:
         // color-mix(accent 16%, transparent); color: accent }`.
@@ -398,22 +475,34 @@ fn cadence() -> RecipeSet {
 // ledger hairlines under every row.
 //   --ds-control-radius: radius-sm (4px)    --ds-pill-radius: radius-sm
 //   --ds-card-radius:    radius-md (6px)    --ds-card-pad: 14px
+//
+// Alto's warm highlight `rgba(255,238,210, a)` is the palette-agnostic
+// `Tone::Text` at alpha `a`; `rgba(0,0,0, a)` is `Tone::Bg` at alpha `a`.
 
 fn alto() -> RecipeSet {
     set(vec![
         // `.ds-btn--primary { box-shadow: inset 0 1px 0 rgba(255,255,255,.18),
-        // inset 0 -1px 0 rgba(0,0,0,.25) }` — bevel unmappable; the sharp
-        // radius is the transcribable half.
-        ("button.primary", spec(d().radius(RadiusTier::Sm).fill(tone(ToneRef::Accent)))),
+        // inset 0 -1px 0 rgba(0,0,0,.25) }` — the raised face, now authored.
+        (
+            "button.primary",
+            spec(
+                d().radius(RadiusTier::Sm)
+                    .fill(tone(ToneRef::Accent))
+                    .bevel_raised(tint(ToneRef::Text, 46), tint(ToneRef::Bg, 64)),
+            ),
+        ),
         // `.ds-btn--secondary { background: linear-gradient(bg-elevated,
-        // bg-surface); border: 1px solid border }`, `:hover { → elevated }`.
-        // The gradient collapses to its lower stop; hover lifts one ramp step.
+        // bg-surface); border: 1px solid border; box-shadow:
+        // inset 0 1px 0 rgba(255,238,210,.06), inset 0 -1px 0 rgba(0,0,0,.35) }`,
+        // `:hover { → elevated }`. The gradient collapses to its lower stop;
+        // hover lifts one ramp step.
         (
             "button.ghost",
             spec(
                 d().radius(RadiusTier::Sm)
                     .fill(tone(ToneRef::Surface))
-                    .border(tone(ToneRef::Border), BorderWidthTier::Std),
+                    .border(tone(ToneRef::Border), BorderWidthTier::Std)
+                    .bevel_raised(tint(ToneRef::Text, 15), tint(ToneRef::Bg, 89)),
             )
             .on_hover(d().fill(shade(ToneRef::Surface, ShadeRef::S400))),
         ),
@@ -427,19 +516,41 @@ fn alto() -> RecipeSet {
         // inset 0 1px 0 rgba(255,238,210,.04) }` — a beveled face, not a bar.
         (
             "tab.line.active",
-            spec(d()).on_select(d().fill(tone(ToneRef::Accent))),
+            spec(d()).on_select(
+                d().fill(tone(ToneRef::Accent))
+                    .bevel_raised(tint(ToneRef::Text, 10), nothing()),
+            ),
         ),
-        // `.ds-tab--inline.is-selected` / `tab.pill` share the 4px face.
-        ("tab.pill", spec(d().radius(RadiusTier::Sm).fill(tone(ToneRef::Surface)))),
+        // `.ds-tab--inline.is-selected { border: 1px solid border; box-shadow:
+        // inset 0 0.5px 0 rgba(255,238,210,.08), inset 0 -0.5px 0
+        // rgba(0,0,0,.45) }`. NOTE: `BevelSpecRef` carries ONE width, so the
+        // 0.5px pair collapses onto the 1px hairline.
+        (
+            "tab.pill",
+            spec(
+                d().radius(RadiusTier::Sm)
+                    .fill(tone(ToneRef::Surface))
+                    .bevel_raised(tint(ToneRef::Text, 20), tint(ToneRef::Bg, 115)),
+            ),
+        ),
+        // `.ds-pane-tab.is-active { box-shadow: inset 0 -2px 0 accent }` — the
+        // amber marker under the active symbol tab. A single inset line, which
+        // is exactly what `bevel_marker` spells.
+        (
+            "tab.pill.active",
+            spec(d()).on_select(d().bevel_marker(tone(ToneRef::Accent), 2.0)),
+        ),
         // `.ds-ind-chip { border-radius: radius-xs; border: 1px solid border;
-        // font-size: font-xs }` — a raised card face, not a pill.
+        // font-size: font-xs; box-shadow: inset 0 0.5px 0 rgba(255,238,210,.06),
+        // inset 0 -0.5px 0 rgba(0,0,0,.40) }` — a raised card face, not a pill.
         (
             "tag",
             spec(
                 d().radius(RadiusTier::Xs)
                     .fill(tone(ToneRef::Surface))
                     .border(tone(ToneRef::Border), BorderWidthTier::Std)
-                    .text_size(TextSizeTier::Xs),
+                    .text_size(TextSizeTier::Xs)
+                    .bevel_raised(tint(ToneRef::Text, 15), tint(ToneRef::Bg, 102)),
             ),
         ),
         // `--ds-card-radius: radius-md` + `--ds-card-pad: 14px` + the Zed
@@ -454,21 +565,49 @@ fn alto() -> RecipeSet {
             ),
         ),
         // `.ds-dom-row { border-bottom: 1px solid rgba(255,234,210,0.04) }` —
-        // the ledger hairline under every row. Square, flush.
+        // the ledger hairline under every row (bottom edge ONLY, which is what
+        // makes it read as a ledger rather than a grid). Plus `.ds-wl-sym
+        // { font-weight: 500 }`.
         (
             "row.list",
             spec(
                 d().radius(RadiusTier::None)
-                    .border(tint(ToneRef::Text, 10), BorderWidthTier::Hair),
+                    .border_edge(tint(ToneRef::Text, 10), BorderWidthTier::Hair, EdgesRef::Bottom)
+                    .weight(500),
+            ),
+        ),
+        // `.ds-dom-row.is-current { background: linear-gradient(… accent 12% …);
+        // border-top: 1px solid rgba(217,152,88,.22); border-bottom: 1px solid
+        // rgba(217,152,88,.22) }` + `.ds-dom-price { font-weight: 600 }`.
+        // NOTE: one edge selection per border — the band's TOP rule is dropped
+        // and the bottom kept, so consecutive rows still show a divider.
+        (
+            "row.list.selected",
+            spec(d()).on_select(
+                d().fill(tint(ToneRef::Accent, 31))
+                    .border_edge(tint(ToneRef::Accent, 56), BorderWidthTier::Hair, EdgesRef::Bottom)
+                    .weight(600),
             ),
         ),
         // `.ds-panel__header { background: linear-gradient(bg-elevated,
-        // bg-surface); box-shadow: inset 0 -1px 0 rgba(0,0,0,.35) }`.
+        // bg-surface); box-shadow: inset 0 -1px 0 rgba(0,0,0,.35) }` +
+        // `.ds-pane-header { border-bottom: 1px solid border }`.
         (
             "panel.header",
             spec(
                 d().fill(tone(ToneRef::Surface))
-                    .border(tone(ToneRef::Border), BorderWidthTier::Std),
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .bevel_marker(tint(ToneRef::Bg, 89), 1.0),
+            ),
+        ),
+        // `.ds-wl-section { background: color-mix(accent 6%, bg-surface);
+        // border-top: 1px solid border }` + `span { font-weight: 700 }`.
+        (
+            "section.header.fill",
+            spec(
+                d().fill(tint(ToneRef::Accent, 16))
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Top)
+                    .weight(700),
             ),
         ),
         // `.ds-pane-header .ds-btn--chrome.is-active { background:
@@ -479,12 +618,15 @@ fn alto() -> RecipeSet {
                 .on_select(d().fill(tint(ToneRef::Accent, 40)).ink(ToneRef::Accent)),
         ),
         // `.ds-toolbar { background: linear-gradient(bg-elevated, bg-panel);
-        // border-bottom: 1px solid border-dim }`.
+        // border-bottom: 1px solid border-dim; box-shadow: inset 0 1px 0
+        // rgba(255,238,210,.06), 0 1px 0 rgba(0,0,0,.40) }`. The outset half of
+        // that shadow is still unmappable; the inset highlight is authored.
         (
             "toolnav",
             spec(
                 d().fill(tone(ToneRef::Surface))
-                    .border(tone(ToneRef::Border), BorderWidthTier::Std),
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .bevel_raised(tint(ToneRef::Text, 15), nothing()),
             ),
         ),
     ])
@@ -497,20 +639,40 @@ fn alto() -> RecipeSet {
 // highlights, ~10% tighter density (row-h 22 vs 24, toolbar-h 36 vs 40), and
 // the accent used as a PRECISION MARKER (hard left edge on the current DOM
 // row, 1.5px top stripe on the active pane) rather than an ambient wash.
+//
+// Mariner's cool highlight `rgba(180,210,240, a)` / `rgba(200,230,255, a)` is
+// `Tone::Text` at alpha `a` — the same palette-agnostic spelling Alto uses for
+// its warm one. The two styles differ in ALPHA, which is what the CSS says.
 
 fn mariner() -> RecipeSet {
     set(vec![
-        ("button.primary", spec(d().radius(RadiusTier::Sm).fill(tone(ToneRef::Accent)))),
-        // Same bevel structure as Alto; tighter vertical padding.
+        // `.ds-btn--primary { box-shadow: inset 0 1px 0 rgba(200,230,255,.22),
+        // inset 0 -1px 0 rgba(0,0,0,.28) }` — a brighter, cooler highlight than
+        // Alto's, and a shallower bottom shadow.
+        (
+            "button.primary",
+            spec(
+                d().radius(RadiusTier::Sm)
+                    .fill(tone(ToneRef::Accent))
+                    .bevel_raised(tint(ToneRef::Text, 56), tint(ToneRef::Bg, 71)),
+            ),
+        ),
+        // `.ds-btn--secondary { box-shadow: inset 0 1px 0 rgba(180,210,240,.08),
+        // inset 0 -1px 0 rgba(0,0,0,.38) }`, `:hover` lifts the highlight to
+        // `.10`. Same bevel structure as Alto; tighter vertical padding.
         (
             "button.ghost",
             spec(
                 d().radius(RadiusTier::Sm)
                     .fill(tone(ToneRef::Surface))
                     .border(tone(ToneRef::Border), BorderWidthTier::Std)
-                    .py(PadTier::Px(3.0)),
+                    .py(PadTier::Px(3.0))
+                    .bevel_raised(tint(ToneRef::Text, 20), tint(ToneRef::Bg, 97)),
             )
-            .on_hover(d().fill(shade(ToneRef::Surface, ShadeRef::S400))),
+            .on_hover(
+                d().fill(shade(ToneRef::Surface, ShadeRef::S400))
+                    .bevel_raised(tint(ToneRef::Text, 26), tint(ToneRef::Bg, 97)),
+            ),
         ),
         // `.ds-btn--chrome.is-active { background: color-mix(accent 14%,
         // bg-surface) }`.
@@ -520,13 +682,31 @@ fn mariner() -> RecipeSet {
                 .on_select(d().fill(tint(ToneRef::Accent, 34))),
         ),
         // `.ds-tab--underline.is-selected { background: bg-surface; box-shadow:
-        // none }` — Mariner explicitly drops Alto's bevel here.
+        // none }` — Mariner explicitly drops Alto's bevel here, so NO bevel is
+        // authored (an omitted field leaves the widget default alone).
         (
             "tab.line.active",
             spec(d()).on_select(d().fill(tone(ToneRef::Accent))),
         ),
-        ("tab.pill", spec(d().radius(RadiusTier::Sm).fill(tone(ToneRef::Surface)))),
-        // `.ds-ind-chip` — same raised face as Alto, tighter padding.
+        // `.ds-tab--inline.is-selected { box-shadow: inset 0 0.5px 0
+        // rgba(180,210,240,.08), inset 0 -0.5px 0 rgba(0,0,0,.45) }`.
+        (
+            "tab.pill",
+            spec(
+                d().radius(RadiusTier::Sm)
+                    .fill(tone(ToneRef::Surface))
+                    .bevel_raised(tint(ToneRef::Text, 20), tint(ToneRef::Bg, 115)),
+            ),
+        ),
+        // `.ds-pane-tab.is-active { box-shadow: inset 0 -2px 0 accent }` — the
+        // steel-blue marker under the active symbol tab.
+        (
+            "tab.pill.active",
+            spec(d()).on_select(d().bevel_marker(tone(ToneRef::Accent), 2.0)),
+        ),
+        // `.ds-ind-chip { box-shadow: inset 0 0.5px 0 rgba(180,210,240,.08),
+        // inset 0 -0.5px 0 rgba(0,0,0,.40) }` — same raised face as Alto,
+        // tighter padding, cooler highlight.
         (
             "tag",
             spec(
@@ -534,7 +714,8 @@ fn mariner() -> RecipeSet {
                     .fill(tone(ToneRef::Surface))
                     .border(tone(ToneRef::Border), BorderWidthTier::Std)
                     .px(PadTier::Px(6.0))
-                    .text_size(TextSizeTier::Xs),
+                    .text_size(TextSizeTier::Xs)
+                    .bevel_raised(tint(ToneRef::Text, 20), tint(ToneRef::Bg, 102)),
             ),
         ),
         // Same radius ramp as Alto, ~10% tighter card padding (14 → 12).
@@ -548,39 +729,74 @@ fn mariner() -> RecipeSet {
             ),
         ),
         // `.ds-wl-row { height: 24px }` (vs Alto's 28) + `.ds-dom-row
-        // { border-bottom: 1px solid rgba(180,210,240,0.04) }`.
+        // { border-bottom: 1px solid rgba(180,210,240,0.04) }` + `.ds-wl-sym
+        // { font-weight: 500 }`.
         (
             "row.list",
             spec(
                 d().radius(RadiusTier::None)
                     .py(PadTier::Px(2.0))
-                    .border(tint(ToneRef::Text, 10), BorderWidthTier::Hair),
+                    .border_edge(tint(ToneRef::Text, 10), BorderWidthTier::Hair, EdgesRef::Bottom)
+                    .weight(500),
             ),
         ),
         // `.ds-dom-row.is-current { background: linear-gradient(accent 18% →
-        // transparent); border-left: 2px solid accent }` — the instrument
-        // needle. The directional sweep flattens to a flat tint.
+        // transparent); border-left: 2px solid accent }` + `.ds-dom-price
+        // { font-weight: 600 }` — the instrument needle. The directional sweep
+        // flattens to a flat tint; the LEFT edge is the whole point of the rule
+        // and is now authored as such.
         (
             "row.list.selected",
             spec(d()).on_select(
                 d().fill(tint(ToneRef::Accent, 46))
-                    .border(tone(ToneRef::Accent), BorderWidthTier::Px(2.0)),
+                    .border_edge(tone(ToneRef::Accent), BorderWidthTier::Px(2.0), EdgesRef::Left)
+                    .weight(600),
             ),
         ),
-        // `.ds-pane-header.is-active { border-top: 1.5px solid accent }`.
+        // `.ds-pane-header { border-bottom: 1px solid border; box-shadow:
+        // inset 0 1px 0 rgba(180,210,240,.04), … }` and
+        // `.ds-pane-header.is-active { border-top: 1.5px solid accent }` — the
+        // nautical needle stripe, a TOP edge, which is what distinguishes it
+        // from every other style's bottom underline.
         (
             "panel.header",
             spec(
                 d().fill(tone(ToneRef::Surface))
-                    .border(tone(ToneRef::Border), BorderWidthTier::Std)
-                    .py(PadTier::Px(4.0)),
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .py(PadTier::Px(4.0))
+                    .bevel_raised(tint(ToneRef::Text, 10), nothing()),
             )
-            .on_select(d().border(tone(ToneRef::Accent), BorderWidthTier::Px(1.5))),
+            .on_select(d().border_edge(
+                tone(ToneRef::Accent),
+                BorderWidthTier::Px(1.5),
+                EdgesRef::Top,
+            )),
+        ),
+        // `.ds-wl-section { background: color-mix(accent 6%, bg-surface);
+        // border-top: 1px solid border }` + `span { font-weight: 700 }`.
+        (
+            "section.header.fill",
+            spec(
+                d().fill(tint(ToneRef::Accent, 16))
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Top)
+                    .weight(700),
+            ),
         ),
         (
             "nav.cluster.active",
             spec(d().radius(RadiusTier::Sm))
                 .on_select(d().fill(tint(ToneRef::Accent, 40)).ink(ToneRef::Accent)),
+        ),
+        // `.ds-toolbar { background: linear-gradient(bg-elevated, bg-panel);
+        // border-bottom: 1px solid border-dim; box-shadow: inset 0 1px 0
+        // rgba(180,210,240,.06), 0 1px 0 rgba(0,0,0,.40) }`.
+        (
+            "toolnav",
+            spec(
+                d().fill(tone(ToneRef::Surface))
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .bevel_raised(tint(ToneRef::Text, 15), nothing()),
+            ),
         ),
     ])
 }
@@ -591,7 +807,8 @@ fn mariner() -> RecipeSet {
 // block (450–464). Signature: editorial cream paper — gently rounded controls
 // (5px), ink-fill primaries (there is no coloured button on paper), a hairline
 // ring + soft drop on cards and NO inset bevel (light surfaces layer, they
-// don't emboss).
+// don't emboss — the ONE exception is the accent marker under the active pane
+// tab, which is a marker rather than an emboss).
 //   --ds-control-radius: radius-md (5px)    .ds-pill → radius-sm (3px)
 //   --ds-card-radius:    radius-lg (8px)    --ds-card-pad: 20px
 
@@ -615,7 +832,8 @@ fn lucid() -> RecipeSet {
         ),
         // `.ds-btn--chrome { color: fg-dim }`, `:hover { background: bg-hover;
         // color: fg }`, `.is-active { background: fg; color: bg;
-        // border-bottom: 2px solid accent }`.
+        // border-bottom: 2px solid accent }` — a terracotta underline, not a
+        // terracotta box.
         (
             "button.chrome",
             spec(d().radius(RadiusTier::Md).ink(ToneRef::Dim))
@@ -623,7 +841,11 @@ fn lucid() -> RecipeSet {
                 .on_select(
                     d().fill(tone(ToneRef::Text))
                         .ink(ToneRef::Bg)
-                        .border(tone(ToneRef::Accent), BorderWidthTier::Px(2.0)),
+                        .border_edge(
+                            tone(ToneRef::Accent),
+                            BorderWidthTier::Px(2.0),
+                            EdgesRef::Bottom,
+                        ),
                 ),
         ),
         // `.ds-tab--underline.is-selected { color: fg; border-bottom-color:
@@ -633,8 +855,15 @@ fn lucid() -> RecipeSet {
             spec(d()).on_select(
                 d().fill(tone(ToneRef::Accent))
                     .ink(ToneRef::Text)
-                    .border(tone(ToneRef::Accent), BorderWidthTier::Px(2.0)),
+                    .border_edge(tone(ToneRef::Accent), BorderWidthTier::Px(2.0), EdgesRef::Bottom),
             ),
+        ),
+        // `.ds-pane-header.is-active .ds-pane-tab.is-active { box-shadow:
+        // inset 0 -2px 0 accent }` — the one inset line a light theme allows,
+        // because it reads as a marker rather than an emboss.
+        (
+            "tab.pill.active",
+            spec(d()).on_select(d().bevel_marker(tone(ToneRef::Accent), 2.0)),
         ),
         // `html[data-ds="lucid"] .ds-pill { border-radius: radius-sm }` — the
         // late rule that overrides `--ds-pill-radius: pill` from the token
@@ -674,7 +903,18 @@ fn lucid() -> RecipeSet {
             "row.list",
             spec(
                 d().radius(RadiusTier::Sm)
-                    .border(tint(ToneRef::Border, 100), BorderWidthTier::Hair),
+                    .border_edge(tint(ToneRef::Border, 100), BorderWidthTier::Hair, EdgesRef::Bottom),
+            ),
+        ),
+        // `.ds-dom-row.is-current { background: color-mix(accent 14%, bg-panel);
+        // border-top: 1px solid accent; border-bottom: 1px solid accent }` +
+        // `.ds-dom-price { font-weight: 700 }`. One edge only — bottom kept.
+        (
+            "row.list.selected",
+            spec(d()).on_select(
+                d().fill(tint(ToneRef::Accent, 36))
+                    .border_edge(tone(ToneRef::Accent), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .weight(700),
             ),
         ),
         // `.ds-wl-row:hover { background: color-mix(accent 8%, transparent) }`.
@@ -683,10 +923,14 @@ fn lucid() -> RecipeSet {
             spec(d()).on_hover(d().fill(tint(ToneRef::Accent, 20))),
         ),
         // `.ds-wl-section { background: color-mix(accent 6%, bg-surface);
-        // border-top: 1px solid border }`.
+        // border-top: 1px solid border }` + `span { font-weight: 700 }`.
         (
             "section.header.fill",
-            spec(d().fill(tint(ToneRef::Accent, 16))),
+            spec(
+                d().fill(tint(ToneRef::Accent, 16))
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Top)
+                    .weight(700),
+            ),
         ),
         // `.ds-panel__header { background: bg-surface; border-bottom: 1px solid
         // border; box-shadow: none }`.
@@ -694,8 +938,17 @@ fn lucid() -> RecipeSet {
             "panel.header",
             spec(
                 d().fill(tone(ToneRef::Surface))
-                    .border(tone(ToneRef::Border), BorderWidthTier::Std),
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom),
             ),
+        ),
+        // `.ds-pane-header .ds-btn--chrome.is-active { color: accent;
+        // background: color-mix(accent 12%, transparent); border-bottom: none }`
+        // — the cluster button is the ONE chrome control that does NOT get the
+        // terracotta underline.
+        (
+            "nav.cluster.active",
+            spec(d().radius(RadiusTier::Md))
+                .on_select(d().fill(tint(ToneRef::Accent, 30)).ink(ToneRef::Accent).no_border()),
         ),
     ])
 }
@@ -710,9 +963,10 @@ fn lucid() -> RecipeSet {
 //   --ds-control-radius: 0px (pure square)  --ds-pill-radius: radius-xs (4px)
 //   --ds-card-radius:    radius-md (10px)   --ds-card-pad: 22px
 //
-// NOTE: the mono/uppercase half of that signature is NOT expressible in the
-// current schema (no font-family, no text-transform, no letter-spacing). What
-// lands here is the SQUARE half plus the airier scale. See the module doc.
+// NOTE: the mono/uppercase half of that signature is STILL not expressible
+// (no font-family, no text-transform, no letter-spacing). What lands here is
+// the SQUARE half, the airier scale, the editorial rules (per-side borders),
+// the semibold editorial face, and the toolbar's 14px gap.
 
 fn meridien() -> RecipeSet {
     set(vec![
@@ -732,29 +986,34 @@ fn meridien() -> RecipeSet {
             "button.ghost",
             spec(d().radius(RadiusTier::None).border(tone(ToneRef::Border), BorderWidthTier::Std)),
         ),
-        // `.ds-btn--chrome { padding: 0 14px; font-size: font-xs }`,
-        // `.is-active { background: fg; color: bg; border-bottom: 2px accent }`.
+        // `.ds-btn--chrome { padding: 0 14px; font-size: font-xs;
+        // font-weight: 500 }`, `.is-active { background: fg; color: bg;
+        // border-bottom: 2px accent; font-weight: 600 }`.
         (
             "button.chrome",
             spec(
                 d().radius(RadiusTier::None)
                     .px(PadTier::Px(14.0))
-                    .text_size(TextSizeTier::Xs),
+                    .text_size(TextSizeTier::Xs)
+                    .weight(500),
             )
             .on_select(
                 d().fill(tone(ToneRef::Text))
                     .ink(ToneRef::Bg)
-                    .border(tone(ToneRef::Accent), BorderWidthTier::Px(2.0)),
+                    .border_edge(tone(ToneRef::Accent), BorderWidthTier::Px(2.0), EdgesRef::Bottom)
+                    .weight(600),
             ),
         ),
         // `.ds-tab--underline { font-size: font-xs; padding: 0 14px }` — square
-        // like every other Meridien control.
+        // like every other Meridien control — plus `.ds-wl-header
+        // .ds-tab--underline { font-weight: 600 }`.
         (
             "tab.line",
             spec(
                 d().radius(RadiusTier::None)
                     .px(PadTier::Px(14.0))
-                    .text_size(TextSizeTier::Xs),
+                    .text_size(TextSizeTier::Xs)
+                    .weight(600),
             ),
         ),
         // `.ds-tab--underline.is-selected { background: transparent; color: fg;
@@ -764,8 +1023,25 @@ fn meridien() -> RecipeSet {
             spec(d().radius(RadiusTier::None)).on_select(
                 d().fill(tone(ToneRef::Accent))
                     .ink(ToneRef::Text)
-                    .border(tone(ToneRef::Accent), BorderWidthTier::Px(2.0)),
+                    .border_edge(tone(ToneRef::Accent), BorderWidthTier::Px(2.0), EdgesRef::Bottom),
             ),
+        ),
+        // `.ds-pane-tab { padding: 0 14px 0 16px; font-size: font-base }` +
+        // `.ds-pane-tab__sym { font-size: font-sm; font-weight: 700 }`.
+        (
+            "tab.pill",
+            spec(
+                d().radius(RadiusTier::None)
+                    .px(PadTier::Px(14.0))
+                    .text_size(TextSizeTier::Sm)
+                    .weight(700),
+            ),
+        ),
+        // `.ds-pane-header.is-active .ds-pane-tab.is-active { box-shadow:
+        // inset 0 -2px 0 accent }`.
+        (
+            "tab.pill.active",
+            spec(d()).on_select(d().bevel_marker(tone(ToneRef::Accent), 2.0)),
         ),
         // `--ds-pill-radius: radius-xs` (4px — "barely rounded") +
         // `.ds-pill { font-size: font-xs; padding: 0 10px }`.
@@ -789,22 +1065,43 @@ fn meridien() -> RecipeSet {
             ),
         ),
         // `.ds-wl-row { height: 34px; padding: 0 10px 0 14px }` — the airiest
-        // row of any style.
+        // row of any style — plus `.ds-wl-sym { font-weight: 700 }` and the
+        // shared `.ds-dom-row { border-bottom: 1px solid color-mix(border 40%,
+        // transparent) }` ledger hairline.
         (
             "row.list",
-            spec(d().radius(RadiusTier::None).px(PadTier::Px(12.0)).py(PadTier::Px(8.0)))
-                .on_hover(d().fill(tint(ToneRef::Text, 10))),
+            spec(
+                d().radius(RadiusTier::None)
+                    .px(PadTier::Px(12.0))
+                    .py(PadTier::Px(8.0))
+                    .border_edge(tint(ToneRef::Border, 100), BorderWidthTier::Hair, EdgesRef::Bottom)
+                    .weight(700),
+            )
+            .on_hover(d().fill(tint(ToneRef::Text, 10))),
+        ),
+        // `.ds-dom-row.is-current { background: color-mix(accent 14%, bg-panel);
+        // border-top: 1px solid accent; border-bottom: 1px solid accent }` +
+        // `.ds-dom-price { font-weight: 700 }`. One edge only — bottom kept.
+        (
+            "row.list.selected",
+            spec(d()).on_select(
+                d().fill(tint(ToneRef::Accent, 36))
+                    .border_edge(tone(ToneRef::Accent), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .weight(700),
+            ),
         ),
         // `.ds-wl-section { padding: 10px 10px 5px; border-top: 2px solid
-        // border; background: bg-surface }` + `.ds-section__header
-        // { font-size: font-xs }`.
+        // border; background: bg-surface }` + `.ds-wl-section span
+        // { font-size: font-2xs; font-weight: 600 }`. The 2px TOP rule is the
+        // editorial divider — it opens the section, it does not close it.
         (
             "section.header",
             spec(
                 d().px(PadTier::Px(10.0))
                     .py(PadTier::Px(8.0))
-                    .border(tone(ToneRef::Border), BorderWidthTier::Px(2.0))
-                    .text_size(TextSizeTier::Xs),
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Px(2.0), EdgesRef::Top)
+                    .text_size(TextSizeTier::Xs)
+                    .weight(600),
             ),
         ),
         ("section.header.fill", spec(d().fill(tone(ToneRef::Surface)))),
@@ -814,13 +1111,25 @@ fn meridien() -> RecipeSet {
             "panel.header",
             spec(
                 d().fill(tone(ToneRef::Surface))
-                    .border(tone(ToneRef::Border), BorderWidthTier::Px(2.0))
+                    .border_edge(tone(ToneRef::Border), BorderWidthTier::Px(2.0), EdgesRef::Bottom)
                     .py(PadTier::Px(10.0))
                     .text_size(TextSizeTier::Sm),
             ),
         ),
         // `.ds-toolbar { padding: 0 20px; gap: 14px }` — magazine proportions.
-        ("toolnav", spec(d().px(PadTier::Px(20.0)).py(PadTier::Px(10.0)))),
+        // The gap is the whole reason Meridien's toolbar reads as editorial
+        // rather than as a dense trading chrome bar.
+        (
+            "toolnav",
+            spec(d().px(PadTier::Px(20.0)).py(PadTier::Px(10.0)).gap(PadTier::Px(14.0))),
+        ),
+        // `.ds-pane-header .ds-btn--chrome.is-active { color: accent;
+        // background: color-mix(accent 12%, transparent); border-bottom: none }`.
+        (
+            "nav.cluster.active",
+            spec(d().radius(RadiusTier::None))
+                .on_select(d().fill(tint(ToneRef::Accent, 30)).ink(ToneRef::Accent).no_border()),
+        ),
     ])
 }
 
@@ -988,6 +1297,133 @@ mod tests {
         );
     }
 
+    // ── (d) M3.4b — the newly-expressible vocabulary ─────────────────────────
+
+    /// Per-side borders. `html[data-ds="cadence"] .ds-tab--underline.is-selected
+    /// { border-bottom-width: 3px }` — the thickest underline of any style. If
+    /// this ever resolves to all four edges, the tab grows a 3px BOX.
+    #[test]
+    fn cadence_tab_underline_is_a_bottom_edge_at_3px() {
+        let set = builtin_recipes("cadence");
+        let spec = set.get("tab.line.active").expect("cadence must author tab.line.active");
+        let sel = spec.selected.as_ref().expect("the underline lives on the selected state");
+        let border = sel.border.as_ref().expect("selected tab must carry a border");
+
+        assert!(
+            matches!(border.edges, EdgesRef::Bottom),
+            "cadence's tab underline must paint the BOTTOM edge only — got {:?}",
+            border.edges
+        );
+        assert!(
+            matches!(border.width, Some(BorderWidthTier::Px(w)) if (w - 3.0).abs() < f32::EPSILON),
+            "cadence's underline is 3px — the widest in the system — got {:?}",
+            border.width
+        );
+
+        // Resolution proof: the edge selection survives into the render delta.
+        let t = MockTheme;
+        let resolved = set.resolve("tab.line.active", Sx::new(), &t);
+        let edges = resolved.resolved(StyleState::Active).resolved_border_edges();
+        assert!(
+            edges.bottom && !edges.top && !edges.left && !edges.right,
+            "the bottom-only selection must reach the render delta"
+        );
+    }
+
+    /// Mariner's instrument needle is the counter-example that proves the edge
+    /// axis is real: `.ds-dom-row.is-current { border-left: 2px solid accent }`
+    /// — a LEFT edge where every other style uses a bottom one.
+    #[test]
+    fn mariner_current_row_marks_the_left_edge() {
+        let set = builtin_recipes("mariner");
+        let spec = set.get("row.list.selected").expect("mariner must author row.list.selected");
+        let border = spec.selected.as_ref().unwrap().border.as_ref().unwrap();
+        assert!(
+            matches!(border.edges, EdgesRef::Left),
+            "mariner's DOM needle is a LEFT edge — got {:?}",
+            border.edges
+        );
+
+        // …and its active pane stripe is a TOP edge.
+        let hdr = set.get("panel.header").unwrap();
+        assert!(
+            matches!(hdr.selected.as_ref().unwrap().border.as_ref().unwrap().edges, EdgesRef::Top),
+            "mariner's active-pane stripe must be the TOP edge"
+        );
+    }
+
+    /// Inset bevels. `html[data-ds="alto"] .ds-btn--primary { box-shadow:
+    /// inset 0 1px 0 rgba(255,255,255,.18), inset 0 -1px 0 rgba(0,0,0,.25) }`
+    /// — the Zed raised face. Both lines must be present, or the button reads
+    /// flat instead of raised.
+    #[test]
+    fn alto_button_primary_is_a_raised_face() {
+        let set = builtin_recipes("alto");
+        let spec = set.get("button.primary").expect("alto must author button.primary");
+        let bev = spec.base.bevel.as_ref().expect("alto's primary face must be beveled");
+        assert!(bev.top.is_some(), "the raised face needs a TOP highlight line");
+        assert!(bev.bottom.is_some(), "the raised face needs a BOTTOM shadow line");
+
+        // Resolution proof: the bevel survives into the render delta.
+        let t = MockTheme;
+        let resolved = set.resolve("button.primary", Sx::new(), &t);
+        assert!(
+            resolved.resolved(StyleState::Normal).bevel_spec().is_some(),
+            "the authored bevel must reach the render delta"
+        );
+
+        // Alto's tab marker is the ONE-sided form: `inset 0 -2px 0 accent`.
+        let marker = set.get("tab.pill.active").expect("alto must author tab.pill.active");
+        let mb = marker.selected.as_ref().unwrap().bevel.as_ref().unwrap();
+        assert!(mb.top.is_none() && mb.bottom.is_some(), "a marker is bottom-only");
+        assert_eq!(mb.width, 2.0, "the CSS says `inset 0 -2px 0`");
+    }
+
+    /// Font weight. `html[data-ds="cadence"] .ds-btn--primary
+    /// { font-weight: 700 }` — Spotify's confident bold face.
+    #[test]
+    fn cadence_carries_its_bold_face() {
+        let set = builtin_recipes("cadence");
+        assert_eq!(
+            set.get("button.primary").unwrap().base.weight,
+            Some(700),
+            "cadence's primary button is 700 in the CSS"
+        );
+        assert_eq!(set.get("tag").unwrap().base.weight, Some(700), "`.ds-pill { font-weight: 700 }`");
+        assert_eq!(
+            set.get("panel.header").unwrap().base.weight,
+            Some(700),
+            "`.ds-panel__title { font-weight: 700 }`"
+        );
+
+        // Resolution proof: >= 600 renders `strong`.
+        let t = MockTheme;
+        let resolved = set.resolve("button.primary", Sx::new(), &t);
+        assert_eq!(
+            resolved.resolved(StyleState::Normal).is_strong(),
+            Some(true),
+            "700 must reach the render delta as a strong face"
+        );
+    }
+
+    /// Gap. `html[data-ds="meridien"] .ds-toolbar { gap: 14px }` — the single
+    /// property that makes Meridien's toolbar read as editorial rather than as
+    /// a dense trading chrome bar.
+    #[test]
+    fn meridien_toolbar_carries_its_editorial_gap() {
+        let set = builtin_recipes("meridien");
+        let spec = set.get("toolnav").expect("meridien must author toolnav");
+        assert!(
+            matches!(spec.base.gap, Some(PadTier::Px(g)) if (g - 14.0).abs() < f32::EPSILON),
+            "meridien's toolbar gap is 14px — got {:?}",
+            spec.base.gap
+        );
+
+        let t = MockTheme;
+        let resolved = set.resolve("toolnav", Sx::new(), &t);
+        assert_eq!(resolved.resolved(StyleState::Normal).gap, Some(14.0));
+    }
+
     // ── Guard-rails ──────────────────────────────────────────────────────────
 
     /// Every authored key must appear in `docs/migration/recipe-keys.md`.
@@ -1019,7 +1455,9 @@ mod tests {
     }
 
     /// No recipe may hard-code a hex colour: the palette axis owns colour, and a
-    /// literal would pin a style to one palette.
+    /// literal would pin a style to one palette. Covers the M3.2 slots too —
+    /// bevels are the most tempting place to paste `rgba(255,238,210,.06)`
+    /// straight out of the CSS.
     #[test]
     fn no_recipe_hardcodes_a_hex_literal() {
         fn assert_no_literal(style: &str, key: &str, slot: &str, dlt: &RecipeDelta) {
@@ -1034,6 +1472,18 @@ mod tests {
                     !matches!(b.color, ColorSpec::Literal { .. }),
                     "{style}/{key}/{slot}: border uses a hex literal — use a Tone instead"
                 );
+            }
+            if let Some(b) = &dlt.bevel {
+                for (line, c) in [("top", &b.top), ("bottom", &b.bottom)] {
+                    if let Some(c) = c {
+                        assert!(
+                            !matches!(c, ColorSpec::Literal { .. }),
+                            "{style}/{key}/{slot}: bevel {line} line uses a hex literal — \
+                             Alto's warm highlight and Mariner's cool one are both \
+                             `Tone::Text` at different alphas"
+                        );
+                    }
+                }
             }
         }
 
@@ -1077,8 +1527,31 @@ mod tests {
         assert_ne!(lr, mr, "same-palette siblings must resolve to different geometry");
     }
 
+    /// Alto and Mariner share the Zed bevel GEOMETRY but not its TEMPERATURE:
+    /// the CSS gives Alto a warm 6%/18% highlight and Mariner a cool 8%/22% one.
+    /// Same tone, different alpha — if the alphas ever match, one of the two
+    /// bevels was copy-pasted rather than transcribed.
+    #[test]
+    fn alto_and_mariner_bevels_differ_in_intensity() {
+        fn top_alpha(set: &RecipeSet, key: &str) -> u8 {
+            match set.get(key).unwrap().base.bevel.as_ref().unwrap().top.as_ref().unwrap() {
+                ColorSpec::Alpha { alpha, .. } => *alpha,
+                other => panic!("bevel highlights must be tone+alpha — got {other:?}"),
+            }
+        }
+        let a = builtin_recipes("alto");
+        let m = builtin_recipes("mariner");
+        assert_ne!(
+            top_alpha(&a, "button.primary"),
+            top_alpha(&m, "button.primary"),
+            "Alto's warm highlight (.18) and Mariner's cool one (.22) are different \
+             strengths in the CSS"
+        );
+    }
+
     /// Every authored spec must actually change something — an all-`None`
-    /// delta with no state blocks is an accidental no-op.
+    /// delta with no state blocks is an accidental no-op. Includes the M3.2
+    /// fields, so a bevel-only or weight-only recipe counts as real.
     #[test]
     fn no_authored_recipe_is_a_no_op() {
         for id in AUTHORED {
@@ -1092,6 +1565,9 @@ mod tests {
                     && s.base.border.is_none()
                     && s.base.text.is_none()
                     && s.base.text_size.is_none()
+                    && s.base.bevel.is_none()
+                    && s.base.weight.is_none()
+                    && s.base.gap.is_none()
                     && s.base.opacity.is_none();
                 let no_states = s.hover.is_none()
                     && s.active.is_none()
