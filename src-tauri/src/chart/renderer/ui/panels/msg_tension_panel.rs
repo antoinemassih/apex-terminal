@@ -387,13 +387,13 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         // Band fill.
         painter.rect_filled(
             egui::Rect::from_min_max(egui::pos2(lo_x, bar_top), egui::pos2(hi_x, bar_bottom)),
-            2.0,
+            radius_xs(),
             tint(t, tone, 30),
         );
         // Band border.
         painter.rect_stroke(
             egui::Rect::from_min_max(egui::pos2(lo_x, bar_top), egui::pos2(hi_x, bar_bottom)),
-            2.0,
+            radius_xs(),
             egui::Stroke::new(stroke_thin(), tint(t, tone, alpha_active())),
             egui::StrokeKind::Outside,
         );
@@ -429,14 +429,14 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         // Background.
         painter.rect_filled(
             egui::Rect::from_min_max(egui::pos2(att_x0, mid_y - 4.0), egui::pos2(att_x1, mid_y + 4.0)),
-            2.0,
+            radius_xs(),
             tint(t, Tone::Surface, 12),
         );
         // Fill.
         let att_tone = if abs.attainability > 0.6 { Tone::Bull } else if abs.attainability > 0.35 { Tone::Warn } else { Tone::Bear };
         painter.rect_filled(
             egui::Rect::from_min_max(egui::pos2(att_x0, mid_y - 4.0), egui::pos2(att_x0 + att_inner, mid_y + 4.0)),
-            2.0,
+            radius_xs(),
             tint(t, att_tone, alpha_muted()),
         );
         // % label.

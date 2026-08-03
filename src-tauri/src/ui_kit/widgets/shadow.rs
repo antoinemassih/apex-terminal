@@ -260,7 +260,7 @@ pub fn show_shadow_gallery(
             let (rect, _resp) = ui.allocate_exact_size(tile_size, egui::Sense::hover());
             let painter = ui.painter();
             paint(painter, rect, spec);
-            painter.rect_filled(rect, 8.0, surface);
+            painter.rect_filled(rect, st::radius_md(), surface);
             painter.text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,

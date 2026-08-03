@@ -69,7 +69,7 @@ use super::tooltip::Tooltip;
 use super::theme::{active_theme, get_ambient_recipes};
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens::{
-    color_alpha, font_sm, font_xs, gap_lg, gap_sm, gap_xs, stroke_thin,
+    color_alpha, font_sm, font_xs, gap_lg, gap_sm, gap_xs, radius_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::text_style::TextStyle;
@@ -732,7 +732,7 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
         &InteractionTokens::borderless().hover_alpha(SECTION_BTN_HOVER_ALPHA),
     );
     let draw_color = if resp.hovered() {
-        ui.painter().rect_filled(rect, 2.0, v.fill);
+        ui.painter().rect_filled(rect, radius_xs(), v.fill);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         color
     } else {
@@ -780,7 +780,7 @@ fn section_action_button(ui: &mut Ui, label: &str, color: Color32) -> bool {
         &InteractionTokens::borderless().hover_alpha(SECTION_BTN_HOVER_ALPHA),
     );
     if resp.hovered() {
-        ui.painter().rect_filled(rect, 2.0, v.fill);
+        ui.painter().rect_filled(rect, radius_xs(), v.fill);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     ui.painter().text(

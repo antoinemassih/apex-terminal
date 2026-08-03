@@ -67,7 +67,7 @@ impl RiskRewardBar {
             egui::Color32::from_gray(128),
             st::alpha_muted(),
         );
-        p.rect_filled(bar_rect, 2.0, border_col);
+        p.rect_filled(bar_rect, st::radius_xs(), border_col);
 
         // Risk / reward split
         let total = (self.risk + self.reward).max(f32::EPSILON);
@@ -79,7 +79,7 @@ impl RiskRewardBar {
                 bar_rect.min,
                 egui::vec2(self.width * risk_pct, self.height),
             ),
-            2.0,
+            st::radius_xs(),
             st::color_alpha(pal.base(Tone::Bear), st::alpha_dim()),
         );
 
@@ -89,7 +89,7 @@ impl RiskRewardBar {
                 egui::pos2(bar_rect.left() + self.width * risk_pct, bar_rect.top()),
                 egui::vec2(self.width * (1.0 - risk_pct), self.height),
             ),
-            2.0,
+            st::radius_xs(),
             st::color_alpha(pal.base(Tone::Bull), st::alpha_dim()),
         );
 

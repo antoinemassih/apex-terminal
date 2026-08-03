@@ -267,7 +267,7 @@ fn price_row(
             egui::vec2(tip_w, bar_h), egui::Sense::hover());
         let painter = ui.painter();
         // Background band.
-        painter.rect_filled(band_rect, 2.0, color_alpha(color, alpha_ghost()));
+        painter.rect_filled(band_rect, radius_xs(), color_alpha(color, alpha_ghost()));
         // Inner tick at the point estimate.
         let rel = if tiny { 0.5 } else {
             let frac = (point - lo) / (hi - lo);
@@ -277,7 +277,7 @@ fn price_row(
         let tick = egui::Rect::from_center_size(
             egui::pos2(tick_x, band_rect.center().y),
             egui::vec2(2.0, bar_h + 4.0));
-        painter.rect_filled(tick, 1.0, color);
+        painter.rect_filled(tick, r_pill(), color);
         // Hover tooltip with CI bounds — the "Calibrated fields" requirement.
         let resp = ui.interact(band_rect,
             ui.id().with(("range_tip", label)), egui::Sense::hover());

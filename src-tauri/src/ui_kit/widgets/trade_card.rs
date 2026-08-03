@@ -78,7 +78,7 @@ impl<'a> TradeCard<'a> {
                 egui::pos2(card_rect.left(), card_rect.top() + 3.0),
                 egui::pos2(card_rect.left() + 3.0, card_rect.bottom() - 3.0),
             ),
-            1.0, pnl_col);
+            st::radius_pill(), pnl_col);
 
         let cx = card_rect.left() + 8.0;
         let mut cy = card_rect.top() + 8.0;

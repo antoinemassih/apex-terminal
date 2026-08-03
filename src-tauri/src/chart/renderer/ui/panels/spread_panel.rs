@@ -327,7 +327,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         egui::vec2(w - m * 2.0 + 4.0, 26.0),
                     );
                     let _ = ui.allocate_rect(card_rect, egui::Sense::hover());
-                    ui.painter().rect_filled(card_rect, 3.0, tint(t, Tone::Border, alpha_subtle()));
+                    ui.painter().rect_filled(card_rect, radius_sm(), tint(t, Tone::Border, alpha_subtle()));
 
                     // Draw leg label + controls
                     let leg_label_col = if leg.side == "BUY" { t.bull } else { t.bear };

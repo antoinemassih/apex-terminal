@@ -435,7 +435,7 @@ fn paint_cell(
     // Hover highlight
     if is_hovered {
         painter.rect_filled(
-            rect, 2.0,
+            rect, st::radius_xs(),
             st::color_alpha(palette_ct(t).base(Tone::Text), 12),
         );
     }
@@ -443,7 +443,7 @@ fn paint_cell(
     // Active symbol border
     if is_active {
         painter.rect_stroke(
-            rect.shrink(1.0), 2.0,
+            rect.shrink(1.0), st::radius_xs(),
             egui::Stroke::new(st::stroke_bold(), palette_ct(t).base(Tone::Accent)),
             egui::StrokeKind::Outside,
         );
@@ -458,7 +458,7 @@ fn paint_cell(
     };
     painter.rect_filled(
         Rect::from_min_size(rect.min + vec2(0.0, 1.0), vec2(bar_w, rect.height() - 2.0)),
-        2.0, bar_col,
+        st::radius_xs(), bar_col,
     );
 
     // Left-edge accent strip

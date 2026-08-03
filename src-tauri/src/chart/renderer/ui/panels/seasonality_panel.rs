@@ -146,10 +146,10 @@ pub(crate) fn draw_content(
                         let bar_max = 60.0;
                         let (r, _) = ui.allocate_exact_size(egui::vec2(bar_max, 8.0), egui::Sense::hover());
                         let pp = ui.painter();
-                        pp.rect_filled(r, 2.0, tint(t, Tone::Border, alpha_faint()));
+                        pp.rect_filled(r, radius_xs(), tint(t, Tone::Border, alpha_faint()));
                         pp.rect_filled(
                             egui::Rect::from_min_size(r.min, egui::vec2(bar_max * pct / 100.0, 8.0)),
-                            2.0, color_alpha(col, alpha_dim()));
+                            radius_xs(), color_alpha(col, alpha_dim()));
                         ui.add(MonospaceCode::new(&format!("{:.0}% ({}/{})", pct, wins, total)).xs().color(col));
                     });
                 }

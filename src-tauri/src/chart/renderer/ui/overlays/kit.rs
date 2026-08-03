@@ -149,11 +149,11 @@ pub(crate) fn metric_row(
         value, egui::FontId::monospace(FONT_SM), color);
     let bar_y = rect.top() + 11.0;
     let track = egui::Rect::from_min_size(egui::pos2(rect.left(), bar_y), egui::vec2(rect.width(), 3.0));
-    p.rect_filled(track, 1.0, tint(t, Tone::Border, alpha_faint()));
+    p.rect_filled(track, r_pill(), tint(t, Tone::Border, alpha_faint()));
     let fw = rect.width() * frac.clamp(0.0, 1.0);
     if fw > 0.5 {
         let fill = egui::Rect::from_min_size(egui::pos2(rect.left(), bar_y), egui::vec2(fw, 3.0));
-        p.rect_filled(fill, 1.0, color_alpha(color, alpha_dim()));
+        p.rect_filled(fill, r_pill(), color_alpha(color, alpha_dim()));
     }
 }
 

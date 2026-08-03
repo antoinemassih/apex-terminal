@@ -479,7 +479,7 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
             let (rect, _resp) =
                 ui.allocate_exact_size(egui::vec2(120.0, 80.0), egui::Sense::hover());
             paint_shadow(ui.painter(), rect, spec);
-            ui.painter().rect_filled(rect, 8.0, theme.surface());
+            ui.painter().rect_filled(rect, st::radius_md(), theme.surface());
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,

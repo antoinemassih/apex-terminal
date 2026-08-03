@@ -109,7 +109,7 @@ pub(crate) fn paint_change_chip(
         egui::pos2(rect.left(), rect.center().y - galley.size().y * 0.5 - pad.y),
         galley.size() + pad * 2.0,
     );
-    painter.rect_filled(chip, 4.0, color_alpha(base, 38));
+    painter.rect_filled(chip, radius_sm(), color_alpha(base, 38));
     painter.galley(egui::pos2(chip.left() + pad.x, chip.top() + pad.y), galley, base);
 }
 

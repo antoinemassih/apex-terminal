@@ -105,7 +105,7 @@ impl<'a> OrderRow<'a> {
                 let pill = egui::Rect::from_min_size(
                     egui::pos2(rect.left() + 6.0, cy - 7.0),
                     egui::vec2(14.0, 14.0));
-                painter.rect_filled(pill, 2.0, color_alpha(side_col, alpha_subtle()));
+                painter.rect_filled(pill, radius_xs(), color_alpha(side_col, alpha_subtle()));
                 painter.text(pill.center(), egui::Align2::CENTER_CENTER,
                     side_lbl, f_txt.clone(), side_col);
 

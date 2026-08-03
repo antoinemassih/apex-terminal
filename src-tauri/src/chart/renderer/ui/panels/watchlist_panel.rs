@@ -817,7 +817,7 @@ if is_spawn || watchlist.open {
                                                 let r = ui.max_rect();
                                                 ui.painter().rect_filled(
                                                     egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 2.5, r.max.y)),
-                                                    1.0, t.accent);
+                                                    r_pill(), t.accent);
                                             }
                                             ui.add_space(if is_active { 8.0 } else { 4.0 });
                                             // Drag grip

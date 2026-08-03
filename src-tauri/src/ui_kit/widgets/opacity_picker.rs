@@ -14,6 +14,7 @@
 use egui::{Color32, Response, Sense, Ui};
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::tokens as st;
 
 /// Six discrete opacity levels used across the app. Re-exported so panels can
 /// share the same constant instead of defining their own.
@@ -105,7 +106,7 @@ impl<'a> OpacityPicker<'a> {
             } else {
                 Color32::from_rgba_unmultiplied(dim.r(), dim.g(), dim.b(), 40)
             };
-            painter.rect_filled(seg_rect, 1.5, col);
+            painter.rect_filled(seg_rect, st::radius_xs(), col);
 
             if resp.clicked() {
                 if let Some(pos) = resp.interact_pointer_pos() {

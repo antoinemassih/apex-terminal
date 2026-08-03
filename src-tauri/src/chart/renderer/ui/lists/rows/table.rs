@@ -235,7 +235,7 @@ impl<'a, T> Table<'a, T> {
                                 let cb = egui::Rect::from_min_size(
                                     egui::pos2(row_rect.left() + 4.0, row_rect.center().y - 7.0),
                                     egui::vec2(14.0, 14.0));
-                                ui.painter().rect_stroke(cb, 2.0,
+                                ui.painter().rect_stroke(cb, radius_xs(),
                                     Stroke::new(stroke_thin(), dim), egui::StrokeKind::Inside);
                                 if is_sel {
                                     ui.painter().text(cb.center(), egui::Align2::CENTER_CENTER,

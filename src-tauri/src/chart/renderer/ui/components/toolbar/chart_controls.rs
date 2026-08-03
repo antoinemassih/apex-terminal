@@ -39,6 +39,7 @@ use crate::chart_renderer::ui::style::{
     font_4xs, font_xs, font_sm, font_lg,
     mono_sm,
     gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
+    radius_sm,
 };
 use crate::chart_renderer::{ChartWidget, ChartWidgetKind, DrawingGroup};
 use crate::state::{BROADCAST_GROUP, PaneEvent, PaneToggle};
@@ -1109,13 +1110,13 @@ fn grp_widgets(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                     crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);
                     if resp.hovered() {
-                        p.rect_filled(r, 4.0, tint(t, Tone::Accent, alpha_ghost()));
+                        p.rect_filled(r, radius_sm(), tint(t, Tone::Accent, alpha_ghost()));
                     }
 
                     let preview_rect = egui::Rect::from_min_size(
                         egui::pos2(r.left() + 4.0, r.top() + 4.0), egui::vec2(28.0, 28.0));
                     let preview_bg = tint(t, Tone::Border, alpha_faint());
-                    p.rect_filled(preview_rect, 4.0, preview_bg);
+                    p.rect_filled(preview_rect, radius_sm(), preview_bg);
                     paint_widget_preview(p, preview_rect, kind, t, is_active);
 
                     let name_x = r.left() + 38.0;

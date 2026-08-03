@@ -118,7 +118,7 @@ use crate::chart_renderer::ui::style::{
     mono_xs, mono_sm, mono_md, mono_lg,
     gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
     row_height_default,
-    stroke_std, stroke_thin, r_md_cr,
+    stroke_std, stroke_thin, r_md_cr, radius_xs,
     elevation_3, shadow_card_themed,
 };
 use crate::chart_renderer::ui::foundation::text_style::TextStyle;
@@ -1966,7 +1966,7 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{:.2}", tip.day_low), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, 2.0, tint(t, Tone::Text, 15));
+                            ui.painter().rect_filled(bar_rect, radius_xs(), tint(t, Tone::Text, 15));
                             let range = tip.day_high - tip.day_low;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.day_low) / range).clamp(0.0, 1.0);
@@ -1981,7 +1981,7 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{:.0}", tip.low_52wk), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, 2.0, tint(t, Tone::Text, 15));
+                            ui.painter().rect_filled(bar_rect, radius_xs(), tint(t, Tone::Text, 15));
                             let range = tip.high_52wk - tip.low_52wk;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.low_52wk) / range).clamp(0.0, 1.0);

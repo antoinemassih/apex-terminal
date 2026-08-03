@@ -9,6 +9,7 @@
 use crate::chart_renderer::gpu::*;
 use crate::chart_renderer::ui::style::{
     color_alpha, mono_2xs, mono_xs, mono_sm,
+    radius_md, r_pill,
     COLOR_AMBER,
 };
 
@@ -48,7 +49,7 @@ pub(super) fn render_signal_gauges(
             let bar_w = (pill_w - 8.0) * (score / 100.0).min(1.0);
             painter.rect_filled(
                 egui::Rect::from_min_size(egui::pos2(gauge_x + 4.0, bar_y), egui::vec2(bar_w, 2.0)),
-                1.0, color_alpha(color, 200),
+                r_pill(), color_alpha(color, 200),
             );
             // Left: colored dot + label
             painter.circle_filled(egui::pos2(gauge_x + 10.0, y + pill_h / 2.0), 3.0, color);
@@ -127,7 +128,7 @@ pub(super) fn render_signal_gauges(
 
         // Card background
         let bg = color_alpha(t.toolbar_bg, 230);
-        painter.rect_filled(card_rect, 6.0, bg);
+        painter.rect_filled(card_rect, radius_md(), bg);
 
         // Top accent — amber warning stripe
         let accent = COLOR_AMBER;
@@ -178,7 +179,7 @@ pub(super) fn render_signal_gauges(
         let bar_w = card_w - 20.0;
         painter.rect_filled(
             egui::Rect::from_min_size(egui::pos2(text_x, bar_y), egui::vec2(bar_w, 8.0)),
-            4.0, color_alpha(t.toolbar_bg, 180),
+            r_pill(), color_alpha(t.toolbar_bg, 180),
         );
         let fill = bar_w * (chart.vix_convergence_score / 100.0).min(1.0);
         let bar_color = if chart.vix_convergence_score > 70.0 { t.bull }
@@ -186,13 +187,13 @@ pub(super) fn render_signal_gauges(
             else { dim };
         painter.rect_filled(
             egui::Rect::from_min_size(egui::pos2(text_x, bar_y), egui::vec2(fill, 8.0)),
-            4.0, color_alpha(bar_color, 200),
+            r_pill(), color_alpha(bar_color, 200),
         );
         painter.text(egui::pos2(text_x + bar_w + 4.0, bar_y + 4.0), egui::Align2::LEFT_CENTER,
             format!("{:.0}", chart.vix_convergence_score), mono_2xs(), bar_color);
 
         // Subtle border
-        painter.rect_stroke(card_rect, 6.0,
+        painter.rect_stroke(card_rect, radius_md(),
             egui::Stroke::new(crate::ui_kit::style::stroke_std(), color_alpha(accent, 40)), egui::StrokeKind::Outside);
     }
 }

@@ -112,13 +112,13 @@ impl<'a> HeatmapGrid<'a> {
                     palette_ct(theme).base(Tone::Text),
                     &InteractionTokens::borderless().hover_alpha(12),
                 );
-                painter.rect_filled(cell, 2.0, v.fill);
+                painter.rect_filled(cell, st::radius_xs(), v.fill);
             }
             // Active symbol border
             if is_active {
                 painter.rect_stroke(
                     egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(col_w, cell_h - 2.0)),
-                    2.0,
+                    st::radius_xs(),
                     egui::Stroke::new(st::stroke_bold(), palette_ct(theme).base(Tone::Accent)),
                     egui::StrokeKind::Outside);
             }
@@ -132,7 +132,7 @@ impl<'a> HeatmapGrid<'a> {
             };
             painter.rect_filled(
                 egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(bar_w, cell_h - 2.0)),
-                2.0, bar_col);
+                st::radius_xs(), bar_col);
             // Left-edge accent strip
             let edge_a = (120.0 + intensity * 135.0) as u8;
             let edge_col = if is_up { st::color_alpha(palette_ct(theme).base(Tone::Bull), edge_a) } else { st::color_alpha(palette_ct(theme).base(Tone::Bear), edge_a) };

@@ -614,7 +614,7 @@ fn paint_swatch(ui: &mut egui::Ui, color: egui::Color32) {
     let swatch_size = 10.0;
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(swatch_size, swatch_size), egui::Sense::hover());
-    ui.painter().rect_filled(rect, 2.0, color);
+    ui.painter().rect_filled(rect, radius_xs(), color);
 }
 
 fn active_symbol_overlay_row(

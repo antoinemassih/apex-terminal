@@ -90,7 +90,7 @@ fn opacity_picker(ui: &mut egui::Ui, current: f32, _id_salt: &str) -> Option<f32
 fn paint_swatch(ui: &mut egui::Ui, color: egui::Color32) {
     let sz = 10.0;
     let (rect, _) = ui.allocate_exact_size(egui::vec2(sz, sz), egui::Sense::hover());
-    ui.painter().rect_filled(rect, 2.0, color);
+    ui.painter().rect_filled(rect, radius_xs(), color);
 }
 
 /// Read-or-create a persistent collapse bool keyed by id_salt.

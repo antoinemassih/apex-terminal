@@ -466,7 +466,7 @@ impl<'a> WatchlistRow<'a> {
                 if active_flag {
                     painter.rect_filled(
                         egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 2.5, rect.max.y)),
-                        1.0, accent);
+                        r_pill(), accent);
                 }
 
                 // ── RVOL left-border strip ──────────────────────────────
@@ -543,7 +543,7 @@ impl<'a> WatchlistRow<'a> {
                         let pill_rect = egui::Rect::from_min_size(
                             egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0));
                         let pill_fill = color_alpha(theme_ref.accent, alpha_heavy());
-                        painter.rect_filled(pill_rect, 6.0, pill_fill);
+                        painter.rect_filled(pill_rect, r_pill(), pill_fill);
                         // contrast_fg picks BLACK on a light/saturated accent fill,
                         // WHITE on a dark one — so the pill reads on every theme
                         // (Bauhaus orange, Newsprint dark green, Tokyo Night blue).

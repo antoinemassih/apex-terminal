@@ -160,7 +160,7 @@ fn paint_toggle_row<'a>(
         &InteractionTokens::borderless().hover_alpha(ROW_HOVER_ALPHA),
     );
     if ix.fill != Color32::TRANSPARENT {
-        ui.painter().rect_filled(rect, 4.0, ix.fill);
+        ui.painter().rect_filled(rect, st::radius_sm(), ix.fill);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 

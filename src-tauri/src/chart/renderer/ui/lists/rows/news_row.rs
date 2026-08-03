@@ -103,7 +103,7 @@ impl<'a> NewsRow<'a> {
                 };
                 let source_rect = egui::Rect::from_min_size(
                     egui::pos2(rect.min.x + m, meta_y), egui::vec2(50.0, 14.0));
-                painter.rect_filled(source_rect, 2.0, color_alpha(source_col, alpha_subtle()));
+                painter.rect_filled(source_rect, radius_xs(), color_alpha(source_col, alpha_subtle()));
                 painter.text(source_rect.center(), egui::Align2::CENTER_CENTER,
                     source, f.clone(), source_col);
 
@@ -113,7 +113,7 @@ impl<'a> NewsRow<'a> {
 
                 let sym_rect = egui::Rect::from_min_size(
                     egui::pos2(rect.min.x + m + 95.0, meta_y), egui::vec2(36.0, 14.0));
-                painter.rect_filled(sym_rect, 2.0, color_alpha(accent, alpha_ghost()));
+                painter.rect_filled(sym_rect, radius_xs(), color_alpha(accent, alpha_ghost()));
                 painter.text(sym_rect.center(), egui::Align2::CENTER_CENTER,
                     symbol, f.clone(), accent);
 
@@ -122,7 +122,7 @@ impl<'a> NewsRow<'a> {
                     let tw = (tag.len() as f32) * 5.0 + 8.0;
                     let tr = egui::Rect::from_min_size(egui::pos2(chip_x, meta_y), egui::vec2(tw, 14.0));
                     if tr.right() > rect.right() - 16.0 { break; }
-                    painter.rect_filled(tr, 2.0, color_alpha(dim, alpha_ghost()));
+                    painter.rect_filled(tr, radius_xs(), color_alpha(dim, alpha_ghost()));
                     painter.text(tr.center(), egui::Align2::CENTER_CENTER,
                         tag, f.clone(), dim);
                     chip_x = tr.right() + 3.0;
