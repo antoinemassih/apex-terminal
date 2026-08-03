@@ -276,7 +276,12 @@ if is_spawn || watchlist.open {
                     let avail = ui.available_width();
                     let btn_w = 22.0;
                     let search_w = (avail - btn_w - 4.0).max(40.0);
-                    let search_h = 20.0;
+                    // M5: this band was a pinned 20.0 holding a `SearchInput` at
+                    // `Size::Sm`, whose height is 22.0 — a 2px under-allocation,
+                    // and the filter/columns hit-rects below inherit `search_h`,
+                    // so they sat 2px short of the control beside them. Ask the
+                    // size token rather than restating a number derived from it.
+                    let search_h = crate::ui_kit::widgets::tokens::Size::Sm.height();
                     let (full_rect, _) = ui.allocate_exact_size(egui::vec2(avail, search_h), egui::Sense::hover());
                     // Search field (left portion)
                     let search_rect = egui::Rect::from_min_size(full_rect.min, egui::vec2(search_w, search_h));
