@@ -652,7 +652,15 @@ pub(crate) fn draw(
             .delta(delta).volume(vol, vol_fill_v)
             .selected(is).current_price(ic).inside_spread(false)
             .imbalance_fill(imb)
-            .height(ROW_H)
+            // M5: `ROW_H` is a deliberate DENSITY choice — the ladder wants as
+            // many price levels on screen as will fit, so it is kept as the
+            // target rather than replaced by the density-derived default.
+            // But it is a target, not a licence to clip: floor it at the height
+            // the row's tallest text tier actually needs. At today's ladder
+            // (font_md 14) that is 18.2 against ROW_H's 18.0, so the ladder
+            // barely moves; the point is that it can no longer silently go
+            // short if the type scale moves again.
+            .height(ROW_H.max(super::super::lists::rows::dom_row::dom_row_min_height()))
             .theme(t)
             .column_layout(col_layout)
             .drag_cx(drag_cx)

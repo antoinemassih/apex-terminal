@@ -116,10 +116,36 @@ impl<'a> OrderRow<'a> {
                 )).text(egui::pos2(sym_x, cy), egui::Align2::LEFT_CENTER, symbol, f_txt.clone(), fg);
 
                 // Qty @ price — clip between symbol and status columns.
-                painter.with_clip_rect(painter.clip_rect().intersect(
-                    egui::Rect::from_x_y_ranges((rect.left() + 30.0)..=(rect.right() - 84.0), rect.y_range())
-                )).text(egui::pos2(rect.center().x, cy), egui::Align2::CENTER_CENTER,
-                    &format!("{} @ {:.2}", qty, price), f_num, fg);
+                //
+                // M5, two coupled defects here, both from pinned geometry:
+                //
+                // 1. The right reserve was a pinned `84.0`, while the status
+                //    label below is RIGHT-anchored at `right - 80.0` and grows
+                //    LEFTWARD. So the reserve cleared the status ANCHOR by 4px
+                //    but not the status TEXT — any status wider than 4px shared
+                //    pixels with this column.
+                // 2. The text is centred on the ROW (`rect.center().x`) while
+                //    its band was NOT centred on the row (`left+30` vs
+                //    `right-84`). The band's centre sits 27px to the left, so
+                //    the text ran out of room on the right while ~54px of band
+                //    went unused on the left — it clipped early, and
+                //    asymmetrically. Budget was `W - 168`; at Width::Medium
+                //    (~270 usable) that is 102px, and "1000 @ 4523.75" needs
+                //    ~109px once font_body is 13 (cadence, glass) — a hard clip
+                //    mid-glyph, with no ellipsis.
+                //
+                // Derive both ends instead: measure the status label, end the
+                // band before the text actually starts, and centre the value in
+                // the band it really has.
+                let status_w = ui.fonts(|f| {
+                    f.layout_no_wrap(status.to_string(), f_txt.clone(), dim).rect.width()
+                });
+                let band_l = rect.left() + 30.0;
+                let band_r = (rect.right() - 80.0 - status_w - gap_xs()).max(band_l);
+                let band = egui::Rect::from_x_y_ranges(band_l..=band_r, rect.y_range());
+                painter.with_clip_rect(painter.clip_rect().intersect(band))
+                    .text(egui::pos2(band.center().x, cy), egui::Align2::CENTER_CENTER,
+                        &format!("{} @ {:.2}", qty, price), f_num, fg);
 
                 painter.text(egui::pos2(rect.right() - 80.0, cy), egui::Align2::RIGHT_CENTER,
                     status, f_txt.clone(), dim);

@@ -150,6 +150,24 @@ pub struct DomRow<'a> {
     rich_orders: &'a [(u32, char, u32, Color32)],
 }
 
+/// The shortest rung that still contains the row's TALLEST text tier.
+///
+/// M5: the previous floor was `mono_sm().size + 4.0` (= 16.0), and its comment
+/// said it existed so "the `mono_sm()` text the row paints always fits". But
+/// this row's price and size columns paint `TextStyle::MonoMd` (see the
+/// `f_lg` / `font` bindings below) — the taller tier, added specifically so
+/// this ladder could join the cascade. The floor was never moved with it, so it
+/// tracked the smaller tier and came up short:
+///
+///     needs  font_md() * line_dense() = 14 * 1.3 = 18.2
+///     floor  mono_sm().size + 4.0     = 12 + 4   = 16.0
+///
+/// A floor that measures the wrong tier is the same defect as a pinned
+/// dimension — it is derived, but from something that is not what it guards.
+pub(crate) fn dom_row_min_height() -> f32 {
+    crate::ui_kit::style::font_md() * crate::ui_kit::style::line_dense()
+}
+
 impl<'a> DomRow<'a> {
     pub fn new(price: f32, bid_size: u32, ask_size: u32) -> Self {
         Self {
@@ -158,11 +176,12 @@ impl<'a> DomRow<'a> {
             volume: 0, volume_fill: 0.0, delta: 0,
             is_inside: false, selected: false, current_price: false,
             imbalance: 0.0,
-            // Density-aware default row height, floored so the `mono_sm()`
-            // text the row paints always fits inside the rung (the old
-            // hardcoded 18px clipped 12–13px glyphs).
+            // Density-aware default row height, floored so the tallest text
+            // tier the row paints always fits inside the rung. See
+            // `dom_row_min_height` — the floor used to measure `mono_sm()`
+            // while the row paints `MonoMd`.
             height: crate::chart_renderer::ui::style::style_row_height()
-                .max(mono_sm().size + 4.0),
+                .max(dom_row_min_height()),
             price_fmt: "{:.2}",
             columns: None, orders: &[],
             show_numbers: true,
