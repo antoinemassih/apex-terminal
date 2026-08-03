@@ -66,7 +66,12 @@ use taffy::prelude::*;
 
 /// Above this many children, a flex layout is probably the wrong tool (see the
 /// module docs on hot paths). Dev-build assertion only.
-pub const MAX_REASONABLE_ITEMS: usize = 64;
+pub const MAX_REASONABLE_ITEMS: usize = 128;
+// M4.3 feedback: raised 64 -> 128. The cap is a guard against someone routing
+// a streaming row list through flex, but `tabs.rs` now solves one item per tab
+// (plus the `+` button) and tab count is USER-driven — a 64-tab strip would
+// have tripped the dev-build assert on legitimate use. 128 still catches the
+// real mistake (a 200-row/frame tape) with room for any hand-built strip.
 
 /// Cross-axis alignment (CSS `align-items`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -128,8 +133,56 @@ pub enum Size {
     Content(f32),
 }
 
+/// M4.6: how a child's CROSS-axis size is derived from its MAIN-axis size —
+/// the measure hook.
+///
+/// The chrome migration named this the single biggest remaining layout gap:
+/// "any widget whose text wraps at a flex-derived width is circular — you need
+/// the solve to know the wrap width, and the wrapped height to solve the cross
+/// axis." `alert.rs` escaped only because every child aligns to `Start` (so a
+/// height-0 solve suffices); `toggle_row.rs` (label + wrapping description,
+/// vertically centred, ~20x per settings panel) did not, and was left behind.
+///
+/// `Measure` closes it by running the solve in TWO passes: pass 1 resolves the
+/// main axis (widths), the callback then measures the real wrapped height at
+/// that width, and pass 2 re-solves with those heights as definite cross sizes.
+/// That is exactly what Taffy's `MeasureFunc` does internally, expressed in a
+/// form egui can serve — the caller lays out a galley and returns its height.
+#[derive(Clone)]
+pub struct Measure(std::sync::Arc<dyn Fn(f32) -> f32 + Send + Sync>);
+
+impl Measure {
+    /// Build a measure hook: given the solved main-axis size, return the
+    /// required cross-axis size.
+    ///
+    /// ```ignore
+    /// // A wrapping description column, measured with egui's real layout:
+    /// let font = TextStyle::BodySm.font_id_in(ui);
+    /// let painter = ui.painter().clone();
+    /// let text = desc.to_owned();
+    /// Item::grow(1.0).measure(Measure::new(move |w| {
+    ///     painter.layout(text.clone(), font.clone(), Color32::PLACEHOLDER, w)
+    ///            .size().y.ceil()
+    /// }))
+    /// ```
+    pub fn new(f: impl Fn(f32) -> f32 + Send + Sync + 'static) -> Self {
+        Self(std::sync::Arc::new(f))
+    }
+
+    #[inline]
+    fn call(&self, main: f32) -> f32 { (self.0)(main.max(0.0)).max(0.0) }
+}
+
+impl std::fmt::Debug for Measure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Measure(..)")
+    }
+}
+
 /// One child in a [`Flex`].
-#[derive(Clone, Copy, Debug)]
+// NOTE: `Clone` not `Copy` since M4.6 — an optional `Measure` holds an `Arc`.
+// Items are built per frame in small numbers, so the clone is immaterial.
+#[derive(Clone, Debug)]
 pub struct Item {
     size: Size,
     /// Optional cross-axis size (height in a row, width in a column).
@@ -142,6 +195,8 @@ pub struct Item {
     /// shrinking; opt one in when it must yield rather than push its siblings
     /// out of the container (a long title vs. a right-anchored close button).
     shrink: Option<f32>,
+    /// M4.6: cross-axis size derived from the solved main-axis size.
+    measure: Option<Measure>,
     /// Extra leading gutter for this child only (CSS `margin-inline-start`),
     /// stacked on top of the container `gap`. Lets one seam in a strip use a
     /// different spacing token without abandoning the uniform gutter.
@@ -194,7 +249,7 @@ impl Item {
     }
 
     fn new(size: Size) -> Self {
-        Self { size, cross: None, min: None, align_self: None, shrink: None, margin_start: None }
+        Self { size, cross: None, min: None, align_self: None, shrink: None, margin_start: None, measure: None }
     }
 
     /// Fix the cross-axis extent (row: height, column: width).
@@ -207,6 +262,19 @@ impl Item {
     /// give up width when the container is too narrow, instead of overflowing
     /// and shoving the children after it out of the box.
     pub fn shrink(mut self, factor: f32) -> Self { self.shrink = Some(factor); self }
+
+    /// M4.3 feedback: a measured item that must NOT yield.
+    ///
+    /// The measuring constructors (`content`/`galley`/`text`/`text_tier`) are
+    /// shrinkable by CSS `flex-basis` semantics, but a hand-written cursor walk
+    /// overflows rather than yielding — so faithfully migrating one required
+    /// `.shrink(0.0)` on every measured item, which reads like an incantation.
+    /// The chrome agent hit this at 4 of 15 sites. `.rigid()` says it plainly.
+    pub fn rigid(self) -> Self { self.shrink(0.0) }
+
+    /// M4.6: attach a measure hook — the child's cross size is computed from
+    /// its solved main size (see [`Measure`]). Triggers a two-pass solve.
+    pub fn measure(mut self, m: Measure) -> Self { self.measure = Some(m); self }
 
     /// Extra leading gutter for this child only (CSS `margin-inline-start`):
     /// `margin-left` in a row, `margin-top` in a column. Stacks on top of the
@@ -227,6 +295,9 @@ pub struct Pad {
 }
 
 /// A flexbox container. Build it, add [`Item`]s, then [`Flex::show`].
+// `Clone` since M4.6: the two-pass measure solve clones the spec to inject
+// measured cross sizes before re-solving.
+#[derive(Clone)]
 #[must_use = "Flex does nothing until `.show(...)` is called"]
 pub struct Flex {
     row: bool,
@@ -340,7 +411,32 @@ impl Flex {
     /// Solve the layout and return each child's rect **relative to the
     /// container origin**. Exposed (and pure) so layout can be unit-tested
     /// headlessly — no GPU, no egui context, no window.
+    /// M4.6: true when any child carries a measure hook (two-pass solve).
+    fn needs_measure_pass(&self) -> bool {
+        self.items.iter().any(|i| i.measure.is_some())
+    }
+
     pub fn solve(&self, available: Vec2) -> Vec<Rect> {
+        if !self.needs_measure_pass() {
+            return self.solve_once(available);
+        }
+        // ── Pass 1: resolve the MAIN axis only. ──────────────────────────────
+        let first = self.solve_once(available);
+        // ── Measure each hooked child at its solved main size. ───────────────
+        let mut measured: Flex = (*self).clone();
+        for (i, item) in measured.items.iter_mut().enumerate() {
+            if let Some(m) = item.measure.clone() {
+                let main = if self.row { first[i].width() } else { first[i].height() };
+                // The measured result becomes a DEFINITE cross size, which is
+                // what pass 2 needs to place and size the child correctly.
+                item.cross = Some(m.call(main));
+            }
+        }
+        // ── Pass 2: re-solve with definite cross sizes. ──────────────────────
+        measured.solve_once(available)
+    }
+
+    fn solve_once(&self, available: Vec2) -> Vec<Rect> {
         debug_assert!(
             self.items.len() <= MAX_REASONABLE_ITEMS,
             "Flex with {} children — flexbox is for panel chrome/forms, not hot \
@@ -777,5 +873,90 @@ mod m41_content_sizing_tests {
         assert!(rects[0].right() <= rects[1].left() + 0.01, "no overlap");
         assert!(rects[1].right() <= rects[2].left() + 0.01, "no overlap");
         assert!(rects[2].width() > 200.0, "grow child takes the rest");
+    }
+}
+
+// ── M4.6 measure-hook tests ──────────────────────────────────────────────────
+#[cfg(test)]
+mod m46_measure_tests {
+    use super::*;
+
+    /// The circular case the chrome migration could not migrate: a wrapping
+    /// description's HEIGHT depends on the width the solve gives it, and the
+    /// row's cross-axis layout depends on that height. One pass cannot do it.
+    ///
+    /// Model a text block of 600px of glyphs: at width w it wraps to
+    /// ceil(600/w) lines of 14px.
+    #[test]
+    fn measured_child_gets_height_from_its_solved_width() {
+        let text_px = 600.0_f32;
+        let line_h  = 14.0_f32;
+        let measure = Measure::new(move |w| (text_px / w.max(1.0)).ceil() * line_h);
+
+        // 200px available: 600/200 = 3 lines = 42px.
+        let rects = Flex::row()
+            .item(Item::grow(1.0).measure(measure.clone()))
+            .solve(egui::vec2(200.0, 100.0));
+        assert!((rects[0].height() - 42.0).abs() < 0.01,
+            "at 200px wide the block should wrap to 3 lines (42px), got {}", rects[0].height());
+
+        // 300px available: 600/300 = 2 lines = 28px. Same spec, different
+        // width -> different height. That is the circularity, resolved.
+        let wider = Flex::row()
+            .item(Item::grow(1.0).measure(measure))
+            .solve(egui::vec2(300.0, 100.0));
+        assert!((wider[0].height() - 28.0).abs() < 0.01,
+            "at 300px wide it should wrap to 2 lines (28px), got {}", wider[0].height());
+    }
+
+    /// The real shape that was left behind: `toggle_row` — a fixed leading
+    /// control, a growing label+description column that wraps, and a fixed
+    /// trailing switch. The measured column must not disturb its siblings.
+    #[test]
+    fn toggle_row_shape_solves_in_one_call() {
+        let measure = Measure::new(|w| (900.0_f32 / w.max(1.0)).ceil() * 16.0);
+        let rects = Flex::row()
+            .gap(8.0)
+            .item(Item::fixed(20.0))                            // icon
+            .item(Item::grow(1.0).measure(measure))             // label + wrapping desc
+            .item(Item::fixed(36.0))                            // switch
+            .solve(egui::vec2(300.0, 0.0));
+
+        assert!((rects[0].width() - 20.0).abs() < 0.01, "fixed leading survives");
+        assert!((rects[2].width() - 36.0).abs() < 0.01, "fixed trailing survives");
+        // grow column = 300 - 20 - 36 - 2 gutters(8) = 228 -> 900/228 = 4 lines
+        assert!((rects[1].width() - 228.0).abs() < 0.01, "got {}", rects[1].width());
+        assert!((rects[1].height() - 64.0).abs() < 0.01,
+            "4 wrapped lines = 64px, got {}", rects[1].height());
+    }
+
+    /// A spec with no hooks must take the single-pass path — the measure
+    /// machinery is opt-in and costs nothing when unused.
+    #[test]
+    fn unhooked_spec_is_single_pass_and_unchanged() {
+        let spec = Flex::row().item(Item::fixed(50.0)).item(Item::grow(1.0));
+        assert!(!spec.needs_measure_pass());
+        let rects = spec.solve(egui::vec2(200.0, 20.0));
+        assert!((rects[0].width() - 50.0).abs() < 0.01);
+        assert!((rects[1].width() - 150.0).abs() < 0.01);
+    }
+
+    /// `.rigid()` makes a measured item refuse to yield — the form a faithful
+    /// cursor-walk migration needs (a hand-written walk overflows; `Content`
+    /// shrinks). The chrome agent hit this at 4 of 15 sites.
+    #[test]
+    fn rigid_items_do_not_shrink_when_oversubscribed() {
+        let soft = Flex::row()
+            .item(Item::content(150.0))
+            .item(Item::content(150.0))
+            .solve(egui::vec2(200.0, 20.0));
+        assert!(soft[0].width() < 150.0, "plain Content yields");
+
+        let rigid = Flex::row()
+            .item(Item::content(150.0).rigid())
+            .item(Item::content(150.0).rigid())
+            .solve(egui::vec2(200.0, 20.0));
+        assert!((rigid[0].width() - 150.0).abs() < 0.01,
+            "rigid() must hold its measured width, got {}", rigid[0].width());
     }
 }

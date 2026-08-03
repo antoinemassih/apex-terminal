@@ -132,7 +132,7 @@ fn sub_header_flex(slots: &[(SubSlot, Item)]) -> Flex {
     Flex::row()
         .gap(gap_xs())
         .align(FlexAlign::Center)
-        .items(slots.iter().map(|(_, it)| *it))
+        .items(slots.iter().map(|(_, it)| it.clone()))
 }
 
 /// Width reserved for the `header_trailing` slot — a generous slice so small

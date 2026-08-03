@@ -241,7 +241,7 @@ fn header_flex(slots: &[(Slot, Item)]) -> Flex {
     Flex::row()
         .gap(gap_xs())
         .align(FlexAlign::Center)
-        .items(slots.iter().map(|(_, it)| *it))
+        .items(slots.iter().map(|(_, it)| it.clone()))
 }
 
 /// Row height = the tallest piece, which is what `ui.horizontal` produced.
