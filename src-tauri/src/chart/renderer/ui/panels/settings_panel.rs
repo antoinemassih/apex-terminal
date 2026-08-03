@@ -128,6 +128,62 @@ let modal_resp = Modal::new("SETTINGS")
 // APPEARANCE TAB
 // ═══════════════════════════════════════════════════════════════
 fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t: &Theme, ap: usize) {
+    // ── DESIGN SYSTEM — the named presets (DS-6.0 D2) ──
+    //
+    // The two axes below are the raw 22 x 9 matrix. Six of those pairings are
+    // DESIGNED, and those six are exactly what 12-T5-CERTIFICATION vouches for;
+    // the rest are reachable but were never drawn by anyone. So the presets go
+    // first and set BOTH axes at once, and the raw pickers stay underneath for
+    // people who want them.
+    //
+    // Resolution is by NAME, not by the index pair the capture harness uses —
+    // installing a theme pack shifts every index, and a preset pinned to a
+    // position would then quietly point at a different design.
+    PanelSection::new("DESIGN SYSTEM").show(ui, t, |ui, t| {
+        use crate::design_system::presets;
+        let scheme_names: Vec<String> = crate::chart_renderer::gpu::get_all_themes()
+            .iter().map(|th| th.name.to_string()).collect();
+        let style_names: Vec<String> = crate::chart_renderer::ui::style::list_style_presets()
+            .into_iter().map(|(_, n)| n).collect();
+        let active = presets::active(&scheme_names, &style_names, chart.theme_idx, watchlist.style_idx as usize);
+
+        ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+        ui.horizontal_wrapped(|ui| {
+            for p in presets::PRESETS {
+                // A preset that cannot resolve EXACTLY is skipped rather than
+                // shown pointing somewhere approximate.
+                let Some((ti, si)) = presets::resolve(p, &scheme_names, &style_names) else { continue };
+                let is_active = active.map(|a| a.id) == Some(p.id);
+                let resp = Button::toggle(p.name, is_active)
+                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                    .min_size(egui::vec2(96.0, 26.0))
+                    .show(ui, t);
+                crate::ui_kit::widgets::Tooltip::new(p.blurb).show(ui, &resp, t);
+                if resp.clicked() {
+                    // Both axes, one click — that is what makes it a preset.
+                    commands::push(AppCommand::SetThemeIdx { pane: ap, idx: ti });
+                    commands::push(AppCommand::SetStyleIdx { idx: si });
+                }
+                #[cfg(debug_assertions)]
+                crate::dev_inspector::record(
+                    crate::dev_inspector::WidgetRecord::from_response(
+                        &format!("settings.preset.{}", p.id), "button", p.name, &resp, ui,
+                    )
+                );
+            }
+        });
+        if active.is_none() {
+            ui.add_space(gap_xs());
+            // A hand-built pairing is legitimate, not an error state — say so
+            // plainly rather than snapping the selection to the nearest preset.
+            ui.label(
+                egui::RichText::new("Custom pairing — not one of the certified presets")
+                    .size(font_xs())
+                    .color(t.dim),
+            );
+        }
+    });
+
     // ── THEME — big preview blocks with mini chart layout ──
     PanelSection::new("THEME").show(ui, t, |ui, t| {
         ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
