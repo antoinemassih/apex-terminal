@@ -1202,6 +1202,43 @@ pub enum Archetype {
     Editorial,
 }
 
+impl Archetype {
+    /// Stable name — what gets persisted and exported.
+    ///
+    /// Matches the `Debug` spelling so the DTCG export and this stay in step;
+    /// [`Archetype::from_name`] is its exact inverse, asserted by
+    /// `archetype_name_round_trips`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Archetype::TradingShell => "TradingShell",
+            Archetype::Mosaic       => "Mosaic",
+            Archetype::DenseScreens => "DenseScreens",
+            Archetype::Editorial    => "Editorial",
+        }
+    }
+
+    /// Parse a stored name. `None` for anything unrecognised — a workspace
+    /// saved by a newer build must fall back to the theme's archetype rather
+    /// than land on an arbitrary one.
+    pub fn from_name(s: &str) -> Option<Self> {
+        match s {
+            "TradingShell" => Some(Archetype::TradingShell),
+            "Mosaic"       => Some(Archetype::Mosaic),
+            "DenseScreens" => Some(Archetype::DenseScreens),
+            "Editorial"    => Some(Archetype::Editorial),
+            _ => None,
+        }
+    }
+
+    /// Every variant, for pickers.
+    pub const ALL: [Archetype; 4] = [
+        Archetype::TradingShell,
+        Archetype::Mosaic,
+        Archetype::DenseScreens,
+        Archetype::Editorial,
+    ];
+}
+
 /// Shell shape carried by a [`StyleSystem`].
 ///
 /// DS-6.0 D1. `archetype` here is the theme's DEFAULT, not the final answer —
@@ -1355,5 +1392,31 @@ mod shell_spec_tests {
                 .unwrap_or_else(|| panic!("builtin style '{id}' missing"));
             assert_eq!(ss.shell.archetype, arch, "style '{id}' lost its designed archetype");
         }
+    }
+}
+
+#[cfg(test)]
+mod archetype_name_tests {
+    use super::*;
+
+    /// `name()` and `from_name()` must be exact inverses: the same string is
+    /// what the DTCG export writes AND what a workspace persists, so a drift
+    /// between them would silently reset one of the two to the default.
+    #[test]
+    fn archetype_name_round_trips() {
+        for a in Archetype::ALL {
+            assert_eq!(Archetype::from_name(a.name()), Some(a), "{a:?} did not round-trip");
+            // The persisted spelling must also match the Debug spelling the
+            // DTCG exporter emits via `format!("{:?}")`.
+            assert_eq!(a.name(), format!("{a:?}"), "{a:?} name/Debug drift");
+        }
+    }
+
+    /// An unknown name (a workspace written by a newer build) falls back
+    /// rather than landing on an arbitrary variant.
+    #[test]
+    fn unknown_archetype_name_is_none() {
+        assert_eq!(Archetype::from_name("Holographic"), None);
+        assert_eq!(Archetype::from_name(""), None);
     }
 }

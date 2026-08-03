@@ -6857,6 +6857,39 @@ impl Watchlist {
         self.hotkey_editor_open = snap.hotkey_editor_open;
     }
 
+    // ── DS-6.0 D1: workspace layout-archetype override ──────────────────────
+    //
+    // Deliberately store-ONLY: `Watchlist` is frozen (ADR-0001), so there is no
+    // flat legacy mirror and none is wanted. That also sidesteps the trap
+    // CLAUDE.md documents for this aggregate — a new field that is not mirrored
+    // in `push_to_*` silently fails to persist. Here there is nothing to
+    // mirror, and `push_to_layout_store` writes field-by-field rather than
+    // replacing the struct, so this value survives every push.
+
+    /// This workspace's archetype override, or `None` to follow the theme.
+    ///
+    /// An unrecognised stored name (a workspace written by a newer build)
+    /// reads as `None`, so it falls back to the theme rather than to an
+    /// arbitrary archetype.
+    pub(crate) fn workspace_archetype(&self)
+        -> Option<crate::design_system::style_system::Archetype>
+    {
+        self.layout_state_store
+            .read()
+            .archetype_override
+            .as_deref()
+            .and_then(crate::design_system::style_system::Archetype::from_name)
+    }
+
+    /// Set (or clear, with `None`) this workspace's archetype override.
+    pub(crate) fn set_workspace_archetype(
+        &mut self,
+        a: Option<crate::design_system::style_system::Archetype>,
+    ) {
+        let name = a.map(|x| x.name().to_string());
+        self.layout_state_store.update(|s| s.archetype_override = name);
+    }
+
     // ── Wave 3 (state): Store<LayoutState> accessor / mutator ───────────────
 
     /// Push flat legacy fields → `layout_state_store`.

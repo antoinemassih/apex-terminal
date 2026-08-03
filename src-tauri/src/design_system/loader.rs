@@ -670,13 +670,11 @@ impl StyleSystem {
                     Some("Right")    => RailSide::Right,
                     _ => d.rail,
                 },
-                archetype: match read("archetype").as_deref() {
-                    Some("Mosaic")       => Archetype::Mosaic,
-                    Some("DenseScreens") => Archetype::DenseScreens,
-                    Some("Editorial")    => Archetype::Editorial,
-                    Some("TradingShell") => Archetype::TradingShell,
-                    _ => d.archetype,
-                },
+                // One parser, shared with persistence — see Archetype::from_name.
+                archetype: read("archetype")
+                    .as_deref()
+                    .and_then(Archetype::from_name)
+                    .unwrap_or(d.archetype),
             }
         };
 

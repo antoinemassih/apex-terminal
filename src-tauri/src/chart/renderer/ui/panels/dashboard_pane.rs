@@ -108,40 +108,37 @@ pub(crate) fn render(
     // This gives full widget interactivity (drag, collapse, mode toggle, etc.)
     let chart = &mut panes[pane_idx];
 
-    // Force widgets into a grid layout by overriding their positions
-    let content = egui::Rect::from_min_max(
-        egui::pos2(body_rect.left() + TILE_GAP, body_rect.top() + TILE_GAP),
-        egui::pos2(body_rect.right() - TILE_GAP, body_rect.bottom() - TILE_GAP));
-    let avail_w = content.width();
-    let n = widget_count;
-    let cols = if avail_w > 600.0 && n >= 6 { 4 }
-        else if avail_w > 450.0 && n >= 4 { 3 }
-        else if avail_w > 250.0 && n >= 2 { 2 }
-        else { 1 };
-    let rows = (n + cols - 1) / cols;
-    let tile_w = (avail_w - (cols - 1) as f32 * TILE_GAP) / cols as f32;
-    let tile_h = ((content.height() - (rows - 1) as f32 * TILE_GAP) / rows as f32).clamp(60.0, 280.0);
+    // ── DS-6.1: the layout is the ARCHETYPE's, not one hardcoded grid ──
+    //
+    // This used to pick a column count from the widget count and hand every
+    // widget the same box. That is one layout and it is nobody's design:
+    // Aperture's mosaic (12 cols x 92px, typed spans) and the Lucid/Meridien
+    // editorial grid (300 / 1fr / 360) are both explicitly non-uniform.
+    //
+    // Per DS-6.0 D1 the archetype is the theme's default with a per-workspace
+    // override, and per D3 this is a workspace VIEW — so nothing here reaches
+    // into the root shell or sacred core.rs.
+    let archetype = {
+        let ss = crate::chart_renderer::ui::style::active_style_system();
+        ss.shell.resolve_archetype(watchlist.workspace_archetype())
+    };
+    let kinds: Vec<crate::chart_renderer::ChartWidgetKind> = chart
+        .chart_widgets.iter().filter(|w| w.visible).map(|w| w.kind).collect();
+    let tiles = super::dashboard_layout::solve(archetype, body_rect, &kinds, TILE_GAP);
 
-    // Set each visible widget's position and size to match the grid
-    let mut idx = 0;
-    for w in chart.chart_widgets.iter_mut() {
-        if !w.visible { continue; }
-        let col = idx % cols;
-        let row = idx / cols;
+    // Set each visible widget's position and size from the solved grid.
+    for (w, tile) in chart.chart_widgets.iter_mut().filter(|w| w.visible).zip(tiles) {
         // Convert pixel position to fractional position (as draw_widgets expects)
-        let px = content.left() + col as f32 * (tile_w + TILE_GAP);
-        let py = content.top() + row as f32 * (tile_h + TILE_GAP);
-        w.x = if rect.width() > 0.0 { (px - rect.left()) / rect.width() } else { 0.0 };
-        w.y = if rect.height() > 0.0 { (py - rect.top()) / rect.height() } else { 0.0 };
-        w.w = tile_w;
-        w.h = tile_h;
+        w.x = if rect.width() > 0.0 { (tile.left() - rect.left()) / rect.width() } else { 0.0 };
+        w.y = if rect.height() > 0.0 { (tile.top() - rect.top()) / rect.height() } else { 0.0 };
+        w.w = tile.width();
+        w.h = tile.height();
         w.display = crate::chart_renderer::WidgetDisplayMode::Card;
         w.dock = crate::chart_renderer::WidgetDock::Float;
         w.collapsed = false;
-        w.anim_x = px;
-        w.anim_y = py;
+        w.anim_x = tile.left();
+        w.anim_y = tile.top();
         w.anim_init = true;
-        idx += 1;
     }
 
     // Render using the full widget system (which handles interaction, hover, buttons)

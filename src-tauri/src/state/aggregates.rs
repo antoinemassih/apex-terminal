@@ -866,6 +866,23 @@ impl Default for PersistedLinkGroup {
 /// All 20 fields are currently covered by both methods.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LayoutState {
+    /// DS-6.0 D1 — this workspace's layout-archetype OVERRIDE.
+    ///
+    /// `None` (the default) means "follow the active theme", which is the
+    /// normal case: `StyleSystem.shell.archetype` supplies it and the
+    /// resolution is `workspace.unwrap_or(theme)`.
+    ///
+    /// It lives HERE, on the workspace's layout state, and deliberately not on
+    /// the `StyleSystem`. Themes are exportable as `.apextheme`; storing a
+    /// user's layout preference on the theme would make a personal choice
+    /// travel to whoever they share it with. It is also layout state, so it
+    /// belongs with the split ratios rather than with the design tokens.
+    ///
+    /// Stored as the enum's name (`"Mosaic"`) rather than an index, for the
+    /// same reason presets resolve by name: positions are not stable.
+    #[serde(default)]
+    pub archetype_override: Option<String>,
+
     /// Named, colored link groups shared across all panes.
     /// Source: `Watchlist::link_groups: Vec<LinkGroup>`.
     #[serde(default = "LayoutState::default_link_groups")]
@@ -1018,6 +1035,8 @@ impl LayoutState {
 impl Default for LayoutState {
     fn default() -> Self {
         Self {
+            // DS-6.0 D1: no override by default — follow the active theme.
+            archetype_override: None,
             link_groups: Self::default_link_groups(),
             broadcast_mode: false,
             pane_split_h: 0.5,
@@ -2209,6 +2228,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("layout_state.json");
         let v = LayoutState {
+            // DS-6.0 D1. Deliberately NON-default: an `Option` field left
+            // `None` in the only test that touches it has never actually been
+            // round-tripped, whatever the suite appears to cover. That exact
+            // blind spot let `shell` and `card` ship unserialised earlier in
+            // this workstream — both looked green until a theme authored a
+            // real value.
+            archetype_override: Some("Mosaic".into()),
             link_groups: vec![
                 PersistedLinkGroup { name: "Cyan".into(), color_rgba: [0, 255, 255, 200] },
                 PersistedLinkGroup { name: "Magenta".into(), color_rgba: [255, 0, 255, 128] },
