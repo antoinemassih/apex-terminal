@@ -388,11 +388,25 @@ pub(crate) fn render(
     let rgap = crate::chart_renderer::ui::style::region_gap();
     let tb_frame = crate::chart_renderer::ui::style::region_frame(t, t.toolbar_bg)
         .inner_margin(egui::Margin { left: (gap_xs() + rgap) as i8, right: rgap as i8, top: 0, bottom: 0 });
-    // The dropdown menu buttons (workspace/indicators/widgets) are ~36.6px tall and
-    // do NOT scale with tb_scale, so any toolbar shorter than ~38px clips them at the
-    // bottom (compact mode used 30px; tb_scale<1 also shrank it below the buttons).
-    // Floor the effective height at 38px — the known clip-free value.
-    let base_h = (38.0 * tb_scale).max(38.0);
+    // The dropdown menu buttons (workspace/indicators/widgets) do NOT scale with
+    // tb_scale, so a toolbar shorter than they are clips them at the bottom.
+    //
+    // This floor USED to be a frozen `38.0` — "the known clip-free value". It is
+    // the same constant, hosting the same `Button::menu(icon).glyph_size(font_lg())`
+    // construction, that `toolnav_min_height()` was written to replace one row
+    // down: see its doc comment, which records the corpus catching
+    // `clipped: toolbar.indicators_btn, toolbar.widgets_btn` after the app-wide
+    // type scale was lifted and the buttons outgrew the frozen row. That fix
+    // landed on the toolnav row and never reached this one, so this row went on
+    // clipping: the buttons now need font_lg()*1.35 + 2*gap_sm() + slack = 43.6px
+    // against a 38.0 box — 5.6px short on every style with tb_scale <= 1.0
+    // (aperture, octave, cadence, alto, lucid, mariner).
+    //
+    // Reuse the derived floor rather than re-pinning a bigger number. Note it is
+    // applied as a FLOOR only, not as the scale base: styles that already ask for
+    // a taller bar (meridien 1.40 -> 53.2, relay 1.20 -> 45.6) keep exactly the
+    // height they had, so this raises the short rows without restyling the tall ones.
+    let base_h = (38.0 * tb_scale).max(crate::chart_renderer::ui::style::toolnav_min_height());
     egui::TopBottomPanel::top("tb")
         .frame(tb_frame)
         // Add 2×gap to the reserved height so the card itself keeps `base_h`

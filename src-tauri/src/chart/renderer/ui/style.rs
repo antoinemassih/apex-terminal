@@ -4063,6 +4063,40 @@ mod m1_ladder_tests {
              so this invariant is no longer actually being exercised"
         );
     }
+
+    /// M5 — the toolbar row must contain the controls it hosts, for every style.
+    ///
+    /// Sibling of [`strip_fits_hero`]. `toolnav_min_height()` was written to
+    /// replace a frozen `38.0` after the corpus caught the toolnav clipping its
+    /// dropdown buttons, but the toolbar row one level up kept its own copy of
+    /// that constant and went on clipping by ~5.6px on six styles. Nothing
+    /// caught it, because a bare `38.0` is not a token violation — it only
+    /// becomes wrong relative to a type scale that lives somewhere else.
+    ///
+    /// This asserts the relationship directly: whatever the row resolves to, it
+    /// is at least what the buttons inside it need.
+    #[test]
+    fn toolbar_fits_controls() {
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
+
+        let n = style_store().read().unwrap_or_else(|e| e.into_inner()).len() as u8;
+        let mut failures: Vec<String> = Vec::new();
+        for id in 0..n {
+            set_active_style(id);
+            let need = toolnav_min_height();
+            // Mirrors the resolution in top_nav.rs: scale the authored base, then
+            // floor at what the controls actually require.
+            let resolved = (38.0 * current().toolbar_height_scale).max(need);
+            if resolved < need {
+                failures.push(format!(
+                    "style {id}: toolbar resolves to {resolved} but its controls need {need}"
+                ));
+            }
+        }
+        set_active_style(prev_active);
+        assert!(failures.is_empty(), "clipped toolbar controls:\n  {}", failures.join("\n  "));
+    }
 }
 
 // ── M1 Change E proof test ───────────────────────────────────────────────────
