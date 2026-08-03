@@ -197,6 +197,16 @@ pub fn begin_frame() {
         font_body:          st.font_body,
         font_caption:       st.font_caption,
         font_section_label: st.font_section_label,
+        // M4.5: structural proportions from the active StyleSystem's Density.
+        row_dense:      ass.density.row_dense,
+        row_compact:    ass.density.row_compact,
+        row_default:    ass.density.row_default,
+        row_spacious:   ass.density.row_spacious,
+        row_tall:       ass.density.row_tall,
+        splitter_width: ass.density.splitter_width,
+        rail_narrow:    ass.density.rail_narrow,
+        rail_medium:    ass.density.rail_medium,
+        rail_wide:      ass.density.rail_wide,
         // Default tab treatment — Filled for Aperture/Cadence/Glass, Line for others.
         panel_tab_treatment:   current().panel_tab_treatment,
         // List row shape — pill for Aperture/Glass, hairlines for Alto/Mariner/Relay.

@@ -234,6 +234,9 @@ pub fn baseline_style_system() -> StyleSystem {
             row_height_dense: 22.0,
             // No explicit comfortable height; use button_height_px=24 as proxy
             row_height_comfortable: 24.0,
+            row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
+            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
+            rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
         },
 
         // Meridien: shadow_blur=0, shadow_offset_y=0, shadow_alpha=0 → all shadows disabled

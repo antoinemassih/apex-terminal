@@ -134,6 +134,16 @@ pub struct TokenSnapshot {
     pub font_body: f32,
     pub font_caption: f32,
     pub font_section_label: f32,
+    // M4.5: structural proportions (per-style; were hard literals).
+    pub row_dense: f32,
+    pub row_compact: f32,
+    pub row_default: f32,
+    pub row_spacious: f32,
+    pub row_tall: f32,
+    pub splitter_width: f32,
+    pub rail_narrow: f32,
+    pub rail_medium: f32,
+    pub rail_wide: f32,
 }
 
 /// Compile-time defaults — match every token fn's non-design-mode constant
@@ -177,6 +187,15 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     font_body: 11.0,
     font_caption: 9.0,
     font_section_label: 9.0,
+    row_dense:      18.0,
+    row_compact:    20.0,
+    row_default:    22.0,
+    row_spacious:   24.0,
+    row_tall:       30.0,
+    splitter_width:  6.0,
+    rail_narrow:   240.0,
+    rail_medium:   300.0,
+    rail_wide:     400.0,
 };
 
 thread_local! {
@@ -500,11 +519,21 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 #[inline] pub fn icon_lg() -> f32 { 20.0 }
 
 // ─── Row heights ─────────────────────────────────────────────────────────────
-#[inline] pub fn row_height_dense()     -> f32 { 18.0 }
-#[inline] pub fn row_height_compact()   -> f32 { 20.0 }
-#[inline] pub fn row_height_default()   -> f32 { 22.0 }
-#[inline] pub fn row_height_spacious()  -> f32 { 24.0 }
-#[inline] pub fn row_height_tall()      -> f32 { 30.0 }
+// M4.5: per-style now — sourced from the frame snapshot (which begin_frame
+// fills from the active StyleSystem's Density ladder) instead of hard
+// literals, so a theme can author its own PROPORTIONS. Defaults are the
+// former literals, so unauthored styles are byte-identical.
+#[inline] pub fn row_height_dense()     -> f32 { frame_tokens().row_dense }
+#[inline] pub fn row_height_compact()   -> f32 { frame_tokens().row_compact }
+#[inline] pub fn row_height_default()   -> f32 { frame_tokens().row_default }
+#[inline] pub fn row_height_spacious()  -> f32 { frame_tokens().row_spacious }
+#[inline] pub fn row_height_tall()      -> f32 { frame_tokens().row_tall }
+/// Splitter / drag-handle thickness (per-style).
+#[inline] pub fn splitter_width()       -> f32 { frame_tokens().splitter_width }
+/// Side-rail width presets (per-style).
+#[inline] pub fn rail_width_narrow()    -> f32 { frame_tokens().rail_narrow }
+#[inline] pub fn rail_width_medium()    -> f32 { frame_tokens().rail_medium }
+#[inline] pub fn rail_width_wide()      -> f32 { frame_tokens().rail_wide }
 
 // ─── Card padding ────────────────────────────────────────────────────────────
 #[inline] pub fn card_padding_compact()  -> f32 { 8.0 }

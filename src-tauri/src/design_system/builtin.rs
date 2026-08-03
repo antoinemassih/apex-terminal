@@ -1082,6 +1082,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             factor: 1.0,               // density=1 → normal
             row_height_dense: 22.0,    // row_height_px = 22
             row_height_comfortable: 28.0,
+            row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
+            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
+            rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
         },
         shadows: Shadows {
             // shadow_blur=0, shadow_offset_y=0, shadow_alpha=0 → no shadows
@@ -1209,6 +1212,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             factor: 1.2,               // density=2 → roomy
             row_height_dense: 26.0,    // row_height_px = 26
             row_height_comfortable: 34.0,
+            row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
+            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
+            rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
         },
         shadows: Shadows {
             // shadow_blur=24, shadow_offset_y=8, shadow_alpha=40 (≈0.157)
@@ -1337,6 +1343,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             factor: 0.8,               // density=0 → compact
             row_height_dense: 20.0,    // row_height_px = 20
             row_height_comfortable: 28.0,
+            row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
+            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
+            rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
         },
         shadows: Shadows {
             // shadow_blur=8, shadow_offset_y=4, shadow_alpha=20 (≈0.078)
@@ -1395,7 +1404,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             ..Typography::default()
         },
         radii: Radii { none: 0.0, xs: 4.0, sm: 6.0, md: 10.0, lg: 14.0, full: 9999.0, pill: 99.0, chip: 99.0 },
-        density: Density { factor: 1.0, row_height_dense: 26.0, row_height_comfortable: 34.0 },
+        density: Density { factor: 1.0, row_height_dense: 26.0, row_height_comfortable: 34.0, ..Density::default() },
         shadows: Shadows {
             card:     ShadowSpec { blur: 8.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 90.0/255.0 },
             modal:    ShadowSpec { blur: 16.0, spread: 0.0, offset_x: 0.0, offset_y: 6.0, alpha: 90.0/255.0 },
@@ -1424,7 +1433,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     let alto = StyleSystem {
         meta: Meta::new("alto", "Alto", true),
         radii: Radii { none: 0.0, xs: 2.0, sm: 4.0, md: 6.0, lg: 8.0, full: 9999.0, pill: 99.0, chip: 0.0 },
-        density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0 },
+        density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0, ..Density::default() },
         shadows: Shadows {
             card: ShadowSpec { blur: 8.0, spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 80.0/255.0 },
             // T1: the Zed warm-dark card bevel — 4 layers from the DS spec
@@ -1459,7 +1468,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     let mariner = StyleSystem {
         meta: Meta::new("mariner", "Mariner", true),
         radii: alto.radii.clone(),
-        density: Density { factor: 0.85, row_height_dense: 22.0, row_height_comfortable: 28.0 },
+        density: Density { factor: 0.85, row_height_dense: 22.0, row_height_comfortable: 28.0, ..Density::default() },
         shadows: alto.shadows.clone(),
         treatments: Treatments {
             hairline_borders: false, uppercase_section_labels: true,
@@ -1484,7 +1493,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         meta: Meta::new("lucid", "Lucid", false),
         typography: Typography { size_xl: 28.0, label_tracking: 0.4, section_tracking: 0.4, ..Typography::default() },
         radii: Radii { none: 0.0, xs: 2.0, sm: 3.0, md: 5.0, lg: 8.0, full: 9999.0, pill: 99.0, chip: 0.0 },
-        density: Density { factor: 1.0, row_height_dense: 26.0, row_height_comfortable: 34.0 },
+        density: Density { factor: 1.0, row_height_dense: 26.0, row_height_comfortable: 34.0, ..Density::default() },
         shadows: Shadows {
             card: ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
             ..Shadows::default()
@@ -1514,7 +1523,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             ..Typography::default()
         },
         radii: Radii { none: 0.0, xs: 0.0, sm: 0.0, md: 2.0, lg: 4.0, full: 0.0, pill: 0.0, chip: 0.0 },
-        density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0 },
+        density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0, ..Density::default() },
         shadows: Shadows {
             card: ShadowSpec { blur: 12.0, spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 80.0/255.0 },
             ..Shadows::default()
@@ -1544,7 +1553,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         meta: Meta::new("glass", "Glass", true),
         typography: Typography { size_xl: 28.0, size_sm: 13.0, ..Typography::default() },
         radii: Radii { none: 0.0, xs: 6.0, sm: 10.0, md: 16.0, lg: 24.0, full: 9999.0, pill: 99.0, chip: 99.0 },
-        density: Density { factor: 1.2, row_height_dense: 30.0, row_height_comfortable: 38.0 },
+        density: Density { factor: 1.2, row_height_dense: 30.0, row_height_comfortable: 38.0, ..Density::default() },
         shadows: Shadows {
             card:     ShadowSpec { blur: 32.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 30.0/255.0 },
             modal:    ShadowSpec { blur: 48.0, spread: 0.0, offset_x: 0.0, offset_y: 12.0, alpha: 30.0/255.0 },

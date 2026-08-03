@@ -522,11 +522,71 @@ pub struct Density {
     pub row_height_dense: f32,
     /// Row height in comfortable list views.
     pub row_height_comfortable: f32,
+
+    // ── M4.5: the STRUCTURAL ladder (authorable proportions) ────────────────
+    //
+    // The layout audit: "gap_*() scales with the SpacingScale override; row
+    // heights, header heights, splitter width and the rail Width presets do
+    // NOT. Themes can retune the gutters but not the PROPORTIONS — which is
+    // the stated design-system vision."
+    //
+    // These back `ui_kit::style::row_height_*()` and the chrome dimensions
+    // that were hard literals. Defaults equal those literals exactly, so an
+    // unauthored style renders byte-identically; Meridien can now author its
+    // 32px rows and Mariner its 22px ones as DATA.
+    #[serde(default = "Density::default_row_dense")]
+    pub row_dense: f32,      // 18
+    #[serde(default = "Density::default_row_compact")]
+    pub row_compact: f32,    // 20
+    #[serde(default = "Density::default_row_default")]
+    pub row_default: f32,    // 22
+    #[serde(default = "Density::default_row_spacious")]
+    pub row_spacious: f32,   // 24
+    #[serde(default = "Density::default_row_tall")]
+    pub row_tall: f32,       // 30
+    /// Splitter / drag-handle thickness (was a 6.0 literal in pane_grid).
+    #[serde(default = "Density::default_splitter")]
+    pub splitter_width: f32, // 6
+    /// Side-rail width presets (were the 240/300/400 `Width` enum literals).
+    #[serde(default = "Density::default_rail_narrow")]
+    pub rail_narrow: f32,    // 240
+    #[serde(default = "Density::default_rail_medium")]
+    pub rail_medium: f32,    // 300
+    #[serde(default = "Density::default_rail_wide")]
+    pub rail_wide: f32,      // 400
+}
+
+impl Density {
+    fn default_row_dense()    -> f32 {  18.0 }
+    fn default_row_compact()  -> f32 {  20.0 }
+    fn default_row_default()  -> f32 {  22.0 }
+    fn default_row_spacious() -> f32 {  24.0 }
+    fn default_row_tall()     -> f32 {  30.0 }
+    fn default_splitter()     -> f32 {   6.0 }
+    fn default_rail_narrow()  -> f32 { 240.0 }
+    fn default_rail_medium()  -> f32 { 300.0 }
+    fn default_rail_wide()    -> f32 { 400.0 }
 }
 
 impl Default for Density {
     fn default() -> Self {
-        Self { factor: 1.0, row_height_dense: 22.0, row_height_comfortable: 32.0 }
+        Self {
+            factor: 1.0,
+            row_height_dense: 22.0,
+            row_height_comfortable: 32.0,
+            // M4.5: structural ladder — defaults equal the former hard
+            // literals in `ui_kit::style`, so unauthored styles are
+            // byte-identical.
+            row_dense:      Self::default_row_dense(),
+            row_compact:    Self::default_row_compact(),
+            row_default:    Self::default_row_default(),
+            row_spacious:   Self::default_row_spacious(),
+            row_tall:       Self::default_row_tall(),
+            splitter_width: Self::default_splitter(),
+            rail_narrow:    Self::default_rail_narrow(),
+            rail_medium:    Self::default_rail_medium(),
+            rail_wide:      Self::default_rail_wide(),
+        }
     }
 }
 

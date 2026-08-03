@@ -114,6 +114,32 @@ from `09` Phase 0.
 
 **Gate to M1:** harness demo + all M0 fixes screenshot-verified + CI green.
 
+> **EXECUTION STATUS (2026-08-03, session 4):**
+> **M3 ✅ FULLY COMPLETE** — M3.4b re-authored everything M3.2 unblocked:
+> **80 recipe declarations** across the six styles (+28 per-side borders,
+> +23 inset bevels, +27 weights, +2 gaps). All four originally-blocked classes
+> are CLOSED. Mariner's accent finally reads as a *precision marker* (LEFT edge
+> on the DOM needle, TOP stripe on the active pane) instead of a four-sided box;
+> Cadence's Spotify signature (pill + inset highlight + 700 weight) fully lands.
+> Visual gate re-run: sibling test still passes with the full layer live.
+> **M4 in progress:**
+> · M4.1 `Size::Content` + measuring constructors — the adoption unblock ✅
+> · M4.2 `Surface` padding-inference bug fixed ✅
+> · M4.4 **`Grid`** ✅ — Taffy's compiled-but-unused grid feature now wrapped.
+>   **Aperture's 12-col × 92px mosaic solves exactly** (4-col hero = 436px,
+>   2-row span = 196px), as does the editorial 300px/1fr/360px dashboard and
+>   its 1.1/1.0/0.9 row weights. The layout the audit called inexpressible.
+> · M4.5 structural tokens ✅ — row heights, splitter width and the rail
+>   presets move from hard literals onto `Density`, so **themes can change
+>   PROPORTIONS, not just gutters** (the audit's stated gap). Defaults equal
+>   the former literals.
+> · M4.3 chrome migration: agent in flight.
+> **Gate-metric fix:** the adoption gate's key pattern required a dot, so
+> DOTLESS keys (`card`, `tag`, `toolnav`) were invisible; it also counted test
+> strings. Now tuple-position only, test module excluded, plus a fourth floor
+> (total declarations) because distinct-key count is blind to breadth —
+> M3.4b added 14 declarations while distinct keys held constant.
+>
 > **EXECUTION STATUS (2026-08-03, session 3):**
 > **M3 ✅ COMPLETE.**
 > · M3.2 Sx vocabulary closed the top-3 evidence-ranked blockers: per-side

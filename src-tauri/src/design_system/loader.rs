@@ -480,6 +480,9 @@ impl StyleSystem {
             factor:                read_f32_or(&den_sec, "factor",                "density", d_den.factor),
             row_height_dense:      read_f32_or(&den_sec, "row_height_dense",      "density", d_den.row_height_dense),
             row_height_comfortable: read_f32_or(&den_sec, "row_height_comfortable", "density", d_den.row_height_comfortable),
+            row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
+            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
+            rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
         };
 
         let d_sh = Shadows::default();
