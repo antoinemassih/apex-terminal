@@ -307,7 +307,24 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let ell_w = if more { text_w(ui, "…", &font, t.text) + 4.0 } else { 0.0 };
         let clip_right = rect.right() - tail - ell_w;
         if clip_right > x {
-            let pm = ui.painter().with_clip_rect(Rect::from_min_max(pos2(x, badge_clip.top()), pos2(clip_right.min(area_right), badge_clip.bottom())));
+            // `with_clip_rect` REPLACES the clip rect, it does not intersect —
+            // so building this painter from `ui.painter()` rather than from `p`
+            // dropped `badge_clip` entirely, and the left bound `x` is the text
+            // origin, which for a badge sliding off the strip's left edge sits
+            // OUTSIDE the strip. The pill background is clipped (it is painted
+            // through `p`), but the message text was not: an outbound badge left
+            // its label floating on the bare toolbar, overlapping whatever was
+            // to the left of the strip. It also escaped the edge-fade below,
+            // which only covers `badge_clip`.
+            //
+            // Intersecting restores the invariant that nothing in this strip
+            // paints outside it. Same idiom as `order_row.rs`.
+            let text_clip = Rect::from_min_max(
+                pos2(x, badge_clip.top()),
+                pos2(clip_right.min(area_right), badge_clip.bottom()),
+            )
+            .intersect(badge_clip);
+            let pm = ui.painter().with_clip_rect(text_clip);
             pm.text(pos2(x, cy), Align2::LEFT_CENTER, &full, font.clone(), tint(t, Tone::Dim, MSG_A).gamma_multiply(app_e));
         }
         if more {
