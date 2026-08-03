@@ -352,10 +352,32 @@ pub(crate) fn render(
         }
     }
 
+    /// The toolbar panel's resolved OUTER height.
+    ///
+    /// M5 — single source for the two places that must agree: the panel that
+    /// paints the bar (below) and the auto-hide hit test that decides whether
+    /// the pointer is over it. They were independent, and the hit test lost:
+    /// it used a pinned `28.0 / 36.0` while the panel resolved 38.0 and up. So
+    /// with auto-hide on, the pointer could sit visibly ON the toolbar and be
+    /// judged outside it — the bar hid itself out from under the cursor.
+    ///
+    /// Raising the row's floor to `toolnav_min_height()` widened that gap
+    /// (36 vs 43.6, and 36 vs 53.2 on Meridien), which is what made deriving
+    /// it non-optional rather than merely tidy.
+    ///
+    /// The `compact_mode` branch was dead: `compact_mode` appears nowhere else
+    /// in this file, so it has not scaled the bar for some time.
+    fn toolbar_outer_height() -> f32 {
+        let tb_scale = style_current().toolbar_height_scale;
+        let rgap = crate::chart_renderer::ui::style::region_gap();
+        (38.0 * tb_scale).max(crate::chart_renderer::ui::style::toolnav_min_height())
+            + 2.0 * rgap
+    }
+
     // Auto-hide toolbar logic
     let toolbar_visible = if watchlist.toolbar_auto_hide {
         let mouse_y = ctx.input(|i| i.pointer.hover_pos().map(|p| p.y));
-        let tb_h = if watchlist.compact_mode { 28.0 } else { 36.0 };
+        let tb_h = toolbar_outer_height();
         let in_trigger_zone = mouse_y.map_or(false, |y| y < 8.0);
         let in_toolbar = mouse_y.map_or(false, |y| y < tb_h);
         if in_trigger_zone || in_toolbar {
@@ -406,12 +428,12 @@ pub(crate) fn render(
     // applied as a FLOOR only, not as the scale base: styles that already ask for
     // a taller bar (meridien 1.40 -> 53.2, relay 1.20 -> 45.6) keep exactly the
     // height they had, so this raises the short rows without restyling the tall ones.
-    let base_h = (38.0 * tb_scale).max(crate::chart_renderer::ui::style::toolnav_min_height());
+    // Resolved via `toolbar_outer_height()` (defined above) so the auto-hide
+    // hit test measures the SAME bar this paints — they used to disagree.
+    // It already folds in the 2×rgap the outer margin insets top + bottom.
     egui::TopBottomPanel::top("tb")
         .frame(tb_frame)
-        // Add 2×gap to the reserved height so the card itself keeps `base_h`
-        // after the outer margin insets it top + bottom.
-        .exact_height(base_h + 2.0 * rgap)
+        .exact_height(toolbar_outer_height())
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         // Publish toolbar rect so tb_btn can read it for full-height hover/active column overlays.
