@@ -396,10 +396,16 @@ that the token work is correct.
 
 ## 9. Open questions — escalate, do not guess
 
+**Q1 and Q2 ANSWERED 2026-08-03 — see `13-DS-6.0-DECISION.md`.** Your
+recommendation on Q1 was accepted: dashboards are workspace views, so this work
+never touches sacred `core.rs`. Q2 resolved as theme-default + per-workspace
+override, and `ShellProfile` is absorbed rather than left competing — the
+ownership question this document raised in §3 is settled, and owned here.
+
 | # | Question | Blocks |
 |---|---|---|
-| 1 | Is the dashboard a **workspace view** (recommended) or a shell mode? | DS-6.0 |
-| 2 | Does archetype follow the theme, or is it a free user choice? | DS-6.0 |
+| 1 | ~~Is the dashboard a **workspace view** (recommended) or a shell mode?~~ | ANSWERED — workspace view (D3) |
+| 2 | ~~Does archetype follow the theme, or is it a free user choice?~~ | ANSWERED — theme default, workspace override (D1) |
 | 3 | Do we adopt the multi-view model (Aperture's 8 tabs, Meridien's 9 routes) or map onto existing workspaces? | DS-5, DS-6 |
 | 4 | Ticker tape and status bar — in scope, or deferred? | DS-6.3 |
 | 5 | Alto's "The Daily" dual mode — in scope? | DS-6 scope |

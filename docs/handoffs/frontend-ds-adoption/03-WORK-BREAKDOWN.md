@@ -459,11 +459,13 @@ Wire DS-0 captures into CI so a palette change that breaks a theme fails the bui
 
 ## Escalate at kickoff — do not guess
 
-| # | Question | Blocks |
-|---|---|---|
-| 1 | Named presets vs raw `theme_idx × style_idx` matrix? | DS-4.1 |
-| 2 | Is archetype a theme property, a user choice, or fixed pairings? | DS-6.0 |
-| 3 | All four editorial themes, or Lucid first as proof? | DS-6 scope |
-| 4 | Aperture `border: none` — accept, or allow a hairline fallback? | DS-2.4 |
-| 5 | Bundle a serif display family, or substitute? | DS-4.4 |
-| 6 | Does `ShellProfile` (S6) get signed off, and who owns the overlap? | DS-6.0 |
+**ANSWERED 2026-08-03 — see `13-DS-6.0-DECISION.md`. Do not re-litigate here.**
+
+| # | Question | Blocks | Answer |
+|---|---|---|---|
+| 1 | Named presets vs raw `theme_idx × style_idx` matrix? | DS-4.1 | Named presets in the main UI, full matrix in Theme Studio (D2) |
+| 2 | Is archetype a theme property, a user choice, or fixed pairings? | DS-6.0 | Theme property with a per-**workspace** user override (D1) |
+| 3 | All four editorial themes, or Lucid first as proof? | DS-6 scope | All four — the proof-first risk was retired by `12-T5` (D3) |
+| 4 | Aperture `border: none` — accept, or allow a hairline fallback? | DS-2.4 | Accept literally; exceptions are per-recipe, never global (D4) |
+| 5 | Bundle a serif display family, or substitute? | DS-4.4 | Moot — Source Serif 4 is already bundled and slotted into the `"serif"` family, and Meridien's hero verifiably renders in it |
+| 6 | Does `ShellProfile` (S6) get signed off, and who owns the overlap? | DS-6.0 | Absorbed into `StyleSystem.shell`; this package owns the resolver (D1) |

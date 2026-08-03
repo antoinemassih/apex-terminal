@@ -1122,6 +1122,119 @@ pub struct StyleSystem {
     /// gap-based padding / thin border), byte-identical to pre-M1.
     #[serde(default)]
     pub card: Option<CardRecipe>,
+
+    /// DS-6.0: shell shape + the theme's DEFAULT layout archetype.
+    ///
+    /// Additive with `#[serde(default)]`, so no `CURRENT_SCHEMA_VERSION` bump
+    /// and every existing `.apextheme` keeps loading — same additive route M1
+    /// Change E took. A pack that says nothing about the shell gets
+    /// `ShellSpec::default()`, which is today's shape exactly.
+    #[serde(default)]
+    pub shell: ShellSpec,
+}
+
+// ── DS-6.0: shell shape ──────────────────────────────────────────────────────
+//
+// Vocabulary adopted from `docs/migration/shell-profile.md` (Stream S6). That
+// document remains the reference for what these variants MEAN; the decision to
+// carry them here rather than in a parallel `ShellProfile` store is recorded in
+// `docs/handoffs/frontend-ds-adoption/13-DS-6.0-DECISION.md` (D1).
+//
+// The point of absorbing them: layout selection resolves through the SAME path
+// as colour and dimension, so there is exactly one mechanism. A separate
+// ShellProfile store would have been a second one — logged as risk R5.
+
+/// The primary navigation shape. See shell-profile.md §NavStyle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum NavStyle {
+    /// Single horizontal pill bar across the top — today's only shape.
+    #[default]
+    TopPills,
+    /// Horizontal tab strip, Bloomberg-style; taller than `TopPills`.
+    TopTabs,
+    /// Vertical icon strip on the left, replacing the top bar.
+    SideRail,
+    /// Minimal-height menu bar with dropdown items, no icon pills.
+    MenuBar,
+}
+
+/// Where the bottom trading dock sits and what shape it takes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum DockStyle {
+    /// Full-width bottom panel — today's shape.
+    #[default]
+    BottomBar,
+    /// Collapsed to its tab strip by default; click a tab to expand.
+    BottomPill,
+    /// No bottom dock; its tabs live in right-rail panels instead.
+    Hidden,
+}
+
+/// Which side the persistent panel stack occupies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum RailSide {
+    /// Right side — today's only variant.
+    #[default]
+    Right,
+    /// Left side.
+    Left,
+    /// No persistent rail; panels open as floating windows.
+    Floating,
+}
+
+/// The layout archetype — how the CENTRAL content area is organised.
+///
+/// The four identified in `06-LAYOUT-ARCHETYPES`. This is the theme's default;
+/// a workspace may override it (see [`ShellSpec`] docs for why the override
+/// lives on the workspace and not here).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Archetype {
+    /// D — Alto / Mariner: the classic trading shell. Today's layout, and the
+    /// default because it is what every existing workspace already is.
+    #[default]
+    TradingShell,
+    /// A — Aperture: 12-column x 92px tile mosaic (solved exactly by the M4.4
+    /// `Grid`: 4-col hero = 436px, 2-row = 196px).
+    Mosaic,
+    /// B — Cadence: dense screens.
+    DenseScreens,
+    /// C — Lucid / Meridien: the editorial dashboard (300 / 1fr / 360 columns).
+    Editorial,
+}
+
+/// Shell shape carried by a [`StyleSystem`].
+///
+/// DS-6.0 D1. `archetype` here is the theme's DEFAULT, not the final answer —
+/// a workspace may override it, and resolution is deliberately the same
+/// one-line shape as the colour and dimension axes:
+///
+/// ```ignore
+/// workspace.archetype.unwrap_or(active_style.shell.archetype)
+/// ```
+///
+/// The override lives on the WORKSPACE rather than on the theme on purpose: a
+/// user choosing a layout is expressing a preference about that workspace, not
+/// editing the design system. Themes are exportable as `.apextheme`, so storing
+/// it here would let a personal preference travel inside a shared artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ShellSpec {
+    #[serde(default)]
+    pub nav: NavStyle,
+    #[serde(default)]
+    pub dock: DockStyle,
+    #[serde(default)]
+    pub rail: RailSide,
+    #[serde(default)]
+    pub archetype: Archetype,
+}
+
+impl ShellSpec {
+    /// Resolve the archetype actually in effect, given an optional
+    /// per-workspace override. The whole of D1's precedence rule.
+    #[inline]
+    pub fn resolve_archetype(&self, workspace_override: Option<Archetype>) -> Archetype {
+        workspace_override.unwrap_or(self.archetype)
+    }
 }
 
 impl Default for StyleSystem {
@@ -1136,6 +1249,10 @@ impl StyleSystem {
     pub fn builtin_default() -> Self {
         Self {
             meta:       Meta::new("apex-default", "Apex Default", true),
+            // DS-6.0: the default style is today's shape — TopPills / BottomBar
+            // / Right rail / TradingShell. Every field of ShellSpec defaults to
+            // the variant that already exists, so this is a no-op at runtime.
+            shell:      ShellSpec::default(),
             typography: Typography::default(),
             spacing:    Spacing::default(),
             radii:      Radii::default(),
@@ -1155,6 +1272,12 @@ impl StyleSystem {
     pub fn meridien() -> Self {
         Self {
             meta: Meta::new("meridien", "Meridien", true),
+            // DS-6.0: match the BUILTIN Meridien's archetype. This is a second,
+            // simplified construction of "Meridien" used by the import tests;
+            // it round-trips against itself, so nothing would have failed if the
+            // two disagreed — but then the committed Figma fixture would claim
+            // Meridien is a trading shell, which is simply false.
+            shell: ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() },
             radii: Radii { none: 0.0, xs: 0.0, sm: 0.0, md: 0.0, lg: 0.0, full: 9999.0, ..Radii::default() },
             strokes: Strokes { hair: 0.3, thin: 0.5, medium: 0.8, std: 0.5, bold: 1.0, thick: 1.5, md: 1.0, heavy: 1.5 },
             treatments: Treatments {
@@ -1171,6 +1294,66 @@ impl StyleSystem {
                 ..Treatments::default()
             },
             ..Self::builtin_default()
+        }
+    }
+}
+
+#[cfg(test)]
+mod shell_spec_tests {
+    use super::*;
+
+    /// DS-6.0 D1, stated as an assertion: the theme supplies the DEFAULT, the
+    /// workspace overrides it, and there is exactly one precedence rule.
+    #[test]
+    fn workspace_override_beats_theme_default() {
+        let editorial = ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() };
+
+        // No override → the theme's archetype.
+        assert_eq!(editorial.resolve_archetype(None), Archetype::Editorial);
+        // Override → the user's choice, whatever the theme says.
+        assert_eq!(
+            editorial.resolve_archetype(Some(Archetype::Mosaic)),
+            Archetype::Mosaic,
+        );
+    }
+
+    /// The default shell must be TODAY'S shape, or adding this field silently
+    /// restyles every existing theme and every pack that omits it.
+    #[test]
+    fn default_shell_is_todays_shape() {
+        let d = ShellSpec::default();
+        assert_eq!(d.nav, NavStyle::TopPills);
+        assert_eq!(d.dock, DockStyle::BottomBar);
+        assert_eq!(d.rail, RailSide::Right);
+        assert_eq!(d.archetype, Archetype::TradingShell);
+        assert_eq!(StyleSystem::builtin_default().shell, d);
+    }
+
+    /// The archetype map from `06-LAYOUT-ARCHETYPES` §6, pinned so a builtin
+    /// cannot quietly lose the layout it was designed around.
+    ///
+    /// This is the DS-6.0 analogue of the M5 relationship invariants: the
+    /// values are individually legal, so only asserting the MAPPING catches a
+    /// theme drifting away from its own design.
+    #[test]
+    fn builtins_keep_their_designed_archetype() {
+        use crate::design_system::builtin_style_systems;
+        let want = [
+            ("meridien", Archetype::Editorial),
+            ("aperture", Archetype::Mosaic),
+            ("cadence",  Archetype::DenseScreens),
+            ("lucid",    Archetype::Editorial),
+            // alto / mariner ARE the trading shell; octave / relay / glass inherit it.
+            ("alto",     Archetype::TradingShell),
+            ("mariner",  Archetype::TradingShell),
+        ];
+        let systems = builtin_style_systems();
+        for (id, arch) in want {
+            let ss = systems
+                .iter()
+                .find(|s| s.meta.id == id)
+                .unwrap_or_else(|| panic!("builtin style '{id}' missing"));
+            assert_eq!(ss.shell.archetype, arch, "style '{id}' lost its designed archetype");
         }
     }
 }

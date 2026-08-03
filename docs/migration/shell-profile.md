@@ -1,7 +1,29 @@
 # ShellProfile — Wave-1 Design Document (Stream S6)
 
-**Status:** Draft for user review — no production code written.
-**Scope:** Design and doc only. Wave-3 implementation follows after user sign-off.
+**Status:** SIGNED OFF 2026-08-03, **with one structural amendment** — see
+`docs/handoffs/frontend-ds-adoption/13-DS-6.0-DECISION.md` (decision D1).
+
+**Amendment:** `ShellProfile` is **absorbed into `StyleSystem` as a `ShellSpec`
+block**. It is not a separate store, axis, or selection mechanism — that would
+have produced two competing layout-selection paths (risk R5 in the DS-adoption
+package). Concretely:
+
+- This document remains the design reference for what `NavStyle`, `DockStyle`
+  and `RailSide` **mean**. That vocabulary is adopted as-is.
+- The types live on `StyleSystem.shell`, resolved by the same one-line
+  precedence rule as the colour and dimension axes.
+- `Archetype` joins them there, defaulted by the theme and overridable
+  per-**workspace** (not per-theme — themes are exportable, so a personal layout
+  preference must not travel inside a shared design artifact).
+- The `shell_profile` blob already reserved in `theme-authoring/README.md`
+  becomes the serialized `ShellSpec`, so that forward-compat placeholder is
+  honoured rather than orphaned.
+
+Ownership of the overlap sits with the DS-adoption package: S6 contributes the
+vocabulary, that package owns the resolver, storage and precedence.
+
+**Scope:** Design and doc only for this file. Implementation proceeds under
+DS-6.x against the amended shape above.
 
 ---
 

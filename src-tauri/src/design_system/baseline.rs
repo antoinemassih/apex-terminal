@@ -22,8 +22,8 @@
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba},
     style_system::{
-        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
-        Spacing, Strokes, StyleSystem, Treatments, Typography,
+        Alphas, Archetype, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
+        ShellSpec, Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
 
@@ -97,6 +97,9 @@ const fn hairline_border(bg: Rgba) -> Rgba {
 pub fn baseline_style_system() -> StyleSystem {
     StyleSystem {
         meta: Meta::new("meridien-baseline", "Meridien (Baseline)", true),
+
+        // DS-6.0 D1: the baseline mirrors Meridien, archetype included.
+        shell: ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() },
 
         typography: Typography {
             // font_section_label = font_caption = 8.0 (style_defaults(0): font_section_label=8, font_caption=8)

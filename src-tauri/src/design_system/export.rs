@@ -73,6 +73,7 @@ impl StyleSystem {
         let sh  = &self.shadows;
         let tr  = &self.treatments;
         let ch  = &self.chrome;
+        let shl = &self.shell;   // DS-6.0 (`sh` is already shadows)
 
         let focus_ring_str = match tr.focus_ring {
             FocusRingStyle::None    => "none",
@@ -237,6 +238,20 @@ impl StyleSystem {
                 "card_floating_shadow":       bool_tok!(tr.card_floating_shadow),
                 "shadows_enabled":            bool_tok!(tr.shadows_enabled),
                 "animations_enabled":         bool_tok!(tr.animations_enabled),
+            },
+            // DS-6.0: the shell block. Emitted as plain enum names rather than
+            // DTCG token objects — these are structural choices, not values on
+            // a scale, so there is nothing to interpolate or theme-shift.
+            //
+            // This MUST round-trip. A field that exports but does not import is
+            // the "lossy pack round-trip" defect the architecture audit called
+            // out; adding `shell` without this block broke three import tests
+            // immediately, which is the system working.
+            "shell": {
+                "nav":       str_tok!(format!("{:?}", shl.nav)),
+                "dock":      str_tok!(format!("{:?}", shl.dock)),
+                "rail":      str_tok!(format!("{:?}", shl.rail)),
+                "archetype": str_tok!(format!("{:?}", shl.archetype)),
             },
             "chrome": {
                 "toolbar_height_scale":          num!(ch.toolbar_height_scale),

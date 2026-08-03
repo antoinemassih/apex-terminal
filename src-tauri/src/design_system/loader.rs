@@ -30,8 +30,8 @@ use super::{
     color_scheme::{rgba, ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
         Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure,
-        PaneActiveIndicator, Radii, Shadows, ShadowSpec, Spacing, Strokes, StyleSystem, Treatments,
-        Typography,
+        Archetype, DockStyle, NavStyle, PaneActiveIndicator, Radii, RailSide, Shadows, ShadowSpec, ShellSpec,
+        Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
 
@@ -617,7 +617,55 @@ impl StyleSystem {
             panel_footer_radius:           read_f32_or(&ch_sec, "panel_footer_radius",           "chrome", d_ch.panel_footer_radius),
         };
 
-        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome, numerals: None, card: None })
+        // DS-6.0: shell shape. Unknown or absent members fall back to today's
+        // shape rather than erroring — a pack written before this block existed
+        // must still load. But anything a pack DOES declare has to survive, or
+        // the field is lossy, which is the pack-round-trip defect the audit
+        // flagged. `aperture_round_trip_in_memory` is the guard.
+        let shell = {
+            let sh_sec = section("shell");
+            // DTCG string tokens (`{"$type":"string","$value":"Mosaic"}`), same
+            // as `family_ui` and friends — NOT raw strings. Writing them raw is
+            // what broke the Figma path, which wraps every variable as a token.
+            let read = |key: &str| -> Option<String> {
+                sh_sec
+                    .get(key)
+                    .and_then(|n| n.get("$value"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+            };
+            let d = ShellSpec::default();
+            ShellSpec {
+                nav: match read("nav").as_deref() {
+                    Some("TopTabs")  => NavStyle::TopTabs,
+                    Some("SideRail") => NavStyle::SideRail,
+                    Some("MenuBar")  => NavStyle::MenuBar,
+                    Some("TopPills") => NavStyle::TopPills,
+                    _ => d.nav,
+                },
+                dock: match read("dock").as_deref() {
+                    Some("BottomPill") => DockStyle::BottomPill,
+                    Some("Hidden")     => DockStyle::Hidden,
+                    Some("BottomBar")  => DockStyle::BottomBar,
+                    _ => d.dock,
+                },
+                rail: match read("rail").as_deref() {
+                    Some("Left")     => RailSide::Left,
+                    Some("Floating") => RailSide::Floating,
+                    Some("Right")    => RailSide::Right,
+                    _ => d.rail,
+                },
+                archetype: match read("archetype").as_deref() {
+                    Some("Mosaic")       => Archetype::Mosaic,
+                    Some("DenseScreens") => Archetype::DenseScreens,
+                    Some("Editorial")    => Archetype::Editorial,
+                    Some("TradingShell") => Archetype::TradingShell,
+                    _ => d.archetype,
+                },
+            }
+        };
+
+        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome, numerals: None, card: None, shell })
     }
 }
 
@@ -736,6 +784,12 @@ mod tests {
 
         let original = StyleSystem {
             meta: Meta::new("test-full", "Test Full", false),
+            // DS-6.0: deliberately DEFAULT. `shell` is not parsed from pack
+            // JSON yet (DS-6.1 wires the reserved `shell_profile` blob), so a
+            // non-default value here would fail this round-trip — correctly.
+            // When parsing lands, change this to a non-default ShellSpec: this
+            // assertion is then the proof that it survives the trip.
+            shell: ShellSpec::default(),
             typography: Typography {
                 size_xs: 7.5, size_sm: 10.0, size_md: 12.5, size_lg: 14.0, size_xl: 20.0,
                 mono_sm: 9.5, mono_md: 11.5, mono_lg: 14.5,

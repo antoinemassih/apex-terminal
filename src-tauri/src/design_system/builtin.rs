@@ -34,8 +34,8 @@
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
-        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowLayer,
-        ShadowSpec, ShadowTint, Spacing, Strokes, StyleSystem, Treatments, Typography,
+        Alphas, Archetype, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowLayer,
+        ShadowSpec, ShadowTint, ShellSpec, Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
 
@@ -1009,6 +1009,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // no drop shadows, standard density.
     let meridien = StyleSystem {
         meta: Meta::new("meridien", "Meridien", true),
+        // DS-6.0 D1: the theme's DEFAULT archetype. A workspace may
+        // override it; see ShellSpec::resolve_archetype.
+        shell: ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() },
         typography: Typography {
             size_xs: 8.0,   // font_section_label / font_caption
             size_sm: 10.0,  // font_body
@@ -1139,6 +1142,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // Soft-pill corners, full drop shadows, roomy density.
     let aperture = StyleSystem {
         meta: Meta::new("aperture", "Aperture", true),
+        // DS-6.0 D1: the theme's DEFAULT archetype. A workspace may
+        // override it; see ShellSpec::resolve_archetype.
+        shell: ShellSpec { archetype: Archetype::Mosaic, ..ShellSpec::default() },
         typography: Typography {
             size_xs: 9.0,   // font_caption = 9
             size_sm: 11.0,  // font_body = 11
@@ -1272,6 +1278,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // Minimal corners, hairline borders, solid active fills, compact density.
     let octave = StyleSystem {
         meta: Meta::new("octave", "Octave", true),
+        // DS-6.0: inherits the trading shell (the default).
+        shell: ShellSpec::default(),
         typography: Typography {
             size_xs: 8.0,   // font_section_label=8, font_caption=8
             size_sm: 10.0,  // font_body = 10
@@ -1398,6 +1406,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // ── Cadence (id=3) — Spotify-dark: pill primaries, elevated cards ────────
     let cadence = StyleSystem {
         meta: Meta::new("cadence", "Cadence", true),
+        // DS-6.0 D1: the theme's DEFAULT archetype. A workspace may
+        // override it; see ShellSpec::resolve_archetype.
+        shell: ShellSpec { archetype: Archetype::DenseScreens, ..ShellSpec::default() },
         typography: Typography {
             size_section_label: 11.0, size_sm: 13.0,
             label_tracking: 0.6, section_tracking: 0.6,
@@ -1491,6 +1502,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // ── Lucid (id=6) — editorial LIGHT: flat, restrained radii, serif hero ────
     let lucid = StyleSystem {
         meta: Meta::new("lucid", "Lucid", false),
+        // DS-6.0 D1: the theme's DEFAULT archetype. A workspace may
+        // override it; see ShellSpec::resolve_archetype.
+        shell: ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() },
         typography: Typography { size_xl: 28.0, label_tracking: 0.4, section_tracking: 0.4, ..Typography::default() },
         radii: Radii { none: 0.0, xs: 2.0, sm: 3.0, md: 5.0, lg: 8.0, full: 9999.0, pill: 99.0, chip: 0.0 },
         density: Density { factor: 1.0, row_height_dense: 26.0, row_height_comfortable: 34.0, ..Density::default() },

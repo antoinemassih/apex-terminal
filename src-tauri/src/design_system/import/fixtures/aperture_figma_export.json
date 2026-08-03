@@ -1631,6 +1631,42 @@
     },
     {
       "collection": "StyleSystem",
+      "name": "shell/archetype",
+      "type": "STRING",
+      "valuesByMode": {
+        "Aperture": "Mosaic",
+        "Meridien": "Editorial"
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shell/dock",
+      "type": "STRING",
+      "valuesByMode": {
+        "Aperture": "BottomBar",
+        "Meridien": "BottomBar"
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shell/nav",
+      "type": "STRING",
+      "valuesByMode": {
+        "Aperture": "TopPills",
+        "Meridien": "TopPills"
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shell/rail",
+      "type": "STRING",
+      "valuesByMode": {
+        "Aperture": "Right",
+        "Meridien": "Right"
+      }
+    },
+    {
+      "collection": "StyleSystem",
       "name": "spacing/button_height",
       "type": "FLOAT",
       "valuesByMode": {
