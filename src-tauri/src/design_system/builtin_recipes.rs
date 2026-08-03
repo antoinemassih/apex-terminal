@@ -1389,11 +1389,15 @@ mod tests {
             Some(700),
             "cadence's primary button is 700 in the CSS"
         );
-        assert_eq!(set.get("tag").unwrap().base.weight, Some(700), "`.ds-pill { font-weight: 700 }`");
+        assert_eq!(
+            set.get("tag").unwrap().base.weight,
+            Some(700),
+            "`.ds-pill` is font-weight 700 in the CSS"
+        );
         assert_eq!(
             set.get("panel.header").unwrap().base.weight,
             Some(700),
-            "`.ds-panel__title { font-weight: 700 }`"
+            "`.ds-panel__title` is font-weight 700 in the CSS"
         );
 
         // Resolution proof: >= 600 renders `strong`.
