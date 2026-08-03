@@ -98,10 +98,44 @@ if is_spawn || watchlist.open {
                     // ── B) Watchlist selector + options toggle ──
                     ui.horizontal(|ui| {
                         ui.set_min_height(20.0);
+
+                        // ── The row's right-hand reservation: MEASURED, not pinned ──
+                        // This row lays a name control on the left against a
+                        // right-anchored cluster (session badge + options toggle),
+                        // with a "+" button between them. Both branches used to pin
+                        // that reservation (`available_width() - 60.0` / `- 50.0`),
+                        // sized once for one font. The cluster's real width is
+                        // THEMED — the badge grows with the style's face — so on the
+                        // wider styles it overran its slot and painted ON TOP of the
+                        // selector. The capture showed `▼CLOSED+` stacked into ~30px
+                        // in all six systems.
+                        //
+                        // `Button::intrinsic_width` exists for precisely this and
+                        // measures with the SAME font and gaps the paint path uses,
+                        // so a measurement and its widget cannot drift. Its own doc
+                        // records the identical bug in the pane header's pinned
+                        // `ICON_BTN_W_LAYERS = 60.0` table. This is that bug's twin;
+                        // same cure — derive, don't pin.
+                        const BADGE_MIN_W: f32 = 34.0;
+                        const BADGE_MIN_H: f32 = 14.0;
+                        let icon_btn_w = IconPlacement::PanelHeader.hit_px();
+                        let item_spacing = ui.spacing().item_spacing.x;
+                        let badge_w = Button::new(market_session().0)
+                            .variant(Variant::Chrome)
+                            .size(Size::Xs)
+                            .intrinsic_width(ui)
+                            .max(BADGE_MIN_W);
+                        // badge + gap + options toggle, plus the row spacing egui
+                        // inserts before each of the two widgets.
+                        let right_cluster_w =
+                            badge_w + gap_xs() + icon_btn_w + item_spacing * 2.0;
+                        // The "+" button only exists in the selector branch.
+                        let plus_w = icon_btn_w + item_spacing;
+
                         // Inline rename mode
                         if watchlist.watchlist_name_editing {
                             let resp = Input::new(&mut watchlist.watchlist_name_buf)
-                                .width(ui.available_width() - 50.0)
+                                .width(ui.available_width() - right_cluster_w)
                                 .font_size(10.0)
                                 .show(ui, t);
                             if resp.lost_focus || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -126,7 +160,7 @@ if is_spawn || watchlist.open {
                                 .map(|(i, n)| (i, n.clone())).collect();
                             let (_, combo_resp) = super::super::inputs::select::DropdownOwned::new("wl_selector")
                                 .options(wl_opts)
-                                .width(ui.available_width() - 60.0)
+                                .width(ui.available_width() - right_cluster_w - plus_w)
                                 .font_size(9.0)
                                 .item_context_menu(|idx, ui| {
                                     let i = *idx;
@@ -202,7 +236,9 @@ if is_spawn || watchlist.open {
                                 .fill(badge_bg)
                                 .corner_radius(current().r_sm as f32)
                                 .stroke(egui::Stroke::NONE)
-                                .min_size(egui::vec2(34.0, 14.0)));
+                                // Same floor the reservation above measured against —
+                                // if these two ever disagree, the cluster overruns.
+                                .min_size(egui::vec2(BADGE_MIN_W, BADGE_MIN_H)));
                         });
                     });
                     // Handle deferred rename
