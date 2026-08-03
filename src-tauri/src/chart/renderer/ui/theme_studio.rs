@@ -327,9 +327,10 @@ fn draw_catalog(ui: &mut Ui, ctx: &Context, t: &Theme, pack: &WorkingPack) {
     // rendered inside the catalog reflect current editor edits.
     let preview_t = color_scheme_to_portable(&pack.color_scheme);
 
-    // Stash preview ambient. After this block we restore the app ambient
-    // by stashing `t` back (the host will re-stash on the next frame).
-    set_ambient_theme(ctx, preview_t.clone());
+    // M2.3: RAII scope replaces the hand-rolled stash/restore dance below.
+    // An early return or panic inside the catalogue can no longer leak the
+    // preview palette into the rest of the frame.
+    let _preview_scope = crate::ui_kit::widgets::theme::ThemeScope::push(ctx, preview_t.clone());
     set_ambient_recipes(ctx, Arc::new(RecipeSet::new()));
 
     PanelSection::new("CATALOG — COMPONENT STORYBOOK")
@@ -457,11 +458,8 @@ fn draw_catalog(ui: &mut Ui, ctx: &Context, t: &Theme, pack: &WorkingPack) {
                 });
         });
 
-    // Restore app ambient theme so the rest of the frame uses the real theme.
-    // (The host will re-stash the real theme on the next frame tick; this
-    //  covers the remainder of the current frame's draw calls.)
-    let app_portable = theme_to_portable(t);
-    set_ambient_theme(ctx, app_portable);
+    // M2.3: no manual restore — `_preview_scope` drops here and puts the app
+    // ambient back automatically.
 }
 
 // ── Editor ────────────────────────────────────────────────────────────────────

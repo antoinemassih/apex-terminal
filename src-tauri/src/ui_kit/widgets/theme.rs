@@ -458,6 +458,54 @@ pub fn get_ambient_theme<T: ComponentTheme + Clone + Send + Sync + 'static>(
 // When no host has set one (unit tests, standalone ui_kit embedders) the
 // get function returns an empty static set — zero-cost, zero visual change.
 
+// ── M2.3: SCOPED ambient theme (push/pop) ────────────────────────────────────
+//
+// The stash above is a single global key, so the LAST writer wins for the whole
+// frame. That is why (a) an inactive pane rendered its chrome with the ACTIVE
+// pane's palette, (b) Theme Studio had to hand-roll set-preview/restore around
+// its catalogue, and (c) two densities could never coexist in one frame.
+//
+// `ThemeScope` makes the stash a STACK discipline: on construction it swaps in
+// the scoped theme and remembers the previous value; on drop it restores it —
+// exactly the CSS-subtree semantics ui_kit widgets already assume when they
+// call `active_theme(ctx)`. RAII means an early return or a `?` inside the
+// scope cannot leak the override.
+//
+// ```ignore
+// let _scope = ThemeScope::push(ctx, pane_theme);   // this pane's palette
+// render_pane_chrome(ui);                            // ui_kit sees pane_theme
+// // dropped here -> previous ambient restored
+// ```
+#[must_use = "the scope restores the previous theme on drop; bind it to a variable"]
+pub struct ThemeScope<'a> {
+    ctx: &'a egui::Context,
+    prev: Option<PortableTheme>,
+}
+
+impl<'a> ThemeScope<'a> {
+    /// Push `theme` as the ambient theme for the lifetime of the returned
+    /// guard. Any `ComponentTheme` works; it is converted to the portable
+    /// shape that parameter-less ui_kit widgets read.
+    pub fn push(ctx: &'a egui::Context, theme: PortableTheme) -> Self {
+        let prev = get_ambient_theme::<PortableTheme>(ctx);
+        set_ambient_theme(ctx, theme);
+        Self { ctx, prev }
+    }
+}
+
+impl Drop for ThemeScope<'_> {
+    fn drop(&mut self) {
+        match self.prev.take() {
+            Some(prev) => set_ambient_theme(self.ctx, prev),
+            // Nothing was stashed before us — clear rather than leave ours in
+            // place, so a scope never outlives its block.
+            None => self.ctx.data_mut(|d| {
+                d.remove::<PortableTheme>(egui::Id::new(AMBIENT_KEY));
+            }),
+        }
+    }
+}
+
 const AMBIENT_RECIPES_KEY: &str = "apex_ambient_recipes";
 
 /// Stash the active [`RecipeSet`] in egui memory so [`StyleCtx::from_theme`]
@@ -546,4 +594,59 @@ impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {
     fn surface_border(&self) -> Color32 { (**self).surface_border() }
     fn color_layer_up(&self, n: u8) -> Color32 { (**self).color_layer_up(n) }
     fn shadow_color_alpha(&self, a: u8) -> Color32 { (**self).shadow_color_alpha(a) }
+}
+
+// ── M2.3 scope-guard tests ───────────────────────────────────────────────────
+#[cfg(test)]
+mod m23_scope_tests {
+    use super::*;
+
+    /// The core CSS-subtree guarantee: inside a scope widgets see the scoped
+    /// palette; after it, the previous one is back. Before M2.3 the stash was
+    /// a single global key, so the last writer won for the whole frame — which
+    /// is why an inactive pane rendered its chrome in the ACTIVE pane's colours.
+    #[test]
+    fn theme_scope_restores_previous() {
+        let ctx = egui::Context::default();
+        let mut outer = PortableTheme::dark();
+        outer.accent = Color32::from_rgb(1, 2, 3);
+        let mut inner = PortableTheme::light();
+        inner.accent = Color32::from_rgb(9, 9, 9);
+
+        set_ambient_theme(&ctx, outer.clone());
+        assert_eq!(active_theme(&ctx).accent, outer.accent);
+        {
+            let _scope = ThemeScope::push(&ctx, inner.clone());
+            assert_eq!(active_theme(&ctx).accent, inner.accent, "scope must win inside");
+        }
+        assert_eq!(active_theme(&ctx).accent, outer.accent, "previous must be restored");
+    }
+
+    /// Nesting must unwind in order (pane inside preview inside app).
+    #[test]
+    fn theme_scopes_nest() {
+        let ctx = egui::Context::default();
+        let mk = |r: u8| { let mut t = PortableTheme::dark(); t.accent = Color32::from_rgb(r, 0, 0); t };
+        set_ambient_theme(&ctx, mk(1));
+        {
+            let _a = ThemeScope::push(&ctx, mk(2));
+            {
+                let _b = ThemeScope::push(&ctx, mk(3));
+                assert_eq!(active_theme(&ctx).accent.r(), 3);
+            }
+            assert_eq!(active_theme(&ctx).accent.r(), 2);
+        }
+        assert_eq!(active_theme(&ctx).accent.r(), 1);
+    }
+
+    /// A scope pushed with nothing underneath must not leak past its block.
+    #[test]
+    fn theme_scope_clears_when_nothing_was_stashed() {
+        let ctx = egui::Context::default();
+        {
+            let _scope = ThemeScope::push(&ctx, PortableTheme::light());
+            assert!(get_ambient_theme::<PortableTheme>(&ctx).is_some());
+        }
+        assert!(get_ambient_theme::<PortableTheme>(&ctx).is_none(), "must not outlive its block");
+    }
 }

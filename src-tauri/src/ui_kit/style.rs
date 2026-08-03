@@ -233,6 +233,61 @@ pub fn numeral_tier() -> Option<crate::design_system::style_system::NumeralTier>
     NUMERAL_TIER.with(|c| c.get())
 }
 
+// ── M2.3: SCOPED token overrides ────────────────────────────────────────────
+//
+// `FRAME_TOKENS_LOCAL` is per-frame global: one snapshot for the whole tree, so
+// a subtree could never be denser/roomier than its siblings (the documented
+// `Density` contract in CLAUDE.md promised a per-component knob that did not
+// exist). `TokenScope` gives the snapshot the same push/pop discipline
+// `ThemeScope` gives the palette.
+//
+// ```ignore
+// let _dense = TokenScope::with(|t| { t.gap_md *= 0.85; t.font_sm -= 1.0; });
+// render_instrument_panel(ui);   // tighter, siblings unaffected
+// ```
+#[must_use = "the scope restores the previous tokens on drop; bind it to a variable"]
+pub struct TokenScope {
+    prev: TokenSnapshot,
+}
+
+impl TokenScope {
+    /// Push a modified copy of the current frame tokens for this scope.
+    pub fn with(f: impl FnOnce(&mut TokenSnapshot)) -> Self {
+        let prev = frame_tokens();
+        let mut next = prev;
+        f(&mut next);
+        set_frame_tokens(next);
+        Self { prev }
+    }
+
+    /// Push a whole snapshot (e.g. a preview host rendering another style).
+    pub fn push(snap: TokenSnapshot) -> Self {
+        let prev = frame_tokens();
+        set_frame_tokens(snap);
+        Self { prev }
+    }
+
+    /// Scale the density-bearing tokens (gaps + row height) by `factor`.
+    /// Mariner's "10% tighter than Alto" as a SCOPED property rather than a
+    /// process-global mutation.
+    pub fn density(factor: f32) -> Self {
+        Self::with(|t| {
+            t.gap_xs     *= factor;
+            t.gap_xs_mid *= factor;
+            t.gap_sm     *= factor;
+            t.gap_md     *= factor;
+            t.gap_lg     *= factor;
+            t.gap_xl     *= factor;
+        })
+    }
+}
+
+impl Drop for TokenScope {
+    fn drop(&mut self) {
+        set_frame_tokens(self.prev);
+    }
+}
+
 /// Push the active style's authored shadow stacks (called from `begin_frame`).
 pub fn set_card_shadow_layers(
     card: Vec<crate::design_system::style_system::ShadowLayer>,
@@ -1185,4 +1240,53 @@ pub fn measure_with(ui: &egui::Ui, text: &str, font: egui::FontId) -> egui::Vec2
 #[inline]
 pub fn font_at(size: f32, family: egui::FontFamily) -> egui::FontId {
     egui::FontId::new(size, family)
+}
+
+// ── M2.3 token-scope tests ───────────────────────────────────────────────────
+#[cfg(test)]
+mod m23_token_scope_tests {
+    use super::*;
+
+    /// Scoped tokens restore on drop — the enabler for two densities in one
+    /// frame (the `Density` per-component knob CLAUDE.md promised but which
+    /// only existed as a process-global `DensityMode`).
+    #[test]
+    fn token_scope_restores_previous() {
+        let before = frame_tokens().gap_md;
+        {
+            let _s = TokenScope::with(|t| t.gap_md = 99.0);
+            assert_eq!(frame_tokens().gap_md, 99.0, "scope must win inside");
+        }
+        assert_eq!(frame_tokens().gap_md, before, "previous tokens must be restored");
+    }
+
+    /// Mariner's "~10% tighter than Alto" as a SCOPED property.
+    #[test]
+    fn density_scope_scales_gaps_only_inside() {
+        let base = frame_tokens();
+        {
+            let _s = TokenScope::density(0.9);
+            let inner = frame_tokens();
+            assert!((inner.gap_md - base.gap_md * 0.9).abs() < 0.001);
+            assert!((inner.gap_sm - base.gap_sm * 0.9).abs() < 0.001);
+            // font ladder untouched — density is spacing, not type
+            assert_eq!(inner.font_sm, base.font_sm);
+        }
+        assert_eq!(frame_tokens().gap_md, base.gap_md);
+    }
+
+    /// Nesting composes multiplicatively and unwinds in order.
+    #[test]
+    fn token_scopes_nest() {
+        let base = frame_tokens().gap_md;
+        {
+            let _a = TokenScope::density(0.5);
+            {
+                let _b = TokenScope::density(0.5);
+                assert!((frame_tokens().gap_md - base * 0.25).abs() < 0.001);
+            }
+            assert!((frame_tokens().gap_md - base * 0.5).abs() < 0.001);
+        }
+        assert_eq!(frame_tokens().gap_md, base);
+    }
 }

@@ -1835,6 +1835,17 @@ fn render_chart_pane(
     // Non-chart panes render with their OWN theme_idx, not the active pane's —
     // the `theme_idx` parameter is the active pane's (audit fix).
     let pane_theme_idx = chart.theme_idx;
+    // M2.3: the pane BODY already used its own palette, but every ui_kit widget
+    // inside it resolved `active_theme(ctx)` — a single global stash that the
+    // active pane had written. An inactive Bauhaus pane therefore drew a light
+    // body with dark buttons/menus. This RAII scope makes the ambient palette
+    // follow the pane for the duration of its render, restoring on drop.
+    let _pane_theme_scope = crate::ui_kit::widgets::theme::ThemeScope::push(
+        ctx,
+        crate::chart_renderer::theme_impl::theme_to_portable(
+            &crate::chart_renderer::gpu::get_theme(pane_theme_idx),
+        ),
+    );
     match chart.pane_type {
         PaneType::Portfolio => {
             let body_rects = [rect];
