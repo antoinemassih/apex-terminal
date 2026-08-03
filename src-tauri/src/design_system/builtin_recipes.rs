@@ -53,7 +53,7 @@
 
 use super::recipes::RecipeSet;
 use crate::ui_kit::sx::recipe_spec::{
-    BorderSpecRef, BorderWidthTier, ColorSpec, PadTier, RadiusTier, RecipeDelta, RecipeSpec,
+    BorderSpecRef, BevelSpecRef, EdgesRef, BorderWidthTier, ColorSpec, PadTier, RadiusTier, RecipeDelta, RecipeSpec,
     ShadeRef, TextSizeTier, TextSpec, ToneRef,
 };
 
@@ -95,6 +95,14 @@ trait DeltaExt: Sized {
     fn no_border(self) -> Self;
     fn ink(self, t: ToneRef) -> Self;
     fn text_size(self, s: TextSizeTier) -> Self;
+    /// M3.2: border on selected EDGES only (tab underlines, ledger hairlines).
+    fn border_edge(self, c: ColorSpec, w: BorderWidthTier, e: EdgesRef) -> Self;
+    /// M3.2: Zed/Spotify raised face — light top line + dark bottom line.
+    fn bevel_raised(self, top: ColorSpec, bottom: ColorSpec) -> Self;
+    /// M3.2: a single inset marker line (Alto's `inset 0 -2px 0 accent` tab).
+    fn bevel_marker(self, bottom: ColorSpec, width: f32) -> Self;
+    /// M3.2: font weight (advisory until per-weight families are registered).
+    fn weight(self, w: u16) -> Self;
 }
 
 impl DeltaExt for RecipeDelta {
@@ -103,18 +111,34 @@ impl DeltaExt for RecipeDelta {
     fn py(mut self, p: PadTier) -> Self { self.py = Some(p); self }
     fn fill(mut self, c: ColorSpec) -> Self { self.fill = Some(c); self }
     fn border(mut self, c: ColorSpec, w: BorderWidthTier) -> Self {
-        self.border = Some(BorderSpecRef { color: c, width: Some(w) });
+        self.border = Some(BorderSpecRef { color: c, width: Some(w), edges: EdgesRef::All });
         self
     }
     fn no_border(mut self) -> Self {
         self.border = Some(BorderSpecRef {
             color: tint(ToneRef::Border, 0),
             width: Some(BorderWidthTier::None),
+            edges: EdgesRef::All,
         });
         self
     }
     fn ink(mut self, t: ToneRef) -> Self { self.text = Some(TextSpec { tone: t, shade: None }); self }
     fn text_size(mut self, s: TextSizeTier) -> Self { self.text_size = Some(s); self }
+
+    // ── M3.2 vocabulary ────────────────────────────────────────────────────
+    fn border_edge(mut self, c: ColorSpec, w: BorderWidthTier, e: EdgesRef) -> Self {
+        self.border = Some(BorderSpecRef { color: c, width: Some(w), edges: e });
+        self
+    }
+    fn bevel_raised(mut self, top: ColorSpec, bottom: ColorSpec) -> Self {
+        self.bevel = Some(BevelSpecRef { top: Some(top), bottom: Some(bottom), width: 1.0 });
+        self
+    }
+    fn bevel_marker(mut self, bottom: ColorSpec, width: f32) -> Self {
+        self.bevel = Some(BevelSpecRef { top: None, bottom: Some(bottom), width });
+        self
+    }
+    fn weight(mut self, w: u16) -> Self { self.weight = Some(w); self }
 }
 
 /// A fresh empty delta.

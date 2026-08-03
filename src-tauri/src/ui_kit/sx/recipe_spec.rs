@@ -315,13 +315,68 @@ pub struct TextSpec {
 
 // ── BorderSpec (serialisable) ─────────────────────────────────────────────────
 
+/// M3.2: which edges a recipe border paints. Serialises as a short string —
+/// `"all"` (default) / `"top"` / `"bottom"` / `"left"` / `"right"`.
+/// Unblocks the ~35 CSS rules that used `border-bottom` / `border-left`
+/// (tab underlines, ledger hairlines, Mariner's pane top-stripe).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EdgesRef {
+    #[default]
+    All,
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+impl EdgesRef {
+    pub fn to_edges(self) -> crate::ui_kit::sx::style::Edges {
+        use crate::ui_kit::sx::style::Edges;
+        match self {
+            EdgesRef::All    => Edges::ALL,
+            EdgesRef::Top    => Edges::TOP,
+            EdgesRef::Bottom => Edges::BOTTOM,
+            EdgesRef::Left   => Edges::LEFT,
+            EdgesRef::Right  => Edges::RIGHT,
+        }
+    }
+}
+
+/// M3.2: an authored inset hairline bevel — the serialisable mirror of
+/// `BevelSpec`. Covers CSS `box-shadow: inset 0 ±Npx 0 <color>`, which is
+/// Alto/Mariner's raised-face identity and Cadence's white top highlight
+/// (~25 rules).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BevelSpecRef {
+    /// Top inner line (the highlight).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top: Option<ColorSpec>,
+    /// Bottom inner line (the shadow, or an accent marker).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bottom: Option<ColorSpec>,
+    /// Line thickness in px. Defaults to 1.0 (hairline).
+    #[serde(default = "BevelSpecRef::default_width")]
+    pub width: f32,
+}
+
+impl BevelSpecRef {
+    fn default_width() -> f32 { 1.0 }
+}
+
 /// Serialisable border — color (tone/alpha/literal) + width tier.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BorderSpecRef {
     pub color: ColorSpec,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width: Option<BorderWidthTier>,
+    /// M3.2: which sides paint. Omitted = all four (previous behaviour).
+    #[serde(default, skip_serializing_if = "crate::ui_kit::sx::recipe_spec::is_all_edges")]
+    pub edges: EdgesRef,
 }
+
+/// serde skip helper — omit `edges` from JSON when it is the default.
+pub fn is_all_edges(e: &EdgesRef) -> bool { matches!(e, EdgesRef::All) }
 
 // ── RecipeDelta ───────────────────────────────────────────────────────────────
 
@@ -362,6 +417,21 @@ pub struct RecipeDelta {
     pub text_size: Option<TextSizeTier>,
 
     // ── Misc ──────────────────────────────────────────────────────────────────
+    /// M3.2: inset hairline bevel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bevel: Option<BevelSpecRef>,
+
+    /// M3.2: font weight (400/500/600/700). Advisory — egui picks weight by
+    /// registered FAMILY, so >= 600 renders `strong` until per-weight families
+    /// are loaded. Authored anyway so packs carry designer intent (~30 rules).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<u16>,
+
+    /// M3.2: inter-element gap. `SxDelta` already had the field; `RecipeDelta`
+    /// simply never exposed it — the cheapest win on the unmappable list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap: Option<PadTier>,
+
     /// Overall opacity for the component (0.0–1.0). Used for disabled state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opacity: Option<f32>,
@@ -387,7 +457,22 @@ impl RecipeDelta {
         if let Some(border) = &self.border {
             let width = border.width.as_ref().map(|w| w.to_px())
                 .unwrap_or_else(|| crate::ui_kit::tokens::stroke_thin());
-            d = d.border_color(border.color.resolve(t), width);
+            // M3.2: carry the authored edge selection through.
+            d = d.border_color_edges(border.color.resolve(t), width, border.edges.to_edges());
+        }
+        if let Some(bev) = &self.bevel {
+            use crate::ui_kit::sx::style::Fill;
+            d = d.bevel(
+                bev.top.as_ref().map(|c| Fill::Solid(c.resolve(t))),
+                bev.bottom.as_ref().map(|c| Fill::Solid(c.resolve(t))),
+                bev.width,
+            );
+        }
+        if let Some(w) = self.weight {
+            d = d.weight(w);
+        }
+        if let Some(g) = &self.gap {
+            d = d.gap(g.to_px());
         }
         if let Some(text) = &self.text {
             let tone: Tone = text.tone.into();
@@ -693,5 +778,110 @@ mod tests {
         assert!(delta.radius.is_some(), "radius should be preserved from default");
         // Border from default_sx.
         assert!(delta.border.is_some(), "border should be preserved from default");
+    }
+}
+
+// ── M3.2 vocabulary tests ────────────────────────────────────────────────────
+#[cfg(test)]
+mod m32_vocabulary_tests {
+    use super::*;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    /// Per-side borders: the largest unmappable class in the recipe audit
+    /// (~35 CSS rules — every tab underline, ledger hairline, and Mariner's
+    /// pane top-stripe). `BorderSpec` painted all four sides, so none of it
+    /// could be authored.
+    #[test]
+    fn per_edge_border_survives_to_the_render_delta() {
+        let t = PortableTheme::dark();
+        let d = RecipeDelta {
+            border: Some(BorderSpecRef {
+                color: ColorSpec::Tone { tone: ToneRef::Accent, shade: None },
+                width: Some(BorderWidthTier::Px(2.0)),
+                edges: EdgesRef::Bottom,
+            }),
+            ..Default::default()
+        };
+        let sx = d.to_sx_delta(&t);
+        let edges = sx.resolved_border_edges();
+        assert!(edges.bottom && !edges.top && !edges.left && !edges.right,
+            "a bottom-only authored border must reach the render delta as bottom-only");
+    }
+
+    /// Unauthored `edges` must default to ALL — the pre-M3.2 behaviour, so
+    /// every existing recipe renders byte-identically.
+    #[test]
+    fn omitted_edges_defaults_to_all() {
+        let t = PortableTheme::dark();
+        let d = RecipeDelta {
+            border: Some(BorderSpecRef {
+                color: ColorSpec::Tone { tone: ToneRef::Border, shade: None },
+                width: Some(BorderWidthTier::Px(1.0)),
+                edges: EdgesRef::default(),
+            }),
+            ..Default::default()
+        };
+        assert!(d.to_sx_delta(&t).resolved_border_edges().is_all(),
+            "unauthored edges must stay ALL (no behaviour change for existing recipes)");
+    }
+
+    /// Inset bevels: Alto/Mariner's raised-face identity and Cadence's white
+    /// top highlight (~25 rules), previously inexpressible.
+    #[test]
+    fn authored_bevel_reaches_the_render_delta() {
+        let t = PortableTheme::dark();
+        let d = RecipeDelta {
+            bevel: Some(BevelSpecRef {
+                top: Some(ColorSpec::Alpha { tone: ToneRef::Text, alpha: 26 }),
+                bottom: Some(ColorSpec::Alpha { tone: ToneRef::Bg, alpha: 115 }),
+                width: 1.0,
+            }),
+            ..Default::default()
+        };
+        let bev = d.to_sx_delta(&t).bevel_spec().expect("bevel must reach the delta");
+        assert!(bev.top.is_some() && bev.bottom.is_some());
+        assert_eq!(bev.width, 1.0);
+    }
+
+    /// Font weight is advisory (egui picks weight by registered FAMILY), but
+    /// must still round-trip so packs carry designer intent (~30 rules).
+    #[test]
+    fn weight_maps_to_strong_above_600() {
+        let t = PortableTheme::dark();
+        let bold = RecipeDelta { weight: Some(700), ..Default::default() }.to_sx_delta(&t);
+        let norm = RecipeDelta { weight: Some(400), ..Default::default() }.to_sx_delta(&t);
+        assert_eq!(bold.is_strong(), Some(true),  "700 must render strong");
+        assert_eq!(norm.is_strong(), Some(false), "400 must not");
+        assert_eq!(RecipeDelta::default().to_sx_delta(&t).is_strong(), None,
+            "unauthored weight leaves the widget default alone");
+    }
+
+    /// `gap` existed on SxDelta but was never exposed on RecipeDelta — the
+    /// cheapest win on the unmappable list.
+    #[test]
+    fn gap_is_now_authorable() {
+        let t = PortableTheme::dark();
+        let d = RecipeDelta { gap: Some(PadTier::Px(14.0)), ..Default::default() };
+        assert_eq!(d.to_sx_delta(&t).gap, Some(14.0));
+    }
+
+    /// The whole point: a recipe authored as JSON round-trips through serde
+    /// with the new fields intact.
+    #[test]
+    fn new_vocabulary_round_trips_through_json() {
+        let json = r#"{
+            "radius": "pill",
+            "weight": 700,
+            "gap": {"px": 14.0},
+            "border": {"color": {"kind": "tone", "tone": "accent"}, "width": {"px": 2.0}, "edges": "bottom"},
+            "bevel": {"top": {"kind": "alpha", "tone": "text", "alpha": 26}, "width": 1.0}
+        }"#;
+        let d: RecipeDelta = serde_json::from_str(json).expect("parse authored recipe");
+        assert_eq!(d.weight, Some(700));
+        assert!(matches!(d.border.as_ref().unwrap().edges, EdgesRef::Bottom));
+        assert!(d.bevel.as_ref().unwrap().top.is_some());
+        // and back out again
+        let back = serde_json::to_string(&d).expect("serialise");
+        assert!(back.contains("bottom"), "edge selection must survive serialisation");
     }
 }

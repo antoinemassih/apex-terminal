@@ -55,12 +55,58 @@ impl Fill {
     }
 }
 
+/// M3.2: which EDGES a border paints. CSS `border-bottom` / `border-left`
+/// were the single largest unmappable class in the recipe audit (~35 rules):
+/// every tab underline, the chrome-active bottom rules on Cadence/Lucid/
+/// Meridien, Mariner's 1.5px pane top-stripe and 2px DOM left edge, and all
+/// the ledger hairlines. `BorderSpec` painted all four sides, so none of it
+/// could be expressed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Edges {
+    pub top: bool,
+    pub right: bool,
+    pub bottom: bool,
+    pub left: bool,
+}
+
+impl Edges {
+    pub const ALL:    Self = Self { top: true,  right: true,  bottom: true,  left: true  };
+    pub const TOP:    Self = Self { top: true,  right: false, bottom: false, left: false };
+    pub const BOTTOM: Self = Self { top: false, right: false, bottom: true,  left: false };
+    pub const LEFT:   Self = Self { top: false, right: false, bottom: false, left: true  };
+    pub const RIGHT:  Self = Self { top: false, right: true,  bottom: false, left: false };
+    #[inline] pub fn is_all(self) -> bool { self == Self::ALL }
+    #[inline] pub fn any(self) -> bool { self.top || self.right || self.bottom || self.left }
+}
+
+impl Default for Edges {
+    fn default() -> Self { Self::ALL }
+}
+
+/// M3.2: a 1px INSET edge line — the Sx-expressible half of CSS
+/// `box-shadow: inset 0 ±1px 0 <color>`. This is Alto/Mariner's entire
+/// "raised button face / sunken well" identity, Cadence's white top
+/// highlight on filled surfaces, and Alto's `inset 0 -2px 0 accent` tab
+/// marker (~25 rules). Full blurred inset shadows remain out of scope;
+/// every inset in the six design systems is a hairline, which this covers.
+#[derive(Clone, Copy)]
+pub struct BevelSpec {
+    /// Top inner line (the highlight on a raised face).
+    pub top: Option<Fill>,
+    /// Bottom inner line (the shadow on a raised face; the accent marker on tabs).
+    pub bottom: Option<Fill>,
+    /// Thickness in px (1.0 for hairlines, 2.0 for Alto's tab marker).
+    pub width: f32,
+}
+
 /// Border spec — color resolved the same way as a [`Fill`] (so borders can be a
 /// solid shade or a tinted alpha overlay).
 #[derive(Clone, Copy)]
 pub struct BorderSpec {
     pub color: Fill,
     pub width: f32,
+    /// M3.2: which sides paint. Defaults to ALL (previous behaviour).
+    pub edges: Edges,
 }
 
 /// Interaction state used to pick which override applies.
@@ -84,6 +130,13 @@ pub struct SxDelta {
     pub(crate) text_size: Option<f32>,
     pub(crate) gap: Option<f32>,
     pub(crate) opacity: Option<f32>,
+    /// M3.2: inset hairline bevel (see [`BevelSpec`]) — the Zed raised face /
+    /// Spotify highlight that ~25 recipe rules needed and could not express.
+    pub(crate) bevel: Option<BevelSpec>,
+    /// M3.2: font-weight hint (400/500/600/700). egui selects weight by FAMILY
+    /// registration rather than a variable axis, so this maps to `strong` at
+    /// >= 600 until per-weight families are registered (advisory, ~30 rules).
+    pub(crate) weight: Option<u16>,
 }
 
 impl SxDelta {
@@ -105,28 +158,66 @@ impl SxDelta {
     pub fn bg_color(mut self, c: Color32) -> Self { self.fill = Some(Fill::Solid(c)); self }
 
     pub fn border(mut self, tone: Tone, width: f32) -> Self {
-        self.border = Some(BorderSpec { color: Fill::Shade(tone, Shade::S500), width });
+        self.border = Some(BorderSpec { color: Fill::Shade(tone, Shade::S500), width, edges: Edges::ALL });
         self
     }
     pub fn border_shade(mut self, tone: Tone, shade: Shade, width: f32) -> Self {
-        self.border = Some(BorderSpec { color: Fill::Shade(tone, shade), width });
+        self.border = Some(BorderSpec { color: Fill::Shade(tone, shade), width, edges: Edges::ALL });
         self
     }
     /// Tinted border: the tone's base color at `alpha`.
     pub fn border_alpha(mut self, tone: Tone, alpha: u8, width: f32) -> Self {
-        self.border = Some(BorderSpec { color: Fill::Alpha(tone, alpha), width });
+        self.border = Some(BorderSpec { color: Fill::Alpha(tone, alpha), width, edges: Edges::ALL });
         self
     }
     /// Border from an explicit raw color — for widgets that resolve their own
     /// color (e.g. a tone-enum pill). The border-side mirror of `bg_color`.
+    /// M3.2: explicit colour + per-edge selection (the recipe path).
+    pub fn border_color_edges(mut self, c: Color32, width: f32, edges: Edges) -> Self {
+        self.border = Some(BorderSpec { color: Fill::Solid(c), width, edges });
+        self
+    }
     pub fn border_color(mut self, c: Color32, width: f32) -> Self {
-        self.border = Some(BorderSpec { color: Fill::Solid(c), width });
+        self.border = Some(BorderSpec { color: Fill::Solid(c), width, edges: Edges::ALL });
         self
     }
 
     pub fn text(mut self, tone: Tone) -> Self { self.text = Some((tone, Shade::S500)); self }
     pub fn text_shade(mut self, tone: Tone, s: Shade) -> Self { self.text = Some((tone, s)); self }
     pub fn text_size(mut self, sz: f32) -> Self { self.text_size = Some(sz); self }
+
+    /// Border on specific EDGES only (M3.2). `border_bottom(Tone::Accent, 2.0)`
+    /// is the tab-underline idiom the vocabulary previously could not express.
+    pub fn border_edges(mut self, tone: Tone, width: f32, edges: Edges) -> Self {
+        self.border = Some(BorderSpec { color: Fill::Shade(tone, Shade::S500), width, edges });
+        self
+    }
+    pub fn border_bottom(self, tone: Tone, width: f32) -> Self {
+        self.border_edges(tone, width, Edges::BOTTOM)
+    }
+    pub fn border_top(self, tone: Tone, width: f32) -> Self {
+        self.border_edges(tone, width, Edges::TOP)
+    }
+    pub fn border_left(self, tone: Tone, width: f32) -> Self {
+        self.border_edges(tone, width, Edges::LEFT)
+    }
+
+    /// Inset hairline bevel (M3.2) — the Zed raised-face / Spotify highlight.
+    pub fn bevel(mut self, top: Option<Fill>, bottom: Option<Fill>, width: f32) -> Self {
+        self.bevel = Some(BevelSpec { top, bottom, width });
+        self
+    }
+    /// Raised face: light top line + dark bottom line (Alto/Mariner buttons).
+    pub fn bevel_raised(self, top: Tone, top_a: u8, bottom_a: u8) -> Self {
+        self.bevel(
+            Some(Fill::Alpha(top, top_a)),
+            Some(Fill::Alpha(Tone::Bg, bottom_a)),
+            1.0,
+        )
+    }
+
+    /// Font weight hint (M3.2). >= 600 renders `strong` today.
+    pub fn weight(mut self, w: u16) -> Self { self.weight = Some(w); self }
 
     // ── Token-tier builders ─────────────────────────────────────────────────
     // These resolve through the unified token scale (`frame_tokens()` × the live
@@ -176,6 +267,86 @@ impl SxDelta {
         self.border_alpha(tone, alpha, st::stroke_thin())
     }
 
+    /// M3.2: paint a border honouring per-edge selection. Falls back to the
+    /// single `rect_stroke` when all four edges are on, so the common path is
+    /// unchanged (same shape count, same tessellation).
+    pub(crate) fn paint_border_edges(
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        cr: CornerRadius,
+        b: BorderSpec,
+        pal: &Palette,
+    ) {
+        let col = b.color.resolve(pal);
+        if col.a() == 0 || b.width <= 0.0 { return; }
+        if b.edges.is_all() {
+            painter.rect_stroke(rect, cr, Stroke::new(b.width, col), StrokeKind::Inside);
+            return;
+        }
+        let stroke = Stroke::new(b.width, col);
+        let h = b.width * 0.5;
+        if b.edges.top {
+            painter.line_segment(
+                [egui::pos2(rect.left(), rect.top() + h), egui::pos2(rect.right(), rect.top() + h)],
+                stroke,
+            );
+        }
+        if b.edges.bottom {
+            painter.line_segment(
+                [egui::pos2(rect.left(), rect.bottom() - h), egui::pos2(rect.right(), rect.bottom() - h)],
+                stroke,
+            );
+        }
+        if b.edges.left {
+            painter.line_segment(
+                [egui::pos2(rect.left() + h, rect.top()), egui::pos2(rect.left() + h, rect.bottom())],
+                stroke,
+            );
+        }
+        if b.edges.right {
+            painter.line_segment(
+                [egui::pos2(rect.right() - h, rect.top()), egui::pos2(rect.right() - h, rect.bottom())],
+                stroke,
+            );
+        }
+    }
+
+    /// M3.2: paint an inset hairline bevel INSIDE `rect` (after the fill).
+    /// Corresponds to CSS `box-shadow: inset 0 ±Npx 0 <color>`.
+    pub(crate) fn paint_bevel(
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        cr: CornerRadius,
+        bev: BevelSpec,
+        pal: &Palette,
+    ) {
+        if !rect.is_finite() || rect.width() < 1.0 || rect.height() < 1.0 { return; }
+        // Inset past the corner arc so the line doesn't overshoot a rounded box.
+        let r = cr.nw.max(cr.ne).max(cr.sw).max(cr.se) as f32;
+        let inset = (r * 0.5).clamp(0.0, 3.0);
+        let h = bev.width * 0.5;
+        if let Some(top) = bev.top {
+            let c = top.resolve(pal);
+            if c.a() > 0 {
+                let y = rect.top() + h;
+                painter.line_segment(
+                    [egui::pos2(rect.left() + inset, y), egui::pos2(rect.right() - inset, y)],
+                    Stroke::new(bev.width, c),
+                );
+            }
+        }
+        if let Some(bottom) = bev.bottom {
+            let c = bottom.resolve(pal);
+            if c.a() > 0 {
+                let y = rect.bottom() - h;
+                painter.line_segment(
+                    [egui::pos2(rect.left() + inset, y), egui::pos2(rect.right() - inset, y)],
+                    Stroke::new(bev.width, c),
+                );
+            }
+        }
+    }
+
     /// Overlay `over`'s set fields on top of `self`.
     #[inline]
     pub(crate) fn merge(self, over: SxDelta) -> SxDelta {
@@ -189,6 +360,8 @@ impl SxDelta {
             text_size: over.text_size.or(self.text_size),
             gap: over.gap.or(self.gap),
             opacity: over.opacity.or(self.opacity),
+            bevel: over.bevel.or(self.bevel),
+            weight: over.weight.or(self.weight),
         }
     }
 
@@ -212,6 +385,16 @@ impl SxDelta {
                 Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
             }
         })
+    }
+
+    /// M3.2 accessors for the extended vocabulary.
+    pub fn bevel_spec(&self) -> Option<BevelSpec> { self.bevel }
+    pub fn weight_hint(&self) -> Option<u16> { self.weight }
+    /// True when the authored weight asks for a bold face (>= 600).
+    pub fn is_strong(&self) -> Option<bool> { self.weight.map(|w| w >= 600) }
+    /// Which edges the border paints (ALL when unauthored).
+    pub fn resolved_border_edges(&self) -> Edges {
+        self.border.map(|b| b.edges).unwrap_or(Edges::ALL)
     }
 
     /// Border colour resolved against a palette (same rationale as `fill_color`).
@@ -348,7 +531,21 @@ impl Sx {
         let mut bc = lerp_color(bc_n, bc_h, hover_t);
         bc = lerp_color(bc, bc_a, active_t);
         if bc.a() > 0 {
-            ui.painter().rect_stroke(rect, cr, Stroke::new(bw, bc), StrokeKind::Inside);
+            // M3.2: honour per-edge selection here too (state-driven paints).
+            let edges = base.border.map(|b| b.edges).unwrap_or(Edges::ALL);
+            if edges.is_all() {
+                ui.painter().rect_stroke(rect, cr, Stroke::new(bw, bc), StrokeKind::Inside);
+            } else {
+                SxDelta::paint_border_edges(
+                    ui.painter(), rect, cr,
+                    BorderSpec { color: Fill::Solid(bc), width: bw, edges }, pal,
+                );
+            }
+        }
+        // M3.2: inset bevel on the state path (base spec; bevels are identity,
+        // not a hover affordance, so they do not lerp).
+        if let Some(bev) = base.bevel {
+            SxDelta::paint_bevel(ui.painter(), rect, cr, bev, pal);
         }
     }
 
@@ -374,11 +571,13 @@ impl Sx {
             painter.rect_filled(rect, cr, fill.resolve(&pal));
         }
         if let Some(b) = d.border {
-            painter.rect_stroke(
-                rect, cr,
-                Stroke::new(b.width, b.color.resolve(&pal)),
-                StrokeKind::Inside,
-            );
+            // M3.2: per-edge borders (tab underlines, ledger hairlines, the
+            // Mariner pane top-stripe). ALL-edges takes the original path.
+            SxDelta::paint_border_edges(painter, rect, cr, b, &pal);
+        }
+        // M3.2: inset bevel last so it reads as an inner edge over the fill.
+        if let Some(bev) = d.bevel {
+            SxDelta::paint_bevel(painter, rect, cr, bev, &pal);
         }
     }
 
