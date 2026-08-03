@@ -114,6 +114,37 @@ from `09` Phase 0.
 
 **Gate to M1:** harness demo + all M0 fixes screenshot-verified + CI green.
 
+> **EXECUTION STATUS (2026-08-03, session 2):**
+> **M2 ✅ COMPLETE** — M2.3/M2.7 landed: `ThemeScope` + `TokenScope` RAII
+> guards give the palette and tokens CSS-subtree semantics. Wired into the pane
+> render path (an inactive pane's ui_kit widgets now use ITS palette, not the
+> active pane's) and Theme Studio (its hand-rolled preview/restore dance is
+> gone). `TokenScope::density(f)` delivers the per-component Density knob
+> CLAUDE.md documented but that only existed as a process global.
+> **M3 ✅ CORE COMPLETE — THE CROWN JEWEL IS PROVEN.**
+> · M3.1 Button consults recipes (295 call sites; `DefaultButtonStyle` is now
+>   the recipe default). `SxDelta::fill_color`/`resolved_border_color` kill the
+>   5×-copy-pasted `match fill` boilerplate.
+> · M3.3 the designed interaction system promoted into ui_kit; 13 hand-rolled
+>   hover sites converted; disabled now dominates.
+> · M3.4 **68 authored recipes across the six design systems**, transcribed
+>   from the React `[data-ds]` rules with CSS line citations, 100% semantic
+>   colour (a test bans hex literals).
+> · HOST WIRING: `setup_theme` installed an EMPTY set unless a pack shipped
+>   one — and none ships. It now installs the authored set for the ACTIVE
+>   STYLE. **This was the last link; the recipe layer is live.**
+> · PROOF: Cadence resolves a larger button radius than Meridien from the SAME
+>   widget default — the pill-vs-square signature the audit called
+>   inexpressible, now data-driven with zero widget-code changes.
+> · Found + fixed a live bug in M3.1 via the agent's registry cross-check:
+>   `Variant::Chrome` returned None, inerting ~12 authored chrome recipes.
+> **Remaining in M3:** M3.2 (Sx vocabulary — the agent produced a ranked
+> "unmappable, needs schema" list: inset bevels ~25 rules, per-side borders
+> ~35, font-weight ~30, gradients, font-family, uppercase, tracking, fixed
+> heights, `gap` on RecipeDelta = cheapest win); M3.5 variant consolidation;
+> M3.6 adoption gate.
+> Sweep: ui_kit 201, design_system 91, gates 000, baseline 623.
+>
 > **EXECUTION STATUS (2026-08-02, session 1):**
 > **M0 ✅ COMPLETE** — harness live (18 reference PNGs + app captures via port
 > 7892), black-shadow/radius/ambient/round-trip bugs fixed, literal sweeps done,
