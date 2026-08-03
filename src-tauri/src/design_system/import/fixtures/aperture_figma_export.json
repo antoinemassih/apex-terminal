@@ -936,6 +936,22 @@
     },
     {
       "collection": "StyleSystem",
+      "name": "card/padding",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 16.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "card/radius",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 20.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
       "name": "chrome/accent_emphasis",
       "type": "FLOAT",
       "valuesByMode": {

@@ -247,6 +247,24 @@ impl StyleSystem {
             // the "lossy pack round-trip" defect the architecture audit called
             // out; adding `shell` without this block broke three import tests
             // immediately, which is the system working.
+            // M1 Change D's `CardRecipe`, finally serialised. It was `None` on
+            // every style until D4 authored the card data, so it round-tripped
+            // trivially and nobody noticed it was never written. Emitted only
+            // when authored; `border_width` is emitted only when `Some`, so
+            // "key absent inside a present card block" IS the None case — the
+            // distinction that matters, since None means no stroke at all.
+            "card": match &self.card {
+                Some(c) => {
+                    let mut m = serde_json::Map::new();
+                    m.insert("radius".into(),  dim!(c.radius));
+                    m.insert("padding".into(), dim!(c.padding));
+                    if let Some(w) = c.border_width {
+                        m.insert("border_width".into(), dim!(w));
+                    }
+                    Value::Object(m)
+                }
+                None => Value::Null,
+            },
             "shell": {
                 "nav":       str_tok!(format!("{:?}", shl.nav)),
                 "dock":      str_tok!(format!("{:?}", shl.dock)),

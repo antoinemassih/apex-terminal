@@ -29,7 +29,7 @@ use std::fmt;
 use super::{
     color_scheme::{rgba, ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
-        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure,
+        Alphas, BevelStyle, CardRecipe, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure,
         Archetype, DockStyle, NavStyle, PaneActiveIndicator, Radii, RailSide, Shadows, ShadowSpec, ShellSpec,
         Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
@@ -617,6 +617,21 @@ impl StyleSystem {
             panel_footer_radius:           read_f32_or(&ch_sec, "panel_footer_radius",           "chrome", d_ch.panel_footer_radius),
         };
 
+        // M1 Change D `CardRecipe`. Absent (or null) = no authored card, which
+        // keeps panel_card.rs on its derived branch. Present-but-without
+        // `border_width` = `None`, i.e. NO STROKE AT ALL — that is Aperture's
+        // `--ds-card-border: none`, and collapsing it to 0.0 would lose the
+        // distinction the design depends on.
+        let card = root.get("card").filter(|v| !v.is_null()).map(|c| {
+            let d = CardRecipe { radius: 0.0, padding: 0.0, border_width: None };
+            CardRecipe {
+                radius:  read_f32_or(c, "radius",  "card", d.radius),
+                padding: read_f32_or(c, "padding", "card", d.padding),
+                border_width: c.get("border_width")
+                    .and_then(|n| read_f32(n, "card.border_width").ok()),
+            }
+        });
+
         // DS-6.0: shell shape. Unknown or absent members fall back to today's
         // shape rather than erroring — a pack written before this block existed
         // must still load. But anything a pack DOES declare has to survive, or
@@ -665,7 +680,7 @@ impl StyleSystem {
             }
         };
 
-        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome, numerals: None, card: None, shell })
+        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome, numerals: None, card, shell })
     }
 }
 
