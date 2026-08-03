@@ -38,3 +38,11 @@ jobs:
       - name: Run recipe-adoption gate (floors)
         if: ${{ !cancelled() }}
         run: bash scripts/recipe_adoption_gate.sh
+
+      # M5: the AST-ish pass for the leak check-design-system.sh documents that
+      # it CANNOT see — the positional corner-radius argument of painter calls.
+      # 139 gated sites (0.0 = square is excluded; that is the design, not a
+      # leak), 84 of them inside the sacred core.rs.
+      - name: Run radius lint (positional corner-radius literals)
+        if: ${{ !cancelled() }}
+        run: python scripts/radius_lint.py

@@ -1,0 +1,34 @@
+# radius-lint per-file budgets — may only FALL.
+# The positional corner-radius argument of painter calls
+# (rect_filled/rect_stroke/rect) must be a token, not a literal.
+# total=139 files=30
+3 src-tauri/src/chart/renderer/gpu.rs
+84 src-tauri/src/chart/renderer/render/pane/core.rs
+5 src-tauri/src/chart/renderer/render/pane/signal_gauges.rs
+1 src-tauri/src/chart/renderer/render/pane/tool_previews.rs
+2 src-tauri/src/chart/renderer/ui/components/toolbar/chart_controls.rs
+2 src-tauri/src/chart/renderer/ui/components/toolbar/top_nav.rs
+3 src-tauri/src/chart/renderer/ui/components/toolbar/window_controls.rs
+1 src-tauri/src/chart/renderer/ui/inputs/inputs.rs
+3 src-tauri/src/chart/renderer/ui/lists/rows/news_row.rs
+1 src-tauri/src/chart/renderer/ui/lists/rows/order_row.rs
+1 src-tauri/src/chart/renderer/ui/lists/rows/table.rs
+1 src-tauri/src/chart/renderer/ui/lists/rows/watchlist_columns.rs
+2 src-tauri/src/chart/renderer/ui/lists/rows/watchlist_row.rs
+2 src-tauri/src/chart/renderer/ui/overlays/kit.rs
+1 src-tauri/src/chart/renderer/ui/panels/indicators_panel.rs
+4 src-tauri/src/chart/renderer/ui/panels/msg_tension_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/object_tree.rs
+3 src-tauri/src/chart/renderer/ui/panels/screener_heatmap.rs
+2 src-tauri/src/chart/renderer/ui/panels/seasonality_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/spread_panel.rs
+2 src-tauri/src/chart/renderer/ui/panels/trade_plan_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/watchlist_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/widget_gallery.rs
+3 src-tauri/src/ui_kit/widgets/heatmap_grid.rs
+1 src-tauri/src/ui_kit/widgets/opacity_picker.rs
+2 src-tauri/src/ui_kit/widgets/panel_section.rs
+3 src-tauri/src/ui_kit/widgets/risk_reward_bar.rs
+1 src-tauri/src/ui_kit/widgets/shadow.rs
+1 src-tauri/src/ui_kit/widgets/toggle_row.rs
+1 src-tauri/src/ui_kit/widgets/trade_card.rs
