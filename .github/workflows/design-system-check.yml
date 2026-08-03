@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Make scripts executable
-        run: chmod +x scripts/check-design-system.sh scripts/style-mig-lint.sh scripts/sx_ratchet.sh
+        run: chmod +x scripts/check-design-system.sh scripts/style-mig-lint.sh scripts/sx_ratchet.sh scripts/recipe_adoption_gate.sh
 
       - name: Run design-system ratchet (per-file budgets)
         run: scripts/check-design-system.sh
@@ -30,3 +30,11 @@ jobs:
       - name: Run legacy-tone ratchet + Sx adoption floor
         if: ${{ !cancelled() }}
         run: bash scripts/sx_ratchet.sh
+
+      # M3.6: the metric the architecture audit said never existed — FLOORS for
+      # recipe-layer adoption (widgets consulting, keys authored, styles with
+      # data). The other gates are ceilings on bad patterns; this one guards
+      # against the design system quietly going dormant again.
+      - name: Run recipe-adoption gate (floors)
+        if: ${{ !cancelled() }}
+        run: bash scripts/recipe_adoption_gate.sh
