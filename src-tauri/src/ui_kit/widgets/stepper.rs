@@ -12,6 +12,7 @@
 use egui::{Color32, FontId, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item, Justify as FlexJustify};
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
@@ -97,15 +98,21 @@ fn paint_horizontal(
     let cy = rect.top() + circle_d * 0.5;
 
     // Compute circle centers evenly distributed.
-    let centers: Vec<f32> = if n == 1 {
-        vec![rect.center().x]
-    } else {
-        let pad = circle_d * 0.5 + 4.0;
-        let left = rect.left() + pad;
-        let right = rect.right() - pad;
-        let step = (right - left) / (n as f32 - 1.0).max(1.0);
-        (0..n).map(|i| left + step * i as f32).collect()
-    };
+    //
+    // M4.3: `let step = (right - left) / (n - 1); … left + step * i` is
+    // hand-rolled `justify-content: space-between` over `circle_d`-wide
+    // children with a 4 px end inset — which is what the flex row below says
+    // directly. (The single-step case is `Justify::Center`, matching the old
+    // `rect.center().x` branch.)
+    let centers: Vec<f32> = Flex::row()
+        .padding_sides(4.0, 4.0, 0.0, 0.0)
+        .justify(if n == 1 { FlexJustify::Center } else { FlexJustify::SpaceBetween })
+        .align(FlexAlign::Start)
+        .items((0..n).map(|_| Item::fixed(circle_d)))
+        .solve(rect.size())
+        .iter()
+        .map(|r| rect.left() + r.center().x)
+        .collect();
 
     // Connector lines first.
     for i in 0..n.saturating_sub(1) {
@@ -162,16 +169,25 @@ fn paint_vertical(
     let painter = ui.painter_at(rect);
     let cx = rect.left() + circle_d * 0.5 + 2.0;
 
+    // M4.3: `rect.top() + row_h * i` (repeated in both loops below) is a
+    // uniform column stack — one flex column of `row_h` children.
+    let rows: Vec<f32> = Flex::column()
+        .items((0..n).map(|_| Item::fixed(row_h)))
+        .solve(rect.size())
+        .iter()
+        .map(|r| rect.top() + r.top())
+        .collect();
+
     // Connector lines between rows.
     for i in 0..n.saturating_sub(1) {
-        let y0 = rect.top() + row_h * i as f32 + circle_d + 1.0;
-        let y1 = rect.top() + row_h * (i + 1) as f32 - 1.0;
+        let y0 = rows[i] + circle_d + 1.0;
+        let y1 = rows[i + 1] - 1.0;
         let col = if i + 1 <= current { line_completed } else { line_future };
         painter.line_segment([Pos2::new(cx, y0), Pos2::new(cx, y1)], Stroke::new(line_thickness, col));
     }
 
     for (i, label) in steps.iter().enumerate() {
-        let cy = rect.top() + row_h * i as f32 + circle_d * 0.5;
+        let cy = rows[i] + circle_d * 0.5;
         let center = Pos2::new(cx, cy);
         paint_circle(&painter, center, circle_d, i, current, &num_font, accent, dim);
         if show_labels {

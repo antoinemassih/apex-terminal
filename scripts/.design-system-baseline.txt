@@ -68,7 +68,7 @@
 1 src-tauri/src/ui_kit/widgets/indicator.rs
 17 src-tauri/src/ui_kit/widgets/input.rs
 1 src-tauri/src/ui_kit/widgets/input_group.rs
-5 src-tauri/src/ui_kit/widgets/kbd.rs
+4 src-tauri/src/ui_kit/widgets/kbd.rs
 1 src-tauri/src/ui_kit/widgets/label.rs
 2 src-tauri/src/ui_kit/widgets/modal.rs
 2 src-tauri/src/ui_kit/widgets/number_stepper.rs

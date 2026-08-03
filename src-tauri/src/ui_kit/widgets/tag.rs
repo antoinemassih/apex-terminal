@@ -13,6 +13,7 @@ use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::{ComponentTheme, get_ambient_recipes};
 use super::tokens::Size;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::sx::{Sx, StyleState};
 use crate::ui_kit::icons::Icon;
@@ -188,27 +189,41 @@ impl<'a> Tag<'a> {
                 );
             }
 
-            let cy = rect.center().y;
-            let mut x = rect.left() + pad_x;
+            // M4.3: the `x += dot_size + icon_gap; … x += label_w; x += icon_gap;`
+            // walk is one flex row — `dot · label · ×` on a uniform `icon_gap`
+            // gutter, inset by the chip's horizontal padding.
+            let mut f = Flex::row()
+                .padding_sides(pad_x, pad_x, 0.0, 0.0)
+                .gap(icon_gap)
+                .align(FlexAlign::Center);
+            if self.dot {
+                f = f.item(Item::fixed(dot_size).cross(dot_size));
+            }
+            f = f.item(Item::content(label_w).shrink(0.0));
+            if self.closable {
+                f = f.item(Item::fixed(close_size).cross(close_size));
+            }
+            let off = rect.min.to_vec2();
+            let mut slots = f.solve(rect.size()).into_iter().map(|r| r.translate(off));
 
             if self.dot {
-                let center = Pos2::new(x + dot_size * 0.5, cy);
-                painter.circle_filled(center, dot_size * 0.5, tone_col);
-                x += dot_size + icon_gap;
+                if let Some(d) = slots.next() {
+                    painter.circle_filled(d.center(), dot_size * 0.5, tone_col);
+                }
             }
 
+            let label_slot = slots.next().unwrap_or(rect);
             painter.text(
-                Pos2::new(x, cy),
+                Pos2::new(label_slot.left(), label_slot.center().y),
                 egui::Align2::LEFT_CENTER,
                 &self.label,
                 FontId::proportional(font_size),
                 tone_col,
             );
-            x += label_w;
 
             if self.closable {
-                x += icon_gap;
-                let close_center = Pos2::new(x + close_size * 0.5, cy);
+                let close_slot = slots.next().unwrap_or(rect);
+                let close_center = close_slot.center();
                 let close_rect = egui::Rect::from_center_size(close_center, Vec2::splat(close_size + 4.0));
                 let close_sense = if self.disabled { Sense::hover() } else { Sense::click() };
                 let close_resp = ui.interact(close_rect, response.id.with("close"), close_sense);

@@ -13,6 +13,7 @@
 use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::sx::{palette_ct, Sx, Tone};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
@@ -82,9 +83,37 @@ impl Alert {
         let close_size: f32 = 12.0;
 
         let avail_w = ui.available_width();
-        let content_left_offset = pad + icon_size + gap;
-        let close_reserve = if self.closable { close_size + gap + pad } else { pad };
-        let text_max_w = (avail_w - content_left_offset - close_reserve).max(40.0);
+
+        // ── Row geometry (flexbox) ──────────────────────────────────────────
+        //
+        // M4.3: the row used to derive its text column by hand —
+        //   `content_left_offset = pad + icon_size + gap`
+        //   `close_reserve       = close_size + gap + pad`
+        //   `text_max_w          = (avail_w - left - reserve).max(40)`
+        // — i.e. the padding token appeared four times and the gutter twice,
+        // in two subtractions that had to stay in sync with the paint anchors
+        // below. That is `icon · text(grows) · ×` with `pad` inset and a `gap`
+        // gutter, and the `.max(40)` is `Item::min`.
+        //
+        // Solved at height 0 on purpose: every child is `Align::Start`, so the
+        // vertical offsets are the padding alone and do NOT depend on the row
+        // height — which is what breaks the measure↔layout circularity here
+        // (the text wraps at the solved column width, and the row height comes
+        // from the wrapped text).
+        let mut f = Flex::row()
+            .padding(pad)
+            .gap(gap)
+            .align(FlexAlign::Start)
+            .item(Item::fixed(icon_size).cross(icon_size))
+            .item(Item::grow(1.0).min(40.0));
+        if self.closable {
+            f = f.item(Item::fixed(close_size).cross(close_size));
+        }
+        let slots = f.solve(Vec2::new(avail_w, 0.0));
+        let icon_slot = slots[0];
+        let text_slot = slots[1];
+        let close_slot = if self.closable { slots.get(2).copied() } else { None };
+        let text_max_w = text_slot.width();
 
         let title_font = TextStyle::BodySm.font_id_in(ui);
         let body_font = TextStyle::BodySm.font_id_in(ui);
@@ -129,8 +158,10 @@ impl Alert {
 
             let painter = ui.painter_at(rect);
 
+            let off = rect.min.to_vec2();
+
             // Leading icon
-            let icon_center = Pos2::new(rect.left() + pad + icon_size * 0.5, rect.top() + pad + icon_size * 0.5);
+            let icon_center = icon_slot.translate(off).center();
             painter.text(
                 icon_center,
                 egui::Align2::CENTER_CENTER,
@@ -140,8 +171,9 @@ impl Alert {
             );
 
             // Title + body
-            let text_x = rect.left() + content_left_offset;
-            let mut y = rect.top() + pad;
+            let text_col_rect = text_slot.translate(off);
+            let text_x = text_col_rect.left();
+            let mut y = text_col_rect.top();
             if let Some(g) = title_galley {
                 // Keep the egui galley for height measurement (drives
                 // `title_h` and the body_y advance), but paint the
@@ -164,8 +196,8 @@ impl Alert {
             painter.galley(Pos2::new(text_x, y), body_galley, dim_color);
 
             // Close button
-            if self.closable {
-                let close_center = Pos2::new(rect.right() - pad - close_size * 0.5, rect.top() + pad + close_size * 0.5);
+            if let Some(slot) = close_slot {
+                let close_center = slot.translate(off).center();
                 let close_rect = egui::Rect::from_center_size(close_center, Vec2::splat(close_size + 6.0));
                 let close_resp = ui.interact(close_rect, response.id.with("alert_close"), Sense::click());
                 let col = if close_resp.hovered() {

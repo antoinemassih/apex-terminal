@@ -15,6 +15,7 @@ use egui::{Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, StrokeKin
 use super::label::Label;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens as st;
 // The card chrome (border/selection) uses the ACTIVE theme via Sx; the swatch
 // it previews deliberately keeps raw `preview_theme.*` reads (it's showing a
@@ -89,7 +90,20 @@ impl<'a> ThemePreviewCard<'a> {
             return response;
         }
 
-        let card_rect = Rect::from_min_size(rect.min, size);
+        // M4.3: the outer stack was two hand-built rects — `Rect::from_min_size
+        // (rect.min, size)` and `Pos2::new(rect.left(), card_rect.bottom() +
+        // gap)` — which carried the gutter twice (once in the `total` height
+        // above, once in the label anchor). One flex column states it once.
+        let stack: Vec<Rect> = Flex::column()
+            .gap(gap)
+            .align(FlexAlign::Stretch)
+            .item(Item::fixed(size.y))
+            .item(Item::fixed(label_h))
+            .solve(total)
+            .into_iter()
+            .map(|r| r.translate(rect.min.to_vec2()))
+            .collect();
+        let card_rect = stack[0];
         let painter = ui.painter_at(card_rect);
 
         // Card background.
@@ -234,10 +248,7 @@ impl<'a> ThemePreviewCard<'a> {
         );
 
         // Label below the card.
-        let label_rect = Rect::from_min_size(
-            Pos2::new(rect.left(), card_rect.bottom() + gap),
-            Vec2::new(rect.width(), label_h),
-        );
+        let label_rect = stack[1];
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(label_rect)

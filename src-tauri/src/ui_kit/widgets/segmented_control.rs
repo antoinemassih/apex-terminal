@@ -15,6 +15,8 @@
 //! ```
 
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
+
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use super::motion;
@@ -158,14 +160,29 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             painter.rect_stroke(total_rect, cr, Stroke::new(st::stroke_thin(), border), StrokeKind::Inside);
         }
 
+        // ── Segment strip geometry ────────────────────────────────────────
+        //
+        // M4.3: `let mut x = total_rect.left(); … x += w + gap;` was the whole
+        // strip. Fixed-width children on a `gap` gutter is the canonical flex
+        // row — and `Item::fixed` (not `content`) is deliberate: the widths
+        // are already scaled/rounded above, and a cursor walk overflows rather
+        // than shrinking when `full_width` rounding over-subscribes the row.
+        let seg_off = total_rect.min.to_vec2();
+        let seg_rects: Vec<Rect> = Flex::row()
+            .gap(gap)
+            .align(FlexAlign::Stretch)
+            .items(seg_widths.iter().map(|w| Item::fixed(*w)))
+            .solve(total_rect.size())
+            .into_iter()
+            .map(|r| r.translate(seg_off))
+            .collect();
+
         // ── Per-segment pass ──────────────────────────────────────────────
-        let mut x = total_rect.left();
         let cy = total_rect.center().y;
         let mut changed = false;
 
         for i in 0..count {
-            let w = seg_widths[i];
-            let seg_rect = Rect::from_min_size(Pos2::new(x, total_rect.top()), Vec2::new(w, height));
+            let seg_rect = seg_rects[i];
 
             let val = self.value_for(i);
             let is_active = *self.selected == val;
@@ -277,8 +294,6 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             }
 
             st::cursor::focus_ring(ui, &seg_resp, pal.base(Tone::Accent));
-
-            x += w + gap;
 
             // Merge response so the outer response reflects clicks.
             outer_resp = outer_resp.union(seg_resp);

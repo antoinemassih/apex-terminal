@@ -37,6 +37,7 @@ use egui::{
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
@@ -301,8 +302,76 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         }
 
         let cy = rect.center().y;
-        let mut left_x = rect.left() + pad_x;
-        let mut right_x = rect.right() - pad_x;
+
+        // ── Inline chrome geometry (flexbox) ────────────────────────────────
+        //
+        // M4.3: this was a two-headed cursor walk — `left_x` marching right
+        // past the icon/divider/prefix while `right_x` marched LEFT past the
+        // trailing icon, suffix and clear button — with the text edit taking
+        // whatever was left between them. Six `+=`/`-=` statements, each
+        // repeating `icon_gap`, and the edit column defined only implicitly.
+        //
+        // In flex it is one row: `icon · prefix · edit(grows) · × · suffix ·
+        // icon`, `icon_gap` gutter, `pad_x` inset. The leading icon's seam is
+        // DOUBLE (`icon_gap`, hairline divider, `icon_gap`) — that is the
+        // `margin_start` on the item after it, which is exactly the case
+        // `Item::margin_start` exists for.
+        let icon_w = font_size * 1.1;
+        let prefix_w = prefix.as_ref().map(|p| {
+            ui.fonts(|f| f.layout_no_wrap(p.clone(), FontId::monospace(font_size), palette_ct(theme).base(Tone::Dim)))
+                .rect
+                .width()
+        });
+        let suffix_w = suffix.as_ref().map(|s| {
+            ui.fonts(|f| f.layout_no_wrap(s.clone(), FontId::monospace(font_size), palette_ct(theme).base(Tone::Dim)))
+                .rect
+                .width()
+        });
+        let show_clear = clearable && !value.is_empty() && !disabled;
+
+        let mut f = Flex::row()
+            .padding_sides(pad_x, pad_x, 0.0, 0.0)
+            .gap(icon_gap)
+            .align(FlexAlign::Center);
+        if leading_icon.is_some() {
+            f = f.item(Item::fixed(icon_w));
+        }
+        if let Some(w) = prefix_w {
+            // The extra gutter the old code spent on the divider band.
+            let mut it = Item::content(w).shrink(0.0);
+            if leading_icon.is_some() {
+                it = it.margin_start(icon_gap);
+            }
+            f = f.item(it);
+        }
+        {
+            let mut it = Item::grow(1.0).align_self(FlexAlign::Stretch);
+            if leading_icon.is_some() && prefix_w.is_none() {
+                it = it.margin_start(icon_gap);
+            }
+            f = f.item(it);
+        }
+        if show_clear {
+            f = f.item(Item::fixed(icon_w));
+        }
+        if let Some(w) = suffix_w {
+            f = f.item(Item::content(w).shrink(0.0));
+        }
+        if trailing_icon.is_some() {
+            f = f.item(Item::fixed(icon_w));
+        }
+
+        let chrome_off = rect.min.to_vec2();
+        let mut chrome = f
+            .solve(rect.size())
+            .into_iter()
+            .map(|r| r.translate(chrome_off));
+        let leading_slot = leading_icon.map(|_| chrome.next().unwrap_or(rect));
+        let prefix_slot = prefix_w.map(|_| chrome.next().unwrap_or(rect));
+        let edit_slot = chrome.next().unwrap_or(rect);
+        let clear_slot = if show_clear { chrome.next() } else { None };
+        let suffix_slot = suffix_w.map(|_| chrome.next().unwrap_or(rect));
+        let trailing_slot = trailing_icon.map(|_| chrome.next().unwrap_or(rect));
 
         let icon_color_idle = palette_ct(theme).base(Tone::Dim);
         let icon_color_focus = palette_ct(theme).base(Tone::Accent);
@@ -314,83 +383,70 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
 
         let painter = ui.painter_at(rect);
 
-        if let Some(ic) = leading_icon {
+        if let (Some(ic), Some(slot)) = (leading_icon, leading_slot) {
             painter.text(
-                Pos2::new(left_x, cy),
+                Pos2::new(slot.left(), cy),
                 egui::Align2::LEFT_CENTER,
                 ic,
-                FontId::proportional(font_size * 1.1),
+                FontId::proportional(icon_w),
                 icon_color,
             );
-            left_x += font_size * 1.1 + icon_gap;
-            let div_x = (left_x).round() + 0.5;
+            // Hairline sits one gutter after the icon — the midpoint of the
+            // doubled seam declared by the `margin_start` above.
+            let div_x = (slot.right() + icon_gap).round() + 0.5;
             painter.line_segment(
                 [Pos2::new(div_x, rect.top() + st::gap_xs()), Pos2::new(div_x, rect.bottom() - st::gap_xs())],
                 Stroke::new(st::stroke_thin(), st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_strong())),
             );
-            left_x += icon_gap;
         }
 
-        if let Some(p) = &prefix {
-            let g = ui.fonts(|f| {
-                f.layout_no_wrap(p.clone(), FontId::monospace(font_size), muted)
-            });
+        if let (Some(p), Some(slot)) = (&prefix, prefix_slot) {
             painter.text(
-                Pos2::new(left_x, cy),
+                Pos2::new(slot.left(), cy),
                 egui::Align2::LEFT_CENTER,
                 p,
                 FontId::monospace(font_size),
                 muted,
             );
-            left_x += g.rect.width() + icon_gap;
         }
 
-        if let Some(ic) = trailing_icon {
+        if let (Some(ic), Some(slot)) = (trailing_icon, trailing_slot) {
             painter.text(
-                Pos2::new(right_x, cy),
+                Pos2::new(slot.right(), cy),
                 egui::Align2::RIGHT_CENTER,
                 ic,
-                FontId::proportional(font_size * 1.1),
+                FontId::proportional(icon_w),
                 icon_color,
             );
-            right_x -= font_size * 1.1 + icon_gap;
         }
 
-        if let Some(s) = &suffix {
-            let g = ui.fonts(|f| {
-                f.layout_no_wrap(s.clone(), FontId::monospace(font_size), muted)
-            });
+        if let (Some(s), Some(slot)) = (&suffix, suffix_slot) {
             painter.text(
-                Pos2::new(right_x, cy),
+                Pos2::new(slot.right(), cy),
                 egui::Align2::RIGHT_CENTER,
                 s,
                 FontId::monospace(font_size),
                 muted,
             );
-            right_x -= g.rect.width() + icon_gap;
         }
 
         let mut clear_rect: Option<Rect> = None;
-        if clearable && !value.is_empty() && !disabled {
-            let sz = font_size * 1.1;
-            let r = Rect::from_center_size(Pos2::new(right_x - sz * 0.5, cy), Vec2::splat(sz));
+        if let Some(slot) = clear_slot {
+            let r = Rect::from_center_size(Pos2::new(slot.right() - icon_w * 0.5, cy), Vec2::splat(icon_w));
             painter.text(
                 r.center(),
                 egui::Align2::CENTER_CENTER,
                 crate::ui_kit::icons::Icon::X,
-                FontId::proportional(sz),
+                FontId::proportional(icon_w),
                 muted,
             );
             clear_rect = Some(r);
-            right_x -= sz + icon_gap;
         }
 
-        let edit_left = left_x;
-        let edit_right = right_x;
-        let edit_w = (edit_right - edit_left).max(0.0);
+        let edit_w = edit_slot.width().max(0.0);
         let edit_rect = Rect::from_min_max(
-            Pos2::new(edit_left, rect.top() + 1.0),
-            Pos2::new(edit_right, rect.bottom() - 1.0),
+            Pos2::new(edit_slot.left(), rect.top() + 1.0),
+            Pos2::new(edit_slot.right(), rect.bottom() - 1.0),
         );
 
         let pre_value = value.clone();
@@ -427,7 +483,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             if let Some(ph) = &placeholder {
                 let painter2 = ui.painter_at(rect);
                 painter2.text(
-                    Pos2::new(edit_left, cy),
+                    Pos2::new(edit_slot.left(), cy),
                     egui::Align2::LEFT_CENTER,
                     ph,
                     font_id.clone(),

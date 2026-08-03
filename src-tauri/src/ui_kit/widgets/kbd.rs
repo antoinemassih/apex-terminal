@@ -5,7 +5,9 @@
 //!   ui.add(Kbd::new("Ctrl+K"));
 //!   ui.add(Kbd::sequence(&["Cmd", "Shift", "P"]));
 
-use egui::{FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
+use egui::{FontId, Response, Sense, Ui, Vec2, Widget};
+
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
@@ -58,7 +60,17 @@ impl<'a> Kbd<'a> {
         let text_col = pal.base(Tone::Text);
         let dim = pal.base(Tone::Dim);
 
-        // Pre-measure each cap.
+        // Pre-measure each cap and each "+" joiner.
+        //
+        // M4.3: the chord used to be a cursor walk with THREE different
+        // advances (`x += w`, `x += plus_gap`, `x += pw + plus_gap`). It is
+        // really just an alternating strip — cap, joiner, cap, … — on a
+        // `plus_gap` gutter, which is one flex row.
+        let plus_w = ui
+            .fonts(|f| f.layout_no_wrap("+".to_string(), FontId::monospace(font_size), dim))
+            .rect
+            .width();
+
         let mut cap_widths: Vec<f32> = Vec::with_capacity(self.keys.len());
         let mut total_w: f32 = 0.0;
         for (i, k) in self.keys.iter().enumerate() {
@@ -67,8 +79,7 @@ impl<'a> Kbd<'a> {
             cap_widths.push(w);
             total_w += w;
             if i + 1 < self.keys.len() {
-                let plus_g = ui.fonts(|f| f.layout_no_wrap("+".to_string(), FontId::monospace(font_size), dim));
-                total_w += plus_gap * 2.0 + plus_g.rect.width();
+                total_w += plus_gap * 2.0 + plus_w;
             }
         }
 
@@ -77,11 +88,22 @@ impl<'a> Kbd<'a> {
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
-            let cy = rect.center().y;
-            let mut x = rect.left();
+
+            // `cap · + · cap · …`, `plus_gap` between every pair. The caps
+            // stretch to the strip height (they used to be built explicitly
+            // from `rect.top()` + `cap_h`); the joiners are centred glyphs.
+            let mut f = Flex::row().gap(plus_gap).align(FlexAlign::Center);
+            for (i, w) in cap_widths.iter().enumerate() {
+                f = f.item(Item::fixed(*w).cross(cap_h));
+                if i + 1 < cap_widths.len() {
+                    f = f.item(Item::fixed(plus_w));
+                }
+            }
+            let off = rect.min.to_vec2();
+            let slots: Vec<_> = f.solve(rect.size()).into_iter().map(|r| r.translate(off)).collect();
+
             for (i, k) in self.keys.iter().enumerate() {
-                let w = cap_widths[i];
-                let cap_rect = egui::Rect::from_min_size(Pos2::new(x, rect.top()), Vec2::new(w, cap_h));
+                let cap_rect = slots[i * 2];
                 cap_sx.paint_box_at(&painter, cap_rect, theme);
                 painter.text(
                     cap_rect.center(),
@@ -90,19 +112,14 @@ impl<'a> Kbd<'a> {
                     FontId::monospace(font_size),
                     text_col,
                 );
-                x += w;
                 if i + 1 < self.keys.len() {
-                    x += plus_gap;
-                    let plus_g = ui.fonts(|f| f.layout_no_wrap("+".to_string(), FontId::monospace(font_size), dim));
-                    let pw = plus_g.rect.width();
                     painter.text(
-                        Pos2::new(x + pw * 0.5, cy),
+                        slots[i * 2 + 1].center(),
                         egui::Align2::CENTER_CENTER,
                         "+",
                         FontId::monospace(font_size),
                         dim,
                     );
-                    x += pw + plus_gap;
                 }
             }
         }

@@ -760,7 +760,7 @@ mod tests {
                 subtle: 0.03, soft: 0.10, muted: 0.22, mid: 0.45, strong: 0.70, opaque: 0.99, header_border: 0.15,
             },
             elevation: Elevation { l1: 1.08, l2: 0.92, l3: 0.85 },
-            density: Density { factor: 0.9, row_height_dense: 20.0, row_height_comfortable: 30.0 },
+            density: Density { factor: 0.9, row_height_dense: 20.0, row_height_comfortable: 30.0, ..Density::default() },
             shadows: Shadows {
                 card:     ShadowSpec { blur: 6.0,  spread: 1.0, offset_x: 1.0, offset_y: 3.0, alpha: 0.25 },
                 modal:    ShadowSpec { blur: 20.0, spread: 2.0, offset_x: 0.0, offset_y: 6.0, alpha: 0.45 },

@@ -925,19 +925,19 @@ impl<'a> PanelSectionGroup<'a> {
         // mutate heights[i] and heights[i+1] together.
         let base_id = ui.id().with("ui_kit_panel_section_group");
         let mut hovered_divider: Option<usize> = None;
+
+        // M4.3: the divider band positions were an O(n²) prefix sum recomputed
+        // inside the loop (`let mut y = rect.top(); for j in 0..=i { y +=
+        // heights[j]; if j < i { y += DIVIDER_BAND_H } }`). That is a flex
+        // COLUMN whose gutter is the divider band — solved once.
+        //
+        // Solving once outside the loop is exact, not an approximation: a drag
+        // on divider `i` moves height from `heights[i]` to `heights[i+1]`, so
+        // every prefix sum at index > i is unchanged, and prefixes at index < i
+        // were already consumed.
+        let drag_bands = section_group_bands(rect, &heights);
         for i in 0..n.saturating_sub(1) {
-            // Compute divider band y-position from current heights.
-            let mut y = rect.top();
-            for j in 0..=i {
-                y += heights[j];
-                if j < i {
-                    y += DIVIDER_BAND_H;
-                }
-            }
-            let div_rect = Rect::from_min_size(
-                Pos2::new(rect.left(), y),
-                Vec2::new(rect.width(), DIVIDER_BAND_H),
-            );
+            let div_rect = drag_bands[i];
             // Expand hit rect a couple px for ease of grabbing.
             let hit_rect = div_rect.expand2(Vec2::new(0.0, 2.0));
             let resp = ui.interact(
@@ -978,47 +978,70 @@ impl<'a> PanelSectionGroup<'a> {
         }
 
         // ── Paint sections + dividers ──────────────────────────────────
+        //
+        // Re-solved against the POST-drag heights (the drag above may have
+        // moved one band).
+        let section_rects = section_group_slots(rect, &heights);
+        let bands = section_group_bands(rect, &heights);
+
         let mut builder = PanelSectionGroupBuilder {
             ui,
             t,
-            outer_rect: rect,
-            heights: &heights,
-            divider_h: DIVIDER_BAND_H,
+            rects: &section_rects,
             index: 0,
-            cursor_y: rect.top(),
             hovered_divider,
         };
         body(&mut builder);
 
         // Paint dividers AFTER section bodies so the grippy sits on top
         // of any section bottom-rule.
-        for i in 0..n.saturating_sub(1) {
-            let mut y = rect.top();
-            for j in 0..=i {
-                y += heights[j];
-                if j < i {
-                    y += DIVIDER_BAND_H;
-                }
-            }
-            let div_rect = Rect::from_min_size(
-                Pos2::new(rect.left(), y),
-                Vec2::new(rect.width(), DIVIDER_BAND_H),
-            );
-            paint_grippy_divider(builder.ui, t, div_rect, hovered_divider == Some(i));
+        for (i, div_rect) in bands.iter().enumerate() {
+            paint_grippy_divider(builder.ui, t, *div_rect, hovered_divider == Some(i));
         }
     }
 }
 
+// ─── Section-group stack: flex spec (M4.3) ──────────────────────────────────
+//
+// N stacked sections separated by a `DIVIDER_BAND_H` grab band is literally
+// `flex-direction: column; gap: DIVIDER_BAND_H` — so the section rects and the
+// divider bands both fall out of one solve, instead of three separate
+// hand-rolled prefix sums (two O(n²) loops plus the builder's `cursor_y`).
+
+/// Solve the section stack. Returns one absolute rect per section.
+fn section_group_slots(rect: Rect, heights: &[f32]) -> Vec<Rect> {
+    Flex::column()
+        .gap(DIVIDER_BAND_H)
+        .align(FlexAlign::Stretch)
+        .items(heights.iter().map(|h| Item::fixed(h.max(0.0))))
+        .solve(rect.size())
+        .into_iter()
+        .map(|r| r.translate(rect.min.to_vec2()))
+        .collect()
+}
+
+/// The `n - 1` divider bands — the flex GUTTERS between the solved sections.
+fn section_group_bands(rect: Rect, heights: &[f32]) -> Vec<Rect> {
+    let slots = section_group_slots(rect, heights);
+    slots
+        .windows(2)
+        .map(|w| {
+            Rect::from_min_size(
+                Pos2::new(rect.left(), w[0].bottom()),
+                Vec2::new(rect.width(), DIVIDER_BAND_H),
+            )
+        })
+        .collect()
+}
+
 /// Builder handed to the closure passed to [`PanelSectionGroup::show`].
-/// Each call to [`Self::section`] consumes one fraction slot.
+/// Each call to [`Self::section`] consumes one solved slot.
 pub struct PanelSectionGroupBuilder<'u, T: ComponentTheme = crate::ui_kit::widgets::theme::PortableTheme> {
     ui: &'u mut Ui,
     t: &'u T,
-    outer_rect: Rect,
-    heights: &'u [f32],
-    divider_h: f32,
+    /// Pre-solved section rects, in order (see [`section_group_slots`]).
+    rects: &'u [Rect],
     index: usize,
-    cursor_y: f32,
     hovered_divider: Option<usize>,
 }
 
@@ -1032,14 +1055,12 @@ impl<'u, T: ComponentTheme> PanelSectionGroupBuilder<'u, T> {
         F: FnOnce(&mut Ui, &T),
     {
         let i = self.index;
-        if i >= self.heights.len() {
+        if i >= self.rects.len() {
             return;
         }
-        let h = self.heights[i].max(0.0);
-        let section_rect = Rect::from_min_size(
-            Pos2::new(self.outer_rect.left(), self.cursor_y),
-            Vec2::new(self.outer_rect.width(), h),
-        );
+        // M4.3: was a `cursor_y` walk (`self.cursor_y += h; … += divider_h`).
+        // The slot is now read straight out of the group's solved column.
+        let section_rect = self.rects[i];
 
         if section_rect.height() > 0.5 {
             let mut child = self.ui.new_child(
@@ -1051,10 +1072,6 @@ impl<'u, T: ComponentTheme> PanelSectionGroupBuilder<'u, T> {
             add_contents(&mut child, self.t);
         }
 
-        self.cursor_y += h;
-        if i + 1 < self.heights.len() {
-            self.cursor_y += self.divider_h;
-        }
         self.index += 1;
         let _ = self.hovered_divider; // silence unused on this path
     }
@@ -1558,5 +1575,99 @@ fn paint_grippy_divider<T: ComponentTheme>(ui: &mut Ui, t: &T, rect: Rect, hover
     let xs = [cx - (dot_r * 2.0 + gap), cx, cx + (dot_r * 2.0 + gap)];
     for x in xs {
         painter.circle_filled(Pos2::new(x, cy), dot_r, dot_color);
+    }
+}
+
+// ─── M4.3: section-group stack tests ────────────────────────────────────────
+//
+// The stack used to be three independent hand-rolled prefix sums (two O(n²)
+// loops over `heights` plus the builder's `cursor_y`). Any one of them could
+// drift out of step with the other two and nothing would catch it. They are
+// now one solve, and these assertions pin it.
+
+#[cfg(test)]
+mod section_group_layout_tests {
+    use super::*;
+
+    fn approx(a: f32, b: f32) -> bool { (a - b).abs() < 0.01 }
+
+    fn body() -> Rect {
+        Rect::from_min_size(egui::pos2(4.0, 10.0), Vec2::new(240.0, 300.0))
+    }
+
+    /// Sections stack top-down, each separated by exactly one divider band —
+    /// what `y += heights[j]; if j < i { y += DIVIDER_BAND_H }` computed.
+    #[test]
+    fn sections_stack_with_one_divider_band_between_each() {
+        let r = body();
+        let h = [100.0, 80.0, 60.0];
+        let s = section_group_slots(r, &h);
+        assert_eq!(s.len(), 3);
+        assert!(approx(s[0].top(), r.top()), "got {}", s[0].top());
+        assert!(approx(s[0].height(), 100.0));
+        assert!(approx(s[1].top(), s[0].bottom() + DIVIDER_BAND_H), "got {}", s[1].top());
+        assert!(approx(s[2].top(), s[1].bottom() + DIVIDER_BAND_H), "got {}", s[2].top());
+    }
+
+    /// Sections span the group's full width (the old rects were built from
+    /// `outer_rect.left()` / `.width()` by hand).
+    #[test]
+    fn sections_span_the_full_group_width() {
+        let r = body();
+        let s = section_group_slots(r, &[50.0, 50.0]);
+        assert!(approx(s[0].left(), r.left()));
+        assert!(approx(s[0].width(), r.width()));
+    }
+
+    /// There are exactly `n - 1` bands and each one IS the gutter — it starts
+    /// where a section ends and ends where the next begins.
+    #[test]
+    fn bands_are_the_gutters_between_sections() {
+        let r = body();
+        let h = [100.0, 80.0, 60.0];
+        let s = section_group_slots(r, &h);
+        let b = section_group_bands(r, &h);
+        assert_eq!(b.len(), 2);
+        for i in 0..2 {
+            assert!(approx(b[i].top(), s[i].bottom()), "band {i} top {}", b[i].top());
+            assert!(approx(b[i].bottom(), s[i + 1].top()), "band {i} bottom {}", b[i].bottom());
+            assert!(approx(b[i].height(), DIVIDER_BAND_H));
+        }
+    }
+
+    /// A single section has no dividers and takes its whole height.
+    #[test]
+    fn one_section_has_no_bands() {
+        let r = body();
+        let s = section_group_slots(r, &[120.0]);
+        assert_eq!(s.len(), 1);
+        assert!(section_group_bands(r, &[120.0]).is_empty());
+    }
+
+    /// A drag transfers height between two ADJACENT sections, so every band
+    /// after the dragged one is unmoved. This is what makes solving the drag
+    /// bands ONCE (outside the loop) exact rather than an approximation.
+    #[test]
+    fn transferring_height_between_neighbours_does_not_move_later_bands() {
+        let r = body();
+        let before = [100.0, 80.0, 60.0];
+        let after = [120.0, 60.0, 60.0]; // divider 0 dragged down by 20
+        let b0 = section_group_bands(r, &before);
+        let b1 = section_group_bands(r, &after);
+        assert!(approx(b0[1].top(), b1[1].top()),
+            "band 1 moved: {} -> {}", b0[1].top(), b1[1].top());
+        assert!((b1[0].top() - b0[0].top() - 20.0).abs() < 0.01);
+    }
+
+    /// Zero / negative heights happen on the first frame before fractions are
+    /// normalised; they must not panic or invert a rect.
+    #[test]
+    fn degenerate_heights_do_not_panic() {
+        let r = body();
+        let s = section_group_slots(r, &[0.0, -5.0, 10.0]);
+        assert_eq!(s.len(), 3);
+        for rect in s {
+            assert!(rect.height() >= 0.0);
+        }
     }
 }

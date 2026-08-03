@@ -36,6 +36,7 @@ use egui::{
 use super::motion;
 use super::theme::{ComponentTheme, get_ambient_recipes};
 use super::tokens::Size;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::sx::{palette_ct, Sx, StyleState, Tone};
 use crate::ui_kit::icons::Icon;
@@ -373,16 +374,38 @@ fn paint_tabs(
     let primary_released = ui.ctx().input(|i| i.pointer.any_released() && !i.pointer.primary_down());
 
     // Compute base rects (un-shifted).
-    let mut base_rects: Vec<Rect> = Vec::with_capacity(n);
-    {
-        let mut cx = x;
+    //
+    // M4.3: `let mut cx = x; for w in &effective_widths { … cx += *w; }` — a
+    // butt-jointed strip of intrinsic widths, which is a zero-gutter flex row.
+    // The `+` button rides along as the last item so `x` (end-of-tabs) falls
+    // out of the solve instead of being carried in the loop variable.
+    //
+    // The alignment offset `x` stays hand-computed on purpose: tabs never
+    // squeeze, so an overflowing strip must clamp to the start edge
+    // (`.max(0.0)`), whereas `Justify::Center` would centre the overflow and
+    // push the first tab off the left of the strip.
+    let base_rects: Vec<Rect> = {
+        let mut f = Flex::row().gap(0.0).align(FlexAlign::Stretch);
         for w in &effective_widths {
-            let r = Rect::from_min_size(Pos2::new(cx, strip_rect.top()), Vec2::new(*w, row_h));
-            base_rects.push(r);
-            cx += *w;
+            f = f.item(Item::fixed(*w));
         }
-        x = cx; // x now points to end-of-tabs (where + button goes)
-    }
+        if addable {
+            f = f.item(Item::fixed(row_h));
+        }
+        let origin = Vec2::new(x, strip_rect.top());
+        let solved = f.solve(Vec2::new(strip_total.max(strip_rect.width()), row_h));
+        if addable {
+            // The last slot IS the `+` button; `x` now points at its left edge.
+            x += solved[n].min.x;
+        } else {
+            x += solved.last().map(|r| r.max.x).unwrap_or(0.0);
+        }
+        solved
+            .into_iter()
+            .take(n)
+            .map(|r| r.translate(origin))
+            .collect()
+    };
 
     // Drag-reorder live displacement: figure the "drop index" based on pointer x.
     let mut drop_index: Option<usize> = None;

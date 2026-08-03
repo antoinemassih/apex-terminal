@@ -42,6 +42,7 @@ use egui::{
 use serde::{Deserialize, Serialize};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::sx::{palette_ct, Tone};
 // ContextMenu / MenuItem / DangerMenuItem are available for future enhancement
 // (Tier B: themed context menus). For now we use egui's built-in context_menu
@@ -931,26 +932,38 @@ fn draw_pane_chrome(
         st::color_alpha(palette_ct(theme).base(Tone::Surface), st::alpha_subtle()),
     );
 
+    // ── Header chrome: `label …… ×`, `gap_xs` inset on both ends ──
+    //
+    // M4.3: this used to be two independent hand-computed anchors —
+    // `header_rect.left() + gap_xs()` and
+    // `header_rect.right() - close_sz * 0.5 - gap_xs()` — which meant the two
+    // ends of the same strip carried the padding token twice, in two different
+    // forms (one additive, one with a half-size correction baked in). One flex
+    // row states the inset once and pins the close button with a `grow` spacer.
+    //
+    // 14 px is intentional for the close square: minimum comfortable tap
+    // target for a close glyph.
+    let close_sz = 14.0_f32;
+    let head_slots = Flex::row()
+        .padding_sides(st::gap_xs(), st::gap_xs(), 0.0, 0.0)
+        .gap(0.0)
+        .align(FlexAlign::Center)
+        .item(Item::grow(1.0))
+        .item(Item::fixed(close_sz).cross(close_sz))
+        .solve(header_rect.size());
+    let head_off = header_rect.min.to_vec2();
+    let label_slot = head_slots[0].translate(head_off);
+    let close_rect = head_slots[1].translate(head_off);
+
     // Title label.
-    let label_x = header_rect.left() + st::gap_xs();
     ui.painter().text(
-        Pos2::new(label_x, header_rect.center().y),
+        Pos2::new(label_slot.left(), header_rect.center().y),
         egui::Align2::LEFT_CENTER,
         format!("Pane {}", id.0),
         egui::FontId::proportional(st::font_xs()),
         st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong()),
     );
 
-    // Close "×" button — icon-sized square in the right side of header.
-    // 14 px is intentional: minimum comfortable tap target for a close glyph.
-    let close_sz   = 14.0_f32;
-    let close_rect = Rect::from_center_size(
-        Pos2::new(
-            header_rect.right() - close_sz * 0.5 - st::gap_xs(),
-            header_rect.center().y,
-        ),
-        Vec2::splat(close_sz),
-    );
     let close_id   = ui.make_persistent_id(("pg_close_btn", id.0));
     let close_resp = ui.interact(close_rect, close_id, Sense::click());
 

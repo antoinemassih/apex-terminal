@@ -36,7 +36,9 @@
 //!
 //! Sister widgets: [`Tag`], [`Badge`], [`Indicator`], [`Alert`].
 
-use egui::{FontId, Pos2, Sense, Ui, Vec2};
+use egui::{FontId, Sense, Ui, Vec2};
+
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 
 use crate::ui_kit::tokens::{
     alpha_hint, alpha_muted, color_alpha, font_xs, gap_2xs, gap_xs,
@@ -126,19 +128,31 @@ impl<'a> StatusPill<'a> {
         let pill = match self.size { Size::Xs => pill.rounded_sm(), _ => pill.rounded_md() };
         pill.paint_box_at(&painter, rect, t);
 
-        let cy = rect.center().y;
-        let mut x = rect.left() + pad_x;
+        // M4.3: `let mut x = rect.left() + pad_x; … x += dot_size + dot_gap;`
+        // is one flex row — `dot · label`, inset by the pill's horizontal
+        // padding, children centred on the pill's mid-line.
+        let mut f = Flex::row()
+            .padding_sides(pad_x, pad_x, 0.0, 0.0)
+            .gap(dot_gap)
+            .align(FlexAlign::Center);
+        if self.dot {
+            f = f.item(Item::fixed(dot_size).cross(dot_size));
+        }
+        f = f.item(Item::galley(&galley).shrink(0.0).cross(galley.size().y));
+        let off = rect.min.to_vec2();
+        let mut slots = f.solve(rect.size()).into_iter().map(|r| r.translate(off));
 
         // Optional status dot.
         if self.dot {
-            let dot_center = Pos2::new(x + dot_size * 0.5, cy);
-            painter.circle_filled(dot_center, dot_size * 0.5, tone_color);
-            x += dot_size + dot_gap;
+            if let Some(d) = slots.next() {
+                painter.circle_filled(d.center(), dot_size * 0.5, tone_color);
+            }
         }
 
         // Label text.
-        let th = galley.size().y;
-        painter.galley(Pos2::new(x, cy - th * 0.5), galley, tone_color);
+        if let Some(l) = slots.next() {
+            painter.galley(l.min, galley, tone_color);
+        }
     }
 }
 
