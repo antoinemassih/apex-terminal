@@ -1586,3 +1586,50 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod card_duplication_tests {
+    use super::*;
+
+    /// TWO MECHANISMS DESCRIBE A CARD, and they disagree.
+    ///
+    /// - `StyleSystem.card: Option<CardRecipe>` (M1 Change D) — radius,
+    ///   padding, border_width. **Consumed** by `ui_kit/widgets/panel_card.rs`.
+    /// - the `"card"` recipe key — radius, px/py padding, border. Authored by
+    ///   all six styles and **consumed by nothing**.
+    ///
+    /// This is the architecture audit's headline defect ("10 sources of truth")
+    /// reproduced in miniature, and DS-6.0 D4 made it worse: I authored
+    /// `CardRecipe` data for four styles without noticing the recipe key
+    /// already carried per-theme data for all six.
+    ///
+    /// They agree on Aperture (radius 20 / pad 16 / no border) because both
+    /// were derived from the same brief. They disagree on Meridien — the
+    /// recipe says `RadiusTier::Md` (6) with 22px padding, the CardRecipe says
+    /// square (0) with 14px — and neither is obviously wrong: the recipe was
+    /// transcribed from the React `[data-ds]` rules, the CardRecipe followed
+    /// Meridien's stated MONO/UPPERCASE/SQUARE identity.
+    ///
+    /// Resolving that needs the design reference, not a guess, so this test
+    /// does not pick a winner. It PINS the situation: every style that
+    /// authors a `card` recipe is listed, so the duplication stays visible and
+    /// a new one cannot be added silently while the decision is outstanding.
+    ///
+    /// When the decision lands: make `panel_card` consult the recipe (the
+    /// designed mechanism, authored by all six) with `CardRecipe` as fallback,
+    /// delete the loser, and delete this test.
+    #[test]
+    fn card_is_described_by_two_competing_mechanisms() {
+        let styles = ["aperture", "cadence", "alto", "mariner", "lucid", "meridien"];
+        let with_recipe: Vec<&str> = styles
+            .iter()
+            .copied()
+            .filter(|s| builtin_recipes(s).get("card").is_some())
+            .collect();
+        assert_eq!(
+            with_recipe, styles,
+            "all six styles author a `card` recipe that nothing consumes; if this \
+             set changed, the duplication was touched — see this test's docs"
+        );
+    }
+}
