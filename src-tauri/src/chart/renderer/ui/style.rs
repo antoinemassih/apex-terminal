@@ -2815,8 +2815,17 @@ pub fn list_style_presets() -> Vec<(u8, String)> {
         .collect()
 }
 
+/// The active style's index.
+///
+/// `ACTIVE_STYLE` is private, and every caller that wanted to save-and-restore
+/// it around a temporary style switch was reaching into the atomic directly —
+/// only possible inside this module, so tests elsewhere could not do it at all.
+pub fn active_style_idx() -> u8 {
+    ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire)
+}
+
 pub fn current() -> StyleSettings {
-    let id = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
+    let id = active_style_idx();
     get_style_settings(id)
 }
 

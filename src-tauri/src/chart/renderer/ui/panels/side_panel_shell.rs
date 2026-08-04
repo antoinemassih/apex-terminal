@@ -178,22 +178,49 @@ pub enum Width {
 }
 
 impl Width {
-    /// Default starting width for the preset.
+    /// Default starting width for the preset — **from the active style**.
+    ///
+    /// M4.6. These were pinned at 240 / 300 / 400 while `Density.rail_narrow /
+    /// rail_medium / rail_wide` carried exactly those numbers per style, and
+    /// `rail_width_*()` had been exposed to read them since M4.5. Nothing
+    /// called them: the structural tokens existed and this, their only real
+    /// consumer, ignored them.
+    ///
+    /// That is what the architecture audit meant by the shell having "no home"
+    /// for its proportions — the rails were independent `SidePanel`
+    /// reservations, each restating a constant, so a theme could breathe
+    /// gutters but never change the shell's PROPORTIONS. It can now: the
+    /// editorial systems want a 300px rail where a dense one wants less, and
+    /// that is a `Density` edit rather than a code change.
+    ///
+    /// Defaults are unchanged — every builtin still authors 240 / 300 / 400 —
+    /// so this moves no pixels today. It makes the numbers reachable.
     pub fn px(self) -> f32 {
         match self {
-            Width::Narrow => 240.0,
-            Width::Medium => 300.0,
-            Width::Wide => 400.0,
+            Width::Narrow => crate::ui_kit::style::rail_width_narrow(),
+            Width::Medium => crate::ui_kit::style::rail_width_medium(),
+            Width::Wide   => crate::ui_kit::style::rail_width_wide(),
         }
     }
-    /// Default resize bounds — generous enough that the preset comfortably
-    /// covers shrinking + growing without callers needing to override.
+
+    /// Default resize bounds, derived from the preset's themed width.
+    ///
+    /// Previously three more pinned pairs, which would have drifted out of any
+    /// relationship with `px()` the moment a style authored different rails —
+    /// a `Wide` bound of 620 inside a theme whose wide rail is 300 is not a
+    /// bound, it is a leftover.
+    ///
+    /// The old pairs were 180..360 / 220..480 / 300..620, i.e. ratios of
+    /// 0.75-0.73x low and 1.50-1.60x high — near-identical but not equal, so a
+    /// single ratio pair cannot reproduce all three exactly. Using 0.75/1.55
+    /// shifts three clamp ends by a few px (Narrow max 360→372, Medium
+    /// 220→225 and 480→465); the rest are unchanged. These are resize STOPS,
+    /// documented as merely "generous enough", so a handful of pixels at the
+    /// extremes is not a behaviour anyone can perceive — and it buys bounds
+    /// that track the rail instead of outliving it.
     pub fn bounds(self) -> RangeInclusive<f32> {
-        match self {
-            Width::Narrow => 180.0..=360.0,
-            Width::Medium => 220.0..=480.0,
-            Width::Wide => 300.0..=620.0,
-        }
+        let w = self.px();
+        (w * 0.75).round()..=(w * 1.55).round()
     }
 }
 
@@ -761,5 +788,62 @@ mod tests {
         let long_title = solve_header_strip(r, Some(12.0), 240.0, true).close.unwrap();
         assert_eq!(plain, with_icon);
         assert_eq!(plain, long_title);
+    }
+}
+
+#[cfg(test)]
+mod rail_width_tests {
+    use super::*;
+    use crate::chart_renderer::ui::style::M1_GLOBAL_STATE_TEST_LOCK;
+
+    /// M4.6 — the shell's PROPORTIONS follow the active style.
+    ///
+    /// The audit's finding was that themes "can breathe gutters, not
+    /// proportions": `gap_*()` respected the spacing scale while the rails
+    /// restated 240/300/400 in code. `Density.rail_*` and `rail_width_*()`
+    /// both existed; this consumer just never called them.
+    ///
+    /// So the test that matters is not "px() returns 300" — it is that
+    /// changing the STYLE changes the rail. A test pinned to the numbers would
+    /// have passed against the hardcoded version too.
+    #[test]
+    fn rails_follow_the_active_style() {
+        use crate::chart_renderer::ui::style::{
+            add_style_preset, add_style_system, get_style_settings, set_active_style, begin_frame,
+            active_style_idx,
+        };
+        use crate::design_system::StyleSystem;
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = active_style_idx();
+
+        set_active_style(prev);
+        begin_frame();
+        let before = Width::Medium.px();
+
+        let mut ss = StyleSystem::default();
+        ss.meta.name = "m46-wide-rails".into();
+        ss.density.rail_medium = before + 120.0;
+        let sys_id = add_style_system(ss);
+        let set_id = add_style_preset("m46-wide-rails", get_style_settings(0));
+        assert_eq!(sys_id, set_id, "stores must stay index-aligned");
+
+        set_active_style(set_id);
+        begin_frame();
+        let after = Width::Medium.px();
+        let after_bounds = Width::Medium.bounds();
+
+        set_active_style(prev);
+        begin_frame();
+
+        assert_eq!(
+            after, before + 120.0,
+            "the medium rail must come from the active style's Density, not a constant"
+        );
+        // Bounds derive from the same width, so they move with it rather than
+        // becoming a leftover clamp around a rail that no longer exists.
+        assert!(
+            *after_bounds.start() < after && *after_bounds.end() > after,
+            "bounds {after_bounds:?} must bracket the themed width {after}"
+        );
     }
 }
