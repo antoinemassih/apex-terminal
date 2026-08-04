@@ -1131,18 +1131,27 @@ pub fn segmented_control(
 
     let mut union_rect: Option<egui::Rect> = None;
     let mut active_rect: Option<egui::Rect> = None;
-    // Match the Sm button height so segmented controls don't read shorter than
-    // the toolbar buttons beside them. Was a pinned 22.0 with a comment saying
-    // "Match Size::Sm button height (22px)" — the comment named the token, so
-    // read the token.
-    let seg_btn_h = crate::ui_kit::widgets::tokens::Size::Sm.height();
+    // The segments used to size themselves from egui's `button_padding`, which
+    // the toolbar sets generously — so this control rendered nearly TWICE the
+    // height of the icon buttons beside it and was by far the tallest thing in
+    // the row. `min_size` only sets a floor, so it could not hold them down.
+    //
+    // Pin the height instead: `interact_size` is the floor egui applies via
+    // `desired_size.at_least(..)`, and with `button_padding.y = 0` the segment
+    // lands on it exactly. Same mechanism used for the menu triggers.
+    //
+    // The trough then derives from the segments (+ inset), so the whole control
+    // sits on the one toolbar height rather than setting its own.
+    let seg_btn_h = toolbar_control_h() - 2.0 * gap_2xs();
     let seg_pad_x = gap_xs() + 1.0;
 
     for (i, label) in labels.iter().enumerate() {
         let active = i == active_idx;
         let fg = if active { accent } else { dim };
         let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(seg_pad_x, prev_pad.y);
+        let prev_interact = ui.spacing().interact_size;
+        ui.spacing_mut().button_padding = egui::vec2(seg_pad_x, 0.0);
+        ui.spacing_mut().interact_size.y = seg_btn_h;
         // The button paints NO fill — the selection is drawn below as one
         // rounded pill. Letting the button fill itself is what produced the
         // defect: a middle segment resolved to `CornerRadius::ZERO`, so the
@@ -1156,6 +1165,7 @@ pub fn segmented_control(
                 .min_size(egui::vec2(0.0, seg_btn_h))
         );
         ui.spacing_mut().button_padding = prev_pad;
+        ui.spacing_mut().interact_size = prev_interact;
         union_rect = Some(union_rect.map_or(resp.rect, |r: egui::Rect| r.union(resp.rect)));
         if active { active_rect = Some(resp.rect); }
         cursor::clickable(ui, &resp);
@@ -2902,6 +2912,27 @@ pub fn style_row_height() -> f32 {
 /// Density-aware button height. Reads `button_height_px` then scales by effective density.
 pub fn style_button_height() -> f32 {
     current().button_height_px * effective_density().scale()
+}
+
+/// THE height for every interactive control in the toolbar rows.
+///
+/// The toolbar was rendering four different heights side by side: label chips
+/// and menu triggers at one size, icon buttons at another, the segmented
+/// layout picker at nearly double, and the caret next to it back at the small
+/// size. Each was individually reasonable — they came from `Size::Md`, from
+/// egui's `button_padding`, and from a `min_size` floor — and together they
+/// read as ragged.
+///
+/// One source, and a THEMED one: `button_height` is authored per style
+/// (Aperture 28, Meridien 24) and scaled by the active density, so a
+/// comfortable bar stays comfortable when the design system changes. Rounded
+/// because fractional control heights were also producing fractional widths
+/// and soft edges.
+///
+/// This finally gives `style_button_height()` a consumer — the geometry sweep
+/// found it authored, exposed, and read by nothing.
+pub fn toolbar_control_h() -> f32 {
+    style_button_height().round()
 }
 /// Density-aware tab height. Reads `tab_height` then scales by effective density.
 pub fn style_tab_height() -> f32 {

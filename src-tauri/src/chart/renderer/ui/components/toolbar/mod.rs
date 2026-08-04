@@ -71,6 +71,16 @@ pub fn toolbar_btn(
     .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
     .active(active);
 
+    // ONE height for every control in the toolbar row. Icon buttons resolved
+    // from `Size::Md` while label chips (IBKR / $ / CLOSED / TPS) picked up
+    // egui's button padding, so the filled broker pill sat visibly taller than
+    // the outlined chips next to it. `toolbar_control_h()` is the themed,
+    // density-aware source they now share.
+    btn = btn.min_size(egui::vec2(
+        0.0,
+        crate::chart_renderer::ui::style::toolbar_control_h(),
+    ));
+
     if active {
         btn = btn.fg(t.accent);
     }

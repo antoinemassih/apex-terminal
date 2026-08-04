@@ -525,10 +525,14 @@ impl<'a> Button<'a> {
         // Rather than abandon `menu_button` (it owns behaviour worth keeping),
         // derive the padding that makes it land on the SAME height the button
         // would have had: pad = (target - text) / 2.
+        // An explicit `min_size` wins — that is how a caller opts a menu
+        // trigger into a row's shared control height. Then placement, then the
+        // size token.
         let target_h = self
-            .placement
-            .map(|p| p.hit_px())
+            .min_size_override
+            .map(|v| v.y)
             .filter(|h| *h > 0.0)
+            .or_else(|| self.placement.map(|p| p.hit_px()).filter(|h| *h > 0.0))
             .unwrap_or_else(|| self.size.height());
 
         // Use egui's OWN minimum rather than computing padding from a measured
@@ -797,14 +801,26 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
     let desired_h = if stacked { stacked_h } else { h };
     let desired_w = if full_width { ui.available_width().max(intrinsic_w) } else { intrinsic_w };
     let mut desired = Vec2::new(desired_w, desired_h);
-    // Placement hit-target wins over min_size_override (placement is the source of truth).
+    // Both are FLOORS, so apply both and take the larger.
+    //
+    // This was `else if`, with the note that "placement is the source of
+    // truth". The intent was right — a small `min_size` must not shrink a
+    // placement's hit target — but `else if` overshot: it also stopped a
+    // LARGER min_size from raising it. So a placed icon button could not be
+    // opted into a row's shared control height, and the toolbar kept its icon
+    // buttons at the placement size (28) while every label and menu beside
+    // them took the themed 32.
+    //
+    // Taking the max of both keeps the original guarantee exactly — the hit
+    // target can still never come out smaller than the placement demands.
     if let Some(p) = placement {
         let hit = p.hit_px();
         if hit > 0.0 {
             desired.x = desired.x.max(hit);
             desired.y = desired.y.max(hit);
         }
-    } else if let Some(ms) = min_size_override {
+    }
+    if let Some(ms) = min_size_override {
         desired.x = desired.x.max(ms.x);
         desired.y = desired.y.max(ms.y);
     }

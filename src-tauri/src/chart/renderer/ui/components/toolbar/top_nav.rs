@@ -705,7 +705,7 @@ pub(crate) fn render(
             {
                 let ws_names = list_workspaces();
                 let ws_menu = KitButton::menu(Icon::BROWSERS)
-                    .size(KitSize::Md)
+                    .min_size(egui::vec2(0.0, crate::chart_renderer::ui::style::toolbar_control_h()))
                     .glyph_size(font_lg())
                     .show_menu(ui, t, |ui| {
                     apply_menu_style(ui, t);
