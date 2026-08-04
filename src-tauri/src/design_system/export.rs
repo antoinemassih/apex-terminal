@@ -202,6 +202,25 @@ impl StyleSystem {
                 "factor":                 num!(den.factor),
                 "row_height_dense":       dim!(den.row_height_dense),
                 "row_height_comfortable": dim!(den.row_height_comfortable),
+                // The STRUCTURAL ladder. None of this was exported, and the
+                // loader hardcoded it — so the row heights, splitter, rails and
+                // control heights were unauthorable by any theme pack. That is
+                // the mechanical reason "themes can breathe gutters, not
+                // proportions": the proportions had no way in or out.
+                "row_dense":              dim!(den.row_dense),
+                "row_compact":            dim!(den.row_compact),
+                "row_default":            dim!(den.row_default),
+                "row_spacious":           dim!(den.row_spacious),
+                "row_tall":               dim!(den.row_tall),
+                "splitter_width":         dim!(den.splitter_width),
+                "rail_narrow":            dim!(den.rail_narrow),
+                "rail_medium":            dim!(den.rail_medium),
+                "rail_wide":              dim!(den.rail_wide),
+                "control_xs":             dim!(den.control_xs),
+                "control_sm":             dim!(den.control_sm),
+                "control_md":             dim!(den.control_md),
+                "control_lg":             dim!(den.control_lg),
+                "control_xl":             dim!(den.control_xl),
             },
             "shadows": {
                 "card":     shadow_obj(&sh.card),

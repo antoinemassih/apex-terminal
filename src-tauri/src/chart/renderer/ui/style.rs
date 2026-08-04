@@ -204,6 +204,11 @@ pub fn begin_frame() {
         row_spacious:   ass.density.row_spacious,
         row_tall:       ass.density.row_tall,
         splitter_width: ass.density.splitter_width,
+        control_xs:     ass.density.control_xs,
+        control_sm:     ass.density.control_sm,
+        control_md:     ass.density.control_md,
+        control_lg:     ass.density.control_lg,
+        control_xl:     ass.density.control_xl,
         rail_narrow:    ass.density.rail_narrow,
         rail_medium:    ass.density.rail_medium,
         rail_wide:      ass.density.rail_wide,
@@ -4250,5 +4255,69 @@ mod m3_recipe_chain_tests {
             "Cadence pills ({cadence}) must exceed Meridien squares ({meridien}) \
              from the same widget default — the signature difference the audit \
              found inexpressible");
+    }
+}
+
+#[cfg(test)]
+mod control_height_tests {
+    //! Lives here, not in `ui_kit`, because it drives the STYLE STORE — and
+    //! `ui_kit_does_not_depend_on_chart_renderer` correctly rejected the
+    //! import when this sat next to `Size::height()`. The guard did its job.
+    use super::{
+        active_style_idx, add_style_preset, add_style_system, begin_frame, get_style_settings,
+        set_active_style, M1_GLOBAL_STATE_TEST_LOCK,
+    };
+    use crate::ui_kit::widgets::tokens::Size;
+    use crate::design_system::StyleSystem;
+
+    /// `Size::height()` must follow the ACTIVE STYLE, not a frozen table.
+    ///
+    /// The assertion is deliberately about the RELATIONSHIP, not the numbers:
+    /// registering a style with `control_md + 9` must move `Size::Md.height()`
+    /// by 9. A test pinned to `height() == 28.0` would have passed against the
+    /// frozen literals too — which is exactly why this went unnoticed while
+    /// `font_size()` and `padding_x()` beside it were already themed.
+    #[test]
+    fn size_height_follows_the_active_style() {
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = active_style_idx();
+        set_active_style(prev);
+        begin_frame();
+        let before = Size::Md.height();
+
+        let mut ss = StyleSystem::default();
+        ss.meta.name = "control-ladder-proof".into();
+        ss.density.control_md = before + 9.0;
+        let sys_id = add_style_system(ss);
+        let set_id = add_style_preset("control-ladder-proof", get_style_settings(0));
+        assert_eq!(sys_id, set_id, "stores must stay index-aligned");
+
+        set_active_style(set_id);
+        begin_frame();
+        let after = Size::Md.height();
+
+        set_active_style(prev);
+        begin_frame();
+
+        assert_eq!(
+            after,
+            before + 9.0,
+            "Size::Md.height() must come from Density.control_md, not a literal"
+        );
+    }
+
+    /// Defaults must equal the literals this replaced, or making the ladder
+    /// themeable silently resizes every control in the app.
+    #[test]
+    fn default_ladder_matches_the_former_literals() {
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = active_style_idx();
+        set_active_style(prev);
+        begin_frame();
+        let d = crate::design_system::style_system::Density::default();
+        assert_eq!(
+            [d.control_xs, d.control_sm, d.control_md, d.control_lg, d.control_xl],
+            [18.0, 22.0, 28.0, 34.0, 40.0],
+        );
     }
 }

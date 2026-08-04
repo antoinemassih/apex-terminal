@@ -554,6 +554,27 @@ pub struct Density {
     pub rail_medium: f32,    // 300
     #[serde(default = "Density::default_rail_wide")]
     pub rail_wide: f32,      // 400
+
+    /// Control-height ladder — what `Size::{Xs,Sm,Md,Lg,Xl}::height()` returns.
+    ///
+    /// `Size` already read live tokens for `font_size()`, `padding_x()` and
+    /// `padding()`; only `height()` returned frozen literals (18/22/28/34/40).
+    /// One struct, two philosophies — so a theme could change a control's type
+    /// and padding but never its height, which is the axis the eye actually
+    /// reads as "consistent".
+    ///
+    /// Defaults are exactly the former literals, so an unauthored style is
+    /// byte-identical. Same additive shape as the M1 `Typography.ui_*` ladder.
+    #[serde(default = "Density::default_control_xs")]
+    pub control_xs: f32,     // 18
+    #[serde(default = "Density::default_control_sm")]
+    pub control_sm: f32,     // 22
+    #[serde(default = "Density::default_control_md")]
+    pub control_md: f32,     // 28
+    #[serde(default = "Density::default_control_lg")]
+    pub control_lg: f32,     // 34
+    #[serde(default = "Density::default_control_xl")]
+    pub control_xl: f32,     // 40
 }
 
 impl Density {
@@ -566,6 +587,11 @@ impl Density {
     fn default_rail_narrow()  -> f32 { 240.0 }
     fn default_rail_medium()  -> f32 { 300.0 }
     fn default_rail_wide()    -> f32 { 400.0 }
+    fn default_control_xs()   -> f32 {  18.0 }
+    fn default_control_sm()   -> f32 {  22.0 }
+    fn default_control_md()   -> f32 {  28.0 }
+    fn default_control_lg()   -> f32 {  34.0 }
+    fn default_control_xl()   -> f32 {  40.0 }
 }
 
 impl Default for Density {
@@ -586,6 +612,11 @@ impl Default for Density {
             rail_narrow:    Self::default_rail_narrow(),
             rail_medium:    Self::default_rail_medium(),
             rail_wide:      Self::default_rail_wide(),
+            control_xs:     Self::default_control_xs(),
+            control_sm:     Self::default_control_sm(),
+            control_md:     Self::default_control_md(),
+            control_lg:     Self::default_control_lg(),
+            control_xl:     Self::default_control_xl(),
         }
     }
 }

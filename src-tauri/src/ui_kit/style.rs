@@ -141,6 +141,12 @@ pub struct TokenSnapshot {
     pub row_spacious: f32,
     pub row_tall: f32,
     pub splitter_width: f32,
+    /// Control-height ladder backing `Size::height()` (M-refine).
+    pub control_xs: f32,
+    pub control_sm: f32,
+    pub control_md: f32,
+    pub control_lg: f32,
+    pub control_xl: f32,
     pub rail_narrow: f32,
     pub rail_medium: f32,
     pub rail_wide: f32,
@@ -193,6 +199,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     row_spacious:   24.0,
     row_tall:       30.0,
     splitter_width:  6.0,
+    control_xs: 18.0, control_sm: 22.0, control_md: 28.0, control_lg: 34.0, control_xl: 40.0,
     rail_narrow:   240.0,
     rail_medium:   300.0,
     rail_wide:     400.0,
@@ -531,6 +538,11 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 /// Splitter / drag-handle thickness (per-style).
 #[inline] pub fn splitter_width()       -> f32 { frame_tokens().splitter_width }
 /// Side-rail width presets (per-style).
+#[inline] pub fn control_h_xs()         -> f32 { frame_tokens().control_xs }
+#[inline] pub fn control_h_sm()         -> f32 { frame_tokens().control_sm }
+#[inline] pub fn control_h_md()         -> f32 { frame_tokens().control_md }
+#[inline] pub fn control_h_lg()         -> f32 { frame_tokens().control_lg }
+#[inline] pub fn control_h_xl()         -> f32 { frame_tokens().control_xl }
 #[inline] pub fn rail_width_narrow()    -> f32 { frame_tokens().rail_narrow }
 #[inline] pub fn rail_width_medium()    -> f32 { frame_tokens().rail_medium }
 #[inline] pub fn rail_width_wide()      -> f32 { frame_tokens().rail_wide }

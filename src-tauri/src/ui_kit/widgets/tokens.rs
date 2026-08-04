@@ -101,13 +101,24 @@ impl Size {
         egui::Margin { left: x as i8, right: x as i8, top: y as i8, bottom: y as i8 }
     }
 
+    /// Maps to the control-height ladder (`Density.control_xs..control_xl`).
+    ///
+    /// This returned frozen literals — `18/22/28/34/40` — while `font_size()`,
+    /// `padding_x()` and `padding()` directly above all read live tokens. One
+    /// struct, two philosophies: a theme could change a control's type and its
+    /// padding but never its HEIGHT, which is the axis the eye actually reads
+    /// as consistency. It was also the largest remaining frozen surface in the
+    /// design system — every `Size`-based control in ~74 primitives.
+    ///
+    /// The ladder's defaults are exactly these former literals, so nothing
+    /// moves until a style authors otherwise.
     pub fn height(&self) -> f32 {
         match self {
-            Size::Xs => 18.0,
-            Size::Sm => 22.0,
-            Size::Md => 28.0,
-            Size::Lg => 34.0,
-            Size::Xl => 40.0,
+            Size::Xs => crate::ui_kit::style::control_h_xs(),
+            Size::Sm => crate::ui_kit::style::control_h_sm(),
+            Size::Md => crate::ui_kit::style::control_h_md(),
+            Size::Lg => crate::ui_kit::style::control_h_lg(),
+            Size::Xl => crate::ui_kit::style::control_h_xl(),
         }
     }
 }

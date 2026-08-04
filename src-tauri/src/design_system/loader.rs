@@ -480,9 +480,24 @@ impl StyleSystem {
             factor:                read_f32_or(&den_sec, "factor",                "density", d_den.factor),
             row_height_dense:      read_f32_or(&den_sec, "row_height_dense",      "density", d_den.row_height_dense),
             row_height_comfortable: read_f32_or(&den_sec, "row_height_comfortable", "density", d_den.row_height_comfortable),
-            row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
-            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
-            rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
+            // Structural ladder — PARSED, not hardcoded. These were pinned
+            // literals here, so a pack could declare row heights or rail widths
+            // and the loader would silently discard them. Each falls back to
+            // the Density default when absent, so sparse packs still load.
+            row_dense:      read_f32_or(&den_sec, "row_dense",      "density", d_den.row_dense),
+            row_compact:    read_f32_or(&den_sec, "row_compact",    "density", d_den.row_compact),
+            row_default:    read_f32_or(&den_sec, "row_default",    "density", d_den.row_default),
+            row_spacious:   read_f32_or(&den_sec, "row_spacious",   "density", d_den.row_spacious),
+            row_tall:       read_f32_or(&den_sec, "row_tall",       "density", d_den.row_tall),
+            splitter_width: read_f32_or(&den_sec, "splitter_width", "density", d_den.splitter_width),
+            rail_narrow:    read_f32_or(&den_sec, "rail_narrow",    "density", d_den.rail_narrow),
+            rail_medium:    read_f32_or(&den_sec, "rail_medium",    "density", d_den.rail_medium),
+            rail_wide:      read_f32_or(&den_sec, "rail_wide",      "density", d_den.rail_wide),
+            control_xs:     read_f32_or(&den_sec, "control_xs",     "density", d_den.control_xs),
+            control_sm:     read_f32_or(&den_sec, "control_sm",     "density", d_den.control_sm),
+            control_md:     read_f32_or(&den_sec, "control_md",     "density", d_den.control_md),
+            control_lg:     read_f32_or(&den_sec, "control_lg",     "density", d_den.control_lg),
+            control_xl:     read_f32_or(&den_sec, "control_xl",     "density", d_den.control_xl),
         };
 
         let d_sh = Shadows::default();
@@ -827,7 +842,18 @@ mod tests {
                 subtle: 0.03, soft: 0.10, muted: 0.22, mid: 0.45, strong: 0.70, opaque: 0.99, header_border: 0.15,
             },
             elevation: Elevation { l1: 1.08, l2: 0.92, l3: 0.85 },
-            density: Density { factor: 0.9, row_height_dense: 20.0, row_height_comfortable: 30.0, ..Density::default() },
+            density: Density { factor: 0.9, row_height_dense: 20.0, row_height_comfortable: 30.0,
+                // NON-DEFAULT structural values on purpose. The whole
+                // ladder used to be hardcoded in the loader, so a fixture
+                // left on `..Density::default()` round-tripped green while
+                // the values were being discarded. Same blind spot that let
+                // `shell` and `card` ship unserialised.
+                row_dense: 15.0, row_compact: 17.0, row_default: 19.0,
+                row_spacious: 21.0, row_tall: 27.0, splitter_width: 9.0,
+                rail_narrow: 210.0, rail_medium: 275.0, rail_wide: 365.0,
+                control_xs: 16.0, control_sm: 20.0, control_md: 26.0,
+                control_lg: 31.0, control_xl: 37.0,
+                ..Density::default() },
             shadows: Shadows {
                 card:     ShadowSpec { blur: 6.0,  spread: 1.0, offset_x: 1.0, offset_y: 3.0, alpha: 0.25 },
                 modal:    ShadowSpec { blur: 20.0, spread: 2.0, offset_x: 0.0, offset_y: 6.0, alpha: 0.45 },

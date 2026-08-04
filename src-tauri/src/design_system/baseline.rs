@@ -240,6 +240,8 @@ pub fn baseline_style_system() -> StyleSystem {
             row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
             row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
             rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
+            // Control-height ladder: defaults = the former Size::height literals.
+            control_xs: 18.0, control_sm: 22.0, control_md: 28.0, control_lg: 34.0, control_xl: 40.0,
         },
 
         // Meridien: shadow_blur=0, shadow_offset_y=0, shadow_alpha=0 → all shadows disabled
