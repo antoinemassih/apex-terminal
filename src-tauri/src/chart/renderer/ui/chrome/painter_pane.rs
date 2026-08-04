@@ -1083,6 +1083,14 @@ impl<'a> PainterPaneHeader<'a> {
                 let resp = Button::new(if cluster_collapsed { "" } else { label })
                     .leading_icon(icon)
                     .status(true)
+                    // These ARE the nav cluster. Every style authors
+                    // `nav.cluster.active` for exactly these buttons —
+                    // transcribed from `.ds-pane-header .ds-btn--chrome.is-active
+                    // { background: ...; color: accent }` — and it resolved for
+                    // nobody, because a Variant cannot know WHERE it is rendered
+                    // so `recipe_key_for` could only ever hand back the general
+                    // `button.chrome`. The call site knows; this is it saying so.
+                    .recipe_key("nav.cluster.active")
                     .active(self.buttons[btn as usize].active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { clicked_btn = Some(btn); }

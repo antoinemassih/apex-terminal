@@ -1,7 +1,7 @@
 # recipe-adoption FLOORS — may only RISE (see scripts/recipe_adoption_gate.sh)
-# Recorded: 2026-08-04T10:46Z
+# Recorded: 2026-08-04T12:05Z
 widgets_consulting_recipes=8
 registered_keys_authored=18
 styles_with_authored_recipes=6
 authored_declarations=80
-keys_with_consumer=17
+keys_with_consumer=18

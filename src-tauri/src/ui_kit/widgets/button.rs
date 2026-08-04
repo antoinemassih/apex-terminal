@@ -82,6 +82,8 @@ pub struct Button<'a> {
     /// `CornerRadius { nw: 99, sw: 99, ne: 0, se: 0 }`). Takes precedence over
     /// `.corner_radius(f32)` when both are set.
     corner_radius_override: Option<egui::CornerRadius>,
+    /// Opt into a MORE SPECIFIC recipe key than the variant implies.
+    recipe_key_override: Option<&'a str>,
 }
 
 impl<'a> Button<'a> {
@@ -118,6 +120,7 @@ impl<'a> Button<'a> {
             icon_tone: IconTone::Neutral,
             sense_override: None,
             corner_radius_override: None,
+            recipe_key_override: None,
         }
     }
 
@@ -304,6 +307,23 @@ impl<'a> Button<'a> {
     /// for pill halves where only the outer corners should be rounded (e.g. left half:
     /// `CornerRadius { nw: 99, sw: 99, ne: 0, se: 0 }`). Takes precedence over
     /// `.corner_radius(f32)` when both are set.
+    /// Resolve a MORE SPECIFIC recipe key than this button's variant implies.
+    ///
+    /// The recipe registry mirrors CSS selectors, and CSS has specificity:
+    /// `.ds-btn--chrome` is the general rule, `.ds-pane-header
+    /// .ds-btn--chrome.is-active` is the specific one. `recipe_key_for` can
+    /// only ever return the general key, because a Variant does not know where
+    /// it is being rendered. So the pane header's chrome buttons resolved
+    /// `button.chrome` and the `nav.cluster.active` rule every style authors
+    /// for exactly those buttons could never apply.
+    ///
+    /// The call site knows its context; this is how it says so. Falls back to
+    /// the variant's key when the override resolves nothing.
+    pub fn recipe_key(mut self, key: &'a str) -> Self {
+        self.recipe_key_override = Some(key);
+        self
+    }
+
     pub fn corner_radius_asymmetric(mut self, r: egui::CornerRadius) -> Self {
         self.corner_radius_override = Some(r);
         self
@@ -728,6 +748,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
         stroke_override,
         min_size_override,
         frameless,
+        recipe_key_override,
         ..
     } = btn;
     let tint = btn.resolve_tint(theme);
@@ -953,7 +974,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
         // Unauthored themes hold an empty set, so this is byte-identical.
         let recipe_delta = {
             use crate::ui_kit::sx::{Sx, StyleState};
-            let key = recipe_key_for(variant);
+            let key = recipe_key_override.or_else(|| recipe_key_for(variant));
             let recipes = super::theme::get_ambient_recipes(ui.ctx());
             key.and_then(|k| {
                 // Built-in default carries the historical radius so a recipe
