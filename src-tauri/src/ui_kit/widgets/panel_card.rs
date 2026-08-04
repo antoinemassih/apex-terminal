@@ -116,7 +116,18 @@ impl PanelCard {
         let recipes = get_ambient_recipes(ui.ctx());
         let card_recipe = crate::ui_kit::style::card_recipe();
         let default_card_sx = Sx::new();
-        let card_sx = recipes.resolve("card", default_card_sx, t);
+        // Floating styles (Aperture / Cadence / Glass — `cards_float()`) get
+        // `card.floating` when a style authors it, falling back to `card`.
+        // That variant was authored and resolved by nobody, so a style could
+        // describe its LIFTED card and only its flat one would ever paint.
+        let card_key = if float { "card.floating" } else { "card" };
+        let card_sx = recipes.resolve(card_key, default_card_sx, t);
+        // A style that floats but authors only the base key still themes.
+        let card_sx = if float && card_sx.resolved(StyleState::Normal).radius.is_none() {
+            recipes.resolve("card", Sx::new(), t)
+        } else {
+            card_sx
+        };
         let card_delta = card_sx.resolved(StyleState::Normal);
         let recipe_border = card_delta.border_spec();
         let recipe_authored =

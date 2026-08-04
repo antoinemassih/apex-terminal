@@ -39,7 +39,13 @@ WIDGETS_CONSULTING=$(grep -rl --include=*.rs \
 # matched in tuple position (indented, quoted, comma-terminated), and the test
 # module is excluded so assertions never inflate the count.
 RECIPE_SRC="$SRC/design_system/builtin_recipes.rs"
-TEST_LINE=$(grep -n '^#\[cfg(test)\]' "$RECIPE_SRC" 2>/dev/null | tail -1 | cut -d: -f1)
+# FIRST test module, not the last. `tail -1` assumed exactly one test
+# module and it sat at the end of the file; adding a SECOND one put the
+# earlier module's expected-registry array back inside the "authored"
+# body, inflating the key count with test data and reporting keys as
+# authored-but-dead that no theme authors at all (`panel.footer`,
+# `toast.*`, `kbd`). Everything from the first test module on is test.
+TEST_LINE=$(grep -n '^#\[cfg(test)\]' "$RECIPE_SRC" 2>/dev/null | head -1 | cut -d: -f1)
 : "${TEST_LINE:=999999}"
 AUTHORED_BODY=$(head -n $((TEST_LINE - 1)) "$RECIPE_SRC" 2>/dev/null)
 KEY_LINES=$(printf '%s\n' "$AUTHORED_BODY" | grep -oE '^[[:space:]]{8,}"[a-z][a-z_.]*",')
