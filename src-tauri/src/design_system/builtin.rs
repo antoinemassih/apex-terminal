@@ -34,7 +34,7 @@
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
-        Alphas, Archetype, BevelStyle, CardRecipe, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowLayer,
+        Alphas, Archetype, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowLayer,
         ShadowSpec, ShadowTint, ShellSpec, Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
@@ -1138,8 +1138,6 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_footer_card: false, panel_footer_radius: 0.0,
         },
         numerals: None,
-        // Meridien: square editorial card with its signature hairline rule.
-        card: Some(CardRecipe { radius: 0.0, padding: 14.0, border_width: Some(0.5) }),
     };
 
     // ── Aperture (id=1) ───────────────────────────────────────────────────────
@@ -1278,17 +1276,6 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_footer_card: true, panel_footer_radius: 10.0,
         },
         numerals: None,
-        // DS-6.0 D4 / DS-2.4: Aperture ships `--ds-card-border: none`
-        // LITERALLY. `border_width: None` means NO STROKE AT ALL — not a
-        // zero-width one — so separation falls to elevation, the bevel tints
-        // and the background step, which is what M0-M3 built the shadow-layer
-        // stack and BevelSpec for.
-        //
-        // This had to be AUTHORED, not just declared: `CardRecipe` shipped in
-        // M1 with zero data, so every style fell through panel_card.rs's
-        // derived branch and painted `stroke_thin()`. Aperture's recipe said
-        // "no border" while the card path never saw it.
-        card: Some(CardRecipe { radius: 20.0, padding: 16.0, border_width: None }),
     };
 
     // ── Octave (id=2) ─────────────────────────────────────────────────────────
@@ -1419,7 +1406,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
             panel_footer_card: false, panel_footer_radius: 0.0,
         },
-        numerals: None, card: None,
+        numerals: None,
     };
 
     // ── Cadence (id=3) — Spotify-dark: pill primaries, elevated cards ────────
@@ -1462,8 +1449,6 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // ── Alto (id=4) — Zed warm-dark: raised button faces, amber bevel ────────
     let alto = StyleSystem {
         meta: Meta::new("alto", "Alto", true),
-        // DS-2.4 acceptance: Alto's 14px against Lucid's 20px.
-        card: Some(CardRecipe { radius: 8.0, padding: 14.0, border_width: Some(1.0) }),
         radii: Radii { none: 0.0, xs: 2.0, sm: 4.0, md: 6.0, lg: 8.0, full: 9999.0, pill: 99.0, chip: 0.0 },
         density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0, ..Density::default() },
         shadows: Shadows {
@@ -1523,9 +1508,6 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // ── Lucid (id=6) — editorial LIGHT: flat, restrained radii, serif hero ────
     let lucid = StyleSystem {
         meta: Meta::new("lucid", "Lucid", false),
-        // DS-2.4 acceptance: Lucid pads 20px against Alto's 14px — the padding
-        // axis has to be visibly different between two light-ish editorial cards.
-        card: Some(CardRecipe { radius: 8.0, padding: 20.0, border_width: Some(1.0) }),
         // DS-6.0 D1: the theme's DEFAULT archetype. A workspace may
         // override it; see ShellSpec::resolve_archetype.
         shell: ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() },
@@ -1704,52 +1686,63 @@ mod tests {
 
 #[cfg(test)]
 mod card_recipe_tests {
-    use super::*;
+    //! DS-2.4's acceptance, re-pointed at the RECIPE layer.
+    //!
+    //! These assertions used to read `StyleSystem.card` (CardRecipe). That
+    //! mechanism is deleted — the `card` recipe won, and every builtin authors
+    //! it — but the CRITERION it guarded is unchanged and still worth holding,
+    //! so the test moved rather than went away. Deleting a mechanism must not
+    //! quietly delete the requirement it happened to be checked through.
+    use crate::design_system::builtin_recipes::builtin_recipes;
+    use crate::ui_kit::sx::recipe_spec::{BorderWidthTier, PadTier, RadiusTier};
 
-    fn card_of(id: &str) -> CardRecipe {
-        builtin_style_systems()
-            .into_iter()
-            .find(|s| s.meta.id == id)
-            .unwrap_or_else(|| panic!("builtin style '{id}' missing"))
-            .card
-            .unwrap_or_else(|| panic!("style '{id}' authors no CardRecipe — it would \
-                fall through panel_card.rs's DERIVED branch and paint stroke_thin(), \
-                which is exactly the bug this data fixes"))
+    fn card_px(id: &str) -> f32 {
+        let set = builtin_recipes(id);
+        let spec = set.get("card").unwrap_or_else(|| panic!("style '{id}' authors no card recipe"));
+        match &spec.base.px {
+            Some(PadTier::Px(v)) => *v,
+            other => panic!("style '{id}' card padding is not a literal px: {other:?}"),
+        }
     }
 
-    /// DS-6.0 D4 / DS-2.4 acceptance, stated as the ticket words it:
     /// "Aperture cards paint no stroke; Lucid pads 20px vs Alto's 14px."
     #[test]
     fn ds_2_4_acceptance() {
-        // `None` = no stroke AT ALL, not a zero-width one. A zero-width stroke
-        // would still be a border the theme is committing to; the design says
-        // separation comes from elevation and bevel instead.
-        assert_eq!(
-            card_of("aperture").border_width, None,
-            "Aperture ships `--ds-card-border: none` literally (D4)"
+        let ap = builtin_recipes("aperture");
+        let spec = ap.get("card").expect("aperture authors card");
+        let border = spec.base.border.as_ref().expect(
+            "aperture must state its border EXPLICITLY — omitting the field inherits              the widget stroke instead of removing it",
         );
-        assert_eq!(card_of("lucid").padding, 20.0, "Lucid pads 20px");
-        assert_eq!(card_of("alto").padding,  14.0, "Alto pads 14px");
         assert!(
-            card_of("lucid").padding > card_of("alto").padding,
-            "the padding axis must be visibly different between these two, \
-             which is the point of the acceptance criterion"
+            matches!(border.width, Some(BorderWidthTier::None)),
+            "Aperture ships `--ds-card-border: none` literally; got {:?}",
+            border.width
+        );
+        assert!(matches!(spec.base.radius, Some(RadiusTier::Lg)));
+
+        assert_eq!(card_px("lucid"), 20.0, "Lucid pads 20px");
+        assert_eq!(card_px("alto"),  14.0, "Alto pads 14px");
+        assert!(
+            card_px("lucid") > card_px("alto"),
+            "the padding axis must be visibly different between these two, which is              the point of the acceptance criterion"
         );
     }
 
-    /// D4 says exceptions are PER-RECIPE, never a global fallback. So exactly
-    /// one style may be borderless today — if a second appears, that is a
-    /// global fallback creeping in by imitation rather than a design decision.
+    /// Borderless is the EXCEPTION. D4 says exceptions are per-recipe, never a
+    /// global fallback — if a second style turns up borderless that is
+    /// imitation creeping in, not a design decision.
     #[test]
     fn borderless_is_the_exception_not_the_rule() {
-        let borderless: Vec<String> = builtin_style_systems()
+        let borderless: Vec<&str> = ["aperture", "cadence", "alto", "mariner", "lucid", "meridien"]
             .into_iter()
-            .filter(|s| s.card.map(|c| c.border_width.is_none()).unwrap_or(false))
-            .map(|s| s.meta.id)
+            .filter(|id| {
+                builtin_recipes(id)
+                    .get("card")
+                    .and_then(|s| s.base.border.as_ref())
+                    .map(|b| matches!(b.width, Some(BorderWidthTier::None)))
+                    .unwrap_or(false)
+            })
             .collect();
-        assert_eq!(
-            borderless, vec!["aperture".to_string()],
-            "only Aperture is designed borderless; got {borderless:?}"
-        );
+        assert_eq!(borderless, vec!["aperture"], "only Aperture is designed borderless");
     }
 }

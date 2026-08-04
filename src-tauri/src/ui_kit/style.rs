@@ -236,21 +236,12 @@ thread_local! {
 }
 
 thread_local! {
-    static CARD_RECIPE: std::cell::Cell<
-        Option<crate::design_system::style_system::CardRecipe>
-    > = std::cell::Cell::new(None);
     static NUMERAL_TIER: std::cell::Cell<
         Option<crate::design_system::style_system::NumeralTier>
     > = std::cell::Cell::new(None);
 }
 
 /// M1 Change D setters/getters (pushed by `begin_frame`).
-pub fn set_card_recipe(cr: Option<crate::design_system::style_system::CardRecipe>) {
-    CARD_RECIPE.with(|c| c.set(cr));
-}
-pub fn card_recipe() -> Option<crate::design_system::style_system::CardRecipe> {
-    CARD_RECIPE.with(|c| c.get())
-}
 pub fn set_numeral_tier(nt: Option<crate::design_system::style_system::NumeralTier>) {
     NUMERAL_TIER.with(|c| c.set(nt));
 }

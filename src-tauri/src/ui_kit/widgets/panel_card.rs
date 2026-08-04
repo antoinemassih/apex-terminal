@@ -107,14 +107,15 @@ impl PanelCard {
         // and Tabs resolve through, and it is authored everywhere rather than
         // on four of six styles.
         //
-        // CardRecipe is kept as a fallback so a pack that authors only the
-        // legacy field still themes its cards; it is scheduled for deletion
-        // once nothing relies on it.
+        // The legacy `StyleSystem.card` (CardRecipe) that used to be consulted
+        // here is GONE. It was reachable only for a style that authored it and
+        // NOT a `card` recipe; every builtin authors the recipe, so the branch
+        // was dead on arrival. Keeping a second card mechanism alive "just in
+        // case" is how the duplication started.
         //
         // `border_width: None` / a recipe with no border still means NO STROKE
         // AT ALL, not a zero-width one — Aperture's borderless lifted tiles.
         let recipes = get_ambient_recipes(ui.ctx());
-        let card_recipe = crate::ui_kit::style::card_recipe();
         let default_card_sx = Sx::new();
         // Floating styles (Aperture / Cadence / Glass — `cards_float()`) get
         // `card.floating` when a style authors it, falling back to `card`.
@@ -151,12 +152,6 @@ impl PanelCard {
                 p as i8,
                 stroke,
             )
-        } else if let Some(cr) = card_recipe {
-            let stroke = match cr.border_width {
-                Some(w) => Stroke::new(w, border),
-                None    => Stroke::NONE,
-            };
-            (egui::CornerRadius::same(cr.radius as u8), cr.padding as i8, stroke)
         } else {
             (radius, pad, Stroke::new(crate::ui_kit::style::stroke_thin(), border))
         };

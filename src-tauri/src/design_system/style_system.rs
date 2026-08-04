@@ -661,15 +661,6 @@ pub struct NumeralTier {
     pub weight:   u16,
 }
 
-/// Card chrome as ONE addressable recipe. `border_width: None` = NO stroke at
-/// all (Aperture's `--ds-card-border: none`), which no radius/stroke scale
-/// could previously express.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct CardRecipe {
-    pub radius:  f32,
-    pub padding: f32,
-    pub border_width: Option<f32>,
-}
 
 // ── M1 Change E: multi-layer shadow stacks (additive; legacy specs stay) ────
 //
@@ -1149,10 +1140,6 @@ pub struct StyleSystem {
     /// M1 Change D: display-numeral treatment. `None` = classic mono.
     #[serde(default)]
     pub numerals: Option<NumeralTier>,
-    /// M1 Change D: card chrome recipe. `None` = derived (radius_lg /
-    /// gap-based padding / thin border), byte-identical to pre-M1.
-    #[serde(default)]
-    pub card: Option<CardRecipe>,
 
     /// DS-6.0: shell shape + the theme's DEFAULT layout archetype.
     ///
@@ -1331,7 +1318,7 @@ impl StyleSystem {
             shadows:    Shadows::default(),
             treatments: Treatments::default(),
             chrome:     Chrome::default(),
-            numerals: None, card: None,
+            numerals: None,
         }
     }
 

@@ -229,7 +229,6 @@ pub fn begin_frame() {
         ass.shadows.modal_layers.clone(),
     );
     // M1 Change D: signature tokens (None = derived classics).
-    crate::ui_kit::style::set_card_recipe(ass.card);
     crate::ui_kit::style::set_numeral_tier(ass.numerals);
 }
 
