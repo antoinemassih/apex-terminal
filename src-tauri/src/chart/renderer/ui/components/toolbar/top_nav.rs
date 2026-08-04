@@ -528,12 +528,27 @@ pub(crate) fn render(
             //     hover fill spanning the entire toolbar height before the button widget.
             {
                 let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
-                // PERF: hoist the connected/disconnected variants to &'static strs so
-                // we skip a per-frame `format!` heap allocation in the account button.
-                let acct_label_owned: &'static str = if connected {
-                    concat!("IBKR ", "\u{F1A5}")  // CIRCLE_FILL
+                // PERF: build each variant ONCE so there is no per-frame
+                // `format!` allocation in the account button.
+                //
+                // These were hand-written PUA escapes (`\u{F1A5}` / `\u{F198}`)
+                // with the icon name in a trailing comment. They render as a
+                // TOFU BOX today: the disconnected state should show an outline
+                // circle and shows a square instead. Raw codepoints cannot
+                // survive an icon-font version bump, and `CIRCLE_FILL` in
+                // particular lives in the phosphor FILL family — a bare
+                // codepoint in the regular family can never resolve to it.
+                //
+                // `Icon::*` is the mapping that tracks the font, so go through
+                // it. It is a `&'static str` rather than a literal, so
+                // `concat!` cannot be used; `OnceLock` keeps the allocation at
+                // one per process, which is what the original was protecting.
+                static ACCT_CONNECTED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+                static ACCT_DISCONNECTED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+                let acct_label_owned: &str = if connected {
+                    ACCT_CONNECTED.get_or_init(|| format!("IBKR {}", Icon::CIRCLE_FILL))
                 } else {
-                    concat!("IBKR ", "\u{F198}")  // CIRCLE
+                    ACCT_DISCONNECTED.get_or_init(|| format!("IBKR {}", Icon::CIRCLE))
                 };
                 let acct_active = watchlist.account_strip_open;
                 let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t);
@@ -690,6 +705,7 @@ pub(crate) fn render(
             {
                 let ws_names = list_workspaces();
                 let ws_menu = KitButton::menu(Icon::BROWSERS)
+                    .size(KitSize::Md)
                     .glyph_size(font_lg())
                     .show_menu(ui, t, |ui| {
                     apply_menu_style(ui, t);

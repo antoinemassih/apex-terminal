@@ -512,8 +512,42 @@ impl<'a> Button<'a> {
             s
         };
         let glyph_size = self.glyph_px.unwrap_or(default_size);
+
+        // ── Height parity with every other button in the row ──────────────
+        //
+        // `ui.menu_button` owns the click-and-popup behaviour, and it sizes
+        // itself purely from egui's `button_padding` — this Button's `size`,
+        // `placement` and `min_size` are all ignored for HEIGHT. The toolbar
+        // sets `button_padding.y = gap_sm()`, so a menu trigger measured
+        // 35.4px right beside 28px icon buttons: two adjacent controls, one
+        // 7.4px taller, which is a large part of why the toolbar reads ragged.
+        //
+        // Rather than abandon `menu_button` (it owns behaviour worth keeping),
+        // derive the padding that makes it land on the SAME height the button
+        // would have had: pad = (target - text) / 2.
+        let target_h = self
+            .placement
+            .map(|p| p.hit_px())
+            .filter(|h| *h > 0.0)
+            .unwrap_or_else(|| self.size.height());
+
+        // Use egui's OWN minimum rather than computing padding from a measured
+        // galley. The measured-padding version landed 2px short: laying the
+        // label out with `FontId::proportional` over-estimates the row height
+        // for PUA icon glyphs, which resolve through the icon font's metrics.
+        // `interact_size` is the floor egui applies via
+        // `desired_size.at_least(..)`, so setting it pins the height exactly
+        // and needs no measurement — and no fudge constant, which is what a
+        // measured-then-corrected version would have degenerated into.
         let rich = RichText::new(label_text).size(glyph_size).color(fg);
-        ui.menu_button(rich, body)
+        let prev_pad = ui.spacing().button_padding;
+        let prev_interact = ui.spacing().interact_size;
+        ui.spacing_mut().button_padding.y = 0.0;
+        ui.spacing_mut().interact_size.y = target_h;
+        let resp = ui.menu_button(rich, body);
+        ui.spacing_mut().button_padding = prev_pad;
+        ui.spacing_mut().interact_size = prev_interact;
+        resp
     }
 
     /// Paint the button at an absolute rect using the provided painter.
@@ -1045,7 +1079,24 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
             }
         } else {
             // Compute layout.
-            let mut x = rect.left() + pad_x;
+            //
+            // CENTRE the content run in the rect, don't start it at the left
+            // edge. The rect equals the intrinsic width only when nothing
+            // widened it; three paths routinely do — `full_width`
+            // (`available_width()`), `min_size_override`, and `show_at(rect)`
+            // where the caller's rect wins outright. In all three the old
+            // `rect.left() + pad_x` piled every pixel of slack on the RIGHT
+            // and left the label hugging the left edge. That is why icon-only
+            // buttons looked centred (the branch above paints at `center`)
+            // and labelled ones looked off — including the order ticket's
+            // BUY/SELL (~26px off centre), the DOM action row, and the
+            // toolbar's "$" chip on its solid LIVE fill.
+            //
+            // `.max(pad_x)` keeps this a NO-OP at intrinsic width: there
+            // `rect.width() - content_w == 2 * pad_x`, so the centred offset
+            // IS `pad_x`. It only diverges once something made the rect wider,
+            // and it never lets a clipped rect push content past its padding.
+            let mut x = rect.left() + ((rect.width() - content_w) * 0.5).max(pad_x);
             let cy = center.y;
             // Leading: spinner takes priority over leading icon when loading.
             if loading {

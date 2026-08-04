@@ -28,6 +28,14 @@ use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 /// imperceptible while gaining cross-section X alignment.
 fn body_inset() -> f32 { gap_md() }
 
+/// Shared chip metrics for the Appearance tab's four selector grids.
+///
+/// They had drifted to three heights (24 / 26 / 26) and two gutters (4 / 6),
+/// with the vertical gutter differing from the horizontal in two of them —
+/// four grids, same visual role, no two alike. One source now.
+const CHIP_H: f32 = 26.0;
+const CHIP_GAP: f32 = 6.0;
+
 /// FormRow preset matching the legacy `srow()` look (190px label gutter,
 /// muted left-aligned label, right-aligned body with 10px inner pad, xs
 /// bottom margin) — but WITHOUT a per-row `leading_space`, because the
@@ -147,7 +155,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
             .into_iter().map(|(_, n)| n).collect();
         let active = presets::active(&scheme_names, &style_names, chart.theme_idx, watchlist.style_idx as usize);
 
-        ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+        ui.spacing_mut().item_spacing = egui::vec2(CHIP_GAP, CHIP_GAP);
         ui.horizontal_wrapped(|ui| {
             for p in presets::PRESETS {
                 // A preset that cannot resolve EXACTLY is skipped rather than
@@ -156,7 +164,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 let is_active = active.map(|a| a.id) == Some(p.id);
                 let resp = Button::toggle(p.name, is_active)
                     .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
-                    .min_size(egui::vec2(96.0, 26.0))
+                    .min_size(egui::vec2(96.0, CHIP_H))
                     .show(ui, t);
                 crate::ui_kit::widgets::Tooltip::new(p.blurb).show(ui, &resp, t);
                 if resp.clicked() {
@@ -191,6 +199,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         // so switching design system keeps changing the layout with it.
         use crate::design_system::style_system::Archetype;
         ui.add_space(gap_sm());
+        // Label on its own line, matching every other group in this panel.
         ui.label(
             egui::RichText::new("LAYOUT").size(font_xs()).color(t.dim),
         );
@@ -199,10 +208,14 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         let theme_default = crate::chart_renderer::ui::style::active_style_system()
             .shell.archetype;
         let mut set_to: Option<Option<Archetype>> = None;
+        // Match the preset grid above: same chip height, same gutter on BOTH
+        // axes. These were 24 tall with a 6/8 gutter next to 26-tall chips on
+        // a 6/6 gutter — same visual role, three different numbers.
+        ui.spacing_mut().item_spacing = egui::vec2(CHIP_GAP, CHIP_GAP);
         ui.horizontal_wrapped(|ui| {
             let follow = Button::toggle("Theme default", current_override.is_none())
                 .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
-                .min_size(egui::vec2(110.0, 24.0))
+                .min_size(egui::vec2(110.0, CHIP_H))
                 .show(ui, t);
             crate::ui_kit::widgets::Tooltip::new(
                 // Name what following actually gets you, so "Theme default"
@@ -210,12 +223,23 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 format!("Follow the design system ({:?} right now)", theme_default),
             ).show(ui, &follow, t);
             if follow.clicked() { set_to = Some(None); }
+            // Instrumented like its siblings. Without this the widget tree
+            // showed the archetype row starting 116px right of every other row
+            // in the panel — which reads as an indent bug but is just this
+            // chip being invisible to the capture. An un-instrumented widget
+            // does not merely go unmeasured; it makes its NEIGHBOURS look wrong.
+            #[cfg(debug_assertions)]
+            crate::dev_inspector::record(
+                crate::dev_inspector::WidgetRecord::from_response(
+                    "settings.archetype.follow", "button", "Theme default", &follow, ui,
+                )
+            );
 
             for a in Archetype::ALL {
                 let on = current_override == Some(a);
                 let resp = Button::toggle(a.name(), on)
                     .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
-                    .min_size(egui::vec2(104.0, 24.0))
+                    .min_size(egui::vec2(104.0, CHIP_H))
                     .show(ui, t);
                 if resp.clicked() {
                     // Clicking the active override again releases it — the
@@ -263,12 +287,14 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         let presets = crate::chart_renderer::ui::style::list_style_presets();
         let cur_si = watchlist.style_idx.min(presets.len().saturating_sub(1));
         let btn_w: f32 = 78.0;
-        let btn_h: f32 = 26.0;
+        let btn_h: f32 = CHIP_H;
         let row_w = ui.available_width().max(btn_w);
         let per_row = ((row_w + gap_xs()) / (btn_w + gap_xs())).floor().max(1.0) as usize;
         for chunk in presets.chunks(per_row) {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = gap_xs();
+                // Was gap_xs() (4.0) where the three neighbouring chip grids
+                // all use 6.0 — a "6, 6, 6, 4" rhythm break in one panel.
+                ui.spacing_mut().item_spacing.x = CHIP_GAP;
                 for (id, name) in chunk {
                     let id_us = *id as usize;
                     let active = id_us == cur_si;

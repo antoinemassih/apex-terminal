@@ -620,6 +620,10 @@ fn grp_indicators(
     use super::top_nav::{apply_menu_style, publish_swing_leg_mode, publish_toggle};
     // ── Indicators dropdown ──
     let indicators_menu = KitButton::menu(Icon::CHART_LINE)
+        // Toolbar control height: `Button::menu` defaults to Size::Sm (22) while
+        // the icon buttons beside it are Size::Md (28), so the row had two
+        // control heights. Md here makes every toolbar control 28.
+        .size(crate::ui_kit::widgets::tokens::Size::Md)
         .glyph_size(font_lg())
         .show_menu(ui, t, |ui| {
         apply_menu_style(ui, t);
@@ -1059,6 +1063,7 @@ fn grp_widgets(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
     use super::top_nav::apply_menu_style;
     // ── Widgets dropdown ──
     let widgets_menu = KitButton::menu(Icon::CIRCLES_FOUR)
+        .size(crate::ui_kit::widgets::tokens::Size::Md)
         .glyph_size(font_lg())
         .show_menu(ui, t, |ui| {
         apply_menu_style(ui, t);
