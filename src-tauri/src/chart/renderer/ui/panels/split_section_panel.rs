@@ -239,7 +239,7 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
                         let resp = crate::ui_kit::widgets::Button::new(*label)
                             .variant(crate::ui_kit::widgets::tokens::Variant::Tab)
                             .active(sel)
-                            .min_size(Vec2::new(0.0, 22.0))
+                            .min_size(Vec2::new(0.0, crate::ui_kit::widgets::tokens::Size::Sm.height()))
                             .show(ui, t);
                         if resp.clicked() { new_tab = Some(*tv); }
                     }

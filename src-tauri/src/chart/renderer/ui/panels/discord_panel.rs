@@ -173,7 +173,10 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         .fg(egui::Color32::WHITE)
                         .fill(discord_blurple)
                         .corner_radius(current().r_lg as f32)
-                        .min_size(egui::vec2(180.0, 36.0))
+                        // Off-ladder 36.0 → nearest rung Lg (34). This floor IS
+                        // active (size Sm = 22), so it is a real -2px on a
+                        // standalone empty-state CTA — traded for density-awareness.
+                        .min_size(egui::vec2(180.0, Size::Lg.height()))
                     ).clicked() {
                         watchlist.discord.connecting = true;
                         crate::discord::start_oauth2();

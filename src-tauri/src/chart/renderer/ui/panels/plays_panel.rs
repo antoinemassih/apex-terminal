@@ -415,7 +415,7 @@ fn draw_play_editor(
                     let active = watchlist.play_editor.tags.iter().any(|t| t == tag);
                     if Button::toggle(*tag, active)
                         .corner_radius(current().r_md as f32)
-                        .min_size(egui::vec2(0.0, 16.0))
+                        .min_size(egui::vec2(0.0, Size::Xs.height()))
                         .show(ui, t).clicked() {
                         if active { watchlist.play_editor.tags.retain(|x| x != tag); }
                         else { watchlist.play_editor.tags.push(tag.to_string()); }
@@ -441,7 +441,7 @@ fn draw_play_editor(
                 for ct in &custom {
                     let custom_tag_lbl = format!("{} \u{00D7}", ct);
                     if ui.add(Button::new(custom_tag_lbl.as_str()).variant(Variant::Chip).active(true).size(Size::Xs)
-                        .min_size(egui::vec2(0.0, 16.0))).clicked() {
+                        .min_size(egui::vec2(0.0, Size::Xs.height()))).clicked() {
                         watchlist.play_editor.tags.retain(|x| x != ct);
                     }
                 }

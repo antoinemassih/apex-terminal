@@ -281,7 +281,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     if !active_symbol.is_empty() && active_symbol != watchlist.spread_state.symbol {
                         ui.add_space(gap_xs());
                         let r = Button::new(active_symbol).variant(Variant::Ghost).size(Size::Xs)
-                        .fg(t.accent).min_size(egui::vec2(0.0, 16.0))
+                        .fg(t.accent).min_size(egui::vec2(0.0, Size::Xs.height()))
                         .show(ui, t);
                         Tooltip::new("Use chart symbol").show(ui, &r, t);
                         if r.clicked() {

@@ -608,7 +608,7 @@ impl<'a> MeridienOrderTicket<'a> {
                         for &(pct, lbl) in &[(1.0_f32, "100%"), (0.5, "50%"), (0.25, "25%")] {
                             if ui.add(Button::new(lbl)
                                     .variant(Variant::Chip)
-                                    .min_size(Vec2::new(30.0, 16.0))).clicked() {
+                                    .min_size(Vec2::new(30.0, crate::ui_kit::widgets::tokens::Size::Xs.height()))).clicked() {
                                 let bp = s.buying_power.max(0.0);
                                 if s.last > 0.0 {
                                     *s.order_qty = (bp * pct / s.last) as u32;

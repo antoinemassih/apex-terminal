@@ -306,7 +306,7 @@ pub(crate) fn draw_signal_row_calibrated(
             let has_lineage = lineage.is_some();
             let btn = Button::new(Icon::MAGNIFYING_GLASS).variant(KitVariant::Ghost).size(KitSize::Xs)
                 .fg(if has_lineage { _t.accent } else { color_muted(_t.dim) })
-                .min_size(egui::vec2(18.0, 16.0))
+                .min_size(egui::vec2(18.0, KitSize::Xs.height()))
                 .disabled(!has_lineage)
                 .show(ui, _t);
             if btn.clicked() {

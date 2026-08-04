@@ -233,7 +233,7 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     if let Some(prov) = plan.provenance.as_ref() {
         let lineage = prov.lineage_id.clone();
         let resp = KitButton::new("\u{1F50D} prov").variant(KitVariant::Ghost).size(KitSize::Xs)
-            .fg(t.accent).min_size(egui::vec2(0.0, 18.0)).show(ui, t);
+            .fg(t.accent).min_size(egui::vec2(0.0, KitSize::Xs.height())).show(ui, t);
         if resp.clicked() {
             fire_provenance(OpenProvenanceFor { lineage_id: lineage });
         }

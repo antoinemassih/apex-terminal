@@ -67,11 +67,11 @@ pub fn tab_bar_with_close(
                 let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
                 if is_active && !st.hairline_borders {
                     let resp = Button::toggle(s.as_str(), true).size(KitSize::Sm)
-                        .min_size(Vec2::new(0.0, 18.0)).show(ui, &theme);
+                        .min_size(Vec2::new(0.0, KitSize::Xs.height())).show(ui, &theme);
                     if resp.clicked() { action = TabAction::Selected(i); }
                 } else {
                     let resp = Button::new(s.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm)
-                        .fg(fg).frameless(!is_active).min_size(Vec2::new(0.0, 18.0))
+                        .fg(fg).frameless(!is_active).min_size(Vec2::new(0.0, KitSize::Xs.height()))
                         .show(ui, &theme);
                     if resp.clicked() { action = TabAction::Selected(i); }
                     if is_active && st.hairline_borders {

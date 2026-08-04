@@ -593,7 +593,7 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
             Button::icon(Icon::FOLDER)
                 .variant(Variant::Chrome)
                 .glyph_size(font_lg())
-                .min_size(egui::vec2(60.0, 22.0)));
+                .min_size(egui::vec2(60.0, KitSize::Sm.height())));
         Tooltip::new("Move selection to group").show(ui, &grp_btn, t);
         let grp_popup_id = ui.make_persistent_id("otree_bulk_grp");
         if grp_btn.clicked() {

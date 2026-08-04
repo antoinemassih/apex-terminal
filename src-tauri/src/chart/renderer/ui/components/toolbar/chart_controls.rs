@@ -563,7 +563,7 @@ fn grp_alt_bar(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
             let auto_label = if is_auto { "Auto" } else { "Manual" };
             if KitButton::new(auto_label).variant(KitVariant::Ghost).size(KitSize::Sm)
                 .fg(if is_auto { t.accent } else { t.dim }).frameless(true)
-                .min_size(egui::vec2(32.0, 16.0)).show(ui, t).clicked() {
+                .min_size(egui::vec2(32.0, KitSize::Xs.height())).show(ui, t).clicked() {
                 if is_auto {
                     panes[ap].alt.renko_brick = Chart::auto_brick_size(&panes[ap].bars, 0.5);
                 } else {
@@ -585,7 +585,7 @@ fn grp_alt_bar(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
             let auto_label = if is_auto { "Auto" } else { "Manual" };
             if KitButton::new(auto_label).variant(KitVariant::Ghost).size(KitSize::Sm)
                 .fg(if is_auto { t.accent } else { t.dim }).frameless(true)
-                .min_size(egui::vec2(32.0, 16.0)).show(ui, t).clicked() {
+                .min_size(egui::vec2(32.0, KitSize::Xs.height())).show(ui, t).clicked() {
                 if is_auto {
                     panes[ap].alt.range_size = Chart::auto_brick_size(&panes[ap].bars, 1.0);
                 } else {

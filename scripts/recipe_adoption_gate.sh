@@ -53,6 +53,36 @@ KEYS_AUTHORED=$(printf '%s\n' "$KEY_LINES" | sed 's/[[:space:]]*//;s/,$//' \
 # what happened in M3.4b — 66 -> 80 declarations, 23 distinct keys throughout).
 DECLARATIONS=$(printf '%s\n' "$KEY_LINES" | grep -c . | tr -d ' ')
 
+# -- Dead recipe data: keys AUTHORED by a theme that no widget ever asks for --
+#
+# The inverse of the M3 defect. There, a widget was handed a RecipeSet and
+# ignored it. Here the data exists -- a designer wrote it per theme -- and no
+# resolve("key") call site consumes it, so it is theme intent that can never
+# reach a pixel. HALF the registry was in this state when this check was
+# written: card, card.floating, panel.header, panel.footer, tab.line,
+# toast.danger/success/warn, drag.handle, nav.cluster.
+#
+# Counted, not banned: wiring a widget is real work and a key may legitimately
+# land before its consumer. The floor stops it getting WORSE.
+AUTHORED_KEYS=$(printf '%s\n' "$KEY_LINES" | sed -E 's/.*"([^"]+)".*/\1/' | sort -u)
+CONSUMED=0
+DEAD_LIST=""
+for k in $AUTHORED_KEYS; do
+    # Match the key literal ANYWHERE in the widget layer, not just inside a
+    # `resolve("...")`. Button resolves via `recipe_key_for(variant)`, which
+    # returns the string from a match arm -- a `resolve(` -only grep scored
+    # those as dead and would have sent someone rewiring widgets that already
+    # work.
+    # A state variant (`tab.pill.active`, `row.list.hover`) is reached through
+    # its BASE key's delta, never looked up on its own -- so credit the base.
+    BASE=$(printf '%s' "$k" | sed -E 's/\.(active|hover|selected|fill|disabled)$//')
+    if grep -rqF "\"$k\"" "$SRC/ui_kit" "$SRC/chart" 2>/dev/null        || grep -rqF "\"$BASE\"" "$SRC/ui_kit" "$SRC/chart" 2>/dev/null; then
+        CONSUMED=$((CONSUMED + 1))
+    else
+        DEAD_LIST="$DEAD_LIST $k"
+    fi
+done
+
 # ── Metric 3: styles shipping authored recipe data ───────────────────────────
 # Counts the match arms in builtin_recipes() that return a real set.
 STYLES_AUTHORED=$(grep -cE '^\s*"[a-z]+" => [a-z]+\(\),' \
@@ -66,12 +96,14 @@ widgets_consulting_recipes=$WIDGETS_CONSULTING
 registered_keys_authored=$KEYS_AUTHORED
 styles_with_authored_recipes=$STYLES_AUTHORED
 authored_declarations=$DECLARATIONS
+keys_with_consumer=$CONSUMED
 EOF
     echo "Recipe-adoption floors updated:"
     echo "  widgets consulting recipes : $WIDGETS_CONSULTING"
     echo "  distinct keys authored     : $KEYS_AUTHORED"
     echo "  styles with recipe data    : $STYLES_AUTHORED"
     echo "  authored declarations      : $DECLARATIONS"
+    echo "  keys with a consumer       : $CONSUMED"
     exit 0
 fi
 
@@ -85,6 +117,8 @@ FLOOR_WIDGETS=$(grep '^widgets_consulting_recipes=' "$BASELINE" | cut -d= -f2)
 FLOOR_KEYS=$(grep '^registered_keys_authored=' "$BASELINE" | cut -d= -f2)
 FLOOR_STYLES=$(grep '^styles_with_authored_recipes=' "$BASELINE" | cut -d= -f2)
 FLOOR_DECLS=$(grep '^authored_declarations=' "$BASELINE" | cut -d= -f2)
+FLOOR_CONSUMED=$(grep '^keys_with_consumer=' "$BASELINE" | cut -d= -f2)
+FLOOR_CONSUMED=${FLOOR_CONSUMED:-0}
 : "${FLOOR_DECLS:=0}"
 
 FAIL=0
@@ -93,6 +127,10 @@ printf '  widgets consulting recipes : %-4s (floor %s)\n' "$WIDGETS_CONSULTING" 
 printf '  distinct keys authored     : %-4s (floor %s)\n' "$KEYS_AUTHORED" "$FLOOR_KEYS"
 printf '  styles with recipe data    : %-4s (floor %s)\n' "$STYLES_AUTHORED" "$FLOOR_STYLES"
 printf '  authored declarations      : %-4s (floor %s)\n' "$DECLARATIONS" "$FLOOR_DECLS"
+printf '  keys with a consumer       : %-4s (floor %s)
+' "$CONSUMED" "$FLOOR_CONSUMED"
+if [ -n "$DEAD_LIST" ]; then printf '  DEAD (authored, never resolved):%s
+' "$DEAD_LIST"; fi
 
 if (( WIDGETS_CONSULTING < FLOOR_WIDGETS )); then
     echo "FAIL: fewer widgets consult the recipe layer ($WIDGETS_CONSULTING < $FLOOR_WIDGETS)."
@@ -110,6 +148,12 @@ fi
 if (( DECLARATIONS < FLOOR_DECLS )); then
     echo "FAIL: fewer authored declarations ($DECLARATIONS < $FLOOR_DECLS)."
     echo "      A key removed from a theme un-themes that component there."
+    FAIL=1
+fi
+
+if (( CONSUMED < FLOOR_CONSUMED )); then
+    echo "FAIL: fewer authored recipe keys have a consumer ($CONSUMED < $FLOOR_CONSUMED)."
+    echo "      A key no widget resolves is theme intent that cannot reach a pixel."
     FAIL=1
 fi
 

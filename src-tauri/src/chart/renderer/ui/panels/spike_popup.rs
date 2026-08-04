@@ -347,7 +347,7 @@ fn draw_toast_body(
 fn small_btn(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     KitButton::new(label).variant(KitVariant::Ghost).size(KitSize::Xs)
-        .min_size(egui::vec2(0.0, 18.0))
+        .min_size(egui::vec2(0.0, KitSize::Xs.height()))
         .show(ui, &t)
 }
 

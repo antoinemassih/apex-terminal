@@ -79,6 +79,22 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
     if m:
         text = text[: m.start()]
 
+    # Blank out COMMENTS before matching.
+    #
+    # Without this the lint counts prose. `button.rs` documents the legacy
+    # `Button::simple(label).variant(Ghost).min_size(vec2(avail, 22.0))` that
+    # `outline_full_width` replaced — a doc comment, not a call. Flagging it
+    # pressures the next person to reword documentation to appease a grep,
+    # which is worse than the violation it imagines it found.
+    #
+    # Replacing with spaces (not deleting) keeps every byte offset intact so
+    # reported line numbers stay correct.
+    def _blank(mo: re.Match[str]) -> str:
+        return re.sub(r"\S", " ", mo.group(0))
+
+    text = re.sub(r"//[^\n]*", _blank, text)
+    text = re.sub(r"/\*.*?\*/", _blank, text, flags=re.S)
+
     hits: list[tuple[int, str]] = []
     for mo in CALL.finditer(text):
         h = mo.group(2).strip()

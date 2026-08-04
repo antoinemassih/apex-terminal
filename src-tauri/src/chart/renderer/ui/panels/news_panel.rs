@@ -16,7 +16,7 @@ use super::super::style::*;
 use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use super::super::super::gpu::{Watchlist, NewsItem, Theme};
 use crate::ui_kit::widgets::Button;
-use crate::ui_kit::widgets::tokens::Variant;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::data::feeds::apex_data::live_state as projector;
 use crate::data::feeds::apex_data::types::NewsReading;
 
@@ -129,7 +129,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             if ui.add(Button::new(filter_label)
                 .variant(Variant::Chip)
                 .active(filter_active)
-                .min_size(egui::vec2(0.0, 16.0))
+                .min_size(egui::vec2(0.0, Size::Xs.height()))
             ).clicked() {
                 toggle_filter = true;
             }
@@ -137,7 +137,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             if ui.add(Button::new(sent_label)
                 .variant(Variant::Chip)
                 .active(sent_filter != FILTER_ALL)
-                .min_size(egui::vec2(0.0, 16.0))
+                .min_size(egui::vec2(0.0, Size::Xs.height()))
             ).clicked() {
                 cycle_sentiment = true;
             }

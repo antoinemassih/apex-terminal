@@ -292,6 +292,31 @@ fn paint_tabs(
         })
         .unwrap_or_else(|| pal_ref.base(Tone::Accent));
 
+    // tab.line (IDLE): the base key was authored by every style and resolved by
+    // NOBODY — only its `.active` variant above was ever looked up. So a theme
+    // could describe how an inactive Line tab should read and the description
+    // never reached a pixel. That is the mirror of the M3 defect: there a
+    // widget ignored its data, here the data had no widget.
+    //
+    // Default is the historical idle treatment (no fill, no rounding), so
+    // styles that author nothing are unchanged.
+    let default_line_sx = Sx::new().rounded(0.0);
+    let line_sx = recipes.resolve("tab.line", default_line_sx, theme);
+    let line_delta = line_sx.resolved(StyleState::Normal);
+    // An authored idle fill paints behind inactive Line tabs; absent = none,
+    // which is what every builtin does today.
+    let line_idle_fill: Option<egui::Color32> = line_delta.fill.map(|fill| match fill {
+        crate::ui_kit::sx::Fill::Solid(c) => c,
+        crate::ui_kit::sx::Fill::Shade(tone, shade) => pal_ref.shade(tone, shade),
+        crate::ui_kit::sx::Fill::Alpha(tone, a) => {
+            let b = pal_ref.base(tone);
+            egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+        }
+    });
+    let line_idle_radius = line_delta.radius.unwrap_or(0.0);
+    let line_idle: Option<(egui::Color32, f32)> =
+        line_idle_fill.map(|c| (c, line_idle_radius));
+
     // tab.pill: default = radius_sm (the historical Segmented/Filled value).
     let default_pill_sx = Sx::new().rounded_sm();
     let pill_sx = recipes.resolve("tab.pill", default_pill_sx, theme);
@@ -531,7 +556,7 @@ fn paint_tabs(
         if !is_dragging {
             paint_one_tab(
                 ui, theme, treatment, rect, item, is_active, hover_t, active_t,
-                &font_label, &font_icon, inner_gap, pad_x, pill_cr,
+                &font_label, &font_icon, inner_gap, pad_x, pill_cr, line_idle,
             );
 
             // Close button hit-test.
@@ -595,7 +620,7 @@ fn paint_tabs(
             // Semi-transparent overlay
             paint_one_tab_painter(
                 &painter, theme, treatment, rect, item, true, 1.0, 1.0,
-                &font_label, &font_icon, inner_gap, pad_x, 70, pill_cr,
+                &font_label, &font_icon, inner_gap, pad_x, 70, pill_cr, line_idle,
             );
         }
     }
@@ -874,6 +899,7 @@ fn paint_one_tab(
     inner_gap: f32,
     pad_x: f32,
     pill_cr: CornerRadius,
+    line_idle: Option<(Color32, f32)>,
 ) {
     paint_one_tab_painter(
         &ui.painter().clone(),
@@ -890,6 +916,7 @@ fn paint_one_tab(
         pad_x,
         255,
         pill_cr,
+        line_idle,
     );
 }
 
@@ -909,6 +936,9 @@ fn paint_one_tab_painter(
     pad_x: f32,
     alpha_mul: u8,
     pill_cr: CornerRadius,
+    // Resolved from the `tab.line` recipe. `None` = paint nothing, which is
+    // what every builtin does today (Zed parity).
+    line_idle: Option<(Color32, f32)>,
 ) {
     let alpha = |c: Color32| -> Color32 {
         if alpha_mul == 255 { c } else {
@@ -929,6 +959,20 @@ fn paint_one_tab_painter(
             // active or hover — the only signals are dot, label color, and the
             // 2px accent underline on active. Reserved 1px at the bottom is
             // intentionally left untouched for the strip's hairline baseline.
+            //
+            // ...UNLESS a style authors `tab.line` a fill. That key was
+            // authored by every builtin and resolved by nobody — only
+            // `tab.line.active` was ever looked up — so a theme's idle-tab
+            // description could never reach a pixel. No builtin authors a fill
+            // today, so this paints nothing and Zed parity is preserved; the
+            // point is that a style CAN now express it.
+            if let Some((fill, r)) = line_idle {
+                painter.rect_filled(
+                    rect,
+                    CornerRadius::same(r.clamp(0.0, 255.0).round() as u8),
+                    alpha(fill),
+                );
+            }
         }
         TabTreatment::Segmented => {
             // pill_cr resolved from tab.pill recipe (default = radius_sm).

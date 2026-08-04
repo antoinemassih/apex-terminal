@@ -652,8 +652,12 @@ impl Tone {
 /// Replaces `style::small_action_btn` with a cleaner ghost/hover treatment.
 pub fn panel_action_btn(ui: &mut Ui, label: &str, color: Color32) -> bool {
     let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
+    // `min_size` is a FLOOR that is max()'d against `size.height()`, so the
+    // smallest rung is the correct expression of "stay as compact as the
+    // ladder allows" — the old literal 16.0 was below every rung and could
+    // therefore never bind, while also locking the site out of density.
     Button::new(label).variant(Variant::Ghost).size(KitSize::Xs)
-        .fg(color).min_size(Vec2::new(0.0, 16.0))
+        .fg(color).min_size(Vec2::new(0.0, KitSize::Xs.height()))
         .show(ui, &theme).clicked()
 }
 
