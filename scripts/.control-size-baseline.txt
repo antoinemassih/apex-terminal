@@ -1,0 +1,19 @@
+# control-size budgets — may only FALL.
+# A control height written as a bare number cannot follow the
+# type scale, cannot follow density, and cannot be reconciled
+# with the control beside it. Use Size::*.height().
+# total=22 files=14
+3 src-tauri/src/chart/renderer/ui/components/header_buttons.rs
+2 src-tauri/src/chart/renderer/ui/components/toolbar/chart_controls.rs
+1 src-tauri/src/chart/renderer/ui/inputs/form.rs
+1 src-tauri/src/chart/renderer/ui/panels/discord_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/kit.rs
+2 src-tauri/src/chart/renderer/ui/panels/news_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/object_tree.rs
+2 src-tauri/src/chart/renderer/ui/panels/plays_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/signals_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/spike_popup.rs
+1 src-tauri/src/chart/renderer/ui/panels/split_section_panel.rs
+3 src-tauri/src/chart/renderer/ui/panels/spread_panel.rs
+1 src-tauri/src/chart/renderer/ui/panels/trade_plan_panel.rs
+2 src-tauri/src/ui_kit/widgets/button.rs

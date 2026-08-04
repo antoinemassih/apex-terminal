@@ -46,3 +46,12 @@ jobs:
       - name: Run radius lint (positional corner-radius literals)
         if: ${{ !cancelled() }}
         run: python scripts/radius_lint.py
+
+      # The RELATIONSHIP gate. Every other check here asks "is this value a
+      # token?" — which cannot see three siblings using three different legal
+      # tokens and rendering three different heights. This one bans the form
+      # that can never participate in a relationship at all: a control height
+      # written as a bare number.
+      - name: Run control-size lint (literal control heights)
+        if: ${{ !cancelled() }}
+        run: python scripts/control_size_lint.py
