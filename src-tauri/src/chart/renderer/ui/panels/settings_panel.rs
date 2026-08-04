@@ -182,6 +182,55 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                     .color(t.dim),
             );
         }
+
+        // ── Layout archetype (DS-6.0 D1) ──
+        //
+        // The theme supplies the default; this row is the per-WORKSPACE
+        // override. "Theme default" is first and is the normal state — it
+        // clears the override rather than pinning the theme's current value,
+        // so switching design system keeps changing the layout with it.
+        use crate::design_system::style_system::Archetype;
+        ui.add_space(gap_sm());
+        ui.label(
+            egui::RichText::new("LAYOUT").size(font_xs()).color(t.dim),
+        );
+        ui.add_space(gap_xs());
+        let current_override = watchlist.workspace_archetype();
+        let theme_default = crate::chart_renderer::ui::style::active_style_system()
+            .shell.archetype;
+        let mut set_to: Option<Option<Archetype>> = None;
+        ui.horizontal_wrapped(|ui| {
+            let follow = Button::toggle("Theme default", current_override.is_none())
+                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                .min_size(egui::vec2(110.0, 24.0))
+                .show(ui, t);
+            crate::ui_kit::widgets::Tooltip::new(
+                // Name what following actually gets you, so "Theme default"
+                // is not an opaque choice.
+                format!("Follow the design system ({:?} right now)", theme_default),
+            ).show(ui, &follow, t);
+            if follow.clicked() { set_to = Some(None); }
+
+            for a in Archetype::ALL {
+                let on = current_override == Some(a);
+                let resp = Button::toggle(a.name(), on)
+                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                    .min_size(egui::vec2(104.0, 24.0))
+                    .show(ui, t);
+                if resp.clicked() {
+                    // Clicking the active override again releases it — the
+                    // alternative is a one-way door back to "Theme default".
+                    set_to = Some(if on { None } else { Some(a) });
+                }
+                #[cfg(debug_assertions)]
+                crate::dev_inspector::record(
+                    crate::dev_inspector::WidgetRecord::from_response(
+                        &format!("settings.archetype.{}", a.name()), "button", a.name(), &resp, ui,
+                    )
+                );
+            }
+        });
+        if let Some(v) = set_to { watchlist.set_workspace_archetype(v); }
     });
 
     // ── THEME — big preview blocks with mini chart layout ──
