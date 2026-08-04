@@ -262,7 +262,7 @@ edits, across all six themes, in the playground. **This is the plan's crown jewe
 | M4.3 | Migrate ui_kit chrome (~120 sites: `pane_grid`, `header`, `panel_list_row`, `select`, `tabs`) | ui_kit manual-geometry 385 → <100 |
 | M4.4 | **`Grid` wrapper** (~200 lines over compiled-in Taffy grid: tracks, spans, auto-rows, headless-tested) | 12-col × 92 px fixture solves |
 | M4.5 | Structural tokens: `row_height_*`, `HEADER_H`, `TILE_GAP`, splitter, `Width::{240,300,400}` → typed scale, per-style | themes change proportions |
-| M4.6 | Root shell solve (300/1fr/360 · fixed-height rows) — **coordinates with the `ShellProfile` DS-6.0 decision**; container-paints-separation in `pane_grid` (frame-owns-round / gap-is-border) | archetype fixtures render |
+| M4.6 | ✅ **DONE** (2026-08-03). DS-6.0 decided (`13-DS-6.0-DECISION.md`), so `ShellSpec` gave the shell the owner the audit said it lacked. Rails now read `Density.rail_*` — the tokens existed since M4.5 and `Width` was their only consumer, ignoring them. The 300/1fr/360 solve itself landed in **DS-6.1** as a workspace view (`dashboard_layout.rs`), NOT a shell mode, so sacred `core.rs` is untouched. Open follow-up: no style differentiates its rails yet — `06` §4 says widths are content-derived, so that is a measurement task. | rails follow the active style (test asserts the RELATIONSHIP, not the numbers) |
 | M4.7 | Definite-height propagation (fixes the silent `MaxContent` collapse) | Mariner shell fixture |
 
 **Gate:** P-10 green; resize sweep shows reflow (constant-widget-count = broken harness).
@@ -356,7 +356,7 @@ is safe any time) but may not *claim fidelity* before its entry gate.
 | DS-4.1–4.4 author six schemes | **T1/T2/T3** (post-M1, through the real pipeline) |
 | DS-5.1 Aperture mosaic | **T4** (needs M4.4 Grid — the old plan had no grid to build on) |
 | DS-5.2 Cadence | **T3** |
-| DS-6.0 ShellProfile decision | unchanged, now gates **M4.6** |
+| DS-6.0 ShellProfile decision | ✅ RESOLVED 2026-08-03 — see `13-DS-6.0-DECISION.md`; M4.6 unblocked and done |
 | DS-6.1–6.4 editorial dashboard | **T4** |
 | DS-7.* sweep and lock | **M5 + T5** |
 
