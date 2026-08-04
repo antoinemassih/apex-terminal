@@ -179,6 +179,36 @@ def capture_pair(port: int, theme_idx: int, theme_name: str,
                  settle_ms: int) -> Path:
     cmd(port, {"cmd": "SetThemeIdx", "idx": theme_idx, "pane": 0})
     cmd(port, {"cmd": "SetStyleIdx", "idx": style_idx})
+
+    # VERIFY the switch landed before shooting — do not just sleep.
+    #
+    # These are QUEUED commands: the HTTP call returns "queued", not "applied".
+    # A blind `sleep(settle_ms)` assumes the app drains and repaints in that
+    # window, which is false under load (a cargo build running, another app
+    # instance alive). The failure is silent and pernicious: the screenshot
+    # shows the PREVIOUS theme but is written under the NEW theme's filename,
+    # so the reference set gets a PNG named `aperture-aperture` containing
+    # Meridien's cream palette and every later comparison is against a lie.
+    #
+    # `/state` now reports `active_theme_idx` / `active_style_idx`, so poll
+    # until the app has actually converged, then settle for the repaint.
+    deadline = time.time() + 10.0
+    seen = None
+    while time.time() < deadline:
+        try:
+            _, st = http("GET", port, "/state", None, timeout=5.0)
+            seen = (st.get("active_theme_idx"), st.get("active_style_idx"))
+            if seen == (theme_idx, style_idx):
+                break
+        except Exception:
+            pass                       # transient during a repaint; keep polling
+        time.sleep(0.1)
+    else:
+        raise RuntimeError(
+            f"theme/style never converged: asked for {(theme_idx, style_idx)}, "
+            f"app reports {seen}. Refusing to write a mislabelled capture."
+        )
+
     time.sleep(settle_ms / 1000.0)     # let repaint settle beyond the 1-frame wait
 
     shot_name = f"ds_{theme_name}_{style_name}".replace("-", "_")

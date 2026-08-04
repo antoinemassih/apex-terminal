@@ -1250,6 +1250,22 @@ pub fn end_frame(
         "active_symbol":   active_chart.map(|c| c.symbol.as_str()).unwrap_or(""),
         "active_timeframe":active_chart.map(|c| c.timeframe.as_str()).unwrap_or(""),
         "bar_count":       active_chart.map(|c| c.bars.len()).unwrap_or(0),
+        // The ACTIVE DESIGN SYSTEM, so a caller can VERIFY a theme switch
+        // instead of hoping.
+        //
+        // `SetThemeIdx` / `SetStyleIdx` are QUEUED commands: the HTTP call
+        // returns "queued", not "applied". The capture harness then slept a
+        // blind 600ms and shot. Under load — a cargo build running, another app
+        // instance alive — the queue had not drained, so the screenshot was of
+        // the PREVIOUS theme and was written under the NEW theme's filename.
+        // That produced a reference PNG labelled `aperture-aperture` containing
+        // Meridien's cream palette, and nothing in the pipeline could notice.
+        //
+        // With these two exposed the harness can poll until the app actually
+        // converged, which is the same state-based drain the scenario runner's
+        // `reset` step already uses.
+        "active_theme_idx": active_chart.map(|c| c.theme_idx).unwrap_or(0),
+        "active_style_idx": crate::chart_renderer::ui::style::active_style_idx(),
         "open_dialogs":    open_dialogs,
         // ApexData subscription hygiene. `set_quotes` is driven from the
         // per-frame render loop, so without suppression the terminal pushed a
