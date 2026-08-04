@@ -1110,6 +1110,17 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::SetThemeIdx { pane: _, idx } => {
+            // CLAMP to a real theme before storing.
+            //
+            // This stored `idx` verbatim. Rendering survived because
+            // `get_theme` clamps internally, but the STATE then claimed a
+            // theme that does not exist — `/state` would report theme 99 and
+            // any caller verifying a switch (the capture harness now does)
+            // would see its request "converge" onto nothing. A tool asking
+            // "did the theme change?" must not be told yes about a theme the
+            // app cannot render.
+            let theme_count = crate::chart_renderer::gpu::get_all_themes().len();
+            let idx = if theme_count == 0 { 0 } else { idx.min(theme_count - 1) };
             // Theme is conceptually app-wide — apply to every pane so all
             // chrome (panel headers, chart bg, watchlist rows) stays in sync.
             for p in panes.iter_mut() {
@@ -1122,7 +1133,13 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::SetStyleIdx { idx } => {
-            watchlist.style_idx = idx;
+            // Same clamp, same reason (see SetThemeIdx).
+            let style_count = crate::chart_renderer::ui::style::list_style_presets().len();
+            watchlist.style_idx = if style_count == 0 {
+                0
+            } else {
+                idx.min(style_count - 1)
+            };
         }
 
         AppCommand::SetLayoutLive { layout } => {
