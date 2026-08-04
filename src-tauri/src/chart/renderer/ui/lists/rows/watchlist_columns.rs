@@ -105,24 +105,49 @@ pub(crate) fn paint_change_chip(
     let font = egui::FontId::proportional(font_size);
     let galley = painter.layout_no_wrap(txt, font.clone(), base);
     let pad = egui::vec2(3.0, 2.0);
+    // CLAMP the chip to its column slot.
+    //
+    // The chip sized itself purely from the measured galley and ignored
+    // `rect`, while the column advances by a fixed `default_width: 50.0`. At
+    // the live proportional font a value like "+12.34%" measures ~58px, so the
+    // chip ran ~8px INTO the next column — and the next column (Ext Hours)
+    // draws flush at its own left edge, so the two collided and the change
+    // figure was painted over its own neighbour.
+    let max_w = rect.width().max(0.0);
+    let chip_w = (galley.size().x + pad.x * 2.0).min(max_w);
     let chip = Rect::from_min_size(
         egui::pos2(rect.left(), rect.center().y - galley.size().y * 0.5 - pad.y),
-        galley.size() + pad * 2.0,
+        egui::vec2(chip_w, galley.size().y + pad.y * 2.0),
     );
     painter.rect_filled(chip, radius_sm(), color_alpha(base, 38));
-    painter.galley(egui::pos2(chip.left() + pad.x, chip.top() + pad.y), galley, base);
+    // Clip the text to the chip so a value too long for the slot is cut at the
+    // chip edge rather than escaping it.
+    painter
+        .with_clip_rect(painter.clip_rect().intersect(chip))
+        .galley(egui::pos2(chip.left() + pad.x, chip.top() + pad.y), galley, base);
 }
 
 /// Extended-hours (pre/post-market) % move, shown where the sparkline used to
 /// live. Only drawn while `ext_change` is `Some` (i.e. in extended hours).
 fn render_ext_hours(c: &mut ColumnCtx) {
     let Some(ext) = c.item.ext_change else { return; };
+    // Say nothing when the extended-hours move IS the session move.
+    //
+    // During pre-market the feed reports the same figure for both, so the row
+    // rendered the identical number twice, side by side, in two columns. A
+    // second copy of a number carries no information — it just reads as a
+    // rendering fault, which is exactly how it looked.
+    if (ext - c.item.change_pct).abs() < 0.005 {
+        return;
+    }
     let col = if ext >= 0.0 { c.bull } else { c.bear };
     let s = format!("{:+.2}%", ext);
     // Dimmer than the main column so it reads as the secondary (after-hours)
     // figure; a tiny dot prefix hints "extended".
     c.painter.text(
-        egui::pos2(c.rect.left(), c.rect.center().y),
+        // Inset from the column edge. This drew flush at `rect.left()`, so it
+        // sat hard against whatever the previous column ended with.
+        egui::pos2(c.rect.left() + gap_xs(), c.rect.center().y),
         egui::Align2::LEFT_CENTER,
         &s,
         egui::FontId::proportional(c.font_size - 1.0),
@@ -245,7 +270,16 @@ fn has_atr(d: &WatchlistItemData) -> bool { d.atr.map_or(false, |v| v > 0.0) }
 fn has_market_cap(d: &WatchlistItemData) -> bool { d.market_cap.map_or(false, |v| v > 0.0) }
 
 pub static BUILTIN: &[WatchlistColumnSpec] = &[
-    WatchlistColumnSpec { id: WatchlistColumnId::ChangePct,   label: "Change %",   default_width: 50.0, applicable: always,         render: render_change_pct },
+    // 64, not 50. The chip is MEASURED text; 50 fitted a narrower figure and a
+    // smaller face. "+12.34%" lays out at ~54px at the live proportional size,
+    // plus 3px chip padding each side = ~60. At 50 the chip either overran the
+    // next column (before the clamp) or truncated its own "%" (after it).
+    //
+    // Still a fitted constant, and it is honest to say so: it fits TODAY'S type
+    // scale, not every future one. What changed is the failure mode — with the
+    // clamp in `paint_change_chip`, outgrowing this width now truncates inside
+    // the chip instead of painting over the neighbouring column.
+    WatchlistColumnSpec { id: WatchlistColumnId::ChangePct,   label: "Change %",   default_width: 64.0, applicable: always,         render: render_change_pct },
     WatchlistColumnSpec { id: WatchlistColumnId::Sparkline,   label: "Sparkline",  default_width: 38.0, applicable: has_spark,      render: render_sparkline },
     WatchlistColumnSpec { id: WatchlistColumnId::ExtHours,    label: "Ext Hours",  default_width: 50.0, applicable: has_ext_hours,  render: render_ext_hours },
     WatchlistColumnSpec { id: WatchlistColumnId::RvolBadge,   label: "RVOL",       default_width: 26.0, applicable: has_rvol,       render: render_rvol_badge },
