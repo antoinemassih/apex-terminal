@@ -1055,10 +1055,23 @@ fn meridien() -> RecipeSet {
         ),
         // `--ds-card-radius: radius-md` + `--ds-card-pad: 22px` ("Meridien
         // breathes more than Lucid").
+        //
+        // RADIUS OVERRIDDEN vs that transcription, deliberately. `radius-md`
+        // resolves to 6px on Meridien's scale, and a 6px corner contradicts the
+        // system's own signature — MONO / UPPERCASE / SQUARE — which is what
+        // `12-T5-CERTIFICATION` vouches for and what makes Meridien read as a
+        // different product from Lucid despite sharing its palette. Squareness
+        // is load-bearing here in a way the source rule did not account for.
+        //
+        // The PADDING stays at 22. The note above ("breathes more than Lucid",
+        // which pads 20) is a deliberate relationship between two systems, and
+        // nothing about squareness argues against it — dropping to 14 would
+        // silently make Meridien the tightest editorial card, inverting the
+        // source's intent on a point that was never in question.
         (
             "card",
             spec(
-                d().radius(RadiusTier::Md)
+                d().radius(RadiusTier::None)
                     .px(PadTier::Px(22.0))
                     .py(PadTier::Px(22.0))
                     .border(tone(ToneRef::Border), BorderWidthTier::Std),

@@ -181,15 +181,51 @@ pub(crate) fn solve_header_tabs_strip(rect: Rect, closable: bool) -> HeaderTabsS
     HeaderTabsStrip { strip, close }
 }
 
-fn paint_chrome_perimeter(painter: &egui::Painter, rect: Rect, t: &Theme) {
+/// Panel-header edge.
+///
+/// This painted a full PERIMETER hairline from `Chrome.header_outer_border_*`,
+/// while the `panel.header` recipe — authored by all six styles, transcribed
+/// from the React `[data-ds]` rules — describes a BOTTOM edge only
+/// (`.ds-panel__header { border-bottom: 1px solid ... }`). The recipe was
+/// consumed by nothing, so the design source and the pixels disagreed and the
+/// authored data was inert.
+///
+/// Decision: honour the source. A header is a band that separates itself from
+/// the content below it; boxing it on four sides makes every panel read as a
+/// nested container, which is a large part of why the chrome looked busy.
+///
+/// The Chrome tokens still supply the colour and width when a style authors no
+/// edge, so nothing is un-themed by the change.
+fn paint_chrome_perimeter(ctx: &egui::Context, painter: &egui::Painter, rect: Rect, t: &Theme) {
     let st = current();
-    painter.rect_stroke(
-        rect, 0.0,
-        Stroke::new(
+    let recipes = crate::ui_kit::widgets::theme::get_ambient_recipes(ctx);
+    let delta = recipes
+        .resolve("panel.header", crate::ui_kit::sx::Sx::new(), t)
+        .resolved(crate::ui_kit::sx::StyleState::Normal);
+
+    let pal = crate::ui_kit::sx::palette_ct(t);
+    let (w, col) = match delta.border_spec() {
+        Some(b) => (
+            b.width,
+            delta.resolved_border_color(&pal)
+                .unwrap_or_else(|| tint(t, SxTone::Text, st.header_outer_border_alpha)),
+        ),
+        None => (
             st.header_outer_border_width,
             tint(t, SxTone::Text, st.header_outer_border_alpha),
         ),
-        StrokeKind::Inside,
+    };
+    if w <= 0.0 {
+        return;
+    }
+    // Bottom edge only.
+    let y = rect.bottom() - w * 0.5;
+    painter.line_segment(
+        [
+            egui::pos2(rect.left(), y),
+            egui::pos2(rect.right(), y),
+        ],
+        Stroke::new(w, col),
     );
 }
 
@@ -324,7 +360,7 @@ impl<'a> PanelHeader<'a> {
         let painter = ui.painter_at(rect);
 
         // Chrome: perimeter hairline + 10px gradient shadow below.
-        paint_chrome_perimeter(&painter, rect, t);
+        paint_chrome_perimeter(ui.ctx(), &painter, rect, t);
         paint_header_shadow(ui, rect, t);
 
         // Use per-style font family: mono for Alto/Mariner/Relay, proportional for others.
@@ -464,7 +500,7 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
         let (rect, _resp) = ui.allocate_exact_size(Vec2::new(avail_w, h_panel), Sense::hover());
         let painter = ui.painter_at(rect);
 
-        paint_chrome_perimeter(&painter, rect, t);
+        paint_chrome_perimeter(ui.ctx(), &painter, rect, t);
         paint_header_shadow(ui, rect, t);
 
         // Use per-style font family: mono for Alto/Mariner/Relay, proportional for others.

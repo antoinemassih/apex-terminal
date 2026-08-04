@@ -389,6 +389,12 @@ impl SxDelta {
 
     /// M3.2 accessors for the extended vocabulary.
     pub fn bevel_spec(&self) -> Option<BevelSpec> { self.bevel }
+    /// Authored horizontal padding, if any. Cards read this to honour
+    /// `--ds-card-pad` from the recipe layer.
+    pub fn pad_x(&self) -> Option<f32> { self.px }
+    /// The authored border, if any. `None` means the recipe says NO border —
+    /// distinct from a zero-width one.
+    pub fn border_spec(&self) -> Option<BorderSpec> { self.border }
     pub fn weight_hint(&self) -> Option<u16> { self.weight }
     /// True when the authored weight asks for a bold face (>= 600).
     pub fn is_strong(&self) -> Option<bool> { self.weight.map(|w| w >= 600) }

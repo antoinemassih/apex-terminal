@@ -39,7 +39,8 @@ use egui::{CornerRadius, Frame, Margin, Pos2, Rect, Stroke, Ui};
 
 use super::panel_section::Tone;
 use crate::ui_kit::tokens::gap_md;
-use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::widgets::theme::{ComponentTheme, get_ambient_recipes};
+use crate::ui_kit::sx::{Sx, StyleState};
 
 #[must_use = "PanelCard must be rendered with `.show(...)`"]
 pub struct PanelCard {
@@ -97,11 +98,49 @@ impl PanelCard {
         // Outer margin so cards breathe from the panel edges and from each other
         // (stacked cards) instead of sitting flush against the borders.
         let om = crate::ui_kit::style::gap_sm() as i8;
-        // M1 Change D: an authored CardRecipe overrides the derived card chrome.
-        // (`border_width: None` inside an authored recipe = NO stroke at all —
-        // Aperture's borderless lifted tiles.)
+        // ── Card chrome: RECIPE first, CardRecipe as fallback ────────────────
+        //
+        // Two mechanisms described a card and disagreed. `StyleSystem.card`
+        // (M1 Change D) was consumed here; the `"card"` RECIPE key was authored
+        // by all six styles and consumed by nothing. Decision: the recipe wins
+        // — it is the designed per-theme mechanism, the same one Button, Tag
+        // and Tabs resolve through, and it is authored everywhere rather than
+        // on four of six styles.
+        //
+        // CardRecipe is kept as a fallback so a pack that authors only the
+        // legacy field still themes its cards; it is scheduled for deletion
+        // once nothing relies on it.
+        //
+        // `border_width: None` / a recipe with no border still means NO STROKE
+        // AT ALL, not a zero-width one — Aperture's borderless lifted tiles.
+        let recipes = get_ambient_recipes(ui.ctx());
         let card_recipe = crate::ui_kit::style::card_recipe();
-        let (radius, pad, border_stroke) = if let Some(cr) = card_recipe {
+        let default_card_sx = Sx::new();
+        let card_sx = recipes.resolve("card", default_card_sx, t);
+        let card_delta = card_sx.resolved(StyleState::Normal);
+        let recipe_border = card_delta.border_spec();
+        let recipe_authored =
+            card_delta.radius.is_some() || card_delta.pad_x().is_some() || recipe_border.is_some();
+
+        let (radius, pad, border_stroke) = if recipe_authored {
+            let r = card_delta.radius.unwrap_or(rr as f32);
+            let p = card_delta.pad_x().unwrap_or(self.padding);
+            // An authored recipe with NO border means no stroke at all — that is
+            // how Aperture ships `--ds-card-border: none`.
+            let pal = crate::ui_kit::sx::palette_ct(t);
+            let stroke = match recipe_border {
+                Some(b) if b.width > 0.0 => Stroke::new(
+                    b.width,
+                    card_delta.resolved_border_color(&pal).unwrap_or(border),
+                ),
+                _ => Stroke::NONE,
+            };
+            (
+                egui::CornerRadius::same(r.clamp(0.0, 255.0).round() as u8),
+                p as i8,
+                stroke,
+            )
+        } else if let Some(cr) = card_recipe {
             let stroke = match cr.border_width {
                 Some(w) => Stroke::new(w, border),
                 None    => Stroke::NONE,
