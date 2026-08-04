@@ -223,7 +223,24 @@ impl RadiusTier {
             RadiusTier::Sm   => st::radius_sm(),
             RadiusTier::Md   => st::radius_md(),
             RadiusTier::Lg   => st::radius_lg(),
-            RadiusTier::Pill => 999.0,
+            // Read the style's OWN pill token — do not force a full round.
+            //
+            // This was a hardcoded `999.0`, which made every `RadiusTier::Pill`
+            // recipe render a full pill in EVERY theme. Meridien authors
+            // `pill: 0.0` with the comment "Meridien sharp pill", and its whole
+            // signature is MONO / UPPERCASE / SQUARE — its toolbar chips were
+            // rendering as capsules anyway. Glass authors `pill: 0.0` too.
+            //
+            // The module doc of `builtin_recipes.rs` states the rule this
+            // broke: "Tiers over pixels. `RadiusTier::Pill` / `PadTier::Md`
+            // track the active style." The single line implementing the tier
+            // was the one place that didn't. `ui_kit/scale.rs` already resolves
+            // its own `Radius::Pill` through the token correctly.
+            //
+            // Styles authoring `pill: 99` (Aperture, Cadence, Alto, Mariner,
+            // Lucid) are unchanged — 99 still exceeds half of any control
+            // height, so they still round fully.
+            RadiusTier::Pill => st::radius_pill(),
             RadiusTier::Px(v) => *v,
         }
     }
