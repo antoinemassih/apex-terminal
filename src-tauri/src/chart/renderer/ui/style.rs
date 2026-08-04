@@ -1121,38 +1121,43 @@ pub fn segmented_control(
     );
     let border_col = color_alpha(toolbar_border, alpha_strong());
 
+    // Two reserved slots, both BEHIND the labels: the trough, then the active
+    // segment's fill on top of it.
     let bg_slot = ui.painter().add(egui::Shape::Noop);
+    let sel_slot = ui.painter().add(egui::Shape::Noop);
 
     let prev_spacing = ui.spacing().item_spacing.x;
     ui.spacing_mut().item_spacing.x = gap_xs();
 
     let mut union_rect: Option<egui::Rect> = None;
-    let n = labels.len();
-    let rsm = radius_sm() as u8;
-    // Match Size::Sm button height (22px) so segmented controls don't read
-    // 2px shorter than adjacent toolbar buttons.
-    let seg_btn_h = 22.0;
-    let seg_pad_x = 5.0;
+    let mut active_rect: Option<egui::Rect> = None;
+    // Match the Sm button height so segmented controls don't read shorter than
+    // the toolbar buttons beside them. Was a pinned 22.0 with a comment saying
+    // "Match Size::Sm button height (22px)" — the comment named the token, so
+    // read the token.
+    let seg_btn_h = crate::ui_kit::widgets::tokens::Size::Sm.height();
+    let seg_pad_x = gap_xs() + 1.0;
 
     for (i, label) in labels.iter().enumerate() {
         let active = i == active_idx;
         let fg = if active { accent } else { dim };
-        let bg = if active { color_alpha(accent, alpha_tint() + 5) } else { Color32::TRANSPARENT };
-        let cr = match (i, n) {
-            (0, 1) => egui::CornerRadius::same(rsm),
-            (0, _) => egui::CornerRadius { nw: rsm, sw: rsm, ne: 0, se: 0 },
-            (x, n) if x == n - 1 => egui::CornerRadius { nw: 0, sw: 0, ne: rsm, se: rsm },
-            _ => egui::CornerRadius::ZERO,
-        };
         let prev_pad = ui.spacing().button_padding;
         ui.spacing_mut().button_padding = egui::vec2(seg_pad_x, prev_pad.y);
+        // The button paints NO fill — the selection is drawn below as one
+        // rounded pill. Letting the button fill itself is what produced the
+        // defect: a middle segment resolved to `CornerRadius::ZERO`, so the
+        // active cell rendered as a hard SQUARE block inside a trough rounded
+        // at radius_md()+1 (≈15px on Aperture), flush to its top and bottom
+        // edges and painting over its border.
         let resp = ui.add(
             egui::Button::new(RichText::new(*label).monospace().size(font_md()).strong().color(fg))
-                .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
+                .fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
+                .corner_radius(egui::CornerRadius::ZERO)
                 .min_size(egui::vec2(0.0, seg_btn_h))
         );
         ui.spacing_mut().button_padding = prev_pad;
         union_rect = Some(union_rect.map_or(resp.rect, |r: egui::Rect| r.union(resp.rect)));
+        if active { active_rect = Some(resp.rect); }
         cursor::clickable(ui, &resp);
         if resp.clicked() { clicked = Some(i); }
     }
@@ -1161,10 +1166,30 @@ pub fn segmented_control(
 
     if let Some(ur) = union_rect {
         let trough_expand = crate::dt_f32!(segmented.trough_expand_x, 4.0);
-        let trough_rect = ur.expand2(egui::vec2(trough_expand, 0.0));
+        // Expand on BOTH axes. Horizontal-only left the segments flush against
+        // the trough's top and bottom, so the selection had nowhere to sit
+        // inside it and the trough read as a box drawn around the text rather
+        // than a track the selection slides in.
+        let inset = gap_2xs();
+        let trough_rect = ur.expand2(egui::vec2(trough_expand, inset));
         let r = radius_md() + 1.0;
         ui.painter().set(bg_slot, egui::Shape::rect_filled(trough_rect, r, trough));
         ui.painter().rect_stroke(trough_rect, r, Stroke::new(stroke_thin(), border_col), egui::StrokeKind::Outside);
+
+        // The selection: one rounded pill, inset inside the trough on every
+        // side, with a radius derived from the trough's so the two curves are
+        // concentric rather than one square inside one round.
+        if let Some(ar) = active_rect {
+            let sel = egui::Rect::from_min_max(
+                egui::pos2(ar.left() - trough_expand * 0.5, trough_rect.top() + inset),
+                egui::pos2(ar.right() + trough_expand * 0.5, trough_rect.bottom() - inset),
+            );
+            let sel_r = (r - inset).max(0.0);
+            ui.painter().set(
+                sel_slot,
+                egui::Shape::rect_filled(sel, sel_r, color_alpha(accent, alpha_tint() + 5)),
+            );
+        }
     }
 
     clicked
