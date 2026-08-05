@@ -9,14 +9,15 @@
 //! the DOM sidebar). All inner geometry is derived from the row rect,
 //! never from absolute screen coordinates.
 //!
-//! NOTE on dom_panel.rs migration: the live ladder in `dom_panel.rs`
-//! allocates rects against a parent painter (`ui.painter_at(dom_rect)`)
-//! and shares cross-row drag state (ghost preview on drop-target row).
-//! Migrating that body to this widget would require funneling the parent
-//! painter and drag-context through, which would break visual parity.
-//! This widget is therefore "ladder-row capable" but not yet wired into
-//! `dom_panel.rs::draw`. It can be used standalone (e.g. in a docked DOM
-//! widget that lays out one row per egui call).
+//! THIS IS THE LIVE LADDER ROW. `dom_panel.rs::draw` builds a `DomRow` per
+//! price level and calls `.show_in(ui, &lp, rr)` with the clipped ladder
+//! painter — see `dom_panel.rs` ~L700. Edits here change the real DOM.
+//!
+//! The module doc used to say the opposite ("ladder-row capable but not yet
+//! wired into `dom_panel.rs::draw` ... can be used standalone"), describing a
+//! migration that has since happened. Left uncorrected it tells the next
+//! person their changes here are inert, which is the most expensive kind of
+//! stale comment: it does not just fail to help, it argues against looking.
 
 #![allow(dead_code, unused_imports)]
 
@@ -529,11 +530,31 @@ impl<'a> DomRow<'a> {
             else if r < 0.33 { painter.rect_filled(rr, 0.0, color_alpha(bear, alpha_ghost())); }
         }
 
+        // Every numeric cell below paints through `cell` — a painter clipped to
+        // its own column, inset by CELL_GUTTER. Without it a too-wide string
+        // spills into both neighbours (see `fit_cell`). `fit_cell` keeps text
+        // inside the column in the normal case; the clip is the backstop that
+        // makes a collision structurally impossible rather than merely
+        // unlikely.
+        let cell = |x: f32, w: f32| {
+            painter.with_clip_rect(
+                Rect::from_min_size(egui::pos2(x, ry), egui::vec2(w, row_h))
+                    .shrink2(egui::vec2(CELL_GUTTER, 0.0))
+                    .intersect(painter.clip_rect()),
+            )
+        };
+
         // Δ
         if layout.show_delta && self.delta != 0 {
             let dc = if self.delta > 0 { color_muted(bull) } else { color_muted(bear) };
-            let s = if self.delta > 0 { format!("+{}", self.delta) } else { format!("{}", self.delta) };
-            painter.text(egui::pos2(x0 + cd * 0.5, cy), egui::Align2::CENTER_CENTER, &s, font_sm.clone(), dc);
+            let s = fit_cell(ui, &delta_forms(self.delta), &font_sm, cd - CELL_GUTTER * 2.0);
+            // LEFT-aligned, unlike the other cells. If a delta ever does
+            // overflow its column, clipping must eat the least significant
+            // digits — never the sign. Centre-aligned text loses both ends,
+            // which is how `-1437` became `1437`: the same number, the
+            // opposite meaning.
+            cell(x0, cd).text(
+                egui::pos2(x0 + CELL_GUTTER, cy), egui::Align2::LEFT_CENTER, &s, font_sm.clone(), dc);
         }
 
         // BID
@@ -546,10 +567,10 @@ impl<'a> DomRow<'a> {
             );
             painter.rect_filled(bar_rect, radius_xs(), color_alpha(bull, (60.0 + fr * 140.0) as u8));
             if layout.show_numbers {
-                let txt = fmt_size(self.bid_size);
+                let txt = fit_cell(ui, &size_forms(self.bid_size), &font, cb - CELL_GUTTER * 2.0);
                 let pos = egui::pos2(xb + cb * 0.5, cy);
                 let normal = if hv { bull } else { color_subtle(bull) };
-                painter.text(pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), normal);
+                cell(xb, cb).text(pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), normal);
                 if fr > 0.2 {
                     let clip = ui.painter_at(bar_rect);
                     clip.text(pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), dark);
@@ -574,7 +595,8 @@ impl<'a> DomRow<'a> {
         // Current-price rows used a separate mono_md() here — identical to
         // `font` now that both resolve through the MonoMd cascade tier.
         let price_font = font.clone();
-        painter.text(egui::pos2(xp + cp * 0.5, cy), egui::Align2::CENTER_CENTER, &ps, price_font, pc);
+        cell(xp, cp).text(
+            egui::pos2(xp + cp * 0.5, cy), egui::Align2::CENTER_CENTER, &ps, price_font, pc);
 
         // ASK
         if self.ask_size > 0 {
@@ -586,10 +608,10 @@ impl<'a> DomRow<'a> {
             );
             painter.rect_filled(bar_rect, radius_xs(), color_alpha(bear, (60.0 + fr * 140.0) as u8));
             if layout.show_numbers {
-                let txt = fmt_size(self.ask_size);
+                let txt = fit_cell(ui, &size_forms(self.ask_size), &font, ca - CELL_GUTTER * 2.0);
                 let pos = egui::pos2(xa + ca * 0.5, cy);
                 let normal = if hv { bear } else { color_subtle(bear) };
-                painter.text(pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), normal);
+                cell(xa, ca).text(pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), normal);
                 if fr > 0.2 {
                     let clip = ui.painter_at(bar_rect);
                     clip.text(pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), dark);
@@ -610,7 +632,7 @@ impl<'a> DomRow<'a> {
                 else if self.volume >= 1_000 { format!("{:.0}K", self.volume as f64 / 1e3) }
                 else { format!("{}", self.volume) };
             let pos = egui::pos2(xv + cv * 0.5, cy);
-            painter.text(pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), color_half(dim));
+            cell(xv, cv).text(pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), color_half(dim));
             if vf > 0.3 {
                 let clip = ui.painter_at(vol_bar);
                 clip.text(pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), dark);
@@ -701,4 +723,127 @@ struct ZoneInfo {
 
 fn fmt_size(size: u32) -> String {
     if size >= 10_000 { format!("{:.1}K", size as f64 / 1_000.0) } else { format!("{}", size) }
+}
+
+/// Gutter kept clear on each side of a ladder cell, so adjacent columns have
+/// visible separation even when both are full.
+const CELL_GUTTER: f32 = 2.0;
+
+/// Progressively shorter size forms, widest first. The last entry is the
+/// smallest representation we are willing to show.
+fn size_forms(size: u32) -> [String; 3] {
+    [
+        fmt_size(size),
+        if size >= 1_000 { format!("{:.1}K", size as f64 / 1_000.0) } else { format!("{size}") },
+        if size >= 1_000 { format!("{}K", size / 1_000) } else { format!("{size}") },
+    ]
+}
+
+/// Signed delta in progressively shorter forms, widest first.
+///
+/// The sign is never dropped — it is the single most important character in
+/// the string, and losing it inverts the reading.
+fn delta_forms(d: i64) -> [String; 3] {
+    let sign = if d > 0 { "+" } else { "-" };
+    let a = d.unsigned_abs();
+    [
+        format!("{sign}{a}"),
+        if a >= 1_000 { format!("{sign}{:.1}K", a as f64 / 1_000.0) } else { format!("{sign}{a}") },
+        if a >= 1_000 { format!("{sign}{}K", a / 1_000) } else { format!("{sign}{a}") },
+    ]
+}
+
+/// Pick the widest form of a numeric cell that fits `avail`, falling back to
+/// the abbreviated form.
+///
+/// Ladder cells are painted CENTER_CENTER on their column midpoint with no
+/// clip, so a string wider than its column used to spill symmetrically into
+/// BOTH neighbours. At the default 220px sidebar the Δ column is ~19px wide
+/// while `-1437` measures ~30px, so it overhung ~5px each side: the digits
+/// collided with BID (`-595703` for Δ=-595, BID=703) and — far worse — the
+/// leading `-` fell off the panel's left edge entirely, turning `-1437` into
+/// `1437`. **A depth ladder that silently drops the sign off a delta shows
+/// the trader the wrong direction**, on exactly the large prints that matter
+/// most.
+///
+/// Abbreviating loses precision; clipping loses the sign. Precision is the
+/// cheaper loss — so try progressively shorter forms and only fall back to the
+/// narrowest if none fit.
+///
+/// A single fallback was not enough: at the default width, BID's abbreviated
+/// `1.8K` was still wider than its column in the row's larger mono tier, so
+/// the "fix" produced centre-clipped `L.8H` — worse than the overlap it
+/// replaced. Hence a ladder, ending in a form (`2K`) that fits anything.
+fn fit_cell(ui: &Ui, forms: &[String], font: &egui::FontId, avail: f32) -> String {
+    // Measured through the canonical helper, which exists precisely so
+    // measurement sites do not each invent a throwaway colour — indistinguishable
+    // from real off-token drift to the design-system ratchet.
+    let width_of = |s: &String| {
+        crate::ui_kit::style::measure_with(ui, s, font.clone()).x
+    };
+    for f in forms {
+        if width_of(f) <= avail {
+            return f.clone();
+        }
+    }
+    forms.last().cloned().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod ladder_cell_tests {
+    use super::*;
+
+    /// EVERY form of a delta must keep its sign — including the narrowest.
+    ///
+    /// This is the invariant behind the worst defect the visual audit found:
+    /// the Δ column was too narrow for a signed 4-digit value, cells painted
+    /// centred with no clip, and the leading `-` fell off the panel's left
+    /// edge. `-1437` rendered as `1437` — the same number, the opposite
+    /// meaning, on exactly the large prints a trader most needs to read.
+    ///
+    /// `fit_cell` may pick any form depending on the column width, so it is
+    /// not enough for the full form to be correct. Every rung of the ladder
+    /// has to be safe.
+    #[test]
+    fn every_delta_form_keeps_its_sign() {
+        for d in [-1_i64, -48, -282, -818, -1437, -1_698, -25_000, -1_000_000,
+                  1, 48, 282, 818, 1437, 1_698, 25_000, 1_000_000] {
+            let want = if d > 0 { '+' } else { '-' };
+            for (i, f) in delta_forms(d).iter().enumerate() {
+                assert_eq!(
+                    f.chars().next(), Some(want),
+                    "delta_forms({d})[{i}] = {f:?} lost its sign — a ladder that \
+                     drops the sign shows the trader the wrong direction"
+                );
+            }
+        }
+    }
+
+    /// Forms must be ordered widest-first, since `fit_cell` returns the first
+    /// that fits and would otherwise abbreviate when it did not need to.
+    #[test]
+    fn forms_are_ordered_widest_first() {
+        for d in [-1_437_i64, 1_698, -25_000] {
+            let f = delta_forms(d);
+            assert!(f[0].len() >= f[1].len() && f[1].len() >= f[2].len(),
+                "delta_forms({d}) not widest-first: {f:?}");
+        }
+        for s in [488_u32, 1_836, 25_000, 1_000_000] {
+            let f = size_forms(s);
+            assert!(f[0].len() >= f[1].len() && f[1].len() >= f[2].len(),
+                "size_forms({s}) not widest-first: {f:?}");
+        }
+    }
+
+    /// The narrowest form must actually be narrow — otherwise `fit_cell`'s
+    /// last resort still overflows and we are back to clipping.
+    #[test]
+    fn narrowest_form_is_short() {
+        for s in [1_836_u32, 25_000, 1_000_000] {
+            assert!(size_forms(s)[2].len() <= 5, "size_forms({s}) too wide: {:?}", size_forms(s));
+        }
+        for d in [-1_437_i64, 25_000, -1_000_000] {
+            assert!(delta_forms(d)[2].len() <= 6, "delta_forms({d}) too wide: {:?}", delta_forms(d));
+        }
+    }
 }

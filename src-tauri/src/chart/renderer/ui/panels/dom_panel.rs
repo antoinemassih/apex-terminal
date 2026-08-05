@@ -151,8 +151,33 @@ pub(crate) fn draw(
     let show_vol = mode >= 1;
     let show_numbers = mode < 2; // expanded mode hides bid/ask numbers
 
-    // Column widths adapt to mode
-    let cd = if show_delta { aw * 0.09 } else { 0.0 };
+    // Column widths adapt to mode.
+    //
+    // Δ was a flat `aw * 0.09` — about 19px at the default 220px sidebar,
+    // while a signed 4-digit delta (`-1437`) measures ~30px in the ladder's
+    // mono face. It did not fit, and since cells paint centred with no clip it
+    // overhung ~5px each side: into BID on the right, and off the panel edge
+    // on the left, which ATE THE MINUS SIGN. `dom_row` now clips and abbreviates
+    // so neither can happen again — but a column that cannot hold its own
+    // typical value just forces permanent abbreviation, so give it a floor
+    // derived from the font rather than leaving it at a fraction that was never
+    // checked against its contents.
+    //
+    // Floor = the width of the ABBREVIATED worst case (`-1.4K`) in the tier
+    // the row actually paints Δ with, so it tracks the type scale instead of
+    // pinning a number that was right on the day it was written.
+    //
+    // Deliberately the abbreviated form, not the full `-1437`. Sizing to the
+    // full form took ~20px from a 214px row, and since the other columns split
+    // what is left, BID went too narrow for even its own abbreviated value —
+    // trading a Δ/BID collision for centre-clipped BID cells (`L.8H`), which
+    // is worse. Six columns do not fit at full precision in a 220px sidebar;
+    // Δ gets enough to always show a signed abbreviated value, and `fit_cell`
+    // handles the rest.
+    let delta_floor = crate::ui_kit::style::measure_with(
+        ui, "-1.4K", TextStyle::MonoSm.font_id_in(ui),
+    ).x + 6.0; // + the cell's two gutters and a little air
+    let cd = if show_delta { (aw * 0.09).max(delta_floor) } else { 0.0 };
     let co = aw * 0.14;
     let cv = if show_vol { aw * 0.14 } else { 0.0 };
     let remaining = aw - cd - cv - co;
@@ -165,7 +190,19 @@ pub(crate) fn draw(
     // (ASK, VOL, ORD); PRICE itself is centered. The whole header sits on
     // top of a hairline border that separates the labels from the ladder.
     let header_h = 24.0_f32;
-    let hy = inner.top() + 2.0;
+    // The LIVE / SIMULATED badge gets its OWN band above the column headers.
+    //
+    // It used to be centred in the header strip itself — same rect as the
+    // column labels — so `SIMULATED` (the wider of the two) painted straight
+    // over `PRICE` and `ASK`, smearing two of the five headers illegible.
+    // Which is precisely when a trader most needs to read them: the badge is
+    // only wide enough to collide in the SIMULATED case, i.e. when the numbers
+    // beneath it are fabricated.
+    //
+    // Derived from the tier the badge is painted in (MonoSm) + its 2px padding
+    // + a gap, so the band tracks the type scale.
+    let badge_band = TextStyle::MonoSm.font_id_in(ui).size + 4.0 + 3.0;
+    let hy = inner.top() + 2.0 + badge_band;
     let label_y = hy + header_h * 0.5;
     let hf = TextStyle::MonoMd.font_id_in(ui);
     let hc = color_muted(t.dim);
@@ -308,10 +345,13 @@ pub(crate) fn draw(
         let dgw = delta_galley.as_ref().map_or(0.0, |(g, _)| g.size().x);
         let bw = gw + dgw + badge_pad_x * 2.0;
         let bh = galley.size().y + badge_pad_y * 2.0;
-        // Centred horizontally in the header, vertically centred in the header strip.
+        // Centred horizontally, and vertically inside its OWN band above the
+        // column headers (see `badge_band`) — not inside the header strip,
+        // which is what made SIMULATED overwrite PRICE and ASK.
         let bx = inner.left() + (aw - bw) * 0.5;
+        let band_top = inner.top() + 2.0;
         let badge_rect = egui::Rect::from_min_size(
-            egui::pos2(bx, hy + (header_h - bh) * 0.5),
+            egui::pos2(bx, band_top + (badge_band - bh) * 0.5),
             egui::vec2(bw, bh),
         );
         painter.rect_filled(badge_rect, egui::CornerRadius::same(radius_sm() as u8), badge_bg);

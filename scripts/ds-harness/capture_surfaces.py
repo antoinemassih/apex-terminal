@@ -110,6 +110,14 @@ SURFACES = [
         {"cmd": "SetWatchlistTab", "tab": "scan"}],
         require=dict(no_dialogs=True, watchlist_tab="scan")),
 
+    # The DOM ladder — the densest numeric surface in the app and the one that
+    # carried the most defects. No dialog state to assert, but the sweep must
+    # still confirm no modal is up over it.
+    dict(name="09-dom-sidebar", cmds=[
+        {"cmd": "SetWatchlistTab", "tab": "list"},
+        {"cmd": "SetDomSidebar", "pane": 0, "open": True}],
+        require=dict(no_dialogs=True)),
+
     dict(name="07-orders-panel", cmds=[
         {"cmd": "OpenOrdersPanel"}],
         require=dict(dialogs_open=["orders_panel"], dialogs_closed=["settings"])),
