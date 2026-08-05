@@ -286,8 +286,7 @@ fn paint_tabs(
             crate::ui_kit::sx::Fill::Solid(c) => c,
             crate::ui_kit::sx::Fill::Shade(tone, shade) => pal_ref.shade(tone, shade),
             crate::ui_kit::sx::Fill::Alpha(tone, a) => {
-                let b = pal_ref.base(tone);
-                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                crate::ui_kit::style::color_alpha(pal_ref.base(tone), a)
             }
         })
         .unwrap_or_else(|| pal_ref.base(Tone::Accent));
@@ -309,8 +308,7 @@ fn paint_tabs(
         crate::ui_kit::sx::Fill::Solid(c) => c,
         crate::ui_kit::sx::Fill::Shade(tone, shade) => pal_ref.shade(tone, shade),
         crate::ui_kit::sx::Fill::Alpha(tone, a) => {
-            let b = pal_ref.base(tone);
-            egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            crate::ui_kit::style::color_alpha(pal_ref.base(tone), a)
         }
     });
     let line_idle_radius = line_delta.radius.unwrap_or(0.0);

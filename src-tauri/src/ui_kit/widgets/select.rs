@@ -483,7 +483,17 @@ fn paint_select<'a, T: 'a>(
             chev_center,
             egui::Align2::CENTER_CENTER,
             glyph,
-            st::prop_at(chev_size * 0.8),
+            // MONO, not proportional. U+25B2/U+25BC are Geometric Shapes, and
+            // the face leading the Proportional family (Inter) does not carry
+            // them — so every `Select` trigger painted a tofu box □ where its
+            // caret should be. Visible on the option-chain expiry picker and
+            // the DOM order-type picker, i.e. two of the most-used dropdowns
+            // in the app.
+            //
+            // Nearby carets looked fine, which is what kept this hidden: they
+            // are icon-font glyphs, not this codepoint. Mono carries the
+            // geometric shapes, so it is the reliable family here.
+            st::mono_at(chev_size * 0.8),
             chev_color,
         );
     }

@@ -1063,8 +1063,39 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
         let (bg, fg, recipe_border) = {
             let pal = crate::ui_kit::sx::palette_ct(theme);
             let d = recipe_delta;
+
+            // ── A semantic tint out-ranks an ACCENT recipe fill ──────────────
+            //
+            // Every style authors `button.primary` with `.fill(tone(Accent))`,
+            // and that fill replaced the variant-computed background outright.
+            // `Button::buy` and `Button::sell` are both `Variant::Primary` and
+            // differ ONLY by tint (bull vs bear), so both came out painted in
+            // the theme's accent — **BUY and SELL rendered in the identical
+            // colour** on the DOM order-entry row. On a trading terminal that
+            // is not a styling nit; the two buttons that open opposite
+            // positions were visually indistinguishable.
+            //
+            // A recipe's job is the TREATMENT (pill, bevel, padding, weight).
+            // `Accent` in that fill means "the theme's primary hue", which is a
+            // default, not an assertion — so when a call site has supplied a
+            // semantic hue, that hue wins and the treatment is preserved.
+            //
+            // Narrow on purpose: only a fill that resolved to Accent is
+            // re-hued. A recipe naming any other tone said something specific
+            // and keeps it. Alpha is preserved so translucent fills stay
+            // translucent.
+            let accent = pal.base(Tone::Accent);
+            let recipe_fill = d.and_then(|d| d.fill_color(&pal)).map(|f| {
+                match tint {
+                    Some(t) if (f.r(), f.g(), f.b()) == (accent.r(), accent.g(), accent.b()) => {
+                        st::color_alpha(t, f.a())
+                    }
+                    _ => f,
+                }
+            });
+
             (
-                d.and_then(|d| d.fill_color(&pal)).unwrap_or(bg),
+                recipe_fill.unwrap_or(bg),
                 d.and_then(|d| d.text_color(&pal)).unwrap_or(fg),
                 d.and_then(|d| d.resolved_border_color(&pal)),
             )
@@ -1821,6 +1852,52 @@ mod tests {
 }
 
 // ── M3.1 recipe-consumption tests ────────────────────────────────────────────
+#[cfg(test)]
+mod semantic_tint_tests {
+    use super::*;
+    use crate::ui_kit::widgets::tokens::Variant;
+
+    /// BUY and SELL must never resolve to the same colour.
+    ///
+    /// They differ ONLY by tint — both are `Variant::Primary`, so both pick up
+    /// `button.primary`, whose fill every style authors as `Accent`. When that
+    /// fill overrode the tint, the two buttons that open opposite positions
+    /// painted identically on the DOM ladder.
+    ///
+    /// This asserts the SOURCE of the distinction (`resolve_tint`) rather than
+    /// final pixels, because the override happens at paint time and needs a
+    /// live egui context. The paint-side rule it protects is: an Accent recipe
+    /// fill is re-hued by a semantic tint.
+    #[test]
+    fn buy_and_sell_resolve_to_different_tints() {
+        let theme = crate::ui_kit::widgets::theme::PortableTheme::default();
+        let buy = Button::buy("BUY");
+        let sell = Button::sell("SELL");
+
+        let bt = buy.resolve_tint(&theme).expect("buy must carry a bull tint");
+        let st = sell.resolve_tint(&theme).expect("sell must carry a bear tint");
+
+        assert_ne!(
+            bt, st,
+            "BUY and SELL resolved to the same colour ({bt:?}) — the semantic \
+             tint has been lost. A trader cannot tell the two apart."
+        );
+    }
+
+    /// A plain Primary carries no tint, so it keeps the recipe's accent fill.
+    /// This is the case the re-hue must NOT disturb.
+    #[test]
+    fn untinted_primary_has_no_tint_to_apply() {
+        let theme = crate::ui_kit::widgets::theme::PortableTheme::default();
+        let b = Button::new("OK").variant(Variant::Primary);
+        assert!(
+            b.resolve_tint(&theme).is_none(),
+            "an untinted Primary must not synthesise a tint — it would start \
+             overriding recipe fills that are deliberately accent-coloured"
+        );
+    }
+}
+
 #[cfg(test)]
 mod m31_recipe_tests {
     use super::*;
