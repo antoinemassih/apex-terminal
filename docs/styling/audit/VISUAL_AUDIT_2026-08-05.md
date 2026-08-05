@@ -329,19 +329,46 @@ because only the third actually works:
 
 The row was also hiding a chip: `Gappers` only became visible once it wrapped.
 
-### 2.8 — HIGH — `order_entry_open` is a dead flag
+### 2.8 — HIGH — `order_entry_open` was a dead flag (partly fixed)
 
-There is no order-entry form. `order_entry_open` is declared on `Watchlist`,
-defaulted, mirrored into `SidebarState` in both directions, persisted, and
-reported by `/state.open_dialogs` — and **nothing in the UI reads it**.
+`order_entry_open` is declared on `Watchlist`, defaulted, mirrored into
+`SidebarState` both ways, persisted, and reported by `/state.open_dialogs` —
+and **nothing reads it**. Traced to GPU Milestone 2 (`e1ab6d15`, 2026-05-09),
+which deleted the call to `show_order_entry_panel` and repointed the ORDER
+button at multi-instance `Chart::floating_order_panes`, leaving the old flag
+behind.
 
-So `/state` reports an open dialog that cannot render. This is worth stating as
-a limitation of the new capture script too: its assertions verify **state, not
-visibility**. Here the state was reachable and the pixels were not, so the
-capture passed its check and produced a screenshot with no order form in it.
-Strictly better than the old silent-wrong-screen failure — the surface is named
-and its state confirmed — but "the flag is set" is not "the user can see it".
-The surface has been removed from the catalogue until the panel renders.
+So for ~3 months `/state` advertised an `order_entry` dialog nothing could
+render, while the order entry that *does* exist was not reported at all — the
+rule from §0 broken in **both** directions at once.
+
+**Fixed (observability).** `order_entry` is no longer reported;
+`order_ticket.<pane>.<id>` is, emitted from the live `floating_order_panes`
+list so it cannot outlive its renderer. `OpenOrderEntry`/`CloseOrderEntry` were
+**removed rather than repointed** — keeping the names as aliases would preserve
+the exact failure they caused. `AppCommand::SpawnOrderTicket` drives the same
+construction the ORDER button uses. `CloseAllDialogs` now clears tickets too,
+so a sweep cannot inherit one.
+
+`show_order_entry_panel` and its module remain as superseded dead code —
+deleting them is a separate call, not a styling fix.
+
+**Still not capturable, and this is the interesting part.** The ticket spawns
+and `/state` reports it, but it does not paint: `render_chart_pane`
+early-returns at `core.rs:2053` when the pane has no bars (the "no data /
+source unreachable" branch), and the floating-order render lives at
+`core.rs:3405` — after it. This dev box is offline, so every pane takes that
+branch.
+
+That is worth knowing as **product behaviour**, not just a harness limit: an
+open order ticket vanishes from the screen if the feed drops, while `/state`
+still reports it open. Not fixed here — `core.rs` is sacred (ADR/perf), and
+this is a trading-behaviour decision, not a styling one.
+
+It also sharpens the limit of the capture script: its assertions verify
+**state, not visibility**. Removing the dead flag closes the case where state
+outlives its renderer entirely; it does not close the case where a live state
+is conditionally unrendered.
 
 ### 3.6 — HIGH — a chart-layer line paints over the Settings modal
 
@@ -438,6 +465,7 @@ case by case.
 | 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
 | 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
+| 2.8 | `/state` reported a dialog nothing renders | `dev_inspector/mod.rs` + `SpawnOrderTicket` |
 | §0 | Dialog commands drove a phantom state | `AppCommand::SetDialogOpen`, `update_sidebar_state` |
 | §0 | `/state` could not report the watchlist tab | `dev_inspector/mod.rs` |
 | §0 | Captures written for states the app was not in | `scripts/ds-harness/capture_surfaces.py` |
@@ -448,7 +476,7 @@ control-size 4/4.
 
 ## 7. Open — not fixed
 
-§2.8 dead `order_entry_open` flag (**do this first**), §2.2 chain header layout, §2.3 left-edge clipping, §2.4
+order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 chain header layout, §2.3 left-edge clipping, §2.4
 `sel` truncation, §2.5 numeric alignment, §2.6 tab divider, §3.1 RRG axis
 collision, §3.2 auto-chart radio column, §3.3 object-tree empty states, §3.4
 playbook void, §3.5 playbook label order, §3.6 line over modal, §3.7 mixed

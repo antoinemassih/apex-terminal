@@ -122,22 +122,40 @@ SURFACES = [
         {"cmd": "OpenOrdersPanel"}],
         require=dict(dialogs_open=["orders_panel"], dialogs_closed=["settings"])),
 
-    # 08-order-entry is DELIBERATELY ABSENT. `order_entry_open` is a dead
-    # flag: it is declared on `Watchlist`, defaulted, mirrored into
-    # `SidebarState` both ways, persisted, and reported by
-    # `/state.open_dialogs` — and NOTHING in the UI reads it. There is no
-    # order-entry form to photograph.
+    # The REAL order-entry surface: a floating order ticket.
     #
-    # Worth stating plainly, because it is a limitation of this script's whole
-    # approach: the assertions verify STATE, not VISIBILITY. Here the state was
-    # reachable and the pixels were not, so the capture passed its check and
-    # produced a screenshot with no order form in it. That is strictly better
-    # than the old silent-wrong-screen failure — the surface is at least
-    # named and its state confirmed — but "the flag is set" is not "the user
-    # can see it". Restore this entry when the panel actually renders.
+    # This entry used to drive `OpenOrderEntry`, which set `order_entry_open` —
+    # a flag left behind when GPU Milestone 2 replaced the single bottom-left
+    # order panel with multi-instance floating tickets. `/state` reported the
+    # dialog as open, this script's assertion PASSED, and the capture contained
+    # no order form at all.
+    #
+    # That is the sharp edge of asserting on STATE rather than VISIBILITY: a
+    # state that no longer has a renderer is indistinguishable from one that
+    # does. The defence is not a cleverer assertion — it is that `/state` must
+    # not report surfaces nothing can draw. `order_entry` no longer appears
+    # there; `order_ticket.<pane>.<id>` does, and it is emitted from the live
+    # `floating_order_panes` list, so it cannot outlive its renderer.
+    # NOT CAPTURABLE WITHOUT BARS — left here, commented, deliberately.
+    #
+    # `SpawnOrderTicket` works and `/state` reports `order_ticket.0.<id>`, but
+    # the ticket still does not paint on a chart with no data:
+    # `render_chart_pane` early-returns at `core.rs:2053` when `n == 0` (the
+    # "no data / source unreachable" branch), and the floating-order-pane
+    # render lives at `core.rs:3405` — after it. This dev box is offline, so
+    # every pane takes that branch.
+    #
+    # Not a harness bug, and worth knowing as product behaviour: an order
+    # ticket disappears from the screen if the feed drops, while `/state`
+    # still reports it open. Restore this entry when running against a live
+    # feed, or after the ticket is decoupled from the chart having bars.
+    #
+    # dict(name="08-order-ticket", cmds=[
+    #     {"cmd": "SpawnOrderTicket", "pane": 0}],
+    #     require=dict(dialogs_open=["order_ticket.0"], dialogs_closed=["settings"])),
 
     dict(name="13-settings", cmds=[
-        {"cmd": "CloseOrderEntry"}, {"cmd": "OpenSettings"}],
+        {"cmd": "CloseAllDialogs"}, {"cmd": "OpenSettings"}],
         require=dict(dialogs_open=["settings"])),
 ]
 

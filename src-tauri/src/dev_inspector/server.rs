@@ -1072,8 +1072,6 @@ fn execute_step(
             // Dialog open/close commands that have no AppCommand equivalent — handled as
             // HeadlessDialog so the headless ticker directly mutates open_dialogs.
             let dialog_name: Option<(&str, bool)> = match cmd_name.as_str() {
-                "OpenOrderEntry"  | "open_order_entry"   => Some(("order_entry",    true)),
-                "CloseOrderEntry" | "close_order_entry"  => Some(("order_entry",    false)),
                 "OpenSettings"    | "open_settings"      => Some(("settings",       true)),
                 "CloseSettings"   | "close_settings"     => Some(("settings",       false)),
                 "OpenOrdersPanel" | "open_orders_panel"  => Some(("orders_panel",   true)),
@@ -2632,8 +2630,14 @@ fn parse_app_command(
         // scenario path accepted the same name and quietly drove the headless
         // ticker instead of the app. Two callers, two different wrong answers.
         // Parsed here, both paths reach the same real reducer.
-        "OpenOrderEntry"   | "open_order_entry"   => Ok(dialog_cmd("order_entry",   true)),
-        "CloseOrderEntry"  | "close_order_entry"  => Ok(dialog_cmd("order_entry",   false)),
+        // `OpenOrderEntry` / `CloseOrderEntry` are GONE, not repointed. They
+        // drove `order_entry_open`, a flag with no renderer since e1ab6d15.
+        // Keeping the names alive as aliases would preserve the exact failure
+        // they caused: a command that succeeds, a `/state` that agrees, and a
+        // screen that never changes. `SpawnOrderTicket` is the real thing.
+        "SpawnOrderTicket" | "spawn_order_ticket" => {
+            Ok(AppCommand::SpawnOrderTicket { pane })
+        }
         "OpenSettings"     | "open_settings"      => Ok(dialog_cmd("settings",      true)),
         "CloseSettings"    | "close_settings"     => Ok(dialog_cmd("settings",      false)),
         "OpenOrdersPanel"  | "open_orders_panel"  => Ok(dialog_cmd("orders_panel",  true)),

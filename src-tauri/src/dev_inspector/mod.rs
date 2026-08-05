@@ -965,12 +965,25 @@ pub fn end_frame(
         if p.pane_picker_open {
             open_dialogs.push(format!("pane_picker.{i}"));
         }
+        // The REAL order-entry surface: multi-instance floating order tickets.
+        // One entry per open ticket, so a scenario can assert on the exact one
+        // it spawned rather than on a single global boolean.
+        for f in &p.floating_order_panes {
+            open_dialogs.push(format!("order_ticket.{i}.{}", f.id));
+        }
     }
     if watchlist.settings_open      { open_dialogs.push("settings".into()); }
     if watchlist.hotkey_editor_open { open_dialogs.push("hotkey_editor".into()); }
     if watchlist.chain.select_mode  { open_dialogs.push("chain_select".into()); }
-    if watchlist.order_entry_open   { open_dialogs.push("order_entry".into()); }
     if watchlist.orders_panel_open  { open_dialogs.push("orders_panel".into()); }
+    // `order_entry` is NOT reported. `Watchlist::order_entry_open` is a dead
+    // flag: GPU Milestone 2 (e1ab6d15, 2026-05-09) deleted the call to
+    // `show_order_entry_panel` and repointed the ORDER button at
+    // `floating_order_panes`, but left the flag declared, mirrored into
+    // `SidebarState`, persisted — and advertised here. For ~3 months `/state`
+    // reported an open dialog that nothing could render, which is worse than
+    // silence: a harness assertion on it PASSES while the screen stays empty.
+    // See `AppCommand::SpawnOrderTicket`.
 
     let active_chart = panes.get(active_pane);
     let raw_dt       = ctx.input(|i| i.unstable_dt);

@@ -297,6 +297,24 @@ pub enum AppCommand {
     #[cfg(debug_assertions)]
     SetDialogOpen { name: String, open: bool },
 
+    /// Spawn a floating order ticket on `pane`, exactly as the top-nav ORDER
+    /// button does.
+    ///
+    /// This is the REAL order-entry surface. The harness previously drove
+    /// `order_entry_open`, a flag left behind when GPU Milestone 2 (e1ab6d15,
+    /// 2026-05-09) replaced the single bottom-left order panel with
+    /// multi-instance `Chart::floating_order_panes`. That commit deleted the
+    /// call to `show_order_entry_panel` and repointed the ORDER button, but
+    /// left the flag declared, mirrored into `SidebarState`, persisted, and
+    /// reported by `/state.open_dialogs`.
+    ///
+    /// So for ~3 months `/state` advertised an `order_entry` dialog that
+    /// nothing could render, while the order entry that DOES exist was not
+    /// reported at all — the rule this audit established ("anything a scenario
+    /// can switch, `/state` must report") broken in both directions at once.
+    #[cfg(debug_assertions)]
+    SpawnOrderTicket { pane: usize },
+
     // ── Dev Inspector — subsystem drivers (harness-only, debug builds) ─────
     // These exist so the scenario harness can OPEN and OBSERVE UI-only
     // subsystems (DOM, scanner, RRG, order-entry panel, gamma) that have no
@@ -1202,6 +1220,12 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             for p in panes.iter_mut() {
                 p.pane_picker_open = false;
                 p.editing_indicator = None;
+                // Floating order tickets are dialogs too — they are reported
+                // as `order_ticket.*` in `/state.open_dialogs`. Without this,
+                // `POST /reset` left them up and the next surface in a capture
+                // sweep inherited them, which is exactly the modal-carryover
+                // this whole reset exists to prevent.
+                p.floating_order_panes.clear();
             }
             // Through the sidebar store, for the reason spelled out on
             // `SetDialogOpen` below: these four are mirrored into
@@ -1234,10 +1258,41 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             match name.as_str() {
                 "settings"      => watchlist.update_sidebar_state(|s| s.settings_open      = open),
                 "hotkey_editor" => watchlist.update_sidebar_state(|s| s.hotkey_editor_open = open),
-                "order_entry"   => watchlist.update_sidebar_state(|s| s.order_entry_open   = open),
                 "orders_panel"  => watchlist.update_sidebar_state(|s| s.orders_panel_open  = open),
                 "chain_select"  => watchlist.chain.select_mode = open,
+                // `order_entry` is deliberately NOT here. See
+                // `AppCommand::SpawnOrderTicket` — the single-panel
+                // `order_entry_open` design was replaced by multi-instance
+                // floating order panes, and driving the dead flag only ever
+                // produced a `/state` that claimed an open dialog nothing
+                // could render.
                 other => tracing::warn!("SetDialogOpen: unknown dialog {other:?}"),
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SpawnOrderTicket { pane } => {
+            if let Some(chart) = panes.get_mut(pane) {
+                // Same construction as the top-nav ORDER button, so the
+                // harness exercises the production path rather than a
+                // look-alike that can drift from it.
+                let fid = chart.floating_order_panes.iter().map(|p| p.id).max().unwrap_or(0) + 1;
+                let sym = chart.symbol.clone();
+                chart.floating_order_panes.push(
+                    crate::chart_renderer::trading::FloatingOrderPane {
+                        id: fid,
+                        title: sym.clone(),
+                        symbol: sym,
+                        strike: 0.0,
+                        is_call: false,
+                        qty: 1,
+                        // Screen-centred like the button's spawn, but the
+                        // harness has no `ctx` here; the render pass clamps
+                        // into the pane, so a nominal position is enough.
+                        pos: egui::pos2(400.0, 300.0),
+                        collapsed: false,
+                    },
+                );
             }
         }
 
