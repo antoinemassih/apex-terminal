@@ -46,6 +46,24 @@ pub enum Variant {
     /// escape-hatch sites identified by the variant-completeness audit
     /// (option-type colour, link-group colour, connection-state colour
     /// buttons). Behaves like Ghost when no `.tint()` is set.
+    ///
+    /// ## UNUSED — and the migration it was built for does not work
+    ///
+    /// Zero call sites, and that is not neglect: the premise is wrong. The
+    /// audit assumed those sites needed only a dynamic FOREGROUND. Every one
+    /// actually sets a dynamic `.fill()` too — they are filled badges (the
+    /// option-type chip in the watchlist, the hotkey key cap, the session
+    /// colour swatch), not transparent-until-hover affordances. Migrating them
+    /// here would erase their background.
+    ///
+    /// `Tag` does not take them either: it is toned semantically
+    /// (`TagTone::Normal | Muted | Success | Warning`) and these carry
+    /// arbitrary per-item colours.
+    ///
+    /// So `Variant::Chrome + .fg() + .fill()` is the CORRECT call there, not an
+    /// escape hatch to be closed. The real gap is that no widget expresses
+    /// "badge with an arbitrary colour"; until one exists, leave those sites
+    /// alone. Recorded here so the migration is not attempted a third time.
     DynamicTint,
 }
 
