@@ -137,24 +137,53 @@ pub(crate) fn draw_content(
         let kinds = MoverKind::all();
         let mut selected = watchlist.scanner.mover_tab.min(kinds.len().saturating_sub(1));
 
-        ui.horizontal_wrapped(|ui| {
-            ui.add(SectionLabel::new("MOVERS").xs().color(t.accent));
-            for (i, k) in kinds.iter().enumerate() {
-                let is_sel = i == selected;
-                let label = egui::RichText::new(k.label())
-                    .monospace()
-                    .size(font_xs())
-                    .color(if is_sel { t.accent } else { t.dim });
-                let resp = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
-                if resp.clicked() {
-                    selected = i;
-                    watchlist.scanner.mover_tab = i;
-                }
-            }
+        // Trailing control FIRST, in a right-to-left region; the chips then get
+        // an inner left-to-right region sized to what is actually left over.
+        //
+        // This was a `horizontal_wrapped` with the chips laid out first and a
+        // nested right_to_left for the button. The chips consumed the row, the
+        // button's 110px minimum did not fit in the remainder, and it painted
+        // straight over them — "…RVOL Le[Configure filt]ers", interleaved
+        // letter by letter and unreadable. Reserving the trailing control up
+        // front makes the chips bounded by it, so a too-long chip list clips
+        // at the boundary instead of colliding.
+        ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(Button::new("Configure filters").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(110.0, 0.0))).clicked() {
                     watchlist.scanner.filter_popup_open = !watchlist.scanner.filter_popup_open;
                 }
+                // WRAPPING and DIRECTION both stated explicitly. Two separate
+                // corrections, each needed:
+                //
+                //  - `with_main_wrap(true)`: reserving the button's width is
+                //    necessary but not sufficient, because egui does not clip
+                //    an over-long row to its region. Without wrapping the chip
+                //    run simply overflowed the remainder and collided with the
+                //    button anyway. Wrapping is what actually bounds it.
+                //
+                //  - `left_to_right`: `ui.horizontal_wrapped()` inherits the
+                //    parent's direction, and the parent here is right-to-left
+                //    (that is how the button gets pinned to the right edge).
+                //    It laid the chips out backwards — "Active Losers Gainers
+                //    MOVERS". The collision was gone and the row was still
+                //    wrong.
+                ui.with_layout(
+                    egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
+                    |ui| {
+                    ui.add(SectionLabel::new("MOVERS").xs().color(t.accent));
+                    for (i, k) in kinds.iter().enumerate() {
+                        let is_sel = i == selected;
+                        let label = egui::RichText::new(k.label())
+                            .monospace()
+                            .size(font_xs())
+                            .color(if is_sel { t.accent } else { t.dim });
+                        let resp = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
+                        if resp.clicked() {
+                            selected = i;
+                            watchlist.scanner.mover_tab = i;
+                        }
+                    }
+                });
             });
         });
         let kind = kinds[selected];

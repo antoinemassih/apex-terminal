@@ -1628,7 +1628,25 @@ if is_spawn || watchlist.open {
                         let input_bg = if has_focus { tint(t, Tone::Border, alpha_dim()) } else { tint(t, Tone::Border, alpha_ghost()) };
                         let sym_resp = Input::new(&mut watchlist.chain.sym_input)
                             .id(egui::Id::new("chain_sym_edit"))
-                            .placeholder(watchlist.chain.symbol.clone())
+                            // Placeholder ONLY while focused. Unfocused, the
+                            // block below overdraws the same symbol in accent
+                            // at a different offset and font — so setting it
+                            // unconditionally painted "SPY" twice, grey under
+                            // orange, half a character apart. It read as a
+                            // corrupted "SᴥPY" smear.
+                            //
+                            // Two mechanisms showing the same string: the
+                            // Input's own empty-state hint, and a manual
+                            // overlay that exists because the current symbol
+                            // lives in `chain.symbol`, not in the edit buffer.
+                            // Focused, the overlay stands down and the
+                            // placeholder is the right affordance; unfocused,
+                            // the reverse.
+                            .placeholder(if has_focus {
+                                watchlist.chain.symbol.clone()
+                            } else {
+                                String::new()
+                            })
                             .width(70.0)
                             .font_size(14.0)
                             .text_color(t.accent)
