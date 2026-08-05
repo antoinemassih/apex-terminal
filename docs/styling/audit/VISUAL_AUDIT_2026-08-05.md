@@ -68,11 +68,14 @@ Fixes landed with this audit:
 
 ### Re-capture
 
-`docs/styling/audit/v2/` holds seven surfaces re-shot through the asserted
-script on the certified **aperture / aperture** preset, pixel-verified as
-genuinely distinct — including the first real captures of watchlist LIST, HEAT
-and SCAN, the orders panel and the order-entry form. The original set is kept
-in place for provenance.
+`docs/styling/audit/v2/` holds surfaces re-shot through the asserted script on
+the certified **aperture / aperture** preset, pixel-verified as genuinely
+distinct — including the first real captures of watchlist LIST, HEAT and SCAN
+and of the orders panel. `v3/` holds re-shoots verifying the §2.0 and §2.7
+fixes. The original set is kept in place for provenance.
+
+The order-entry form is **not** among them: there is no such form to capture
+(§2.8).
 
 ---
 
