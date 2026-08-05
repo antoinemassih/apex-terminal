@@ -163,7 +163,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 let Some((ti, si)) = presets::resolve(p, &scheme_names, &style_names) else { continue };
                 let is_active = active.map(|a| a.id) == Some(p.id);
                 let resp = Button::toggle(p.name, is_active)
-                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(96.0, CHIP_H))
                     .show(ui, t);
                 crate::ui_kit::widgets::Tooltip::new(p.blurb).show(ui, &resp, t);
@@ -214,7 +213,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         ui.spacing_mut().item_spacing = egui::vec2(CHIP_GAP, CHIP_GAP);
         ui.horizontal_wrapped(|ui| {
             let follow = Button::toggle("Theme default", current_override.is_none())
-                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                 .min_size(egui::vec2(110.0, CHIP_H))
                 .show(ui, t);
             crate::ui_kit::widgets::Tooltip::new(
@@ -238,7 +236,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
             for a in Archetype::ALL {
                 let on = current_override == Some(a);
                 let resp = Button::toggle(a.name(), on)
-                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(104.0, CHIP_H))
                     .show(ui, t);
                 if resp.clicked() {
@@ -299,7 +296,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                     let id_us = *id as usize;
                     let active = id_us == cur_si;
                     let style_resp = Button::toggle(name.as_str(), active)
-                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                         .min_size(egui::vec2(btn_w, btn_h))
                         .show(ui, t);
                     if style_resp.clicked() {
@@ -367,7 +363,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 let inherit_active = cur_override.is_none();
                 if Button::toggle("Inherit", inherit_active)
-                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
                     commands::push(AppCommand::SetDensityOverride(None));
@@ -375,7 +370,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 for &mode in DensityMode::all() {
                     let active = cur_override == Some(mode);
                     if Button::toggle(mode.label(), active)
-                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                         .min_size(egui::vec2(btn_w, btn_h))
                         .show(ui, t).clicked() {
                         commands::push(AppCommand::SetDensityOverride(Some(mode)));
@@ -398,7 +392,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 let inherit_active = cur.is_none();
                 if Button::toggle("Inherit", inherit_active)
-                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
                     watchlist.border_weight_override = None;
@@ -407,7 +400,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 for &mode in BorderWeight::all() {
                     let active = cur == Some(mode);
                     if Button::toggle(mode.label(), active)
-                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                         .min_size(egui::vec2(btn_w, btn_h))
                         .show(ui, t).clicked() {
                         watchlist.border_weight_override = Some(mode);
@@ -431,7 +423,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 let inherit_active = cur.is_none();
                 if Button::toggle("Inherit", inherit_active)
-                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
                     watchlist.corner_scale_override = None;
@@ -440,7 +431,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 for &mode in CornerScale::all() {
                     let active = cur == Some(mode);
                     if Button::toggle(mode.label(), active)
-                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                         .min_size(egui::vec2(btn_w, btn_h))
                         .show(ui, t).clicked() {
                         watchlist.corner_scale_override = Some(mode);
@@ -464,7 +454,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 let inherit_active = cur.is_none();
                 if Button::toggle("Inherit", inherit_active)
-                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
                     watchlist.spacing_scale_override = None;
@@ -473,7 +462,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 for &mode in SpacingScale::all() {
                     let active = cur == Some(mode);
                     if Button::toggle(mode.label(), active)
-                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                         .min_size(egui::vec2(btn_w, btn_h))
                         .show(ui, t).clicked() {
                         watchlist.spacing_scale_override = Some(mode);
@@ -498,7 +486,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 let inherit_active = cur.is_none();
                 if Button::toggle("Inherit", inherit_active)
-                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
                     watchlist.motion_speed_override = None;
@@ -507,7 +494,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 for &mode in MotionSpeed::all() {
                     let active = cur == Some(mode);
                     if Button::toggle(mode.label(), active)
-                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                         .min_size(egui::vec2(btn_w, btn_h))
                         .show(ui, t).clicked() {
                         watchlist.motion_speed_override = Some(mode);
@@ -542,7 +528,6 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                         let active = (watchlist.font_scale - ppp).abs() < 0.05;
                         let pct_label = format!("{}%", label);
                         if Button::toggle(pct_label.as_str(), active)
-                            .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                             .min_size(egui::vec2(34.0, row_height_compact()))
                             .show(ui, t).clicked() {
                             watchlist.font_scale = ppp;
