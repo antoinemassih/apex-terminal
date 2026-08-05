@@ -71,8 +71,8 @@ Fixes landed with this audit:
 `docs/styling/audit/v2/` holds surfaces re-shot through the asserted script on
 the certified **aperture / aperture** preset, pixel-verified as genuinely
 distinct — including the first real captures of watchlist LIST, HEAT and SCAN
-and of the orders panel. `v3/` holds re-shoots verifying the §2.0 and §2.7
-fixes. The original set is kept in place for provenance.
+and of the orders panel. `v3/` holds re-shoots verifying the §1.2–§1.4, §2.0
+and §2.7 fixes. The original set is kept in place for provenance.
 
 The order-entry form is **not** among them: there is no such form to capture
 (§2.8).
@@ -143,6 +143,13 @@ silently drops the sign off a delta shows the trader the wrong direction on
 exactly the large prints that matter most.** This is a correctness defect
 wearing a layout defect's clothes.
 
+**Fixed.** Three changes, because one was not enough: cells now paint through a
+painter clipped to their own column; `fit_cell` picks the widest of several
+progressively shorter forms that fits; and Δ is left-aligned so clipping can
+only ever eat the least significant digits. A test asserts that **every** form
+of a delta keeps its sign — `fit_cell` may pick any of them, so the full form
+being correct is not enough.
+
 ### 1.3 — HIGH — Δ and BID columns have no gutter; digits collide
 
 Every row. `-595` + `703` renders as `-595703`; `+186`+`670` as `+186670`.
@@ -150,24 +157,38 @@ There is a divider between BID│PRICE and ASK│VOL, but **none** between Δ│
 PRICE│ASK, so both size columns run into their neighbour. On the densest
 numeric surface in the app, size and delta cannot be read apart.
 
+**Fixed** by the same per-cell clip and gutter as §1.2 — a collision between
+adjacent columns is now structurally impossible rather than merely unlikely.
+
 ### 1.4 — HIGH — the "SIMULATED" badge is drawn over the column headers
 
 The badge lands on top of the `PRICE` and `ASK` headers, smearing both
 illegible. Two of five column headers are unusable, so the header row cannot be
 used to disambiguate §1.3.
 
-### 1.5 — MEDIUM — the size-flash highlight is one character wide
+**Fixed.** The badge now has its own band above the header row, sized from the
+tier it is painted in. Note it was only wide enough to collide in the
+`SIMULATED` case — i.e. exactly when the numbers beneath it are fabricated.
 
-The rose highlight behind ask-size values is sized to roughly one glyph
-regardless of the value: `1250` highlights only the `0`, `11K` only the leading
-`1`. The bounding box is not tracking text width, so a single digit reads as
-artificially bold against its neighbours.
+### 1.5 — WITHDRAWN — the "size-flash highlight" is a depth bar
 
-### 1.6 — MEDIUM — the ladder overdraws its own bottom edge
+Reported as a highlight box failing to track its text. It is not: it is the
+**depth bar**, whose width encodes size (`bw = fill * col_w * 0.85`), with the
+number painted over it in a contrasting colour where the two overlap. It is
+supposed to vary — that is the data.
 
-The row below the last full row is clipped mid-glyph and its leading digit
-bleeds down onto the `MKT` dropdown in the order-entry footer. The ladder is not
-clipping to its rect.
+Retained as a **legibility** note rather than a defect: the two-tone split makes
+whichever digit happens to straddle the bar's edge read as accidentally bold.
+Worth a design look, but nothing is broken.
+
+### 1.6 — NOT REPRODUCED — the ladder overdrawing its bottom edge
+
+Originally: the row below the last full row clipped mid-glyph and bled onto the
+`MKT` dropdown. It no longer reproduces at the viewport that showed it.
+
+Not claimed as fixed — the §1.4 badge band moved `body_top`, changing which row
+straddles the bottom edge, so this is most likely incidental. Re-check if it
+resurfaces.
 
 ---
 
@@ -411,6 +432,9 @@ case by case.
 | 1.0 | BUY and SELL painted the same colour | `button.rs` — tint out-ranks an Accent recipe fill |
 | 1.1 | BUY/SELL overdrew FLATTEN/CANCEL | `button.rs` `max_width`/`fixed_size` + `dom_panel.rs` |
 | 2.1 | Pane header painted every symbol twice | `painter_pane.rs` |
+| 1.2 | Ladder dropped the minus sign off deltas | `dom_row.rs` — clip + fit ladder + left-align Δ |
+| 1.3 | Δ/BID and PRICE/ASK collided | `dom_row.rs` — per-cell clip + gutter |
+| 1.4 | SIMULATED badge over the column headers | `dom_panel.rs` — own band |
 | 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
 | 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
@@ -424,10 +448,7 @@ control-size 4/4.
 
 ## 7. Open — not fixed
 
-§2.8 dead `order_entry_open` flag, §1.2 clipped delta sign
-(**correctness-grade**, do these two first), §1.3 column
-gutters, §1.4 SIMULATED badge over headers, §1.5 highlight box width, §1.6
-ladder bottom clip, §2.2 chain header layout, §2.3 left-edge clipping, §2.4
+§2.8 dead `order_entry_open` flag (**do this first**), §2.2 chain header layout, §2.3 left-edge clipping, §2.4
 `sel` truncation, §2.5 numeric alignment, §2.6 tab divider, §3.1 RRG axis
 collision, §3.2 auto-chart radio column, §3.3 object-tree empty states, §3.4
 playbook void, §3.5 playbook label order, §3.6 line over modal, §3.7 mixed
