@@ -118,6 +118,25 @@ SURFACES = [
         {"cmd": "SetDomSidebar", "pane": 0, "open": True}],
         require=dict(no_dialogs=True)),
 
+    # RRG and auto-chart carry no dialog state; the assertion is just that no
+    # modal is covering them (a stuck Settings modal is what ruined the first
+    # audit set). Their own open flags are driven by the cmds below.
+    # Each explicitly CLOSES the other. Panel open-flags persist across app
+    # restarts, so without this the RRG capture inherited a still-open
+    # auto-chart panel from the previous run and photographed both — and the
+    # `no_dialogs` assertion could not see it, because side panels are not
+    # dialogs. Deterministic setup is the only defence available here: assert
+    # what you can, and explicitly set what you cannot.
+    dict(name="06-rrg", cmds=[
+        {"cmd": "SetAutoChartPanel", "open": False},
+        {"cmd": "SetRrgOpen", "open": True}],
+        require=dict(no_dialogs=True)),
+
+    dict(name="12-auto-chart", cmds=[
+        {"cmd": "SetRrgOpen", "open": False},
+        {"cmd": "SetAutoChartPanel", "open": True}],
+        require=dict(no_dialogs=True)),
+
     dict(name="07-orders-panel", cmds=[
         {"cmd": "OpenOrdersPanel"}],
         require=dict(dialogs_open=["orders_panel"], dialogs_closed=["settings"])),

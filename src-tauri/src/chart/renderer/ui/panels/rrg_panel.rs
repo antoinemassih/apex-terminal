@@ -354,8 +354,50 @@ fn draw_rrg_content(
     min_y = 100.0 - y_range;
     max_y = 100.0 + y_range;
 
-    let margin = 20.0; // px margin inside rect for axis labels
-    let plot_rect = rect.shrink(margin);
+    // ── Axis gutters: one band for TICK LABELS, a separate one for TITLES ──
+    //
+    // This was a single uniform `margin = 20.0` shared by both, and both were
+    // drawn into it — so the axis titles landed on top of the tick labels.
+    // Worse, each title is centred on its axis and the plot is forced
+    // symmetric around 100, so the title landed precisely on the `100` tick:
+    // the Y title rendered as `1M0m` and the X title as `RS-Rati⁰¹⁰⁰`,
+    // character-for-character overlap on BOTH axes.
+    //
+    // Two legal values, one wrong relationship — the same class as the rest of
+    // this audit. Fixed by deriving each gutter from the text that actually
+    // goes in it, and giving ticks and titles disjoint bands.
+    //
+    // Colour is irrelevant for a measured galley; `PLACEHOLDER` marks it as
+    // never-painted (and is not a raw palette colour).
+    let tick_font = mono_sm();
+    let measure = |s: &str| {
+        painter
+            .layout_no_wrap(s.to_string(), tick_font.clone(), egui::Color32::PLACEHOLDER)
+            .size()
+    };
+    let g = gap_2xs();
+    let tick_sz = measure("100");
+    let plot_rect = egui::Rect::from_min_max(
+        egui::pos2(
+            // Y tick labels are right-aligned into this gutter.
+            rect.left() + tick_sz.x + g * 2.0,
+            // Top band holds the Y-axis TITLE — the one corner no tick can
+            // occupy, and the conventional place for a y label on a chart too
+            // small to rotate text.
+            //
+            // 1.5x the line height, not 1x: the TOPMOST y tick is drawn
+            // RIGHT_CENTER on `plot_rect.top()`, so half of it overhangs
+            // upward into this band. Reserving only the title's own height
+            // left `Mom` and `104` grazing each other — the same collision,
+            // one line further up.
+            rect.top() + tick_sz.y * 1.5 + g * 2.0,
+        ),
+        egui::pos2(
+            rect.right() - g * 2.0,
+            // Bottom band: X ticks, then the X title beneath them.
+            rect.bottom() - (tick_sz.y * 2.0 + g * 2.0),
+        ),
+    );
 
     // Map data coords to screen coords
     let to_screen = |ratio: f32, momentum: f32| -> egui::Pos2 {
@@ -416,18 +458,21 @@ fn draw_rrg_content(
     // ── Axis labels ──
     let axis_label_color = tint(t, Tone::Dim, alpha_dim());
     let axis_font = mono_sm();
-    // X-axis label
+    // X title — in the band BELOW the tick row, not on top of it.
     painter.text(
-        egui::pos2(plot_rect.center().x, rect.bottom() - 4.0),
+        egui::pos2(plot_rect.center().x, rect.bottom() - g),
         egui::Align2::CENTER_BOTTOM,
         "RS-Ratio",
         axis_font.clone(),
         axis_label_color,
     );
-    // Y-axis label (rotated text not easy in egui, so place vertically)
+    // Y title — top-left corner, i.e. the head of the Y axis. egui cannot
+    // rotate text cheaply, and the left gutter is exactly wide enough for the
+    // tick labels, so the title cannot live there without colliding (it did).
+    // The corner is the one spot neither axis labels.
     painter.text(
-        egui::pos2(rect.left() + 4.0, plot_rect.center().y),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(rect.left() + g, rect.top() + g),
+        egui::Align2::LEFT_TOP,
         "Mom",
         axis_font.clone(),
         axis_label_color,
@@ -435,14 +480,13 @@ fn draw_rrg_content(
 
     // ── Axis tick marks ──
     let tick_color = tint(t, Tone::Dim, alpha_subtle());
-    let tick_font = mono_sm();
     // X-axis ticks
     let x_step = ((max_x - min_x) / 4.0).max(0.5);
     let mut xv = (min_x / x_step).ceil() * x_step;
     while xv <= max_x {
         let screen = to_screen(xv, min_y);
         painter.text(
-            egui::pos2(screen.x, plot_rect.bottom() + 2.0),
+            egui::pos2(screen.x, plot_rect.bottom() + g),
             egui::Align2::CENTER_TOP,
             format!("{:.0}", xv),
             tick_font.clone(),
@@ -462,7 +506,7 @@ fn draw_rrg_content(
     while yv <= max_y {
         let screen = to_screen(min_x, yv);
         painter.text(
-            egui::pos2(plot_rect.left() - 2.0, screen.y),
+            egui::pos2(plot_rect.left() - g, screen.y),
             egui::Align2::RIGHT_CENTER,
             format!("{:.0}", yv),
             tick_font.clone(),

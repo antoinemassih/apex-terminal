@@ -8,7 +8,7 @@
 
 use super::super::super::gpu::{Chart, Theme, Watchlist};
 use crate::chart_renderer::ui::panels::side_panel_shell::{RailSlot, SidePanelShell, Width};
-use crate::ui_kit::widgets::{Button, Checkbox, PanelSection}; // WS-G G3: design-system primitives
+use crate::ui_kit::widgets::{Button, Checkbox, PanelSection, Slider}; // WS-G G3: design-system primitives
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use egui;
 
@@ -76,7 +76,12 @@ pub(crate) fn draw(
             // the "box-in-box" chrome the design system deliberately removed.
             if cfg.enabled {
                 PanelSection::new("Window of operation").show(ui, t, |ui, _t| {
-                    let r = ui.add(egui::Slider::new(&mut cfg.window, 100..=2000).text("bars back"));
+                    // ui_kit::Slider for the same reason as the Tuning block
+                    // below: `egui::Slider::text` positions its label after a
+                    // value box sized to the number, so labels do not share a
+                    // left edge.
+                    let r = Slider::new(&mut cfg.window, 100..=2000)
+                        .label("bars back").show_value(true).show(ui, t);
                     rec_ctrl("auto_chart.window", "slider", "bars back", &r, ui, cfg.window.to_string());
                     let r = Checkbox::new(&mut cfg.anchored_only).label("Anchored only (no floating starts)").show(ui, t);
                     rec_ctrl("auto_chart.anchored_only", "checkbox", "Anchored only", &r, ui, cfg.anchored_only.to_string());
@@ -103,13 +108,27 @@ pub(crate) fn draw(
                     });
                 });
                 PanelSection::new("Tuning").show(ui, t, |ui, _t| {
-                    ui.add(egui::Slider::new(&mut cfg.atr_k, 0.5..=6.0).text("ATR x"));
-                    ui.add(egui::Slider::new(&mut cfg.pct, 0.0..=0.05).text("% move"));
-                    ui.add(egui::Slider::new(&mut cfg.min_touches, 2..=6).text("min touches"));
-                    ui.add(egui::Slider::new(&mut cfg.max_lines, 4..=30).text("max lines"));
-                    ui.add(egui::Slider::new(&mut cfg.sensitivity, 0.001..=0.02).text("sensitivity"));
-                    ui.add(egui::Slider::new(&mut cfg.lookback, 50..=400).text("lookback"));
-                    ui.add(egui::Slider::new(&mut cfg.swing_window, 2..=12).text("swing window"));
+                    // ui_kit::Slider, not egui::Slider.
+                    //
+                    // `egui::Slider::text(..)` puts the label AFTER the track
+                    // and after the value box — and that box is sized to the
+                    // number in it. `0.003`, `200` and `5` are different
+                    // widths, so each label started at a different x and the
+                    // column visibly zig-zagged: `sensitivity` sat ~35px left
+                    // of its neighbours and `lookback` ~35px right, while the
+                    // other five lined up. Nothing was misaligned in the code
+                    // — the labels were positioned by their own VALUES.
+                    //
+                    // The design-system slider stacks the label above the
+                    // track and gives the value a fixed column, so every label
+                    // shares one left edge regardless of what the number is.
+                    Slider::new(&mut cfg.atr_k, 0.5..=6.0).label("ATR x").show_value(true).show(ui, t);
+                    Slider::new(&mut cfg.pct, 0.0..=0.05).label("% move").show_value(true).show(ui, t);
+                    Slider::new(&mut cfg.min_touches, 2..=6).label("min touches").show_value(true).show(ui, t);
+                    Slider::new(&mut cfg.max_lines, 4..=30).label("max lines").show_value(true).show(ui, t);
+                    Slider::new(&mut cfg.sensitivity, 0.001..=0.02).label("sensitivity").show_value(true).show(ui, t);
+                    Slider::new(&mut cfg.lookback, 50..=400).label("lookback").show_value(true).show(ui, t);
+                    Slider::new(&mut cfg.swing_window, 2..=12).label("swing window").show_value(true).show(ui, t);
                 });
                 PanelSection::new("Extend lines").show(ui, t, |ui, _t| {
                     ui.horizontal(|ui| {

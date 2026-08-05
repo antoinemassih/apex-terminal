@@ -208,7 +208,7 @@ fn paint_slider<T: egui::emath::Numeric>(
 
             // Value label to the right.
             if show_value {
-                let formatted = format_value(new_val, step);
+                let formatted = format_value(new_val, step, r_max - r_min);
                 let painter = ui.painter();
                 painter.text(
                     Pos2::new(rect.right() + st::gap_xs(), rect.center().y),
@@ -233,13 +233,75 @@ fn paint_slider<T: egui::emath::Numeric>(
     full_resp.unwrap_or_else(|| ui.allocate_response(Vec2::ZERO, Sense::hover()))
 }
 
-fn format_value(v: f64, step: Option<f64>) -> String {
+/// Format a slider's value with enough precision to be READABLE at that range.
+///
+/// `span` (range max - min) is required because a fixed decimal count cannot
+/// serve every slider. This used to hard-code `{:.2}` whenever no `step` was
+/// set, which is fine for `0.5..=6.0` and useless for `0.001..=0.02`: the
+/// auto-chart `sensitivity` slider displayed its 0.003 value as **`0.00`**, so
+/// the control showed the same text across most of its travel and the user
+/// could not read what they had set.
+///
+/// Caught immediately after converting that panel to this widget — the
+/// conversion fixed an alignment defect and introduced a precision one. Worth
+/// naming: swapping a component in is not free, and "it looks aligned now" is
+/// not the same as "it still says the right thing".
+fn format_value(v: f64, step: Option<f64>, span: f64) -> String {
     let step = step.unwrap_or(0.0);
+    // Integral values stay integral — `min touches`, `max lines`, `lookback`
+    // must never render as `3.00`.
     if step >= 1.0 || (step == 0.0 && (v - v.round()).abs() < 1e-9) {
-        format!("{}", v.round() as i64)
-    } else if step >= 0.1 || step == 0.0 {
-        format!("{:.2}", v)
+        return format!("{}", v.round() as i64);
+    }
+    let decimals = if step > 0.0 {
+        // Enough places to show one step.
+        (-step.log10().floor()).clamp(0.0, 6.0) as usize
+    } else if span > 0.0 {
+        // Two significant places relative to the span, so a slider always
+        // resolves at least ~1% of its own travel.
+        (2.0 - span.log10().floor()).clamp(2.0, 6.0) as usize
     } else {
-        format!("{:.3}", v)
+        2
+    };
+    format!("{v:.decimals$}")
+}
+
+#[cfg(test)]
+mod slider_format_tests {
+    use super::format_value;
+
+    /// A slider must never render the same text across most of its travel.
+    ///
+    /// The auto-chart `sensitivity` slider spans 0.001..=0.02. With the old
+    /// fixed `{:.2}`, every value below 0.005 displayed as `0.00` — the
+    /// control was unreadable for most of its range.
+    #[test]
+    fn narrow_range_keeps_enough_decimals() {
+        let span = 0.02 - 0.001;
+        let a = format_value(0.003, None, span);
+        let b = format_value(0.006, None, span);
+        assert_ne!(a, b, "0.003 and 0.006 rendered identically as {a:?}");
+        assert!(a.starts_with("0.003"), "expected 0.003.., got {a:?}");
+    }
+
+    /// Integral sliders stay integral — `min touches` must not read `3.00`.
+    #[test]
+    fn integral_values_render_without_decimals() {
+        assert_eq!(format_value(3.0, None, 4.0), "3");
+        assert_eq!(format_value(200.0, None, 350.0), "200");
+        assert_eq!(format_value(12.0, None, 26.0), "12");
+    }
+
+    /// A wide float range does not gain pointless precision.
+    #[test]
+    fn wide_range_stays_terse() {
+        assert_eq!(format_value(2.35, None, 5.5), "2.35");
+    }
+
+    /// An explicit step drives precision directly.
+    #[test]
+    fn step_sets_precision() {
+        assert_eq!(format_value(0.25, Some(0.05), 1.0), "0.25");
+        assert_eq!(format_value(7.0, Some(1.0), 100.0), "7");
     }
 }

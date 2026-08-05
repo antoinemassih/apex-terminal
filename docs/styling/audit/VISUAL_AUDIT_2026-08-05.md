@@ -279,11 +279,42 @@ The Y-axis title overlaps the `100` gridline label character-for-character
 `100` label. Reproducing identically on both axes points at a shared
 axis-label layout routine, not an edge case.
 
+**Fixed.** One uniform `margin = 20.0` was shared by tick labels AND axis
+titles, and both drew into it. Because each title is centred on its axis and
+the plot is forced symmetric around 100, the title landed precisely on the
+`100` tick. Each gutter is now derived from the text that goes in it, with
+ticks and titles in disjoint bands; the Y title moved to the head of its axis
+(top-left), the one corner neither axis labels.
+
+Took two passes: reserving one line height for the title band still left `Mom`
+grazing `104`, because the topmost tick is drawn centred on the plot edge and
+overhangs half a line upward.
+
 ### 3.2 — HIGH — auto-chart TUNING radio column breaks its left edge
 
 Seven radio rows should share one left edge; five do. `sensitivity` sits ~35px
 left of the column and `lookback` ~35px right of it, before `swing window`
 snaps back. Two controls zig-zagging out of an otherwise ruler-straight list.
+
+**Fixed, and they were not radio buttons.** They are `egui::Slider`s, whose
+`.text(..)` label is positioned *after* a value box sized to the number in it.
+`0.003`, `200` and `5` are different widths, so each label started at a
+different x. Nothing was misaligned in the code — **the labels were being
+positioned by their own values.**
+
+Converted to the design-system `Slider`, which stacks the label above the track
+and gives the value a fixed column, so every label shares one left edge
+regardless of content. Eight raw `egui::Slider`s retired from this panel.
+
+That conversion then introduced a *precision* defect: the DS slider's value
+formatter hard-coded 2 decimals when no `step` was set, so `sensitivity`
+(range `0.001..=0.02`) rendered as **`0.00`** across most of its travel. Fixed
+by deriving decimals from the range, with integral sliders kept integral, and
+guarded by four tests.
+
+Worth naming as a pattern: swapping a component in is not free. "It looks
+aligned now" is not the same as "it still says the right thing" — the same
+shape as the DOM ladder's `L.8H` in §1.2.
 
 ### 3.3 — MEDIUM — object tree has two different empty states in one panel
 
@@ -465,6 +496,8 @@ case by case.
 | 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
 | 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
+| 3.1 | RRG axis titles collided with tick labels | `rrg_panel.rs` — derived gutters, disjoint bands |
+| 3.2 | Auto-chart slider labels zig-zagged | `auto_chart_panel.rs` → DS `Slider`; range-aware precision |
 | 2.8 | `/state` reported a dialog nothing renders | `dev_inspector/mod.rs` + `SpawnOrderTicket` |
 | §0 | Dialog commands drove a phantom state | `AppCommand::SetDialogOpen`, `update_sidebar_state` |
 | §0 | `/state` could not report the watchlist tab | `dev_inspector/mod.rs` |
@@ -477,7 +510,6 @@ control-size 4/4.
 ## 7. Open — not fixed
 
 order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 chain header layout, §2.3 left-edge clipping, §2.4
-`sel` truncation, §2.5 numeric alignment, §2.6 tab divider, §3.1 RRG axis
-collision, §3.2 auto-chart radio column, §3.3 object-tree empty states, §3.4
+`sel` truncation, §2.5 numeric alignment, §2.6 tab divider, §3.3 object-tree empty states, §3.4
 playbook void, §3.5 playbook label order, §3.6 line over modal, §3.7 mixed
 button shapes, §3.8 top-nav overlap at 1600px.
