@@ -205,16 +205,41 @@ pub(crate) fn render(
         egui::vec2(RAIL_GRIP_W, avail.height()),
     );
     let hresp = egui::Area::new(egui::Id::new("rail_resize_handle"))
-        .order(egui::Order::Foreground)
+        // Order::MIDDLE, not Foreground.
+        //
+        // This grip is background chrome — a resize affordance between two
+        // panels. At `Order::Foreground` it shares a layer with modals
+        // (`ui_kit::Modal` uses Foreground too), and within one order egui
+        // paints by creation sequence, so the grip won: a full-height accent
+        // line was drawn straight THROUGH the open Settings modal, across its
+        // layout buttons and theme swatch grid. Verified by pixel sampling —
+        // accent at `alpha_heavy` over the modal's near-black cards.
+        //
+        // Middle keeps it above the panel bodies (so it still receives the
+        // drag) and below anything modal.
+        .order(egui::Order::Middle)
         .fixed_pos(handle.min)
         .show(ctx, |ui| {
             let r = ui.interact(handle, ui.id().with("grip"), egui::Sense::drag());
             let active = r.hovered() || r.dragged();
             if active { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal); }
             let hx = handle.center().x;
+            // Idle grips are a BORDER hairline, not a solid accent bar.
+            //
+            // The accent was painted unconditionally — `active` only chose
+            // between `alpha_solid` and `alpha_heavy`, both loud — so a
+            // full-height accent rule bisected the app whenever any rail panel
+            // was open, permanently, whether or not anyone was resizing.
+            // An affordance should announce itself on approach, not compete
+            // with the content it separates.
+            let (w, col) = if active {
+                (crate::ui_kit::style::stroke_thick(), tint(t, Tone::Accent, alpha_solid()))
+            } else {
+                (crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, crate::ui_kit::style::alpha_muted()))
+            };
             ui.painter().line_segment(
                 [egui::pos2(hx, handle.top()), egui::pos2(hx, handle.bottom())],
-                egui::Stroke::new(crate::ui_kit::style::stroke_thick(), tint(t, Tone::Accent, if active { alpha_solid() } else { alpha_heavy() })),
+                egui::Stroke::new(w, col),
             );
             r
         }).inner;

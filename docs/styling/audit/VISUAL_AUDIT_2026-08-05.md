@@ -406,8 +406,26 @@ is conditionally unrendered.
 Verified by pixel sampling, not by eye: at `06-rrg.png (2101, 1200)` a green
 line `rgb(29,67,44)` sits on top of the modal's near-black theme swatch. It
 runs continuously the full height of the window and appears in all 13 original
-captures. A modal is the topmost layer by definition; something in the chart
-body is compositing above it.
+captures. A modal is the topmost layer by definition; something was compositing
+above it.
+
+**Fixed.** It is the RIGHT-RAIL RESIZE GRIP (`right_rail.rs:207`) — not a chart
+element, which is why it only appeared once a rail panel was open (`01-default`
+has no line; `06-rrg` and `13-settings` do).
+
+Two defects stacked:
+
+1. **Wrong layer.** The grip is an `egui::Area` at `Order::Foreground` — the
+   same order `ui_kit::Modal` uses. Within one order egui paints by creation
+   sequence, so the grip won and drew through the modal. Background chrome does
+   not belong on the modal layer; moved to `Order::Middle`, which still keeps
+   it above the panel bodies so it receives its drag.
+2. **Always-on at full strength.** The accent was painted unconditionally —
+   `active` only chose between `alpha_solid` and `alpha_heavy`, both loud — so
+   a full-height accent rule bisected the app whenever any rail panel was open,
+   whether or not anyone was resizing. Idle now paints a border hairline;
+   the accent is reserved for hover/drag. An affordance should announce itself
+   on approach, not compete with the content it separates.
 
 ### 3.7 — MEDIUM — BUY/SELL are ellipses, FLATTEN/CANCEL are rounded rects
 
@@ -496,6 +514,7 @@ case by case.
 | 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
 | 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
+| 3.6 | Rail grip painted through the Settings modal | `right_rail.rs` — Order::Middle + idle hairline |
 | 3.1 | RRG axis titles collided with tick labels | `rrg_panel.rs` — derived gutters, disjoint bands |
 | 3.2 | Auto-chart slider labels zig-zagged | `auto_chart_panel.rs` → DS `Slider`; range-aware precision |
 | 2.8 | `/state` reported a dialog nothing renders | `dev_inspector/mod.rs` + `SpawnOrderTicket` |
@@ -511,5 +530,5 @@ control-size 4/4.
 
 order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 chain header layout, §2.3 left-edge clipping, §2.4
 `sel` truncation, §2.5 numeric alignment, §2.6 tab divider, §3.3 object-tree empty states, §3.4
-playbook void, §3.5 playbook label order, §3.6 line over modal, §3.7 mixed
+playbook void, §3.5 playbook label order, §3.7 mixed
 button shapes, §3.8 top-nav overlap at 1600px.
