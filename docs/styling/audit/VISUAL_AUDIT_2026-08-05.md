@@ -184,6 +184,18 @@ independently; it had been looked straight at several times without being seen.
 **Fixed** — single draw. Weight belongs to the font, not to the number of times
 we draw.
 
+### 2.0 — HIGH — the chain symbol box painted "SPY" twice
+
+Distinct from §2.1, and found only once the tabs were captured correctly. The
+`Input`'s **placeholder** and a **manual overlay** both drew the symbol —
+different offsets, different fonts, grey under orange, half a character apart,
+reading as a corrupted `SᴥPY` smear.
+
+The overlay exists because the current symbol lives in `chain.symbol`, not in
+the edit buffer. Both mechanisms were doing their job; nothing said which one
+owns the unfocused-and-empty case. **Fixed**: placeholder only while focused,
+which is exactly when the overlay stands down.
+
 ### 2.1b — HIGH — every dropdown caret was a tofu box
 
 `select.rs`. The chevron painted `U+25BC` in the **proportional** family. Inter
@@ -270,6 +282,42 @@ right, but the label directly above the bar's right end reads `STOP` while that
 end *is* the target.
 
 ---
+
+### 2.7 — HIGH — the scanner MOVERS row collided with "Configure filters"
+
+`…RVOL Le[Configure filt]ers`, interleaved letter by letter. The chip row and
+the trailing button were laid out in one wrapped row with the button nested
+after the chips, so the chips consumed the width and the button's 110px minimum
+painted over them.
+
+**Fixed**, in three passes — each exposing the next layer, and worth recording
+because only the third actually works:
+
+1. Reserving the button's width first was necessary but **not sufficient** —
+   egui does not clip an over-long row to its region, so the chips overflowed
+   the remainder and collided anyway.
+2. Adding wrap fixed the collision, but `horizontal_wrapped` **inherits the
+   parent's direction**, and the parent is right-to-left (that is how the
+   button pins to the right edge). The chips laid out backwards: `Active Losers
+   Gainers MOVERS`. Collision gone, row still wrong.
+3. Stating **both** explicitly — `left_to_right` + `with_main_wrap` — is what
+   works.
+
+The row was also hiding a chip: `Gappers` only became visible once it wrapped.
+
+### 2.8 — HIGH — `order_entry_open` is a dead flag
+
+There is no order-entry form. `order_entry_open` is declared on `Watchlist`,
+defaulted, mirrored into `SidebarState` in both directions, persisted, and
+reported by `/state.open_dialogs` — and **nothing in the UI reads it**.
+
+So `/state` reports an open dialog that cannot render. This is worth stating as
+a limitation of the new capture script too: its assertions verify **state, not
+visibility**. Here the state was reachable and the pixels were not, so the
+capture passed its check and produced a screenshot with no order form in it.
+Strictly better than the old silent-wrong-screen failure — the surface is named
+and its state confirmed — but "the flag is set" is not "the user can see it".
+The surface has been removed from the catalogue until the panel renders.
 
 ### 3.6 — HIGH — a chart-layer line paints over the Settings modal
 
@@ -360,7 +408,9 @@ case by case.
 | 1.0 | BUY and SELL painted the same colour | `button.rs` — tint out-ranks an Accent recipe fill |
 | 1.1 | BUY/SELL overdrew FLATTEN/CANCEL | `button.rs` `max_width`/`fixed_size` + `dom_panel.rs` |
 | 2.1 | Pane header painted every symbol twice | `painter_pane.rs` |
+| 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
+| 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
 | §0 | Dialog commands drove a phantom state | `AppCommand::SetDialogOpen`, `update_sidebar_state` |
 | §0 | `/state` could not report the watchlist tab | `dev_inspector/mod.rs` |
 | §0 | Captures written for states the app was not in | `scripts/ds-harness/capture_surfaces.py` |
@@ -371,7 +421,8 @@ control-size 4/4.
 
 ## 7. Open — not fixed
 
-§1.2 clipped delta sign (**correctness-grade**, do this first), §1.3 column
+§2.8 dead `order_entry_open` flag, §1.2 clipped delta sign
+(**correctness-grade**, do these two first), §1.3 column
 gutters, §1.4 SIMULATED badge over headers, §1.5 highlight box width, §1.6
 ladder bottom clip, §2.2 chain header layout, §2.3 left-edge clipping, §2.4
 `sel` truncation, §2.5 numeric alignment, §2.6 tab divider, §3.1 RRG axis

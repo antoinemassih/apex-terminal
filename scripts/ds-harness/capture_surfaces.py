@@ -114,9 +114,19 @@ SURFACES = [
         {"cmd": "OpenOrdersPanel"}],
         require=dict(dialogs_open=["orders_panel"], dialogs_closed=["settings"])),
 
-    dict(name="08-order-entry", cmds=[
-        {"cmd": "CloseOrdersPanel"}, {"cmd": "OpenOrderEntry"}],
-        require=dict(dialogs_open=["order_entry"], dialogs_closed=["settings"])),
+    # 08-order-entry is DELIBERATELY ABSENT. `order_entry_open` is a dead
+    # flag: it is declared on `Watchlist`, defaulted, mirrored into
+    # `SidebarState` both ways, persisted, and reported by
+    # `/state.open_dialogs` — and NOTHING in the UI reads it. There is no
+    # order-entry form to photograph.
+    #
+    # Worth stating plainly, because it is a limitation of this script's whole
+    # approach: the assertions verify STATE, not VISIBILITY. Here the state was
+    # reachable and the pixels were not, so the capture passed its check and
+    # produced a screenshot with no order form in it. That is strictly better
+    # than the old silent-wrong-screen failure — the surface is at least
+    # named and its state confirmed — but "the flag is set" is not "the user
+    # can see it". Restore this entry when the panel actually renders.
 
     dict(name="13-settings", cmds=[
         {"cmd": "CloseOrderEntry"}, {"cmd": "OpenSettings"}],
