@@ -1083,9 +1083,28 @@ fn execute_step(
                 _ => None,
             };
             if let Some((name, open)) = dialog_name {
-                queues.lock().unwrap().commands.push(
-                    QueuedDevCmd::HeadlessDialog { name: name.to_string(), open }
-                );
+                // Push BOTH: the real AppCommand (which a windowed run applies
+                // to the Watchlist the UI actually paints from) and the
+                // HeadlessDialog mutation (which the headless ticker needs,
+                // since it has no Watchlist at all).
+                //
+                // Only one of the two is live in any given run, and each
+                // ignores the other's channel — but sending only the headless
+                // one, as this did, meant every windowed capture sweep drove a
+                // phantom. See `AppCommand::SetDialogOpen` for what that cost.
+                {
+                    let mut q = queues.lock().unwrap();
+                    q.commands.push(QueuedDevCmd::App(
+                        crate::chart_renderer::commands::AppCommand::SetDialogOpen {
+                            name: name.to_string(),
+                            open,
+                        },
+                    ));
+                    q.commands.push(QueuedDevCmd::HeadlessDialog {
+                        name: name.to_string(),
+                        open,
+                    });
+                }
                 let ok = wait_for_next_frame(shared, 1000);
                 return (true, format!("dialog={name} open={open} (frame_ok={ok})"));
             }
@@ -2224,6 +2243,17 @@ svg.layout{{max-width:100%;border:1px solid #2a2a2a;border-radius:4px}}
 
 // ─── AppCommand parser ────────────────────────────────────────────────────────
 
+/// Build a real dialog open/close command.
+///
+/// Not `#[cfg]`-gated, matching the `CloseAllDialogs` arm below it — this
+/// parser already references debug-only `AppCommand` variants unconditionally.
+fn dialog_cmd(name: &str, open: bool) -> crate::chart_renderer::commands::AppCommand {
+    crate::chart_renderer::commands::AppCommand::SetDialogOpen {
+        name: name.to_string(),
+        open,
+    }
+}
+
 fn parse_app_command(
     body: &serde_json::Value,
 ) -> Result<crate::chart_renderer::commands::AppCommand, String> {
@@ -2595,6 +2625,21 @@ fn parse_app_command(
 
         // ── UI state ───────────────────────────────────────────────────────
         "CloseAllDialogs" | "close_all_dialogs" => Ok(AppCommand::CloseAllDialogs),
+
+        // Per-dialog open/close. These names were previously understood ONLY
+        // inside `execute_step` (scenario `action:"cmd"`), so `POST /cmd
+        // {"cmd":"OpenSettings"}` answered `unknown command` — while the
+        // scenario path accepted the same name and quietly drove the headless
+        // ticker instead of the app. Two callers, two different wrong answers.
+        // Parsed here, both paths reach the same real reducer.
+        "OpenOrderEntry"   | "open_order_entry"   => Ok(dialog_cmd("order_entry",   true)),
+        "CloseOrderEntry"  | "close_order_entry"  => Ok(dialog_cmd("order_entry",   false)),
+        "OpenSettings"     | "open_settings"      => Ok(dialog_cmd("settings",      true)),
+        "CloseSettings"    | "close_settings"     => Ok(dialog_cmd("settings",      false)),
+        "OpenOrdersPanel"  | "open_orders_panel"  => Ok(dialog_cmd("orders_panel",  true)),
+        "CloseOrdersPanel" | "close_orders_panel" => Ok(dialog_cmd("orders_panel",  false)),
+        "OpenHotkeyEditor" | "open_hotkey_editor" => Ok(dialog_cmd("hotkey_editor", true)),
+        "CloseHotkeyEditor"| "close_hotkey_editor"=> Ok(dialog_cmd("hotkey_editor", false)),
         "OpenIndicatorEditor" | "open_indicator_editor" => {
             let id = body["id"].as_u64().unwrap_or(0) as u32;
             Ok(AppCommand::OpenIndicatorEditor { pane, id })

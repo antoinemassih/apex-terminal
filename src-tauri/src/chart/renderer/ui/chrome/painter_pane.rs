@@ -886,10 +886,27 @@ impl<'a> PainterPaneHeader<'a> {
                 style_class: None,
                 ticker: false,
             });
-            let p0 = pos2(cx + 2.0, rect.center().y);
-            painter.text(pos2(p0.x + 0.5, p0.y), Align2::LEFT_CENTER, sym,
-                sym_font.clone(), label_color);
-            painter.text(p0, Align2::LEFT_CENTER, sym, sym_font.clone(), label_color);
+            // ONE draw. This painted the symbol TWICE, offset 0.5px — a
+            // faux-bold hack (double-strike to thicken glyphs) from before the
+            // mono family had a bold face registered.
+            //
+            // It does not read as bold. On the HiDPI window it renders a
+            // visibly doubled glyph: "SPY" comes out as "SPYY" with a lighter
+            // ghost trailing the last letter, identically in every capture, so
+            // it is not a transition artifact. Found by the visual audit —
+            // no structural check could see it, and I had looked straight at
+            // this header several times without noticing.
+            //
+            // Weight belongs to the font, not to the number of times we draw.
+            // If the symbol should be heavier, register a bold mono face and
+            // ask for it here.
+            painter.text(
+                pos2(cx + 2.0, rect.center().y),
+                Align2::LEFT_CENTER,
+                sym,
+                sym_font.clone(),
+                label_color,
+            );
             cx += sym_galley.size().x + gap_md() + 4.0;
 
             // Option badges: C/P pill + DTE countdown (shared helper).

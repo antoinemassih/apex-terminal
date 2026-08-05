@@ -269,6 +269,34 @@ pub enum AppCommand {
     #[cfg(debug_assertions)]
     CloseAllDialogs,
 
+    /// Open or close ONE named dialog on the real app state.
+    ///
+    /// `name` is the same key `/state.open_dialogs` reports:
+    /// `settings` | `hotkey_editor` | `order_entry` | `orders_panel` |
+    /// `chain_select`.
+    ///
+    /// ## Why this exists
+    ///
+    /// The inspector already accepted `OpenSettings` / `OpenOrderEntry` /
+    /// `OpenOrdersPanel`, but routed them to `QueuedDevCmd::HeadlessDialog`,
+    /// which mutates the HEADLESS TICKER's simulated `open_dialogs` vector.
+    /// In a windowed run that vector is not what anything renders from —
+    /// `/state` derives `open_dialogs` from the real `Watchlist` flags. So the
+    /// command reported success, changed a field nobody drew, and the UI never
+    /// moved. `CloseAllDialogs` was the only dialog command wired to real
+    /// state, and it only closes.
+    ///
+    /// A capture sweep built on those commands produced thirteen screenshots
+    /// with the Settings modal stuck open over every one, two of which were
+    /// byte-identical because the panel they meant to open never opened. The
+    /// audit ran on them anyway.
+    ///
+    /// The Open*/Close* names now map here, so they drive the same state the
+    /// window paints and `/state` reports — meaning an assertion on
+    /// `open_dialogs` can actually falsify them.
+    #[cfg(debug_assertions)]
+    SetDialogOpen { name: String, open: bool },
+
     // ── Dev Inspector — subsystem drivers (harness-only, debug builds) ─────
     // These exist so the scenario harness can OPEN and OBSERVE UI-only
     // subsystems (DOM, scanner, RRG, order-entry panel, gamma) that have no
@@ -1175,11 +1203,42 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 p.pane_picker_open = false;
                 p.editing_indicator = None;
             }
-            watchlist.settings_open = false;
-            watchlist.hotkey_editor_open = false;
-            watchlist.order_entry_open = false;
-            watchlist.orders_panel_open = false;
+            // Through the sidebar store, for the reason spelled out on
+            // `SetDialogOpen` below: these four are mirrored into
+            // `SidebarState` and the mirror is pushed back over the fields
+            // every frame, so a direct write survives one frame and vanishes.
+            //
+            // That is why `POST /reset` did not actually reset the UI — a
+            // capture sweep inherited a modal from whatever ran before it and
+            // shot thirteen screenshots with Settings open over all of them.
+            watchlist.update_sidebar_state(|s| {
+                s.settings_open      = false;
+                s.hotkey_editor_open = false;
+                s.order_entry_open   = false;
+                s.orders_panel_open  = false;
+            });
             watchlist.chain.select_mode = false;
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetDialogOpen { name, open } => {
+            // These flags are MIRRORED into `SidebarState`, and the mirror is
+            // pushed back over the `Watchlist` fields every frame. Writing the
+            // field alone therefore "works" for exactly one frame and is then
+            // silently reverted — the command dispatches, the transition log
+            // shows it, and `/state` still reports the dialog closed.
+            //
+            // `update_sidebar_state` is what the real toolbar toggle uses; go
+            // through the same door. (`chain_select` is not mirrored, so it is
+            // a direct write.)
+            match name.as_str() {
+                "settings"      => watchlist.update_sidebar_state(|s| s.settings_open      = open),
+                "hotkey_editor" => watchlist.update_sidebar_state(|s| s.hotkey_editor_open = open),
+                "order_entry"   => watchlist.update_sidebar_state(|s| s.order_entry_open   = open),
+                "orders_panel"  => watchlist.update_sidebar_state(|s| s.orders_panel_open  = open),
+                "chain_select"  => watchlist.chain.select_mode = open,
+                other => tracing::warn!("SetDialogOpen: unknown dialog {other:?}"),
+            }
         }
 
         // ── Dev Inspector — subsystem drivers ─────────────────────────────

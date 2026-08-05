@@ -249,7 +249,12 @@ pub enum QueuedDevCmd {
     HeadlessLayout { cols: usize },
     /// Headless-only: override a pane's display type string without going through PaneType enum.
     HeadlessPaneType { pane: usize, name: String },
-    /// Headless-only: open or close a named dialog directly (no AppCommand equivalent).
+    /// Headless-only: open or close a named dialog directly.
+    ///
+    /// Headless-ONLY is the whole point — the ticker has no `Watchlist`, so it
+    /// keeps its own `open_dialogs` vector. A windowed run must be driven by
+    /// `AppCommand::SetDialogOpen` instead; sending only this one there mutates
+    /// a vector nothing paints from. `/cmd` now pushes both.
     HeadlessDialog { name: String, open: bool },
     // ── Canvas / drawing commands (headless simulation) ───────────────────────
     /// Add or replace a synthetic drawing on a pane.
@@ -1291,6 +1296,24 @@ pub fn end_frame(
             "active_idx":     watchlist.active_watchlist_idx,
             "name":           watchlist.saved_watchlists.get(watchlist.active_watchlist_idx)
                                   .map(|wl| wl.name.as_str()).unwrap_or(""),
+            // Which of LIST / CHAIN / HEAT / SCAN is showing.
+            //
+            // This was NOT reported, and its absence cost a whole audit. A
+            // capture sweep clicked through all four tabs and shot a PNG per
+            // tab; none of the clicks landed, so four files named
+            // `*-list/chain/heat/scan` all contained the CHAIN view. Nothing
+            // failed — the harness cannot assert on state it cannot see, so
+            // three of the four surfaces had zero visual evidence behind them
+            // and the reviewing agents audited the same screen four times.
+            //
+            // Anything a scenario can switch, `/state` must be able to report,
+            // or "I switched it" is an unfalsifiable claim.
+            "tab": match watchlist.tab {
+                crate::chart_renderer::gpu::WatchlistTab::Stocks => "list",
+                crate::chart_renderer::gpu::WatchlistTab::Chain  => "chain",
+                crate::chart_renderer::gpu::WatchlistTab::Heat   => "heat",
+                crate::chart_renderer::gpu::WatchlistTab::Scan   => "scan",
+            },
         },
         "total_order_count": panes.iter().map(|p| p.orders.len()).sum::<usize>(),
         "total_alert_count": panes.iter().map(|p| p.price_alerts.len()).sum::<usize>(),

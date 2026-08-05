@@ -489,7 +489,13 @@ pub(crate) fn draw(
             .tint(t.bull)
             .size(KitSize::Md)
             .kbd("Ctrl+B")
-            .min_size(egui::vec2(side_w, action_h)))
+            // `fixed_size`, not `min_size`. These four slots are computed to
+            // tile `aw` exactly, so any button that exceeds its slot paints
+            // over its neighbour. With `min_size` (a floor only) that is what
+            // happened: the `kbd` hints added here made "BUY  Ctrl+B" wider
+            // than `side_w`, and BUY/SELL overdrew FLATTEN and CANCEL — the
+            // four highest-stakes controls in the app, overlapping.
+            .fixed_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; if p > 0.0 { *new_order = Some((OrderSide::Buy, p, *order_qty)); } }
 
@@ -506,7 +512,7 @@ pub(crate) fn draw(
             .variant(Variant::NeutralAction)
             .size(KitSize::Md)
             .kbd("Ctrl+Shift+F")
-            .min_size(egui::vec2(mid_w, mid_half_h)))
+            .fixed_size(egui::vec2(mid_w, mid_half_h)))
     });
     // DOM Phase 1: FLATTEN closes the POSITION (cancel working orders +
     // market-close) via OrderManager::flatten — distinct from CANCEL, which
@@ -527,7 +533,7 @@ pub(crate) fn draw(
             .fill(cancel_fill)
             .fg(order_cancel_fg())
             .kbd("Ctrl+Shift+Q")
-            .min_size(egui::vec2(mid_w, mid_half_h)))
+            .fixed_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
 
@@ -538,7 +544,7 @@ pub(crate) fn draw(
             .tint(t.bear)
             .size(KitSize::Md)
             .kbd("Ctrl+Shift+B")
-            .min_size(egui::vec2(side_w, action_h)))
+            .fixed_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; if p > 0.0 { *new_order = Some((OrderSide::Sell, p, *order_qty)); } }
 

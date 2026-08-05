@@ -54,6 +54,8 @@ pub struct Button<'a> {
     hover_fill_override: Option<Color32>,
     stroke_override: Option<Stroke>,
     min_size_override: Option<Vec2>,
+    /// Hard ceiling on the painted width. See [`Button::max_width`].
+    max_width: Option<f32>,
     frameless: bool,
     honor_style_treatment: bool,
     simple_treatment: bool,
@@ -109,6 +111,7 @@ impl<'a> Button<'a> {
             hover_fill_override: None,
             stroke_override: None,
             min_size_override: None,
+            max_width: None,
             frameless: false,
             honor_style_treatment: true,
             simple_treatment: false,
@@ -378,6 +381,34 @@ impl<'a> Button<'a> {
 
     /// Minimum size (replaces auto-computed from Size enum).
     pub fn min_size(mut self, sz: Vec2) -> Self { self.min_size_override = Some(sz); self }
+
+    /// Hard CEILING on the painted width — the counterpart to [`min_size`],
+    /// which is only a floor.
+    ///
+    /// Set this whenever the caller hands the button a fixed slot it must not
+    /// escape (a hand-laid action row, a fixed-width toolbar cell). Without it,
+    /// a button whose content does not fit simply paints past its slot and over
+    /// whatever is next to it — silently, since nothing errors.
+    ///
+    /// That is not hypothetical. The DOM order-entry row lays out
+    /// `[BUY] [FLATTEN / CANCEL] [SELL]` into three computed slots and passed
+    /// each one via `min_size`. When keyboard hints were later added to those
+    /// buttons, `"BUY"` became `"BUY  Ctrl+B"`, the intrinsic width blew past
+    /// the 30%-of-width slot, and BUY and SELL painted straight over FLATTEN
+    /// and CANCEL. Both values were individually reasonable; only the
+    /// RELATIONSHIP between content and slot was wrong, so no token check
+    /// could see it.
+    ///
+    /// When the content does not fit, the keyboard hint is dropped FIRST
+    /// (it is the affordance, not the action) and the label is re-measured
+    /// before the width is clamped — so a tight slot loses the hint rather
+    /// than half the word.
+    pub fn max_width(mut self, w: f32) -> Self { self.max_width = Some(w); self }
+
+    /// Fixed slot: the button paints at exactly `sz`, neither smaller nor
+    /// larger. Sugar for `.min_size(sz).max_width(sz.x)` — the common case
+    /// when a caller hand-lays a rect and expects the button to fill it.
+    pub fn fixed_size(self, sz: Vec2) -> Self { self.min_size(sz).max_width(sz.x) }
 
     /// Shortcut for setting only the minimum width. Preserves any
     /// previously-set min height; otherwise uses the variant's default
@@ -757,7 +788,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
     let sublabel_text: Option<String> = btn.sublabel.clone();
     let stacked = sublabel_text.is_some();
     // Keybind: only meaningful when there's a label (not icon_only) and not stacked.
-    let kbd_text: Option<String> = if !icon_only && !stacked { btn.kbd.clone() } else { None };
+    let mut kbd_text: Option<String> = if !icon_only && !stacked { btn.kbd.clone() } else { None };
 
     // ── Placement resolution ─────────────────────────────────────────────────
     // When a placement is set, it wins over glyph_px and min_size_override.
@@ -794,6 +825,27 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
             &kbd_font,
         )
     };
+
+    // ── Fit the content to a caller-supplied ceiling ─────────────────────────
+    // The keyboard hint is the first thing to go: it is a discoverability
+    // affordance, and losing it costs far less than painting over the control
+    // next door. Re-measure after dropping it so the clamp below is a no-op
+    // whenever shedding the hint was enough.
+    if let Some(maxw) = btn.max_width {
+        if !icon_only && !stacked && kbd_text.is_some() && content_w + 2.0 * pad_x > maxw {
+            kbd_text = None;
+            content_w = measure_content_w(
+                ui,
+                leading_icon.is_some() || loading,
+                label,
+                trailing_icon.is_some(),
+                None,
+                font_size,
+                icon_gap,
+                &kbd_font,
+            );
+        }
+    }
 
     // Stacked (sublabel) layout: vertical icon + label + sublabel.
     // Override measurements computed above.
@@ -844,6 +896,13 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
     if let Some(ms) = min_size_override {
         desired.x = desired.x.max(ms.x);
         desired.y = desired.y.max(ms.y);
+    }
+    // The ceiling is applied LAST, so it wins over both floors above. A caller
+    // that hands us a fixed slot is stating a fact about the layout, not a
+    // preference — overrunning it damages a sibling, while clamping only
+    // crowds ourselves.
+    if let Some(maxw) = btn.max_width {
+        desired.x = desired.x.min(maxw.max(1.0));
     }
 
     // StatusIndicator is a non-interactive decoration — use Sense::hover().
