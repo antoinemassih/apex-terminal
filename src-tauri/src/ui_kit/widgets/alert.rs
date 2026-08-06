@@ -183,7 +183,7 @@ impl Alert {
                 icon_center,
                 egui::Align2::CENTER_CENTER,
                 icon,
-                FontId::proportional(icon_size),
+                crate::ui_kit::style::prop_at(icon_size),
                 color,
             );
 
@@ -227,7 +227,7 @@ impl Alert {
                     close_center,
                     egui::Align2::CENTER_CENTER,
                     Icon::X,
-                    FontId::proportional(close_size),
+                    crate::ui_kit::style::prop_at(close_size),
                     col,
                 );
                 if close_resp.clicked() { closed = true; }

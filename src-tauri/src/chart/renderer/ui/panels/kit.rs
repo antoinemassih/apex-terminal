@@ -365,7 +365,7 @@ impl<'a> PanelHeader<'a> {
 
         // Use per-style font family: mono for Alto/Mariner/Relay, proportional for others.
         let title_font = FontId::new(font_size, section_header_font_id().family);
-        let icon_font = FontId::monospace(font_size);
+        let icon_font = crate::ui_kit::style::mono_at(font_size);
         let title_text = style_label_case(self.title);
 
         // Measure the intrinsic content, then let the flex engine place it.

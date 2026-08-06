@@ -398,11 +398,11 @@ fn paint_select<'a, T: 'a>(
     // layout-only galleys in this block: only `.rect.width()` is read.
     for i in 0..display.len() {
         let label = display.label(i);
-        let g = ui.fonts(|f| f.layout_no_wrap(label, label_font.clone(), Color32::WHITE));
+        let g = ui.fonts(|f| f.layout_no_wrap(label, label_font.clone(), egui::Color32::PLACEHOLDER));
         widest_label = widest_label.max(g.rect.width());
     }
     if let Some(ph) = &placeholder {
-        let g = ui.fonts(|f| f.layout_no_wrap(ph.clone(), label_font.clone(), Color32::WHITE));
+        let g = ui.fonts(|f| f.layout_no_wrap(ph.clone(), label_font.clone(), egui::Color32::PLACEHOLDER));
         widest_label = widest_label.max(g.rect.width());
     }
     let caret_w = font_size * 0.6;

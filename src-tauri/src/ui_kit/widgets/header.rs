@@ -297,13 +297,13 @@ impl<'a> Header<'a> {
         let mut out = HeaderResponse { rect, response: Some(resp), close_clicked: false };
 
         // ── Measure, then solve the whole strip in one pass ──
-        let icon_font = FontId::proportional(font_size + 2.0);
+        let icon_font = crate::ui_kit::style::prop_at(font_size + 2.0);
         let title_text = if self.variant.upper() {
             self.title.to_uppercase()
         } else {
             self.title.to_string()
         };
-        let title_font = FontId::monospace(font_size);
+        let title_font = crate::ui_kit::style::mono_at(font_size);
         let title_color = palette_ct(theme).base(Tone::Text);
 
         let metrics = HeaderMetrics {

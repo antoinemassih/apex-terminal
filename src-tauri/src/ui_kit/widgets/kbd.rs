@@ -86,14 +86,14 @@ impl<'a> Kbd<'a> {
         // really just an alternating strip — cap, joiner, cap, … — on a
         // `plus_gap` gutter, which is one flex row.
         let plus_w = ui
-            .fonts(|f| f.layout_no_wrap("+".to_string(), FontId::monospace(font_size), dim))
+            .fonts(|f| f.layout_no_wrap("+".to_string(), crate::ui_kit::style::mono_at(font_size), dim))
             .rect
             .width();
 
         let mut cap_widths: Vec<f32> = Vec::with_capacity(self.keys.len());
         let mut total_w: f32 = 0.0;
         for (i, k) in self.keys.iter().enumerate() {
-            let g = ui.fonts(|f| f.layout_no_wrap(k.clone(), FontId::monospace(font_size), text_col));
+            let g = ui.fonts(|f| f.layout_no_wrap(k.clone(), crate::ui_kit::style::mono_at(font_size), text_col));
             let w = (g.rect.width() + pad_x * 2.0).max(cap_h);
             cap_widths.push(w);
             total_w += w;
@@ -128,7 +128,7 @@ impl<'a> Kbd<'a> {
                     cap_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     k,
-                    FontId::monospace(font_size),
+                    crate::ui_kit::style::mono_at(font_size),
                     text_col,
                 );
                 if i + 1 < self.keys.len() {
@@ -136,7 +136,7 @@ impl<'a> Kbd<'a> {
                         slots[i * 2 + 1].center(),
                         egui::Align2::CENTER_CENTER,
                         "+",
-                        FontId::monospace(font_size),
+                        crate::ui_kit::style::mono_at(font_size),
                         dim,
                     );
                 }

@@ -109,7 +109,7 @@ pub(crate) fn render(
         painter.text(
             egui::pos2(strip_rect.left() + 6.0, strip_rect.center().y),
             egui::Align2::LEFT_CENTER, txt,
-            egui::FontId::monospace(font_xs_plus()), t.text,
+            crate::ui_kit::style::mono_at(font_xs_plus()), t.text,
         );
         extra_h += BREADTH_STRIP_H + 2.0;
     }
@@ -222,11 +222,11 @@ pub(crate) fn render(
                 else if inset.width() > 50.0 { 10.0 }
                 else { 7.0 };
             painter.text(inset.center() - egui::vec2(0.0, 6.0), egui::Align2::CENTER_CENTER,
-                &cell.symbol, egui::FontId::proportional(font_size), t.text);
+                &cell.symbol, crate::ui_kit::style::prop_at(font_size), t.text);
             // Change %
             if inset.height() > 30.0 {
                 painter.text(inset.center() + egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
-                    &format!("{:+.1}%", cell.change_pct), egui::FontId::monospace(font_size * 0.7),
+                    &format!("{:+.1}%", cell.change_pct), crate::ui_kit::style::mono_at(font_size * 0.7),
                     if cell.change_pct >= 0.0 { t.text } else { t.text });
             }
         }

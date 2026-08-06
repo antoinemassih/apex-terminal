@@ -137,7 +137,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
 
         // Probe actual row height so border wraps content tightly.
         // We allocate min_rows worth of text height plus vertical padding.
-        let row_h = ui.fonts(|f| f.row_height(&FontId::monospace(font_size)));
+        let row_h = ui.fonts(|f| f.row_height(&crate::ui_kit::style::mono_at(font_size)));
         let min_h = row_h * min_rows as f32 + pad_y * 2.0;
         let max_h = row_h * max_rows as f32 + pad_y * 2.0;
 
@@ -206,9 +206,9 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
         child.spacing_mut().item_spacing = Vec2::ZERO;
 
         let font = if monospace {
-            egui::FontSelection::FontId(FontId::monospace(font_size))
+            egui::FontSelection::FontId(crate::ui_kit::style::mono_at(font_size))
         } else {
-            egui::FontSelection::FontId(FontId::proportional(font_size))
+            egui::FontSelection::FontId(crate::ui_kit::style::prop_at(font_size))
         };
 
         let mut te = egui::TextEdit::multiline(value)
@@ -232,7 +232,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
                 inner_rect.min,
                 egui::Align2::LEFT_TOP,
                 placeholder,
-                FontId::proportional(font_size),
+                crate::ui_kit::style::prop_at(font_size),
                 st::color_alpha(palette_ct(theme).base(Tone::Dim), 160),
             );
         }

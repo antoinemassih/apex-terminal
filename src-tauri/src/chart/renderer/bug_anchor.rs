@@ -134,9 +134,9 @@ pub fn resolve_frame(ctx: &egui::Context, note_open: bool) {
     // Banner — a filled pill placed below the toolbar so it is not occluded.
     let paint_banner = || {
         let banner = "● BUG INSPECT — click a region to report it · hold Alt for the containing region · Ctrl+Shift+I to exit";
-        let font = FontId::proportional(12.5);
+        let font = crate::ui_kit::style::prop_at(12.5);
         let center = egui::pos2(screen.center().x, screen.top() + 52.0);
-        let galley = painter.layout_no_wrap(banner.to_string(), font, Color32::WHITE);
+        let galley = painter.layout_no_wrap(banner.to_string(), font, egui::Color32::PLACEHOLDER);
         let pill = Rect::from_center_size(center, galley.size() + egui::vec2(24.0, 12.0));
         painter.rect_filled(pill, 14.0, Color32::from_rgb(40, 70, 130));
         painter.rect_stroke(pill, 14.0, Stroke::new(1.0, Color32::from_rgb(150, 190, 255)), egui::StrokeKind::Inside);
@@ -196,7 +196,7 @@ pub fn resolve_frame(ctx: &egui::Context, note_open: bool) {
 
     // Label: key + source, placed above the region (or below if near the top).
     let label = format!("{}\n{}:{}", hit.key, short_file(hit.file), hit.line);
-    let galley = painter.layout(label, FontId::monospace(11.0), Color32::WHITE, 480.0);
+    let galley = painter.layout(label, crate::ui_kit::style::mono_at(11.0), Color32::WHITE, 480.0);
     let pad = egui::vec2(8.0, 5.0);
     let box_size = galley.size() + pad * 2.0;
     let above = hit.rect.top() - box_size.y - 4.0 > screen.top() + 18.0;

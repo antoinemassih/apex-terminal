@@ -484,7 +484,7 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 name,
-                egui::FontId::proportional(st::font_md_plus()),
+                crate::ui_kit::style::prop_at(st::font_md_plus()),
                 theme.text(),
             );
         }
@@ -545,7 +545,7 @@ fn viz_gallery(ui: &mut egui::Ui, theme: &Theme) {
     let title = |i: usize, s: &str| {
         let (x, y) = cell_origin(i);
         p.text(egui::pos2(x, y), egui::Align2::LEFT_TOP, s,
-            egui::FontId::monospace(st::font_xs()), st::tint(theme, Tone::Dim, st::alpha_line()));
+            crate::ui_kit::style::mono_at(st::font_xs()), st::tint(theme, Tone::Dim, st::alpha_line()));
     };
     let cell = |i: usize| -> egui::Rect {
         let (x, y) = cell_origin(i);

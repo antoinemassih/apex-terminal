@@ -1046,8 +1046,8 @@ if is_spawn || watchlist.open {
                                             // built-in HoverCard to avoid a duplicate.
                                             .hover_card(false)
                                             .drag_confirmed(drag_confirmed)
-                                            .sym_font(egui::FontId::monospace(font_sz))
-                                            .chg_font(egui::FontId::proportional(font_sz))
+                                            .sym_font(crate::ui_kit::style::mono_at(font_sz))
+                                            .chg_font(crate::ui_kit::style::prop_at(font_sz))
                                             .price_font(crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()))
                                             .price_string(price_str)
                                             .price_right_inset(24.0)

@@ -64,8 +64,8 @@ impl<'a> Stepper<'a> {
         }
 
         let circle_d = match size { Size::Xs => 18.0, Size::Sm => 22.0, Size::Md => 26.0, Size::Lg | Size::Xl => 32.0 };
-        let label_font = FontId::proportional(size.font_size());
-        let num_font = FontId::proportional(circle_d * 0.45);
+        let label_font = crate::ui_kit::style::prop_at(size.font_size());
+        let num_font = crate::ui_kit::style::prop_at(circle_d * 0.45);
         let line_thickness = 2.0;
 
         let accent = palette_ct(theme).base(Tone::Accent);
@@ -237,7 +237,7 @@ fn paint_circle(
             center,
             egui::Align2::CENTER_CENTER,
             Icon::CHECK,
-            FontId::proportional(diameter * 0.55),
+            crate::ui_kit::style::prop_at(diameter * 0.55),
             st::contrast_fg(accent),
         );
     } else if idx == current {

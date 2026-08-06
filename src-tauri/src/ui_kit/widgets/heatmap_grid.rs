@@ -159,7 +159,7 @@ impl<'a> HeatmapGrid<'a> {
                 egui::pos2(cx + 7.0, cy + cell_h / 2.0),
                 egui::Align2::LEFT_CENTER,
                 &item.symbol,
-                egui::FontId::monospace(font_sz),
+                crate::ui_kit::style::mono_at(font_sz),
                 sym_col);
             // Change% text
             let chg_col = if is_up { palette_ct(theme).base(Tone::Bull) } else { palette_ct(theme).base(Tone::Bear) };
@@ -167,7 +167,7 @@ impl<'a> HeatmapGrid<'a> {
                 egui::pos2(cx + col_w - 3.0, cy + cell_h / 2.0),
                 egui::Align2::RIGHT_CENTER,
                 &format!("{:+.1}%", item.change_pct),
-                egui::FontId::monospace(font_sz),
+                crate::ui_kit::style::mono_at(font_sz),
                 chg_col);
         }
 

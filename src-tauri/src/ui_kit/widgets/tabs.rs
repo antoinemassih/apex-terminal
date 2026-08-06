@@ -334,7 +334,7 @@ fn paint_tabs(
     };
     let pad_x = st::gap_sm();
     let inner_gap = st::gap_xs();
-    let font_label = FontId::proportional(size.font_size());
+    let font_label = crate::ui_kit::style::prop_at(size.font_size());
     let font_icon = TextStyle::BodySm.font_id_in(ui);
 
     // Outer id for stable animation/drag keys.
@@ -877,14 +877,14 @@ fn measure_tab_width(
     };
     // layout-only galleys in this block: only `.rect.width()` is read.
     if let Some(ic) = item.icon {
-        let g = ui.fonts(|f| f.layout_no_wrap(ic.to_string(), font_icon.clone(), Color32::WHITE));
+        let g = ui.fonts(|f| f.layout_no_wrap(ic.to_string(), font_icon.clone(), egui::Color32::PLACEHOLDER));
         add_segment(g.rect.width(), &mut w, &mut first);
     }
-    let g = ui.fonts(|f| f.layout_no_wrap(item.label.clone(), font_label.clone(), Color32::WHITE));
+    let g = ui.fonts(|f| f.layout_no_wrap(item.label.clone(), font_label.clone(), egui::Color32::PLACEHOLDER));
     add_segment(g.rect.width().max(20.0), &mut w, &mut first);
     if let Some(n) = item.badge {
         let s = if n > 99 { "99+".to_string() } else { n.to_string() };
-        let g = ui.fonts(|f| f.layout_no_wrap(s, FontId::monospace(st::font_xs_plus()), Color32::WHITE));
+        let g = ui.fonts(|f| f.layout_no_wrap(s, crate::ui_kit::style::mono_at(st::font_xs_plus()), egui::Color32::PLACEHOLDER));
         add_segment((g.rect.width() + 10.0).max(14.0), &mut w, &mut first);
     }
     if item.modified {
@@ -1159,13 +1159,13 @@ fn paint_one_tab_painter(
     if let Some(n) = item.badge {
         let s = if n > 99 { "99+".to_string() } else { n.to_string() };
         // layout-only galley: width measurement only.
-        let bg = painter.layout_no_wrap(s.clone(), FontId::monospace(st::font_xs_plus()), Color32::WHITE);
+        let bg = painter.layout_no_wrap(s.clone(), crate::ui_kit::style::mono_at(st::font_xs_plus()), egui::Color32::PLACEHOLDER);
         let bw = (bg.rect.width() + 10.0).max(14.0);
         let bh = 14.0;
         let br = Rect::from_min_size(Pos2::new(cx, cy - bh * 0.5), Vec2::new(bw, bh));
         painter.rect_filled(br, CornerRadius::same(7), alpha(palette_ct(theme).base(Tone::Bear))); // radius: full-round pill (intentional)
         painter.text(br.center(), Align2::CENTER_CENTER, &s,
-            FontId::monospace(st::font_xs_plus()), crate::ui_kit::tokens::contrast_fg(palette_ct(theme).base(Tone::Bear)));
+            crate::ui_kit::style::mono_at(st::font_xs_plus()), crate::ui_kit::tokens::contrast_fg(palette_ct(theme).base(Tone::Bear)));
         cx += bw + inner_gap;
     }
 

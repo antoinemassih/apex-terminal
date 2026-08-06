@@ -124,7 +124,7 @@ impl<'a> GuildAvatarGrid<'a> {
                     .take(2)
                     .collect::<String>()
                     .to_uppercase();
-                let font = egui::FontId::monospace(if abbrev.len() > 1 { 9.0 } else { 11.0 });
+                let font = crate::ui_kit::style::mono_at(if abbrev.len() > 1 { 9.0 } else { 11.0 });
                 // Initials bg is always dark (blurple/gray-70/gray-50); contrast_fg
                 // returns WHITE, same as before, but correct if bg ever changes.
                 // Idle initials text follows theme.text(); was hardcoded gray-180.

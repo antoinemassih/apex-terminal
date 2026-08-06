@@ -139,7 +139,7 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
                 let lbl = self.label_for(i);
                 // layout-only: only `.rect.width()` is read; color is discarded.
                 let galley = ui.fonts(|f| {
-                    f.layout_no_wrap(lbl, FontId::monospace(font_size), Color32::WHITE)
+                    f.layout_no_wrap(lbl, crate::ui_kit::style::mono_at(font_size), egui::Color32::PLACEHOLDER)
                 });
                 galley.rect.width() + 2.0 * pad_x
             })
@@ -294,9 +294,9 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             }
 
             let font_id = if is_active {
-                FontId::monospace(font_size)
+                crate::ui_kit::style::mono_at(font_size)
             } else {
-                FontId::monospace(font_size)
+                crate::ui_kit::style::mono_at(font_size)
             };
 
             painter.text(

@@ -336,12 +336,12 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         // `Item::margin_start` exists for.
         let icon_w = font_size * 1.1;
         let prefix_w = prefix.as_ref().map(|p| {
-            ui.fonts(|f| f.layout_no_wrap(p.clone(), FontId::monospace(font_size), palette_ct(theme).base(Tone::Dim)))
+            ui.fonts(|f| f.layout_no_wrap(p.clone(), crate::ui_kit::style::mono_at(font_size), palette_ct(theme).base(Tone::Dim)))
                 .rect
                 .width()
         });
         let suffix_w = suffix.as_ref().map(|s| {
-            ui.fonts(|f| f.layout_no_wrap(s.clone(), FontId::monospace(font_size), palette_ct(theme).base(Tone::Dim)))
+            ui.fonts(|f| f.layout_no_wrap(s.clone(), crate::ui_kit::style::mono_at(font_size), palette_ct(theme).base(Tone::Dim)))
                 .rect
                 .width()
         });
@@ -406,7 +406,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                 Pos2::new(slot.left(), cy),
                 egui::Align2::LEFT_CENTER,
                 ic,
-                FontId::proportional(icon_w),
+                crate::ui_kit::style::prop_at(icon_w),
                 icon_color,
             );
             // Hairline sits one gutter after the icon — the midpoint of the
@@ -423,7 +423,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                 Pos2::new(slot.left(), cy),
                 egui::Align2::LEFT_CENTER,
                 p,
-                FontId::monospace(font_size),
+                crate::ui_kit::style::mono_at(font_size),
                 muted,
             );
         }
@@ -433,7 +433,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                 Pos2::new(slot.right(), cy),
                 egui::Align2::RIGHT_CENTER,
                 ic,
-                FontId::proportional(icon_w),
+                crate::ui_kit::style::prop_at(icon_w),
                 icon_color,
             );
         }
@@ -443,7 +443,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                 Pos2::new(slot.right(), cy),
                 egui::Align2::RIGHT_CENTER,
                 s,
-                FontId::monospace(font_size),
+                crate::ui_kit::style::mono_at(font_size),
                 muted,
             );
         }
@@ -455,7 +455,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                 r.center(),
                 egui::Align2::CENTER_CENTER,
                 crate::ui_kit::icons::Icon::X,
-                FontId::proportional(icon_w),
+                crate::ui_kit::style::prop_at(icon_w),
                 muted,
             );
             clear_rect = Some(r);
@@ -477,9 +477,9 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         child.spacing_mut().button_padding = Vec2::ZERO;
 
         let font_id = if proportional {
-            FontId::proportional(font_size)
+            crate::ui_kit::style::prop_at(font_size)
         } else {
-            FontId::monospace(font_size)
+            crate::ui_kit::style::mono_at(font_size)
         };
         let mut te = egui::TextEdit::singleline(value)
             .id(edit_id)
@@ -632,9 +632,9 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
         if disabled { st::color_alpha(palette_ct(theme).base(Tone::Text), 128) } else { palette_ct(theme).base(Tone::Text) }
     });
     let font_id = if proportional {
-        FontId::proportional(font_size)
+        crate::ui_kit::style::prop_at(font_size)
     } else {
-        FontId::monospace(font_size)
+        crate::ui_kit::style::mono_at(font_size)
     };
 
     if let Some(lbl) = &label {

@@ -171,7 +171,7 @@ mod truncate_tests {
     // ellipsis, not wrap to multiple rows (the old bug). Mirrors the LayoutJob
     // the widget builds in `show`.
     fn layout_truncated(ctx: &egui::Context, text: &str, max_w: f32) -> std::sync::Arc<egui::Galley> {
-        let font_id = egui::FontId::proportional(crate::ui_kit::style::font_md());
+        let font_id = crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md());
         ctx.fonts(|f| {
             let mut job = egui::text::LayoutJob::single_section(
                 text.to_string(),

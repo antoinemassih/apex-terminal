@@ -650,7 +650,7 @@ pub fn paint_polished_label_at(
             pos,
             egui::Align2::LEFT_TOP,
             text,
-            egui::FontId::proportional(size_px),
+            crate::ui_kit::style::prop_at(size_px),
             color,
         ),
     }

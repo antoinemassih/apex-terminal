@@ -471,13 +471,13 @@ fn draw_normal_mode(
                                 egui::vec2(62.0, 14.0));
                             painter.rect_filled(chip_rect, crate::ui_kit::style::radius_sm(), color_very_dim(chip_col));
                             painter.text(chip_rect.center(), egui::Align2::CENTER_CENTER,
-                                cat_label, egui::FontId::proportional(super::style::font_xs()), chip_col);
+                                cat_label, crate::ui_kit::style::prop_at(super::style::font_xs()), chip_col);
 
                             painter.text(
                                 rect.min + egui::vec2(76.0, row_h / 2.0),
                                 egui::Align2::LEFT_CENTER,
                                 label,
-                                egui::FontId::proportional(super::style::font_md()),
+                                crate::ui_kit::style::prop_at(super::style::font_md()),
                                 if is_sel { t.text } else { color_subtle(t.text) },
                             );
 
@@ -488,7 +488,7 @@ fn draw_normal_mode(
                                 painter.text(
                                     egui::pos2(hk_x, rect.center().y),
                                     egui::Align2::RIGHT_CENTER,
-                                    hk, egui::FontId::monospace(super::style::font_sm()), t.dim);
+                                    hk, crate::ui_kit::style::mono_at(super::style::font_sm()), t.dim);
                                 hk_x - 28.0 // place dot to the left of the hotkey
                             } else {
                                 rect.max.x - 6.0
@@ -498,7 +498,7 @@ fn draw_normal_mode(
                                     egui::pos2(right_x, rect.center().y),
                                     egui::Align2::RIGHT_CENTER,
                                     "•",
-                                    egui::FontId::proportional(super::style::font_sm()),
+                                    crate::ui_kit::style::prop_at(super::style::font_sm()),
                                     tint(t, Tone::Accent, 180),
                                 );
                             }

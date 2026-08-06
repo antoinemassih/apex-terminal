@@ -76,14 +76,14 @@ pub(crate) fn stat(
     let value_col = shade(t, tone, Shade::S400);
     if !eyebrow.is_empty() {
         p.text(egui::pos2(cx, cy - st.num_lg * 0.62 - st.eyebrow), egui::Align2::CENTER_CENTER,
-            &eyebrow.to_uppercase(), egui::FontId::monospace(st.eyebrow),
+            &eyebrow.to_uppercase(), crate::ui_kit::style::mono_at(st.eyebrow),
             tint(t, Tone::Dim, alpha_line()));
     }
     p.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER,
-        value, egui::FontId::proportional(st.num_lg), value_col);
+        value, crate::ui_kit::style::prop_at(st.num_lg), value_col);
     if !sub.is_empty() {
         p.text(egui::pos2(cx, cy + st.num_lg * 0.6 + st.num_sm * 0.4), egui::Align2::CENTER_CENTER,
-            sub, egui::FontId::monospace(st.num_sm), tint(t, Tone::Dim, alpha_active()));
+            sub, crate::ui_kit::style::mono_at(st.num_sm), tint(t, Tone::Dim, alpha_active()));
     }
 }
 

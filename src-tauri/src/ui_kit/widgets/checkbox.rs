@@ -131,7 +131,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
     let label_w = if let Some(s) = &cb.label {
         let galley = ui.fonts(|f| {
             // layout-only: only width is read; color is discarded.
-            f.layout_no_wrap(s.clone(), FontId::proportional(font_size), Color32::WHITE)
+            f.layout_no_wrap(s.clone(), crate::ui_kit::style::prop_at(font_size), egui::Color32::PLACEHOLDER)
         });
         galley.rect.width() + gap
     } else { 0.0 };
@@ -238,7 +238,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
             Pos2::new(lx, ly),
             egui::Align2::LEFT_CENTER,
             s,
-            FontId::proportional(font_size),
+            crate::ui_kit::style::prop_at(font_size),
             text_color,
         );
     }

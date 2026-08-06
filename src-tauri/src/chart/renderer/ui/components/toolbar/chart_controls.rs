@@ -531,7 +531,7 @@ fn grp_drawing(
                     badge_center,
                     egui::Align2::CENTER_CENTER,
                     draw_count.to_string(),
-                    egui::FontId::proportional(font_4xs()),
+                    crate::ui_kit::style::prop_at(font_4xs()),
                     contrast_fg(t.accent),
                 );
             }

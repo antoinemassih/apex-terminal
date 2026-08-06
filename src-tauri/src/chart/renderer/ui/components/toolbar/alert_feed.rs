@@ -332,7 +332,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                 tint(t, Tone::Dim, ALPHA_INTERACTIVE).gamma_multiply(app_e));
         }
         p.text(pos2(rect.right() - PAD_R - DISMISS_W * 0.5, cy), Align2::CENTER_CENTER, "×",
-            FontId::proportional(font_sm() + 1.0), tint(t, Tone::Dim, ALPHA_INTERACTIVE).gamma_multiply(app_e));
+            crate::ui_kit::style::prop_at(font_sm() + 1.0), tint(t, Tone::Dim, ALPHA_INTERACTIVE).gamma_multiply(app_e));
     }
 
     // Keep the expansion alive while the pointer is over the badge OR its box.
@@ -440,7 +440,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         p.text(bell_rect.center(), Align2::CENTER_CENTER, Icon::BELL, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()), glyph_col);
         if overflow > 0 {
             let lbl = if overflow > 99 { "99+".to_string() } else { overflow.to_string() };
-            let cf  = FontId::proportional(font_sm() - 1.0);
+            let cf  = crate::ui_kit::style::prop_at(font_sm() - 1.0);
             let cw  = (text_w(ui, &lbl, &cf, t.text) + 6.0).max(13.0);
             let cnt = Rect::from_min_size(pos2(bell_rect.center().x + 2.0, bell_rect.top()), vec2(cw, 13.0));
             p.rect_filled(cnt, crate::ui_kit::style::r_md_cr(), t.accent);

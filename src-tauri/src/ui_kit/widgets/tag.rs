@@ -129,7 +129,7 @@ impl<'a> Tag<'a> {
 
         // Measure label.
         let galley = ui.fonts(|f| {
-            f.layout_no_wrap(self.label.clone(), FontId::proportional(font_size), tone_col)
+            f.layout_no_wrap(self.label.clone(), crate::ui_kit::style::prop_at(font_size), tone_col)
         });
         let label_w = galley.rect.width();
         let label_h = galley.rect.height();
@@ -231,7 +231,7 @@ impl<'a> Tag<'a> {
                 Pos2::new(label_slot.left(), label_slot.center().y),
                 egui::Align2::LEFT_CENTER,
                 &self.label,
-                FontId::proportional(font_size),
+                crate::ui_kit::style::prop_at(font_size),
                 tone_col,
             );
 
@@ -251,7 +251,7 @@ impl<'a> Tag<'a> {
                     close_center,
                     egui::Align2::CENTER_CENTER,
                     Icon::X,
-                    FontId::proportional(close_size),
+                    crate::ui_kit::style::prop_at(close_size),
                     col,
                 );
                 if !self.disabled && close_resp.clicked() { closed = true; }

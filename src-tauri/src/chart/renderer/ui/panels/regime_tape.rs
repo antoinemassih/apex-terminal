@@ -225,24 +225,24 @@ fn draw_cell(
     painter.text(
         egui::pos2(rect.min.x + gap_sm(), rect.min.y + 4.0),
         egui::Align2::LEFT_TOP, axis.label(),
-        egui::FontId::monospace(FONT_3XS), t.dim);
+        crate::ui_kit::style::mono_at(FONT_3XS), t.dim);
 
     // Icon + value (mid).
     let mid_y = rect.center().y + 1.0;
     painter.text(
         egui::pos2(rect.min.x + gap_sm(), mid_y),
         egui::Align2::LEFT_CENTER, icon,
-        egui::FontId::monospace(FONT_MD), col);
+        crate::ui_kit::style::mono_at(FONT_MD), col);
     painter.text(
         egui::pos2(rect.min.x + gap_sm() + 14.0, mid_y),
         egui::Align2::LEFT_CENTER, value,
-        egui::FontId::monospace(FONT_SM), t.text);
+        crate::ui_kit::style::mono_at(FONT_SM), t.text);
 
     // Age (small, bottom-right).
     painter.text(
         egui::pos2(rect.max.x - gap_sm(), rect.max.y - 4.0),
         egui::Align2::RIGHT_BOTTOM, age,
-        egui::FontId::monospace(FONT_3XS), color_subtle(t.dim));
+        crate::ui_kit::style::mono_at(FONT_3XS), color_subtle(t.dim));
 
     // Tooltip — list upstream tells if present.
     if !regime.upstream_tells.is_empty() {

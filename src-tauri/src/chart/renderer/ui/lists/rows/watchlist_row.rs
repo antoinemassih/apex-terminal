@@ -346,11 +346,11 @@ impl<'a> WatchlistRow<'a> {
         // label; price and change% are numbers and must tabular-align down
         // the column. This was inverted before.
         let sym_font_id = self.sym_font_id
-            .unwrap_or_else(|| egui::FontId::proportional(font_sz));
+            .unwrap_or_else(|| crate::ui_kit::style::prop_at(font_sz));
         let chg_font_id = self.chg_font_id
-            .unwrap_or_else(|| egui::FontId::monospace(font_sz));
+            .unwrap_or_else(|| crate::ui_kit::style::mono_at(font_sz));
         let price_font_id = self.price_font_id
-            .unwrap_or_else(|| egui::FontId::monospace(font_sz));
+            .unwrap_or_else(|| crate::ui_kit::style::mono_at(font_sz));
         // Move out the price string override — no clone needed.
         let price_str_override = self.price_str_override;
         let price_right_inset = self.price_right_inset;

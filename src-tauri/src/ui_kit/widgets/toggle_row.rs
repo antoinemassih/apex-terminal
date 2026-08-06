@@ -128,7 +128,7 @@ fn paint_toggle_row<'a>(
 
     // Lay out left side text to measure heights.
     let label_font = FontId::new(st::font_sm(), egui::FontFamily::Name("inter_semibold".into()));
-    let desc_font = FontId::proportional(st::font_xs());
+    let desc_font = crate::ui_kit::style::prop_at(st::font_xs());
 
     let label_galley = ui.fonts(|f| {
         f.layout_no_wrap(label.clone(), label_font.clone(), palette_ct(theme).base(Tone::Text))
@@ -209,7 +209,7 @@ fn paint_toggle_row<'a>(
             Pos2::new(info_x, info_y),
             egui::Align2::CENTER_CENTER,
             "?",
-            FontId::proportional(info_size),
+            crate::ui_kit::style::prop_at(info_size),
             info_color,
         );
         // Hit-test a small rect around the glyph for the tooltip trigger.

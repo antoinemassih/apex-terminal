@@ -485,7 +485,7 @@ fn paint_cell(
         rect.min + vec2(7.0, rect.height() / 2.0),
         egui::Align2::LEFT_CENTER,
         symbol,
-        egui::FontId::monospace(font_sz),
+        crate::ui_kit::style::mono_at(font_sz),
         sym_col,
     );
 
@@ -495,7 +495,7 @@ fn paint_cell(
         rect.right_center() - vec2(3.0, 0.0),
         egui::Align2::RIGHT_CENTER,
         &format!("{:+.2}", color_value),
-        egui::FontId::monospace(font_sz),
+        crate::ui_kit::style::mono_at(font_sz),
         val_col,
     );
 }

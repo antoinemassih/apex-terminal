@@ -107,7 +107,7 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
         }
         let disabled = self.disabled;
         let resp = ui.scope(|ui| {
-            let font_id = egui::FontId::monospace(font);
+            let font_id = crate::ui_kit::style::mono_at(font);
             ui.style_mut().override_font_id = Some(font_id);
 
             // Style inactive/hover/active states to match Input appearance.

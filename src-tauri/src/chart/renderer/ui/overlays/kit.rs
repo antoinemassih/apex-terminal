@@ -59,19 +59,19 @@ pub(crate) fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
 /// Hero number — the focal large proportional value at the centre of a widget.
 pub(crate) fn hero_number(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
     p.text(pos, egui::Align2::CENTER_CENTER, text,
-        egui::FontId::proportional(font_display_md()), color);
+        crate::ui_kit::style::prop_at(font_display_md()), color);
 }
 
 /// Even larger hero for primary KPIs.
 #[allow(dead_code)] // kit primitive — for the KPI-style overlays migrating next
 pub(crate) fn hero_number_lg(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
     p.text(pos, egui::Align2::CENTER_CENTER, text,
-        egui::FontId::proportional(font_display_lg()), color);
+        crate::ui_kit::style::prop_at(font_display_lg()), color);
 }
 
 /// Small uppercase mono label — editorial caption under a hero value.
 pub(crate) fn sub_label(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
-    p.text(pos, egui::Align2::CENTER_CENTER, text, egui::FontId::monospace(FONT_XS),
+    p.text(pos, egui::Align2::CENTER_CENTER, text, crate::ui_kit::style::mono_at(FONT_XS),
         crate::ui_kit::style::color_alpha(color, 170));
 }
 
@@ -125,7 +125,7 @@ pub(crate) fn radial_gauge_stacked(
     p.text(egui::pos2(center.x, center.y - 4.0), egui::Align2::CENTER_CENTER,
         value, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xl()), color);
     p.text(egui::pos2(center.x, center.y + 14.0), egui::Align2::CENTER_CENTER,
-        caption, egui::FontId::monospace(FONT_2XS), color);
+        caption, crate::ui_kit::style::mono_at(FONT_2XS), color);
 }
 
 /// Big value + caption (no ring), centred at `center` — the non-gauge "stat".
@@ -143,10 +143,10 @@ pub(crate) fn metric_row(
     frac: f32, color: Color32, t: &Theme,
 ) {
     p.text(egui::pos2(rect.left(), rect.top()), egui::Align2::LEFT_TOP,
-        label, egui::FontId::monospace(FONT_2XS),
+        label, crate::ui_kit::style::mono_at(FONT_2XS),
         crate::ui_kit::style::color_alpha(color, 120));
     p.text(egui::pos2(rect.right(), rect.top()), egui::Align2::RIGHT_TOP,
-        value, egui::FontId::monospace(FONT_SM), color);
+        value, crate::ui_kit::style::mono_at(FONT_SM), color);
     let bar_y = rect.top() + 11.0;
     let track = egui::Rect::from_min_size(egui::pos2(rect.left(), bar_y), egui::vec2(rect.width(), 3.0));
     p.rect_filled(track, r_pill(), tint(t, Tone::Border, alpha_faint()));

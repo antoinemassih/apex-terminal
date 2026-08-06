@@ -967,7 +967,7 @@ fn draw_pane_chrome(
         Pos2::new(label_slot.left(), header_rect.center().y),
         egui::Align2::LEFT_CENTER,
         format!("Pane {}", id.0),
-        egui::FontId::proportional(st::font_xs()),
+        crate::ui_kit::style::prop_at(st::font_xs()),
         st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong()),
     );
 

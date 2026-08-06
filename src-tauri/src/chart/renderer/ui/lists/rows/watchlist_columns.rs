@@ -102,7 +102,7 @@ pub(crate) fn paint_change_chip(
 ) {
     let base = if pct >= 0.0 { bull } else { bear };
     let txt = format!("{:+.2}%", pct);
-    let font = egui::FontId::proportional(font_size);
+    let font = crate::ui_kit::style::prop_at(font_size);
     let galley = painter.layout_no_wrap(txt, font.clone(), base);
     let pad = egui::vec2(3.0, 2.0);
     // CLAMP the chip to its column slot.
@@ -150,7 +150,7 @@ fn render_ext_hours(c: &mut ColumnCtx) {
         egui::pos2(c.rect.left() + gap_xs(), c.rect.center().y),
         egui::Align2::LEFT_CENTER,
         &s,
-        egui::FontId::proportional(c.font_size - 1.0),
+        crate::ui_kit::style::prop_at(c.font_size - 1.0),
         color_alpha(col, 200),
     );
 }

@@ -91,7 +91,7 @@ impl<'a> Separator<'a> {
                     if let Some(label) = self.label.as_ref() {
                         let font_size = st::font_xs();
                         let dim = pal.base(Tone::Dim);
-                        let galley = ui.fonts(|f| f.layout_no_wrap(label.clone(), FontId::proportional(font_size), dim));
+                        let galley = ui.fonts(|f| f.layout_no_wrap(label.clone(), crate::ui_kit::style::prop_at(font_size), dim));
                         let lw = galley.rect.width();
                         let gap = st::gap_sm();
                         let total = lw + gap * 2.0;
@@ -105,7 +105,7 @@ impl<'a> Separator<'a> {
                             Pos2::new(left_end + gap, y),
                             egui::Align2::LEFT_CENTER,
                             label,
-                            FontId::proportional(font_size),
+                            crate::ui_kit::style::prop_at(font_size),
                             dim,
                         );
                         painter.line_segment(

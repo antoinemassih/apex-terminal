@@ -111,7 +111,7 @@ impl<'a> SelectableRow<'a> {
         let icon_color = if disabled { st::color_half(pal.base(Tone::Dim)) } else { pal.base(Tone::Dim) };
 
         // Measure label.
-        let label_font = FontId::monospace(font_size);
+        let label_font = crate::ui_kit::style::mono_at(font_size);
         let label_galley = ui.fonts(|f| {
             f.layout_no_wrap(label.to_string(), label_font.clone(), text_color)
         });
@@ -119,7 +119,7 @@ impl<'a> SelectableRow<'a> {
         let label_h = label_galley.rect.height();
 
         // Optional leading icon measurement.
-        let icon_font = FontId::proportional(font_size);
+        let icon_font = crate::ui_kit::style::prop_at(font_size);
         let (icon_w, icon_h) = if let Some(ic) = leading_icon {
             let g = ui.fonts(|f| f.layout_no_wrap(ic.to_string(), icon_font.clone(), icon_color));
             (g.rect.width(), g.rect.height())

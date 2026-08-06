@@ -651,7 +651,7 @@ fn measure_content_w(
         // tickers) should use RichText.monospace directly, not Button labels.
         // layout-only galley: only `.rect.width()` is read; color discarded.
         let galley = ui.fonts(|f| {
-            f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), Color32::WHITE)
+            f.layout_no_wrap(label.to_string(), crate::ui_kit::style::prop_at(font_size), egui::Color32::PLACEHOLDER)
         });
         w += galley.rect.width();
     }
@@ -660,7 +660,7 @@ fn measure_content_w(
     }
     if let Some(kt) = kbd {
         // layout-only galley: width measurement only.
-        let g = ui.fonts(|f| f.layout_no_wrap(kt.to_string(), kbd_font.clone(), Color32::WHITE));
+        let g = ui.fonts(|f| f.layout_no_wrap(kt.to_string(), kbd_font.clone(), egui::Color32::PLACEHOLDER));
         w += st::gap_md() + g.rect.width();
     }
     w
@@ -850,8 +850,8 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
     // Stacked (sublabel) layout: vertical icon + label + sublabel.
     // Override measurements computed above.
     let stacked_icon_size = font_size * 1.2;
-    let stacked_label_font = FontId::monospace(st::font_xs());
-    let stacked_sub_font = FontId::monospace(st::font_2xs());
+    let stacked_label_font = crate::ui_kit::style::mono_at(st::font_xs());
+    let stacked_sub_font = crate::ui_kit::style::mono_at(st::font_2xs());
     let mut stacked_w = 0.0f32;
     let mut stacked_h = 0.0f32;
     if stacked {
@@ -859,11 +859,11 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
         let mut max_w = stacked_icon_size;
         // layout-only galleys in this stacked-measurement block: only `.rect.width()` is read.
         if !label.is_empty() {
-            let g = ui.fonts(|f| f.layout_no_wrap(label.to_string(), stacked_label_font.clone(), Color32::WHITE));
+            let g = ui.fonts(|f| f.layout_no_wrap(label.to_string(), stacked_label_font.clone(), egui::Color32::PLACEHOLDER));
             max_w = max_w.max(g.rect.width());
         }
         if let Some(sl) = sublabel_text.as_ref() {
-            let g = ui.fonts(|f| f.layout_no_wrap(sl.clone(), stacked_sub_font.clone(), Color32::WHITE));
+            let g = ui.fonts(|f| f.layout_no_wrap(sl.clone(), stacked_sub_font.clone(), egui::Color32::PLACEHOLDER));
             max_w = max_w.max(g.rect.width());
         }
         stacked_w = max_w + 2.0 * st::gap_xs();
@@ -1169,7 +1169,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
                     Pos2::new(center.x, icon_cy),
                     egui::Align2::CENTER_CENTER,
                     ic,
-                    FontId::proportional(stacked_icon_size),
+                    crate::ui_kit::style::prop_at(stacked_icon_size),
                     icon_fg,
                 );
             }
@@ -1200,7 +1200,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
                     center,
                     egui::Align2::CENTER_CENTER,
                     ic,
-                    FontId::proportional(icon_px),
+                    crate::ui_kit::style::prop_at(icon_px),
                     icon_fg,
                 );
             }
@@ -1235,21 +1235,21 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
                     Pos2::new(x, cy),
                     egui::Align2::LEFT_CENTER,
                     ic,
-                    FontId::proportional(font_size * 1.1),
+                    crate::ui_kit::style::prop_at(font_size * 1.1),
                     icon_fg,
                 );
                 x += font_size * 1.1 + icon_gap;
             }
             if !label.is_empty() {
                 let galley = ui.fonts(|f| {
-                    f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), fg)
+                    f.layout_no_wrap(label.to_string(), crate::ui_kit::style::prop_at(font_size), fg)
                 });
                 let lw = galley.rect.width();
                 painter.text(
                     Pos2::new(x, cy),
                     egui::Align2::LEFT_CENTER,
                     label,
-                    FontId::proportional(font_size),
+                    crate::ui_kit::style::prop_at(font_size),
                     fg,
                 );
                 x += lw;
@@ -1271,7 +1271,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
                     Pos2::new(tx, cy),
                     egui::Align2::RIGHT_CENTER,
                     ic,
-                    FontId::proportional(font_size * 1.1),
+                    crate::ui_kit::style::prop_at(font_size * 1.1),
                     icon_fg,
                 );
             }

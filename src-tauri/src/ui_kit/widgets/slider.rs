@@ -119,13 +119,13 @@ fn paint_slider<T: egui::emath::Numeric>(
                 ui.cursor().min,
                 egui::Align2::LEFT_TOP,
                 text,
-                egui::FontId::proportional(label_font),
+                crate::ui_kit::style::prop_at(label_font),
                 st::color_alpha(palette_ct(theme).base(Tone::Text), 180),
             );
             // Allocate the label space.
             // layout-only: only `.rect.width()/.height()` is read.
             let galley = ui.fonts(|f| f.layout_no_wrap(
-                text.clone(), egui::FontId::proportional(label_font), Color32::WHITE));
+                text.clone(), crate::ui_kit::style::prop_at(label_font), egui::Color32::PLACEHOLDER));
             ui.allocate_exact_size(Vec2::new(galley.rect.width(), galley.rect.height() + 2.0), Sense::hover());
         }
 

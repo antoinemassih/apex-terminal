@@ -94,7 +94,7 @@ impl PaneNotice {
         };
 
         let measure = |s: &str, f: FontId| -> Vec2 {
-            painter.layout_no_wrap(s.to_string(), f, egui::Color32::WHITE).size()
+            painter.layout_no_wrap(s.to_string(), f, egui::Color32::PLACEHOLDER).size()
         };
 
         // Title is one step larger than the instruction.

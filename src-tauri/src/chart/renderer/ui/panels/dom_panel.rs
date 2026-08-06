@@ -283,7 +283,7 @@ pub(crate) fn draw(
                         ui.max_rect().center(),
                         egui::Align2::CENTER_CENTER,
                         Icon::SLIDERS,
-                        egui::FontId::proportional(font_md() + 3.0),
+                        crate::ui_kit::style::prop_at(font_md() + 3.0),
                         theme.text(),
                     );
                 })
@@ -489,7 +489,7 @@ pub(crate) fn draw(
         // Armed badge glyph on `t.bear` fill — use contrast_fg so a light
         // bear (if ever introduced) gets black instead of unreadable white.
         painter.text(arm_rect.center(), egui::Align2::CENTER_CENTER,
-            Icon::PULSE, egui::FontId::proportional(font_md() + 1.0),
+            Icon::PULSE, crate::ui_kit::style::prop_at(font_md() + 1.0),
             contrast_fg(t.bear));
     } else {
         let bg = if arm_resp.hovered() {
@@ -502,7 +502,7 @@ pub(crate) fn draw(
             egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())),
             egui::StrokeKind::Inside);
         painter.text(arm_rect.center(), egui::Align2::CENTER_CENTER,
-            Icon::PULSE, egui::FontId::proportional(font_md() + 1.0),
+            Icon::PULSE, crate::ui_kit::style::prop_at(font_md() + 1.0),
             t.dim);
     }
     let arm_resp = arm_resp.on_hover_text(if *dom_armed {

@@ -196,7 +196,7 @@ pub fn show_drawing_tool_picker(
                                 let txt_col = if is_cur { t.accent }
                                     else if hov { t.text } else { color_subtle(t.text) };
                                 ui.painter().text(cell.center(), egui::Align2::CENTER_CENTER,
-                                    icon, egui::FontId::proportional((cell_w * 0.55).max(11.0)), txt_col);
+                                    icon, crate::ui_kit::style::prop_at((cell_w * 0.55).max(11.0)), txt_col);
                                 if hov {
                                     Tooltip::new(drawing_label(tool)).show(ui, &resp, t);
                                 }

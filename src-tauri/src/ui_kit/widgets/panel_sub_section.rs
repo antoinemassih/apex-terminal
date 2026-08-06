@@ -310,7 +310,7 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
         let caret_galley = ui.fonts(|f| {
             f.layout_no_wrap(
                 caret_glyph.to_string(),
-                FontId::proportional(CARET_FONT),
+                crate::ui_kit::style::prop_at(CARET_FONT),
                 caret_color,
             )
         });

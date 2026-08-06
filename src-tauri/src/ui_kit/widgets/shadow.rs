@@ -260,7 +260,7 @@ pub fn show_shadow_gallery(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 name,
-                egui::FontId::proportional(st::font_md_plus()),
+                crate::ui_kit::style::prop_at(st::font_md_plus()),
                 text,
             );
         }

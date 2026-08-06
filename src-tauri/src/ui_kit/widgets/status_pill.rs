@@ -98,7 +98,7 @@ impl<'a> StatusPill<'a> {
         };
 
         let font_size = font_xs();
-        let font = FontId::proportional(font_size);
+        let font = crate::ui_kit::style::prop_at(font_size);
 
         let dot_size: f32 = if self.dot { 5.0 } else { 0.0 };
         let dot_gap: f32 = if self.dot { gap_2xs() } else { 0.0 };
