@@ -91,7 +91,7 @@
 1 src-tauri/src/ui_kit/widgets/sparkline.rs
 1 src-tauri/src/ui_kit/widgets/status_pill.rs
 3 src-tauri/src/ui_kit/widgets/stepper.rs
-4 src-tauri/src/ui_kit/widgets/switch.rs
+3 src-tauri/src/ui_kit/widgets/switch.rs
 13 src-tauri/src/ui_kit/widgets/tabs.rs
 7 src-tauri/src/ui_kit/widgets/tag.rs
 5 src-tauri/src/ui_kit/widgets/text_area.rs

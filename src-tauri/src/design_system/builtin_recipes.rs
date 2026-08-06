@@ -278,6 +278,24 @@ fn aperture() -> RecipeSet {
             "checkbox",
             spec(d().radius(RadiusTier::Md)),
         ),
+        // ── Surfaces & compound controls ─────────────────────────────────
+        // `popover` (context menus + tool popovers), `segmented` (the trough),
+        // `switch` (the track). Radius only — fills encode STATE and stay with
+        // the widget. `switch` keeps a pill everywhere: a track is a capsule by
+        // definition, and squaring it would read as a broken toggle rather than
+        // a restyled one.
+        (
+            "popover",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
+        (
+            "segmented",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
+        (
+            "switch",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
         // `.ds-btn--secondary { border: 1.5px solid border; background:
         // transparent }` + `.ds-btn { font-weight: 500 }`, `.is-active` →
         // inverted block.
@@ -428,6 +446,24 @@ fn cadence() -> RecipeSet {
         (
             "checkbox",
             spec(d().radius(RadiusTier::Md)),
+        ),
+        // ── Surfaces & compound controls ─────────────────────────────────
+        // `popover` (context menus + tool popovers), `segmented` (the trough),
+        // `switch` (the track). Radius only — fills encode STATE and stay with
+        // the widget. `switch` keeps a pill everywhere: a track is a capsule by
+        // definition, and squaring it would read as a broken toggle rather than
+        // a restyled one.
+        (
+            "popover",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
+        (
+            "segmented",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
+        (
+            "switch",
+            spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { background: bg-surface; border-radius:
         // radius-md; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04) }`.
@@ -598,6 +634,24 @@ fn alto() -> RecipeSet {
         (
             "checkbox",
             spec(d().radius(RadiusTier::Sm)),
+        ),
+        // ── Surfaces & compound controls ─────────────────────────────────
+        // `popover` (context menus + tool popovers), `segmented` (the trough),
+        // `switch` (the track). Radius only — fills encode STATE and stay with
+        // the widget. `switch` keeps a pill everywhere: a track is a capsule by
+        // definition, and squaring it would read as a broken toggle rather than
+        // a restyled one.
+        (
+            "popover",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "segmented",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "switch",
+            spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { background: linear-gradient(bg-elevated,
         // bg-surface); border: 1px solid border; box-shadow:
@@ -800,6 +854,24 @@ fn mariner() -> RecipeSet {
         (
             "checkbox",
             spec(d().radius(RadiusTier::Sm)),
+        ),
+        // ── Surfaces & compound controls ─────────────────────────────────
+        // `popover` (context menus + tool popovers), `segmented` (the trough),
+        // `switch` (the track). Radius only — fills encode STATE and stay with
+        // the widget. `switch` keeps a pill everywhere: a track is a capsule by
+        // definition, and squaring it would read as a broken toggle rather than
+        // a restyled one.
+        (
+            "popover",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "segmented",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "switch",
+            spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { box-shadow: inset 0 1px 0 rgba(180,210,240,.08),
         // inset 0 -1px 0 rgba(0,0,0,.38) }`, `:hover` lifts the highlight to
@@ -1006,6 +1078,24 @@ fn lucid() -> RecipeSet {
             "checkbox",
             spec(d().radius(RadiusTier::Sm)),
         ),
+        // ── Surfaces & compound controls ─────────────────────────────────
+        // `popover` (context menus + tool popovers), `segmented` (the trough),
+        // `switch` (the track). Radius only — fills encode STATE and stay with
+        // the widget. `switch` keeps a pill everywhere: a track is a capsule by
+        // definition, and squaring it would read as a broken toggle rather than
+        // a restyled one.
+        (
+            "popover",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "segmented",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "switch",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
         (
             "button.ghost",
             spec(d().radius(RadiusTier::Md).border(tone(ToneRef::Border), BorderWidthTier::Std)),
@@ -1197,6 +1287,24 @@ fn meridien() -> RecipeSet {
         (
             "checkbox",
             spec(d().radius(RadiusTier::None)),
+        ),
+        // ── Surfaces & compound controls ─────────────────────────────────
+        // `popover` (context menus + tool popovers), `segmented` (the trough),
+        // `switch` (the track). Radius only — fills encode STATE and stay with
+        // the widget. `switch` keeps a pill everywhere: a track is a capsule by
+        // definition, and squaring it would read as a broken toggle rather than
+        // a restyled one.
+        (
+            "popover",
+            spec(d().radius(RadiusTier::None)),
+        ),
+        (
+            "segmented",
+            spec(d().radius(RadiusTier::None)),
+        ),
+        (
+            "switch",
+            spec(d().radius(RadiusTier::Pill)),
         ),
         (
             "button.ghost",
@@ -1663,10 +1771,12 @@ mod tests {
     /// Authoring an unregistered key produces dead data — no widget reads it.
     #[test]
     fn every_authored_key_is_registered() {
-        const REGISTERED: [&str; 32] = [
+        const REGISTERED: [&str; 35] = [
             "button.primary", "button.ghost", "button.danger", "button.success", "button.chrome",
             // Form controls — radius only; state colours stay with the widget.
             "input", "select", "checkbox",
+            // Surfaces & compound controls — radius only.
+            "popover", "segmented", "switch",
             // `button.action` — large block controls in a trading action row.
             // Consumed via `Button::recipe_key("button.action")` (the DOM
             // BUY/SELL/FLATTEN/CANCEL row), not via a Variant, because it is a

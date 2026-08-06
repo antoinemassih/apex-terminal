@@ -30,6 +30,9 @@ These keys correspond to the RECIPE-CANDIDATE(S4) fields in
 | `input` | `ui_kit::Input` | Text-field chrome. **Radius only** — fill/border stay with the widget, which computes them from focus / invalid / disabled state. |
 | `select` | `ui_kit::Select` | Dropdown trigger chrome. Radius only, same rationale. |
 | `checkbox` | `ui_kit::Checkbox` | Check box chrome. Radius only, same rationale. |
+| `popover` | `ui_kit::ContextMenu`, tool popovers | Floating surface chrome. Radius only. Shared so every floating surface restyles together. |
+| `segmented` | `ui_kit::SegmentedControl` | The trough. Segment fills encode selection and stay with the widget. |
+| `switch` | `ui_kit::Switch` | The track. Pill in every built-in style — a track is a capsule by definition. |
 
 ### Tabs
 

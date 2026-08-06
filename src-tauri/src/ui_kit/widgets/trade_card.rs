@@ -64,13 +64,22 @@ impl<'a> TradeCard<'a> {
         let pnl_col = if is_win { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
         let dir_col = if entry.side == "Long" { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
 
-        if resp.hovered() {
+        // REUSES the `card` key — a TradeCard is a card. PanelCard already
+        // resolves it, so both surfaces move together when a style restyles
+        // cards instead of one of them being forgotten.
+        let base_fill = if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            p.rect_filled(card_rect, radius_sm(), color_alpha(CardVariant::Elevated.fill_color(theme), alpha_subtle()));
+            color_alpha(CardVariant::Elevated.fill_color(theme), alpha_subtle())
         } else {
-            p.rect_filled(card_rect, radius_sm(), CardVariant::Elevated.fill_color(theme));
-        }
-        p.rect_stroke(card_rect, radius_sm(), egui::Stroke::new(st::stroke_thin(), CardVariant::Elevated.border_color(theme)), egui::StrokeKind::Outside);
+            CardVariant::Elevated.fill_color(theme)
+        };
+        let (card_cr, card_fill, card_stroke) = super::theme::resolve_control_chrome(
+            ui, theme, "card",
+            radius_sm(), base_fill,
+            CardVariant::Elevated.border_color(theme), st::stroke_thin(),
+        );
+        p.rect_filled(card_rect, card_cr, card_fill);
+        p.rect_stroke(card_rect, card_cr, card_stroke, egui::StrokeKind::Outside);
 
         // Left P&L accent stripe
         p.rect_filled(

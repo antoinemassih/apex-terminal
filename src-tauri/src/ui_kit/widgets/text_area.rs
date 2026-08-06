@@ -155,13 +155,15 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
             let painter = ui.painter_at(border_rect);
             let bg_fill = palette_ct(theme).base(Tone::Surface);
             let bg = if disabled { st::color_alpha(bg_fill, 128) } else { bg_fill };
-            painter.rect_filled(border_rect, radius, bg);
-            painter.rect_stroke(
-                border_rect,
-                radius,
-                Stroke::new(st::stroke_std(), border_col),
-                StrokeKind::Inside,
+            // REUSES the `input` key — TextArea is an Input sibling with the
+            // same chrome. Minting `textarea` would let the two drift apart in
+            // a style, which is the opposite of what the recipe layer is for.
+            let (radius, fill, stroke) = super::theme::resolve_control_chrome(
+                ui, theme, "input",
+                st::radius_sm(), bg, border_col, st::stroke_std(),
             );
+            painter.rect_filled(border_rect, radius, fill);
+            painter.rect_stroke(border_rect, radius, stroke, StrokeKind::Inside);
         }
 
         // ── Char limit: enforce before rendering ──

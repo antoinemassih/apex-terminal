@@ -312,7 +312,22 @@ fn paint_row(
         &crate::ui_kit::interaction::InteractionTokens::borderless(),
     );
     if v.fill != Color32::TRANSPARENT {
-        ui.painter().rect_filled(resp.rect, radius_sm(), v.fill);
+        // `popover` key — shared by ContextMenu and the tool popovers, so a
+        // style restyles every floating surface at once instead of one of them
+        // quietly keeping the old look.
+        //
+        // Resolved against the AMBIENT theme, not `theme`: this widget is
+        // handed a `MenuTheme`, which is a lossy six-colour projection of
+        // `ComponentTheme` built at the call boundary. Everything downstream of
+        // that projection is cut off from the palette and the recipe layer.
+        // `MenuTheme` is a duplication-phase target; using the ambient theme is
+        // the same thing `Widget::ui` already does for un-themed call sites.
+        let amb = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let (pop_cr, pop_fill, _) = crate::ui_kit::widgets::theme::resolve_control_chrome(
+            ui, &amb, "popover",
+            radius_sm(), v.fill, v.fill, 0.0,
+        );
+        ui.painter().rect_filled(resp.rect, pop_cr, pop_fill);
     }
     resp
 }
