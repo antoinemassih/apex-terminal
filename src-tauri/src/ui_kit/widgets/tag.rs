@@ -106,6 +106,20 @@ impl<'a> Tag<'a> {
     pub fn disabled(mut self, d: bool) -> Self { self.disabled = d; self }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> TagResponse {
+        // Build the ctx from the UI so it carries the AMBIENT RecipeSet.
+        // `StyleCtx::from_theme` would hand this widget an empty set — see
+        // `ctx.rs` for why that shim must never be used inside a `show`.
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point.
+    ///
+    /// Callers that need per-call-site token overrides or an explicit
+    /// `RecipeSet` construct a `StyleCtx` and call this directly; `show`
+    /// delegates here with the ambient one.
+    pub fn show_ctx(self, ui: &mut Ui, sctx: &super::ctx::StyleCtx<'_>) -> TagResponse {
+        let theme = sctx.theme();
         let dim_mul = if self.disabled { 0.5 } else { 1.0 };
         let tone_col = self.tone.color(theme).gamma_multiply(dim_mul);
         let font_size = match self.size { Size::Xs => st::font_xs() - 1.0, _ => st::font_xs() };

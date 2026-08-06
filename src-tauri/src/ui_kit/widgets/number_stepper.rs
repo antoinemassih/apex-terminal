@@ -70,6 +70,20 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
 
     #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
+        // Build the ctx from the UI so it carries the AMBIENT RecipeSet.
+        // `StyleCtx::from_theme` would hand this widget an empty set — see
+        // `ctx.rs` for why that shim must never be used inside a `show`.
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point.
+    ///
+    /// Callers that need per-call-site token overrides or an explicit
+    /// `RecipeSet` construct a `StyleCtx` and call this directly; `show`
+    /// delegates here with the ambient one.
+    pub fn show_ctx(self, ui: &mut Ui, sctx: &super::ctx::StyleCtx<'_>) -> Response {
+        let theme = sctx.theme();
         let bug_loc = std::panic::Location::caller();
         let font = match self.size {
             Size::Xs => st::font_xs(),
