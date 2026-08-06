@@ -173,7 +173,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
             // same chrome. Minting `textarea` would let the two drift apart in
             // a style, which is the opposite of what the recipe layer is for.
             let (radius, fill, stroke) = super::theme::resolve_control_chrome(
-                ui, theme, "input",
+                ui.ctx(), theme, "input",
                 st::radius_sm(), bg, border_col, st::stroke_std(),
             );
             painter.rect_filled(border_rect, radius, fill);

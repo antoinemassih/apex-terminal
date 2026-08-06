@@ -92,8 +92,13 @@ fn paint_linear(ui: &mut Ui, theme: &dyn ComponentTheme, p: Progress) -> Respons
     if !ui.is_rect_visible(rect) { return response; }
 
     let painter = ui.painter_at(rect);
-    let cr = CornerRadius::same((h * 0.5) as u8);
-    painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Dim), 64));
+    // `progress` key — the TRACK. The fill colour encodes the variant and
+    // stays with the widget. Default radius is a true pill (half the height).
+    let track_col = st::color_alpha(palette_ct(theme).base(Tone::Dim), 64);
+    let (cr, track_fill, _) = super::theme::resolve_control_chrome(
+        ui.ctx(), theme, "progress", h * 0.5, track_col, track_col, 0.0,
+    );
+    painter.rect_filled(rect, cr, track_fill);
 
     let fill = variant_color(p.variant, theme);
 

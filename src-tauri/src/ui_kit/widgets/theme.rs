@@ -658,7 +658,7 @@ mod m23_scope_tests {
 /// a byte-identical result — conversions are zero-visual-change until someone
 /// opts in. That property is what makes it safe to wire the whole widget set.
 pub(crate) fn resolve_control_chrome(
-    ui: &egui::Ui,
+    ctx: &egui::Context,
     theme: &dyn ComponentTheme,
     key: &str,
     default_radius: f32,
@@ -667,7 +667,7 @@ pub(crate) fn resolve_control_chrome(
     default_border_w: f32,
 ) -> (egui::CornerRadius, egui::Color32, egui::Stroke) {
     use crate::ui_kit::sx::{Sx, StyleState};
-    let recipes = get_ambient_recipes(ui.ctx());
+    let recipes = get_ambient_recipes(ctx);
     let default_sx = Sx::new()
         .rounded(default_radius)
         .bg_color(default_fill)
@@ -685,4 +685,19 @@ pub(crate) fn resolve_control_chrome(
         fill,
         egui::Stroke::new(bw, bc),
     )
+}
+
+/// Resolve a widget-declared [`Sx`] through the ambient [`RecipeSet`].
+///
+/// The companion to [`resolve_control_chrome`], for widgets that already
+/// DECLARE their box as an `Sx` and paint it in one call (`Alert`, `Badge`,
+/// `Kbd`). Passing the widget's own `Sx` as the default keeps the
+/// zero-visual-change property: an unauthored key returns it untouched.
+pub(crate) fn resolve_sx(
+    ctx: &egui::Context,
+    theme: &dyn ComponentTheme,
+    key: &str,
+    default_sx: crate::ui_kit::sx::Sx,
+) -> crate::ui_kit::sx::Sx {
+    get_ambient_recipes(ctx).resolve(key, default_sx, theme)
 }

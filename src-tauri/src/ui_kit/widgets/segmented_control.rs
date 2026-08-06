@@ -173,7 +173,7 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             // `segmented` key — the trough. Segment fills stay with the widget
             // (they encode selection state).
             let (cr, t_fill, t_stroke) = super::theme::resolve_control_chrome(
-                ui, theme, "segmented", radius, fill, border, st::stroke_thin(),
+                ui.ctx(), theme, "segmented", radius, fill, border, st::stroke_thin(),
             );
             painter.rect_filled(total_rect, cr, t_fill);
             painter.rect_stroke(total_rect, cr, t_stroke, StrokeKind::Inside);

@@ -164,11 +164,14 @@ impl Alert {
                 AlertVariant::Warning => Tone::Warn,
                 AlertVariant::Error => Tone::Bear,
             };
-            Sx::new()
-                .rounded_md()
-                .bg_alpha(box_tone, 32)
-                .border_alpha(box_tone, 200, st::stroke_std())
-                .paint_box_ct(ui, rect, theme);
+            // `alert` key. The tone stays with the widget (it encodes
+            // Info/Success/Warning/Error); the recipe governs shape.
+            super::theme::resolve_sx(ui.ctx(), theme, "alert",
+                Sx::new()
+                    .rounded_md()
+                    .bg_alpha(box_tone, 32)
+                    .border_alpha(box_tone, 200, st::stroke_std()),
+            ).paint_box_ct(ui, rect, theme);
 
             let painter = ui.painter_at(rect);
 

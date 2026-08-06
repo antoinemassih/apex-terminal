@@ -199,7 +199,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
     let painter = ui.painter_at(rect);
     // Chrome through the recipe layer — `checkbox` key.
     let (cr, cb_fill, cb_stroke) = super::theme::resolve_control_chrome(
-        ui, theme, "checkbox",
+        ui.ctx(), theme, "checkbox",
         st::radius_sm(), bg_final, border_final, st::stroke_std(),
     );
     painter.rect_filled(box_rect, cr, cb_fill);

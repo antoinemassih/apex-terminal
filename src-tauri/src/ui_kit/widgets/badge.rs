@@ -139,7 +139,11 @@ impl<'a> Badge<'a> {
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
             // DS#4: the pill is declared as an Sx solid-fill box.
-            Sx::new().rounded(h * 0.5).bg_color(tone_col).paint_box_at(&painter, rect, theme);
+            // `badge` key. Default is a true pill (half the height); the
+            // tone-derived fill stays with the widget.
+            super::theme::resolve_sx(ui.ctx(), theme, "badge",
+                Sx::new().rounded(h * 0.5).bg_color(tone_col),
+            ).paint_box_at(&painter, rect, theme);
             painter.text(
                 Pos2::new(rect.center().x, rect.center().y),
                 egui::Align2::CENTER_CENTER,

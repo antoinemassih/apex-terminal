@@ -324,7 +324,7 @@ fn paint_row(
         // the same thing `Widget::ui` already does for un-themed call sites.
         let amb = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
         let (pop_cr, pop_fill, _) = crate::ui_kit::widgets::theme::resolve_control_chrome(
-            ui, &amb, "popover",
+            ui.ctx(), &amb, "popover",
             radius_sm(), v.fill, v.fill, 0.0,
         );
         ui.painter().rect_filled(resp.rect, pop_cr, pop_fill);

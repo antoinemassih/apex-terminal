@@ -33,6 +33,10 @@ These keys correspond to the RECIPE-CANDIDATE(S4) fields in
 | `popover` | `ui_kit::ContextMenu`, tool popovers | Floating surface chrome. Radius only. Shared so every floating surface restyles together. |
 | `segmented` | `ui_kit::SegmentedControl` | The trough. Segment fills encode selection and stay with the widget. |
 | `switch` | `ui_kit::Switch` | The track. Pill in every built-in style — a track is a capsule by definition. |
+| `alert` | `ui_kit::Alert` | Banner surface. Radius only — the tone encodes Info/Success/Warning/Error. |
+| `tooltip` | `ui_kit::Tooltip` | Tooltip card surface. Radius only; the near-solid alpha is deliberate. |
+| `badge` | `ui_kit::Badge` | Count/notification pill. Pill in every built-in style. |
+| `progress` | `ui_kit::Progress` | The track. Pill in every built-in style; variant fill stays with the widget. |
 
 ### Tabs
 

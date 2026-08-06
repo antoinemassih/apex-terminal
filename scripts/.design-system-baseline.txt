@@ -80,7 +80,7 @@
 1 src-tauri/src/ui_kit/widgets/panel_section.rs
 1 src-tauri/src/ui_kit/widgets/panel_sub_section.rs
 1 src-tauri/src/ui_kit/widgets/popover.rs
-2 src-tauri/src/ui_kit/widgets/progress.rs
+1 src-tauri/src/ui_kit/widgets/progress.rs
 5 src-tauri/src/ui_kit/widgets/segmented_control.rs
 3 src-tauri/src/ui_kit/widgets/select.rs
 3 src-tauri/src/ui_kit/widgets/selectable_row.rs
@@ -100,4 +100,4 @@
 3 src-tauri/src/ui_kit/widgets/toggle_row.rs
 1 src-tauri/src/ui_kit/widgets/tool_overlay.rs
 1 src-tauri/src/ui_kit/widgets/tool_popover.rs
-8 src-tauri/src/ui_kit/widgets/tooltip.rs
+7 src-tauri/src/ui_kit/widgets/tooltip.rs

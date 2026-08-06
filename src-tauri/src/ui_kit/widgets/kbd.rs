@@ -67,10 +67,15 @@ impl<'a> Kbd<'a> {
         let plus_gap: f32 = 3.0;
         let pal = palette_ct(theme);
         // DS#4: each keycap box is DECLARED once as an Sx and painted per key.
-        let cap_sx = Sx::new()
-            .rounded_sm()
-            .bg_alpha(Tone::Surface, 200)
-            .border(Tone::Border, st::stroke_std());
+        // `kbd` key — the keycap box. The key was already REGISTERED and
+        // authored but nothing here resolved it, so the styles' keycap
+        // declarations were dead data.
+        let cap_sx = super::theme::resolve_sx(ui.ctx(), theme, "kbd",
+            Sx::new()
+                .rounded_sm()
+                .bg_alpha(Tone::Surface, 200)
+                .border(Tone::Border, st::stroke_std()),
+        );
         let text_col = pal.base(Tone::Text);
         let dim = pal.base(Tone::Dim);
 

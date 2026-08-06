@@ -88,7 +88,7 @@ impl<'a> TradeCard<'a> {
             CardVariant::Elevated.fill_color(theme)
         };
         let (card_cr, card_fill, card_stroke) = super::theme::resolve_control_chrome(
-            ui, theme, "card",
+            ui.ctx(), theme, "card",
             radius_sm(), base_fill,
             CardVariant::Elevated.border_color(theme), st::stroke_thin(),
         );

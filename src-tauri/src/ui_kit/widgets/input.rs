@@ -312,7 +312,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             // Chrome through the recipe layer — `input` key. Defaults encode
             // today's look, so an unauthored style is byte-identical.
             let (radius, fill, stroke) = super::theme::resolve_control_chrome(
-                ui, theme, "input",
+                ui.ctx(), theme, "input",
                 st::radius_sm(), bg, border_col, st::stroke_std(),
             );
             painter.rect_filled(rect, radius, fill);

@@ -296,6 +296,27 @@ fn aperture() -> RecipeSet {
             "switch",
             spec(d().radius(RadiusTier::Pill)),
         ),
+        // ── Feedback surfaces & meters ───────────────────────────────────
+        // `alert` / `tooltip` are surfaces; `badge` / `progress` are meters and
+        // stay PILL everywhere (a badge and a progress track are capsules by
+        // definition — squaring them reads as broken, not restyled).
+        // Radius only in every case: tone and fill encode state.
+        (
+            "alert",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
+        (
+            "tooltip",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
+        (
+            "badge",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        (
+            "progress",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
         // `.ds-btn--secondary { border: 1.5px solid border; background:
         // transparent }` + `.ds-btn { font-weight: 500 }`, `.is-active` →
         // inverted block.
@@ -463,6 +484,27 @@ fn cadence() -> RecipeSet {
         ),
         (
             "switch",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        // ── Feedback surfaces & meters ───────────────────────────────────
+        // `alert` / `tooltip` are surfaces; `badge` / `progress` are meters and
+        // stay PILL everywhere (a badge and a progress track are capsules by
+        // definition — squaring them reads as broken, not restyled).
+        // Radius only in every case: tone and fill encode state.
+        (
+            "alert",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
+        (
+            "tooltip",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
+        (
+            "badge",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        (
+            "progress",
             spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { background: bg-surface; border-radius:
@@ -651,6 +693,27 @@ fn alto() -> RecipeSet {
         ),
         (
             "switch",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        // ── Feedback surfaces & meters ───────────────────────────────────
+        // `alert` / `tooltip` are surfaces; `badge` / `progress` are meters and
+        // stay PILL everywhere (a badge and a progress track are capsules by
+        // definition — squaring them reads as broken, not restyled).
+        // Radius only in every case: tone and fill encode state.
+        (
+            "alert",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "tooltip",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "badge",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        (
+            "progress",
             spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { background: linear-gradient(bg-elevated,
@@ -871,6 +934,27 @@ fn mariner() -> RecipeSet {
         ),
         (
             "switch",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        // ── Feedback surfaces & meters ───────────────────────────────────
+        // `alert` / `tooltip` are surfaces; `badge` / `progress` are meters and
+        // stay PILL everywhere (a badge and a progress track are capsules by
+        // definition — squaring them reads as broken, not restyled).
+        // Radius only in every case: tone and fill encode state.
+        (
+            "alert",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "tooltip",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "badge",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        (
+            "progress",
             spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { box-shadow: inset 0 1px 0 rgba(180,210,240,.08),
@@ -1096,6 +1180,27 @@ fn lucid() -> RecipeSet {
             "switch",
             spec(d().radius(RadiusTier::Pill)),
         ),
+        // ── Feedback surfaces & meters ───────────────────────────────────
+        // `alert` / `tooltip` are surfaces; `badge` / `progress` are meters and
+        // stay PILL everywhere (a badge and a progress track are capsules by
+        // definition — squaring them reads as broken, not restyled).
+        // Radius only in every case: tone and fill encode state.
+        (
+            "alert",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "tooltip",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "badge",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        (
+            "progress",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
         (
             "button.ghost",
             spec(d().radius(RadiusTier::Md).border(tone(ToneRef::Border), BorderWidthTier::Std)),
@@ -1304,6 +1409,27 @@ fn meridien() -> RecipeSet {
         ),
         (
             "switch",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        // ── Feedback surfaces & meters ───────────────────────────────────
+        // `alert` / `tooltip` are surfaces; `badge` / `progress` are meters and
+        // stay PILL everywhere (a badge and a progress track are capsules by
+        // definition — squaring them reads as broken, not restyled).
+        // Radius only in every case: tone and fill encode state.
+        (
+            "alert",
+            spec(d().radius(RadiusTier::None)),
+        ),
+        (
+            "tooltip",
+            spec(d().radius(RadiusTier::None)),
+        ),
+        (
+            "badge",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        (
+            "progress",
             spec(d().radius(RadiusTier::Pill)),
         ),
         (
@@ -1771,12 +1897,14 @@ mod tests {
     /// Authoring an unregistered key produces dead data — no widget reads it.
     #[test]
     fn every_authored_key_is_registered() {
-        const REGISTERED: [&str; 35] = [
+        const REGISTERED: [&str; 39] = [
             "button.primary", "button.ghost", "button.danger", "button.success", "button.chrome",
             // Form controls — radius only; state colours stay with the widget.
             "input", "select", "checkbox",
             // Surfaces & compound controls — radius only.
             "popover", "segmented", "switch",
+            // Feedback surfaces & meters — radius only.
+            "alert", "tooltip", "badge", "progress",
             // `button.action` — large block controls in a trading action row.
             // Consumed via `Button::recipe_key("button.action")` (the DOM
             // BUY/SELL/FLATTEN/CANCEL row), not via a Variant, because it is a

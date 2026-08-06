@@ -250,11 +250,13 @@ pub fn paint_tooltip_card(
     // alpha so the chart bleeds through faintly behind text, matching the
     // previous 240-alpha fidelity while applying the correct depth tier.
     let surf = elevate(palette_ct(theme).base(Tone::Bg), ELEVATE_RAISED);
-    painter.rect_filled(
-        rect,
-        cr,
-        egui::Color32::from_rgba_unmultiplied(surf.r(), surf.g(), surf.b(), 240),
+    // `tooltip` key — surface chrome. The near-solid alpha is deliberate (the
+    // chart bleeds through faintly behind text) and stays with the widget.
+    let surf_fill = crate::ui_kit::style::color_alpha(surf, 240);
+    let (cr, tip_fill, _) = crate::ui_kit::widgets::theme::resolve_control_chrome(
+        painter.ctx(), theme, "tooltip", cr.nw as f32, surf_fill, surf_fill, 0.0,
     );
+    painter.rect_filled(rect, cr, tip_fill);
 
     // Top bevel — only when corners are visible (Meridien / Octave have
     // cr_u8 == 0 and skip this). Color depends on theme luminance: light

@@ -477,7 +477,7 @@ fn paint_select<'a, T: 'a>(
         let painter = ui.painter_at(rect);
         // Chrome through the recipe layer — `select` key.
         let (radius, fill, stroke) = super::theme::resolve_control_chrome(
-            ui, theme, "select",
+            ui.ctx(), theme, "select",
             st::radius_sm(), bg_fill, border_col, st::stroke_std(),
         );
         painter.rect_filled(rect, radius, fill);

@@ -153,7 +153,7 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
     // `switch` key — the track. Thumb colour stays with the widget (it encodes
     // on/off), and the default radius is a true pill (half the track height).
     let (cr, tr_fill, _) = super::theme::resolve_control_chrome(
-        ui, theme, "switch", th * 0.5, track_color, track_color, 0.0,
+        ui.ctx(), theme, "switch", th * 0.5, track_color, track_color, 0.0,
     );
     painter.rect_filled(track_rect, cr, tr_fill);
     painter.circle_filled(thumb_center, thumb_d * 0.5, thumb_color);
