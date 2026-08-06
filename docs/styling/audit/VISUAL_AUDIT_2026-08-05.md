@@ -536,17 +536,34 @@ while erring wide overlaps (not). Verified clean at 1920 / 2560 / 3840.
 patch.* Below ~2000px the left status pills (`CLOSED` / `TPS`) overprint the
 first nav items (`Signals` / `Script`).
 
-I tried clipping the middle scroll region to bound anything escaping it (the
-nav paints some chrome on the FOREGROUND layer, which the scroll clip does not
-cover). **It did not fix the overlap, so I reverted it** rather than leave code
-whose comment claims a fix it does not deliver.
+Three hypotheses, all wrong, all reverted rather than left in place claiming a
+fix they did not deliver: (1) foreground-layer chrome escaping the scroll clip
+— clipping the region changed nothing; (2) `ScrollArea`'s default
+`auto_shrink` squeezing content instead of scrolling it — disabling it changed
+nothing; (3) the pills overflowing rightward — they are not even drawn at that
+width.
 
-The finding that came out of the attempt is worth more than another attempt
-would be: **this toolbar has no narrow-width strategy at all.** Its one
-responsive branch, `compact_mode`, is documented in the file as long dead.
-Nothing hides, wraps, truncates or prioritises — so past a certain width
-overlap is the only possible outcome. What to drop first (status pills? nav
-labels to icons?) is a product call.
+What instrumenting the layout *did* establish, which is worth more than another
+guess:
+
+- **The status pills are not involved.** At 1600px they are not rendered at
+  all. The overlapping items are **nav buttons overprinting each other**. The
+  audit's description of this finding — and mine, repeated three times — was
+  wrong about which elements collide.
+- **`right_width` was being measured as 1646 on a 1500px screen**, because the
+  first version of the §3.8 fix recorded `response.rect` (the offered slot)
+  rather than `min_rect` (the content). `middle_width` therefore collapsed to
+  its 60px floor. Corrected to `min_rect` — justified by the measurement
+  regardless of whether it fixes the overlap, which it does not.
+- **This toolbar has no narrow-width strategy at all.** Its one responsive
+  branch, `compact_mode`, is documented in the file as long dead. Nothing
+  hides, wraps, truncates or prioritises, so past a certain width overlap is
+  the only possible outcome.
+
+That last point is the actual answer: this is not a layout bug with a patch
+waiting to be found, it is a missing responsive design. What degrades first —
+nav labels collapsing to icons, lower-priority items moving into an overflow
+menu — is a product decision.
 
 ---
 

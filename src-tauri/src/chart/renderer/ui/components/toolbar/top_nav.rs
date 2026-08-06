@@ -1369,13 +1369,25 @@ pub(crate) fn render(
                 }
 
                 crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
+                // Content extent, returned from INSIDE the closure.
+                ui.min_rect().width()
             });
             // Record what the fixed-right group ACTUALLY needed, for the next
-            // frame. `min_rect` is the content it laid out, not the slot it
-            // was offered — the slot is the whole remaining row, which would
-            // feed back a growing number.
+            // frame.
+            //
+            // This must be `min_rect` (the content it laid out) and NOT
+            // `response.rect` (the slot it was offered). The slot is the whole
+            // remaining row, so recording it fed back: right_w grew to 1646 on
+            // a 1500px screen, `middle_width` collapsed to its 60px floor, and
+            // the nav was crammed into 60px — which is what the narrow-width
+            // overlap actually was.
+            //
+            // The first version of this fix recorded `response.rect` while its
+            // own comment said `min_rect`. The comment was right and the code
+            // was wrong — the same disagreement, in the same function, that
+            // this whole change set out to fix.
             {
-                let w = right_group.response.rect.width();
+                let w = right_group.inner;
                 if w.is_finite() && w > 0.0 {
                     ui.ctx().memory_mut(|m| {
                         m.data.insert_temp(egui::Id::new("top_nav.right_group_w"), w)
