@@ -349,6 +349,11 @@ at ~280px tall. `INDICATORS`, `OVERLAYS` and `WIDGETS` — same panel, same
 zero-item state — render two bare lines of text at ~180px. Same condition, two
 visual languages.
 
+**Fixed.** All four already used `PanelEmpty`; only the drawings one set
+`.glyph(..)`. The entire difference in treatment was one builder call being
+present on one of four call sites. The other three now carry a glyph
+(`PULSE` / `STACK` / `CHART_BAR`).
+
 ### 3.4 — MEDIUM — playbook leaves ~70 % of the panel as unstyled void
 
 One card occupies the top ~330px; the remaining ~1500px is blank background
@@ -466,7 +471,32 @@ At a 1600×1000 viewport the top navigation items overrun each other
 (`RRG`/`Journal`/`T&S`/`Indicator`/`Auto-Chart`/`Analysis` all collide).
 Whether 1600px is a supported minimum is a product decision, but the failure
 mode is overlap rather than wrap, scroll or overflow — so it degrades badly
-rather than gracefully. Flagged, not fixed.
+rather than gracefully.
+
+**Half fixed.** There are two independent overlaps here.
+
+*The middle-vs-right collision is fixed.* The scrollable middle sized itself as
+`available_width - right_width` where `right_width = 130.0` — a pinned guess at
+the fixed-right group, which actually holds the window controls AND the whole
+panel-toggle run (Orders / Watchlist / Charts / Playbook / Feed / Screener /
+Signals / ORDER / search / settings / warnings). The comment on the line
+directly above it estimated that group at "~350": **the code and its own
+comment disagreed by 220px, and the code was the wrong one.** At a wide
+viewport the slack hid it; at 1600px the middle was handed ~220px that did not
+exist and the two groups drew on top of each other.
+
+Now measured from the previous frame and stored in egui memory — the same
+measure-last-frame trick `ui_kit::Modal` already uses for its drop shadow. One
+frame of lag on a resize is invisible; a permanently wrong constant is not. The
+fallback is deliberately generous, because erring narrow scrolls (recoverable)
+while erring wide overlaps (not). Verified clean at 1920 / 2560 / 3840.
+
+*A second, pre-existing overlap remains.* Below ~2000px the left status pills
+(`CLOSED` / `TPS`) overprint the first nav items (`Signals` / `Script`). A
+different pair of clusters, unaffected by the fix. Both live inside the same
+`horizontal_centered`, so they should lay out sequentially, and I could not
+establish why the scroll viewport appears to begin at the row's left edge
+rather than after the pills. Left open rather than guessed at.
 
 ---
 
@@ -540,6 +570,8 @@ case by case.
 | 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
 | 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
+| 3.3 | Object tree had two empty-state treatments | `object_tree.rs` — glyph on all four |
+| 3.8 | Nav middle/right collision at narrow widths | `top_nav.rs` — measured, not pinned |
 | 2.2 | Chain headers drifted off their columns | `watchlist_panel.rs` — one layout mechanism |
 | 2.3 | Chain labels clipped by the panel border | `watchlist_panel.rs` — `chain_row_inset()` |
 | 2.4 | `sel` read as debug text | `watchlist_panel.rs` — `Select` |
@@ -557,6 +589,7 @@ control-size 4/4.
 
 ## 7. Open — not fixed
 
-order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 header/data adjacency, §2.5 numeric alignment, §2.6 tab divider, §3.3 object-tree empty states, §3.4
+order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 header/data adjacency, §2.5 numeric alignment, §2.6 tab divider, §3.4
 playbook void, §3.5 playbook label order, §3.7 mixed
-button shapes, §3.8 top-nav overlap at 1600px.
+button shapes, §3.8 status-pills / nav overlap below ~2000px (the middle-vs-right
+half is fixed).
