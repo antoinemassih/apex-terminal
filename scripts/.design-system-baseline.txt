@@ -57,14 +57,14 @@
 3 src-tauri/src/ui_kit/widgets/badge.rs
 18 src-tauri/src/ui_kit/widgets/button.rs
 1 src-tauri/src/ui_kit/widgets/button_style.rs
-4 src-tauri/src/ui_kit/widgets/checkbox.rs
+3 src-tauri/src/ui_kit/widgets/checkbox.rs
 1 src-tauri/src/ui_kit/widgets/form_section.rs
 1 src-tauri/src/ui_kit/widgets/guild_avatar_grid.rs
 2 src-tauri/src/ui_kit/widgets/header.rs
 2 src-tauri/src/ui_kit/widgets/heatmap_grid.rs
 1 src-tauri/src/ui_kit/widgets/hover_card.rs
 1 src-tauri/src/ui_kit/widgets/indicator.rs
-17 src-tauri/src/ui_kit/widgets/input.rs
+16 src-tauri/src/ui_kit/widgets/input.rs
 1 src-tauri/src/ui_kit/widgets/input_group.rs
 4 src-tauri/src/ui_kit/widgets/kbd.rs
 1 src-tauri/src/ui_kit/widgets/label.rs

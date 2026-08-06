@@ -27,6 +27,9 @@ These keys correspond to the RECIPE-CANDIDATE(S4) fields in
 | `button.success` | `ui_kit::Button` implied success | Bull fill, confirm actions |
 | `button.chrome` | `ui_kit::Button` Variant::Chrome | Toolbar/chrome chrome buttons |
 | `button.action` | `ui_kit::Button` via `.recipe_key("button.action")` | Large block controls in a trading action row (DOM BUY/SELL/FLATTEN/CANCEL). Same treatment as `button.primary`, but each style picks a radius that survives a near-SQUARE control — `Pill` resolves to min(w,h)/2 and becomes an ellipse there. |
+| `input` | `ui_kit::Input` | Text-field chrome. **Radius only** — fill/border stay with the widget, which computes them from focus / invalid / disabled state. |
+| `select` | `ui_kit::Select` | Dropdown trigger chrome. Radius only, same rationale. |
+| `checkbox` | `ui_kit::Checkbox` | Check box chrome. Radius only, same rationale. |
 
 ### Tabs
 

@@ -260,6 +260,24 @@ fn aperture() -> RecipeSet {
             "button.action",
             spec(d().radius(RadiusTier::Lg)),
         ),
+        // ── Form controls ────────────────────────────────────────────────
+        // `input` / `select` / `checkbox` share this system's control radius.
+        // Radius ONLY: fill and border stay with the widget, which already
+        // computes them from state (focus, invalid, disabled, hover). A recipe
+        // that also set them would flatten those states — the same mistake
+        // `button.action` made on its first pass.
+        (
+            "input",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "select",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "checkbox",
+            spec(d().radius(RadiusTier::Md)),
+        ),
         // `.ds-btn--secondary { border: 1.5px solid border; background:
         // transparent }` + `.ds-btn { font-weight: 500 }`, `.is-active` →
         // inverted block.
@@ -392,6 +410,24 @@ fn cadence() -> RecipeSet {
         (
             "button.action",
             spec(d().radius(RadiusTier::Lg)),
+        ),
+        // ── Form controls ────────────────────────────────────────────────
+        // `input` / `select` / `checkbox` share this system's control radius.
+        // Radius ONLY: fill and border stay with the widget, which already
+        // computes them from state (focus, invalid, disabled, hover). A recipe
+        // that also set them would flatten those states — the same mistake
+        // `button.action` made on its first pass.
+        (
+            "input",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "select",
+            spec(d().radius(RadiusTier::Md)),
+        ),
+        (
+            "checkbox",
+            spec(d().radius(RadiusTier::Md)),
         ),
         // `.ds-btn--secondary { background: bg-surface; border-radius:
         // radius-md; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04) }`.
@@ -543,6 +579,24 @@ fn alto() -> RecipeSet {
         // call site, which pinned the shape. Now each style picks it.
         (
             "button.action",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
+        // ── Form controls ────────────────────────────────────────────────
+        // `input` / `select` / `checkbox` share this system's control radius.
+        // Radius ONLY: fill and border stay with the widget, which already
+        // computes them from state (focus, invalid, disabled, hover). A recipe
+        // that also set them would flatten those states — the same mistake
+        // `button.action` made on its first pass.
+        (
+            "input",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
+        (
+            "select",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
+        (
+            "checkbox",
             spec(d().radius(RadiusTier::Sm)),
         ),
         // `.ds-btn--secondary { background: linear-gradient(bg-elevated,
@@ -727,6 +781,24 @@ fn mariner() -> RecipeSet {
         // call site, which pinned the shape. Now each style picks it.
         (
             "button.action",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
+        // ── Form controls ────────────────────────────────────────────────
+        // `input` / `select` / `checkbox` share this system's control radius.
+        // Radius ONLY: fill and border stay with the widget, which already
+        // computes them from state (focus, invalid, disabled, hover). A recipe
+        // that also set them would flatten those states — the same mistake
+        // `button.action` made on its first pass.
+        (
+            "input",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
+        (
+            "select",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
+        (
+            "checkbox",
             spec(d().radius(RadiusTier::Sm)),
         ),
         // `.ds-btn--secondary { box-shadow: inset 0 1px 0 rgba(180,210,240,.08),
@@ -916,6 +988,24 @@ fn lucid() -> RecipeSet {
             "button.action",
             spec(d().radius(RadiusTier::Md)),
         ),
+        // ── Form controls ────────────────────────────────────────────────
+        // `input` / `select` / `checkbox` share this system's control radius.
+        // Radius ONLY: fill and border stay with the widget, which already
+        // computes them from state (focus, invalid, disabled, hover). A recipe
+        // that also set them would flatten those states — the same mistake
+        // `button.action` made on its first pass.
+        (
+            "input",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
+        (
+            "select",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
+        (
+            "checkbox",
+            spec(d().radius(RadiusTier::Sm)),
+        ),
         (
             "button.ghost",
             spec(d().radius(RadiusTier::Md).border(tone(ToneRef::Border), BorderWidthTier::Std)),
@@ -1088,6 +1178,24 @@ fn meridien() -> RecipeSet {
         // call site, which pinned the shape. Now each style picks it.
         (
             "button.action",
+            spec(d().radius(RadiusTier::None)),
+        ),
+        // ── Form controls ────────────────────────────────────────────────
+        // `input` / `select` / `checkbox` share this system's control radius.
+        // Radius ONLY: fill and border stay with the widget, which already
+        // computes them from state (focus, invalid, disabled, hover). A recipe
+        // that also set them would flatten those states — the same mistake
+        // `button.action` made on its first pass.
+        (
+            "input",
+            spec(d().radius(RadiusTier::None)),
+        ),
+        (
+            "select",
+            spec(d().radius(RadiusTier::None)),
+        ),
+        (
+            "checkbox",
             spec(d().radius(RadiusTier::None)),
         ),
         (
@@ -1555,8 +1663,10 @@ mod tests {
     /// Authoring an unregistered key produces dead data — no widget reads it.
     #[test]
     fn every_authored_key_is_registered() {
-        const REGISTERED: [&str; 29] = [
+        const REGISTERED: [&str; 32] = [
             "button.primary", "button.ghost", "button.danger", "button.success", "button.chrome",
+            // Form controls — radius only; state colours stay with the widget.
+            "input", "select", "checkbox",
             // `button.action` — large block controls in a trading action row.
             // Consumed via `Button::recipe_key("button.action")` (the DOM
             // BUY/SELL/FLATTEN/CANCEL row), not via a Variant, because it is a

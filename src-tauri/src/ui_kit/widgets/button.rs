@@ -477,7 +477,7 @@ impl<'a> Button<'a> {
     /// current frame's `TokenSnapshot`) and delegates to
     /// [`Button::show_ctx`], so all paint logic is shared.
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        let ctx = super::ctx::StyleCtx::from_theme(theme);
+        let ctx = super::ctx::StyleCtx::from_ui(theme, ui);
         self.show_ctx(ui, &ctx)
     }
 

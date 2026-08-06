@@ -183,9 +183,13 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
     }
 
     let painter = ui.painter_at(rect);
-    let cr = CornerRadius::same(st::radius_sm() as u8);
-    painter.rect_filled(box_rect, cr, bg_final);
-    painter.rect_stroke(box_rect, cr, Stroke::new(st::stroke_std(), border_final), StrokeKind::Inside);
+    // Chrome through the recipe layer — `checkbox` key.
+    let (cr, cb_fill, cb_stroke) = super::theme::resolve_control_chrome(
+        ui, theme, "checkbox",
+        st::radius_sm(), bg_final, border_final, st::stroke_std(),
+    );
+    painter.rect_filled(box_rect, cr, cb_fill);
+    painter.rect_stroke(box_rect, cr, cb_stroke, StrokeKind::Inside);
 
     // Mark — only when state implies one.
     match state {

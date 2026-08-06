@@ -292,13 +292,17 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
 
         let bg_fill = background_color_override.unwrap_or_else(|| theme.surface_raised());
 
-        let radius = CornerRadius::same(st::radius_sm() as u8);
-
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
             let bg = if disabled { st::color_alpha(bg_fill, 128) } else { bg_fill };
-            painter.rect_filled(rect, radius, bg);
-            painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
+            // Chrome through the recipe layer — `input` key. Defaults encode
+            // today's look, so an unauthored style is byte-identical.
+            let (radius, fill, stroke) = super::theme::resolve_control_chrome(
+                ui, theme, "input",
+                st::radius_sm(), bg, border_col, st::stroke_std(),
+            );
+            painter.rect_filled(rect, radius, fill);
+            painter.rect_stroke(rect, radius, stroke, StrokeKind::Inside);
         }
 
         let cy = rect.center().y;

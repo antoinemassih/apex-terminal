@@ -459,12 +459,15 @@ fn paint_select<'a, T: 'a>(
     let open_tint = st::color_alpha(palette_ct(theme).base(Tone::Text), 14);
     let bg_fill = motion::lerp_color(surface_bg, open_tint, open_t);
 
-    let radius = st::r_sm_cr();
-
     if ui.is_rect_visible(rect) {
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, radius, bg_fill);
-        painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
+        // Chrome through the recipe layer — `select` key.
+        let (radius, fill, stroke) = super::theme::resolve_control_chrome(
+            ui, theme, "select",
+            st::radius_sm(), bg_fill, border_col, st::stroke_std(),
+        );
+        painter.rect_filled(rect, radius, fill);
+        painter.rect_stroke(rect, radius, stroke, StrokeKind::Inside);
     }
 
     // ─── Trigger content ──

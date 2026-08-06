@@ -191,7 +191,7 @@ impl<'a> Tabs<'a> {
     /// Render with an explicit [`ComponentTheme`]. Unchanged entry point —
     /// builds a `StyleCtx::from_theme(theme)` and delegates to `show_ctx`.
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> TabsResponse {
-        let ctx = super::ctx::StyleCtx::from_theme(theme);
+        let ctx = super::ctx::StyleCtx::from_ui(theme, ui);
         self.show_ctx(ui, &ctx)
     }
 

@@ -650,3 +650,39 @@ mod m23_scope_tests {
         assert!(get_ambient_theme::<PortableTheme>(&ctx).is_none(), "must not outlive its block");
     }
 }
+
+/// Resolve a control's chrome (radius / fill / border) through the ambient
+/// [`RecipeSet`], falling back to the values the widget already computed.
+///
+/// `default_*` encode today's look, so a style that does not author `key` gets
+/// a byte-identical result — conversions are zero-visual-change until someone
+/// opts in. That property is what makes it safe to wire the whole widget set.
+pub(crate) fn resolve_control_chrome(
+    ui: &egui::Ui,
+    theme: &dyn ComponentTheme,
+    key: &str,
+    default_radius: f32,
+    default_fill: egui::Color32,
+    default_border: egui::Color32,
+    default_border_w: f32,
+) -> (egui::CornerRadius, egui::Color32, egui::Stroke) {
+    use crate::ui_kit::sx::{Sx, StyleState};
+    let recipes = get_ambient_recipes(ui.ctx());
+    let default_sx = Sx::new()
+        .rounded(default_radius)
+        .bg_color(default_fill)
+        .border_color(default_border, default_border_w);
+    let d = recipes.resolve(key, default_sx, theme).resolved(StyleState::Normal);
+    let pal = crate::ui_kit::sx::palette_ct(theme);
+    let radius = d.radius.unwrap_or(default_radius);
+    let fill = d.fill_color(&pal).unwrap_or(default_fill);
+    let (bw, bc) = match d.border_spec() {
+        Some(b) => (b.width, d.resolved_border_color(&pal).unwrap_or(default_border)),
+        None => (default_border_w, default_border),
+    };
+    (
+        egui::CornerRadius::same(radius.clamp(0.0, 255.0).round() as u8),
+        fill,
+        egui::Stroke::new(bw, bc),
+    )
+}

@@ -107,21 +107,41 @@ impl<'a> StyleCtx<'a> {
         }
     }
 
-    /// Shim constructor — builds a `StyleCtx` from a theme reference using the
-    /// current frame's `TokenSnapshot` and a static empty `RecipeSet`.
+    /// Theme-only constructor — **carries an EMPTY `RecipeSet`.**
     ///
-    /// This is the constructor used inside `show(ui, theme)` wrappers that have
-    /// not yet been upgraded to `from_ctx`. Existing callers are never touched.
+    /// ## Prefer [`StyleCtx::from_ctx`]. Only use this when there is no
+    /// `egui::Context` in reach.
     ///
-    /// **Upgrade path:** replace `StyleCtx::from_theme(theme)` with
-    /// `StyleCtx::from_ctx(theme, ui.ctx())` in `show` wrappers once the widget
-    /// is ready to participate in recipe-driven restyling.
+    /// This existed as the shim inside `show(ui, theme)` wrappers, which is
+    /// exactly where it should never have been used: a `show` wrapper HAS a
+    /// `ui`, so it can reach the ambient set. Filling the field with an empty
+    /// set there made `StyleCtx` a half-truth — it advertises a `recipes()`
+    /// accessor that silently returned nothing on the code path every call
+    /// site actually takes.
+    ///
+    /// The two widgets that had been "upgraded" to `show_ctx` only worked
+    /// because they ignored `ctx.recipes()` and called
+    /// `get_ambient_recipes(ui.ctx())` directly — i.e. there were two ways to
+    /// reach recipes and the newer, more central one was the broken one.
+    ///
+    /// Kept (not deleted) for genuinely context-free callers such as tests and
+    /// offline snapshot rendering, where an empty set is the correct answer
+    /// rather than an accident.
     pub fn from_theme(theme: &'a dyn ComponentTheme) -> Self {
         Self {
             theme,
             tokens: frame_tokens(),
             recipes: super::theme::empty_recipe_arc(),
         }
+    }
+
+    /// The constructor `show(ui, theme)` wrappers should use.
+    ///
+    /// Identical to [`from_ctx`] but takes the `Ui` the wrapper already holds,
+    /// so a widget author cannot accidentally reach for the empty-set shim.
+    #[inline]
+    pub fn from_ui(theme: &'a dyn ComponentTheme, ui: &egui::Ui) -> Self {
+        Self::from_ctx(theme, ui.ctx())
     }
 
     // ── Theme colour accessors ────────────────────────────────────────────
