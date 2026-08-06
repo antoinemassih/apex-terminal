@@ -174,7 +174,13 @@ fn paint_toggle_row<'a>(
         &InteractionTokens::borderless().hover_alpha(ROW_HOVER_ALPHA),
     );
     if ix.fill != Color32::TRANSPARENT {
-        ui.painter().rect_filled(rect, st::radius_sm(), ix.fill);
+        // REUSES `row.list` — ToggleRow is a list row that happens to carry a
+        // switch. Same reasoning as SelectableRow.
+        let (row_cr, row_fill, _) = super::theme::resolve_control_chrome(
+            ui.ctx(), theme, "row.list",
+            st::radius_sm(), ix.fill, ix.fill, 0.0,
+        );
+        ui.painter().rect_filled(rect, row_cr, row_fill);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 

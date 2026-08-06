@@ -353,11 +353,14 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
             // same fill as the chart pane header and the SidePanelShell
             // header. Reads as a labeled band, consistent with the
             // rest of the app's chrome family.
-            painter.rect_filled(
-                rect,
-                CornerRadius::ZERO,
-                t.header_surface(),
+            // REUSES `section.header` — PanelSection already resolves it, so
+            // a sub-section header restyles with its parent instead of being
+            // the one band a style forgets.
+            let (hdr_cr, hdr_fill, _) = super::theme::resolve_control_chrome(
+                ui.ctx(), t, "section.header",
+                0.0, t.header_surface(), t.header_surface(), 0.0,
             );
+            painter.rect_filled(rect, hdr_cr, hdr_fill);
             // Hover overlay — faint warm tint on top of the recessed base.
             // M3.3: fill derived from the ONE interaction table.
             let hov = apply_interaction(

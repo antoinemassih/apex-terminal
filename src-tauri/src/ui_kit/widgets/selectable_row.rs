@@ -159,7 +159,14 @@ impl<'a> SelectableRow<'a> {
                 .hover_alpha(st::alpha_faint()),
         );
         if ix.fill != egui::Color32::TRANSPARENT {
-            painter.rect_filled(rect, cr, ix.fill);
+            // REUSES `row.list` — SelectableRow is a PanelListRow sibling.
+            // A separate key would let a style round one list and not the
+            // other, which is the drift the recipe layer exists to prevent.
+            let (row_cr, row_fill, _) = super::theme::resolve_control_chrome(
+                ui.ctx(), theme, "row.list",
+                cr.nw as f32, ix.fill, ix.fill, 0.0,
+            );
+            painter.rect_filled(rect, row_cr, row_fill);
         }
 
         // Cursor affordance.
