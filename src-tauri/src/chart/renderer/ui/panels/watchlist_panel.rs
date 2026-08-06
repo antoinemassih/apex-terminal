@@ -1787,9 +1787,12 @@ if is_spawn || watchlist.open {
                             ("STK", col_stk), ("BID", col_bid),
                             ("ASK", col_ask), ("OI", col_oi),
                         ] {
+                            // RIGHT-aligned to the same edge the data uses,
+                            // so header and column share one rule rather than
+                            // two conventions that have to be kept in sync.
                             hp.text(
-                                egui::pos2(hx, hy),
-                                egui::Align2::LEFT_CENTER,
+                                egui::pos2(hx + cw, hy),
+                                egui::Align2::RIGHT_CENTER,
                                 label,
                                 mono_sm(),
                                 hdr_color,
@@ -1837,21 +1840,25 @@ if is_spawn || watchlist.open {
                         }
                         x += col_chk + gap;
 
-                        // Strike
+                        // Strike — RIGHT-aligned, like every numeric column
+                        // below. Decimal points and digit places line up down
+                        // the column, which is the whole reason financial
+                        // tables right-align: it lets the eye compare
+                        // magnitude vertically without reading each value.
                         s.clear(); let _ = write!(s, "{:.0}", row.strike);
-                        painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
+                        painter.text(egui::pos2(x + col_stk, y_center), egui::Align2::RIGHT_CENTER,
                             &s, mono_lg(), t.text);
                         x += col_stk + gap;
 
                         // Bid
                         s.clear(); let _ = write!(s, "{:.2}", row.bid);
-                        painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
+                        painter.text(egui::pos2(x + col_bid, y_center), egui::Align2::RIGHT_CENTER,
                             &s, mono_lg(), color);
                         x += col_bid + gap;
 
                         // Ask
                         s.clear(); let _ = write!(s, "{:.2}", row.ask);
-                        painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
+                        painter.text(egui::pos2(x + col_ask, y_center), egui::Align2::RIGHT_CENTER,
                             &s, mono_lg(), t.dim);
                         x += col_ask + gap;
 
@@ -1861,7 +1868,7 @@ if is_spawn || watchlist.open {
                         else if row.oi >= 1_000 { let _ = write!(s, "{},{:03}", row.oi / 1000, row.oi % 1000); }
                         else { let _ = write!(s, "{}", row.oi); }
                         let oi_x = x;
-                        painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
+                        painter.text(egui::pos2(x + col_oi, y_center), egui::Align2::RIGHT_CENTER,
                             &s, TextStyle::MonoSm.font_id_in(ui), color_half(t.dim));
 
                         // IV indicator — left edge strip on the row

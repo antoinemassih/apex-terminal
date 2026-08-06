@@ -283,11 +283,16 @@ how it looks.
 
 **Fixed**: it is now `Select`. The word is short enough to spell.
 
-### 2.5 — LOW — numeric columns are left-aligned
+### 2.5 — LOW — numeric columns were left-aligned
 
 Consistent, so not an inconsistency — but for financial data, right-aligned
 numerals are near-universal because they let the eye compare magnitude down a
-column. A design call, not a bug.
+column without reading each value.
+
+**Fixed.** STK / BID / ASK / OI are right-aligned, and the headers are aligned
+to the same edge — so header and column share one rule rather than two
+conventions that have to be kept in sync. Decimal points now line up down each
+column.
 
 ### 2.6 — LOW — tab-bar divider appears once
 
@@ -458,12 +463,22 @@ Two defects stacked:
    the accent is reserved for hover/drag. An affordance should announce itself
    on approach, not compete with the content it separates.
 
-### 3.7 — MEDIUM — BUY/SELL are ellipses, FLATTEN/CANCEL are rounded rects
+### 3.7 — MEDIUM — three corner treatments in one four-button row
 
-In one four-control row, two controls render as full ovals (a `Pill` radius
-applied to a box tall enough that the radius consumes the whole height) and two
-as rounded rectangles. Two shape languages side by side. Not fixed — this is a
-design call about whether `RadiusTier::Pill` should clamp relative to height.
+BUY/SELL rendered as full ovals, FLATTEN as a rounded rectangle, CANCEL as a
+pill. A `Pill` radius is `min(w, h) / 2`, which is correct — and on a control
+this close to square (≈64×52 at the default sidebar width) it produces an
+ellipse. FLATTEN and CANCEL are half-height and wider, so the same tier reads
+correctly on them; and because they are `NeutralAction` vs `Secondary` they
+resolve through *different* recipes, giving a third shape.
+
+**Fixed at the call site, not in the tier.** `Pill` is right almost everywhere
+else, and its definition is not what is wrong — the aspect ratio of these
+particular controls is, and a radius rule cannot know that. All four now take
+an explicit `r_lg_cr()`.
+
+The underlying point is worth keeping: **variant is a semantic choice and
+should not also decide shape within one control group.**
 
 ### 3.8 — MEDIUM — top nav overlaps at 1600px width
 
@@ -570,6 +585,8 @@ case by case.
 | 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
 | 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
+| 2.5 | Chain numerics left-aligned | `watchlist_panel.rs` — right-aligned, headers too |
+| 3.7 | Three corner treatments in one button row | `dom_panel.rs` — explicit `r_lg_cr()` |
 | 3.3 | Object tree had two empty-state treatments | `object_tree.rs` — glyph on all four |
 | 3.8 | Nav middle/right collision at narrow widths | `top_nav.rs` — measured, not pinned |
 | 2.2 | Chain headers drifted off their columns | `watchlist_panel.rs` — one layout mechanism |
@@ -589,7 +606,6 @@ control-size 4/4.
 
 ## 7. Open — not fixed
 
-order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 header/data adjacency, §2.5 numeric alignment, §2.6 tab divider, §3.4
-playbook void, §3.5 playbook label order, §3.7 mixed
-button shapes, §3.8 status-pills / nav overlap below ~2000px (the middle-vs-right
+order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 header/data adjacency, §2.6 tab divider, §3.4
+playbook void, §3.5 playbook label order, §3.8 status-pills / nav overlap below ~2000px (the middle-vs-right
 half is fixed).
