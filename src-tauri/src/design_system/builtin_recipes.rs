@@ -242,6 +242,24 @@ fn aperture() -> RecipeSet {
             )
             .on_hover(d().fill(shade(ToneRef::Accent, ShadeRef::S400))),
         ),
+        // `button.action` — SHAPE ONLY, for the big block controls in a
+        // trading action row (DOM BUY / SELL / FLATTEN / CANCEL).
+        //
+        // Radius and nothing else. The first version of this key mirrored
+        // `button.primary` in full, including `.fill(Accent)` — which promptly
+        // repainted FLATTEN (neutral) and CANCEL (soft red) in accent orange
+        // and collapsed the row's semantics, the exact defect that BUY-and-SELL
+        // -are-the-same-colour was. A CONTEXT key must not decide TONE; the
+        // variant does that.
+        //
+        // Why it exists: `button.primary`'s `Pill` resolves to min(w, h) / 2,
+        // correct in general and a full ELLIPSE on a ~64x52 control. These four
+        // used to escape that with a hardcoded `corner_radius_asymmetric` per
+        // call site, which pinned the shape. Now each style picks it.
+        (
+            "button.action",
+            spec(d().radius(RadiusTier::Lg)),
+        ),
         // `.ds-btn--secondary { border: 1.5px solid border; background:
         // transparent }` + `.ds-btn { font-weight: 500 }`, `.is-active` →
         // inverted block.
@@ -356,6 +374,24 @@ fn cadence() -> RecipeSet {
                     .weight(700),
             )
             .on_hover(d().fill(shade(ToneRef::Accent, ShadeRef::S400))),
+        ),
+        // `button.action` — SHAPE ONLY, for the big block controls in a
+        // trading action row (DOM BUY / SELL / FLATTEN / CANCEL).
+        //
+        // Radius and nothing else. The first version of this key mirrored
+        // `button.primary` in full, including `.fill(Accent)` — which promptly
+        // repainted FLATTEN (neutral) and CANCEL (soft red) in accent orange
+        // and collapsed the row's semantics, the exact defect that BUY-and-SELL
+        // -are-the-same-colour was. A CONTEXT key must not decide TONE; the
+        // variant does that.
+        //
+        // Why it exists: `button.primary`'s `Pill` resolves to min(w, h) / 2,
+        // correct in general and a full ELLIPSE on a ~64x52 control. These four
+        // used to escape that with a hardcoded `corner_radius_asymmetric` per
+        // call site, which pinned the shape. Now each style picks it.
+        (
+            "button.action",
+            spec(d().radius(RadiusTier::Lg)),
         ),
         // `.ds-btn--secondary { background: bg-surface; border-radius:
         // radius-md; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04) }`.
@@ -490,6 +526,24 @@ fn alto() -> RecipeSet {
                     .fill(tone(ToneRef::Accent))
                     .bevel_raised(tint(ToneRef::Text, 46), tint(ToneRef::Bg, 64)),
             ),
+        ),
+        // `button.action` — SHAPE ONLY, for the big block controls in a
+        // trading action row (DOM BUY / SELL / FLATTEN / CANCEL).
+        //
+        // Radius and nothing else. The first version of this key mirrored
+        // `button.primary` in full, including `.fill(Accent)` — which promptly
+        // repainted FLATTEN (neutral) and CANCEL (soft red) in accent orange
+        // and collapsed the row's semantics, the exact defect that BUY-and-SELL
+        // -are-the-same-colour was. A CONTEXT key must not decide TONE; the
+        // variant does that.
+        //
+        // Why it exists: `button.primary`'s `Pill` resolves to min(w, h) / 2,
+        // correct in general and a full ELLIPSE on a ~64x52 control. These four
+        // used to escape that with a hardcoded `corner_radius_asymmetric` per
+        // call site, which pinned the shape. Now each style picks it.
+        (
+            "button.action",
+            spec(d().radius(RadiusTier::Sm)),
         ),
         // `.ds-btn--secondary { background: linear-gradient(bg-elevated,
         // bg-surface); border: 1px solid border; box-shadow:
@@ -656,6 +710,24 @@ fn mariner() -> RecipeSet {
                     .fill(tone(ToneRef::Accent))
                     .bevel_raised(tint(ToneRef::Text, 56), tint(ToneRef::Bg, 71)),
             ),
+        ),
+        // `button.action` — SHAPE ONLY, for the big block controls in a
+        // trading action row (DOM BUY / SELL / FLATTEN / CANCEL).
+        //
+        // Radius and nothing else. The first version of this key mirrored
+        // `button.primary` in full, including `.fill(Accent)` — which promptly
+        // repainted FLATTEN (neutral) and CANCEL (soft red) in accent orange
+        // and collapsed the row's semantics, the exact defect that BUY-and-SELL
+        // -are-the-same-colour was. A CONTEXT key must not decide TONE; the
+        // variant does that.
+        //
+        // Why it exists: `button.primary`'s `Pill` resolves to min(w, h) / 2,
+        // correct in general and a full ELLIPSE on a ~64x52 control. These four
+        // used to escape that with a hardcoded `corner_radius_asymmetric` per
+        // call site, which pinned the shape. Now each style picks it.
+        (
+            "button.action",
+            spec(d().radius(RadiusTier::Sm)),
         ),
         // `.ds-btn--secondary { box-shadow: inset 0 1px 0 rgba(180,210,240,.08),
         // inset 0 -1px 0 rgba(0,0,0,.38) }`, `:hover` lifts the highlight to
@@ -826,6 +898,24 @@ fn lucid() -> RecipeSet {
                     .border(tone(ToneRef::Text), BorderWidthTier::Std),
             ),
         ),
+        // `button.action` — SHAPE ONLY, for the big block controls in a
+        // trading action row (DOM BUY / SELL / FLATTEN / CANCEL).
+        //
+        // Radius and nothing else. The first version of this key mirrored
+        // `button.primary` in full, including `.fill(Accent)` — which promptly
+        // repainted FLATTEN (neutral) and CANCEL (soft red) in accent orange
+        // and collapsed the row's semantics, the exact defect that BUY-and-SELL
+        // -are-the-same-colour was. A CONTEXT key must not decide TONE; the
+        // variant does that.
+        //
+        // Why it exists: `button.primary`'s `Pill` resolves to min(w, h) / 2,
+        // correct in general and a full ELLIPSE on a ~64x52 control. These four
+        // used to escape that with a hardcoded `corner_radius_asymmetric` per
+        // call site, which pinned the shape. Now each style picks it.
+        (
+            "button.action",
+            spec(d().radius(RadiusTier::Md)),
+        ),
         (
             "button.ghost",
             spec(d().radius(RadiusTier::Md).border(tone(ToneRef::Border), BorderWidthTier::Std)),
@@ -981,6 +1071,24 @@ fn meridien() -> RecipeSet {
                     .border(tone(ToneRef::Text), BorderWidthTier::Std)
                     .text_size(TextSizeTier::Sm),
             ),
+        ),
+        // `button.action` — SHAPE ONLY, for the big block controls in a
+        // trading action row (DOM BUY / SELL / FLATTEN / CANCEL).
+        //
+        // Radius and nothing else. The first version of this key mirrored
+        // `button.primary` in full, including `.fill(Accent)` — which promptly
+        // repainted FLATTEN (neutral) and CANCEL (soft red) in accent orange
+        // and collapsed the row's semantics, the exact defect that BUY-and-SELL
+        // -are-the-same-colour was. A CONTEXT key must not decide TONE; the
+        // variant does that.
+        //
+        // Why it exists: `button.primary`'s `Pill` resolves to min(w, h) / 2,
+        // correct in general and a full ELLIPSE on a ~64x52 control. These four
+        // used to escape that with a hardcoded `corner_radius_asymmetric` per
+        // call site, which pinned the shape. Now each style picks it.
+        (
+            "button.action",
+            spec(d().radius(RadiusTier::None)),
         ),
         (
             "button.ghost",
@@ -1447,8 +1555,13 @@ mod tests {
     /// Authoring an unregistered key produces dead data — no widget reads it.
     #[test]
     fn every_authored_key_is_registered() {
-        const REGISTERED: [&str; 28] = [
+        const REGISTERED: [&str; 29] = [
             "button.primary", "button.ghost", "button.danger", "button.success", "button.chrome",
+            // `button.action` — large block controls in a trading action row.
+            // Consumed via `Button::recipe_key("button.action")` (the DOM
+            // BUY/SELL/FLATTEN/CANCEL row), not via a Variant, because it is a
+            // CONTEXT ("this is an action row") rather than a semantic tone.
+            "button.action",
             "tab.line", "tab.line.active", "tab.pill", "tab.pill.active",
             "row.list", "row.list.selected", "row.list.hover",
             "section.header", "section.header.fill",
@@ -1644,5 +1757,48 @@ mod card_duplication_tests {
             "all six styles author a `card` recipe that nothing consumes; if this \
              set changed, the duplication was touched — see this test's docs"
         );
+    }
+}
+
+#[cfg(test)]
+mod action_key_tests {
+    use super::*;
+
+    /// `button.action` must be authored by EVERY style and must carry a radius.
+    ///
+    /// The key exists so the DOM action row's corner treatment is a per-style
+    /// decision instead of a hardcoded `corner_radius_asymmetric` at four call
+    /// sites. If a style stops authoring it, those buttons silently fall back
+    /// to `button.primary`'s `Pill` — which is what made them ellipses.
+    #[test]
+    fn every_style_authors_an_action_radius() {
+        for id in ["aperture","cadence","alto","mariner","lucid","meridien"] {
+            let set = builtin_recipes(id);
+            let spec = set.get("button.action")
+                .unwrap_or_else(|| panic!("style `{id}` does not author button.action"));
+            let d = &spec.base;
+            assert!(
+                d.radius.is_some(),
+                "style `{id}` authors button.action without a radius — the key \
+                 exists ONLY to carry that decision"
+            );
+        }
+    }
+
+    /// It must carry SHAPE ONLY. The first version mirrored `button.primary`
+    /// including `.fill(Accent)`, which repainted FLATTEN (neutral) and CANCEL
+    /// (soft red) in accent orange — collapsing the row's semantics exactly the
+    /// way BUY-and-SELL-are-the-same-colour did. A context key decides shape;
+    /// the variant decides tone.
+    #[test]
+    fn action_key_never_decides_tone() {
+        for id in ["aperture","cadence","alto","mariner","lucid","meridien"] {
+            let set = builtin_recipes(id);
+            if let Some(spec) = set.get("button.action") {
+                let d = &spec.base;
+                assert!(d.fill.is_none(), "style `{id}`: button.action must not set a fill");
+                assert!(d.text.is_none(), "style `{id}`: button.action must not set ink");
+            }
+        }
     }
 }

@@ -222,6 +222,17 @@ pub fn activate_theme_pack(ctx: &Context, pack: &ThemePack) {
         ctx,
         Arc::new(pack.recipes.clone()),
     );
+    // CLAIM ownership of the ambient set.
+    //
+    // `gpu.rs` re-stashes the BUILT-IN recipes whenever the active style
+    // changes (without that, the recipe layer stayed pinned to whatever style
+    // was active on frame 1). It skips doing so when this marker is absent,
+    // which is how it knows a pack owns the set. Removing the marker here
+    // means a pack's recipes survive a style switch instead of being silently
+    // replaced by the built-ins for the newly selected style.
+    ctx.data_mut(|d| {
+        d.remove::<String>(egui::Id::new("apex_ambient_recipes_builtin_style"))
+    });
 
     // ── 4. Typography → font loader ───────────────────────────────────────────
     let typo = &pack.style_system.typography;

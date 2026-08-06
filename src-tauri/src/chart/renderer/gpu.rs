@@ -5343,12 +5343,34 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
     // a real RecipeSet — if a pack was activated, its recipes are already in
     // egui memory and we must not overwrite them with the empty placeholder.
     {
+        // Which style the BUILTIN path last stashed for. Only this path writes
+        // it, so its absence means "a ThemePack owns the ambient set".
+        let marker_id = egui::Id::new("apex_ambient_recipes_builtin_style");
         let has_pack_recipes = ctx.data(|d| {
             d.get_temp::<std::sync::Arc<crate::design_system::recipes::RecipeSet>>(
                 egui::Id::new("apex_ambient_recipes"),
             ).is_some()
         });
-        if !has_pack_recipes {
+        let builtin_marker: Option<String> = ctx.data(|d| d.get_temp(marker_id));
+        let style_id = crate::chart_renderer::ui::style::active_style_system()
+            .meta.id.clone();
+
+        // A pack owns the set ONLY if it stashed one and we never did.
+        let pack_owns = has_pack_recipes && builtin_marker.is_none();
+        // Otherwise re-stash whenever the ACTIVE STYLE changed.
+        //
+        // This used to be `if !has_pack_recipes { ... }` alone — and that
+        // condition is false forever after the first frame, because the stash
+        // itself is what `has_pack_recipes` detects. The recipe layer was
+        // therefore pinned to whatever style happened to be active on frame 1
+        // and never updated again: switching design systems changed tokens and
+        // palette (those resolve through other paths) while every recipe —
+        // button radii, card borders, tab treatments — silently kept the
+        // startup style's values.
+        //
+        // The whole point of the layer is "switching styles restyles components
+        // structurally with zero widget-code changes". It could not do that.
+        if !pack_owns && builtin_marker.as_deref() != Some(style_id.as_str()) {
             // M3: BUILTIN RECIPES. Previously this installed an EMPTY set
             // unless a `.apextheme` pack shipped one — and no pack ships, so
             // the whole recipe layer resolved to "return default" 100% of the
@@ -5357,12 +5379,11 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
             // switching styles restyles components structurally with zero
             // widget-code changes. Styles without authored data get an empty
             // set, exactly as before.
-            let style_id = crate::chart_renderer::ui::style::active_style_system()
-                .meta.id.clone();
             crate::ui_kit::widgets::theme::set_ambient_recipes(
                 ctx,
                 std::sync::Arc::new(crate::design_system::builtin_recipes(&style_id)),
             );
+            ctx.data_mut(|d| d.insert_temp(marker_id, style_id.clone()));
         }
     }
 

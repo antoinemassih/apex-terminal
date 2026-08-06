@@ -529,20 +529,21 @@ pub(crate) fn draw(
             .tint(t.bull)
             .size(KitSize::Md)
             .kbd("Ctrl+B")
-            // Explicit radius, overriding `button.primary`'s RadiusTier::Pill.
+            // `button.action`, not `button.primary`.
             //
-            // A pill radius is `min(w, h) / 2`, which is correct — and on a
-            // control this close to square (≈64x52 at the default sidebar
-            // width) it produces a full ELLIPSE. BUY and SELL rendered as ovals
-            // beside FLATTEN and CANCEL, which are half-height and wider and so
-            // came out as proper rounded rectangles: two shape languages in one
-            // four-button row.
+            // These four are large block controls in a trading action row, and
+            // `button.primary`'s `RadiusTier::Pill` resolves to min(w, h) / 2 —
+            // a full ELLIPSE at this near-square aspect ratio. That used to be
+            // escaped with a hardcoded `corner_radius_asymmetric` at each call
+            // site, which fixed the look but pinned the shape: a style could no
+            // longer decide it.
             //
-            // Fixed at the call site, not in the tier: `Pill` is right almost
-            // everywhere else in the app, and its definition is not what is
-            // wrong here — the aspect ratio of this particular control is. A
-            // radius rule cannot know that.
-            .corner_radius_asymmetric(crate::ui_kit::style::r_lg_cr())
+            // The dedicated key is authored by all six styles, so the action
+            // row's corner treatment is a per-style decision again — and all
+            // four buttons resolve through ONE key, which is what makes them
+            // agree rather than four call sites happening to pass the same
+            // constant.
+            .recipe_key("button.action")
             // `fixed_size`, not `min_size`. These four slots are computed to
             // tile `aw` exactly, so any button that exceeds its slot paints
             // over its neighbour. With `min_size` (a floor only) that is what
@@ -566,13 +567,21 @@ pub(crate) fn draw(
             .variant(Variant::NeutralAction)
             .size(KitSize::Md)
             .kbd("Ctrl+Shift+F")
-            // Same explicit radius as BUY/SELL above — FLATTEN is
-            // NeutralAction and CANCEL is Secondary, so they resolve through
-            // DIFFERENT recipes and came out with different corner treatments
-            // (rounded rect vs full pill) despite sitting in the same
-            // four-button row. Variant is a semantic choice; it should not
-            // also decide shape within one control group.
-            .corner_radius_asymmetric(crate::ui_kit::style::r_lg_cr())
+            // `button.action`, not `button.primary`.
+            //
+            // These four are large block controls in a trading action row, and
+            // `button.primary`'s `RadiusTier::Pill` resolves to min(w, h) / 2 —
+            // a full ELLIPSE at this near-square aspect ratio. That used to be
+            // escaped with a hardcoded `corner_radius_asymmetric` at each call
+            // site, which fixed the look but pinned the shape: a style could no
+            // longer decide it.
+            //
+            // The dedicated key is authored by all six styles, so the action
+            // row's corner treatment is a per-style decision again — and all
+            // four buttons resolve through ONE key, which is what makes them
+            // agree rather than four call sites happening to pass the same
+            // constant.
+            .recipe_key("button.action")
             .fixed_size(egui::vec2(mid_w, mid_half_h)))
     });
     // DOM Phase 1: FLATTEN closes the POSITION (cancel working orders +
@@ -594,13 +603,21 @@ pub(crate) fn draw(
             .fill(cancel_fill)
             .fg(order_cancel_fg())
             .kbd("Ctrl+Shift+Q")
-            // Same explicit radius as BUY/SELL above — FLATTEN is
-            // NeutralAction and CANCEL is Secondary, so they resolve through
-            // DIFFERENT recipes and came out with different corner treatments
-            // (rounded rect vs full pill) despite sitting in the same
-            // four-button row. Variant is a semantic choice; it should not
-            // also decide shape within one control group.
-            .corner_radius_asymmetric(crate::ui_kit::style::r_lg_cr())
+            // `button.action`, not `button.primary`.
+            //
+            // These four are large block controls in a trading action row, and
+            // `button.primary`'s `RadiusTier::Pill` resolves to min(w, h) / 2 —
+            // a full ELLIPSE at this near-square aspect ratio. That used to be
+            // escaped with a hardcoded `corner_radius_asymmetric` at each call
+            // site, which fixed the look but pinned the shape: a style could no
+            // longer decide it.
+            //
+            // The dedicated key is authored by all six styles, so the action
+            // row's corner treatment is a per-style decision again — and all
+            // four buttons resolve through ONE key, which is what makes them
+            // agree rather than four call sites happening to pass the same
+            // constant.
+            .recipe_key("button.action")
             .fixed_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
@@ -612,20 +629,21 @@ pub(crate) fn draw(
             .tint(t.bear)
             .size(KitSize::Md)
             .kbd("Ctrl+Shift+B")
-            // Explicit radius, overriding `button.primary`'s RadiusTier::Pill.
+            // `button.action`, not `button.primary`.
             //
-            // A pill radius is `min(w, h) / 2`, which is correct — and on a
-            // control this close to square (≈64x52 at the default sidebar
-            // width) it produces a full ELLIPSE. BUY and SELL rendered as ovals
-            // beside FLATTEN and CANCEL, which are half-height and wider and so
-            // came out as proper rounded rectangles: two shape languages in one
-            // four-button row.
+            // These four are large block controls in a trading action row, and
+            // `button.primary`'s `RadiusTier::Pill` resolves to min(w, h) / 2 —
+            // a full ELLIPSE at this near-square aspect ratio. That used to be
+            // escaped with a hardcoded `corner_radius_asymmetric` at each call
+            // site, which fixed the look but pinned the shape: a style could no
+            // longer decide it.
             //
-            // Fixed at the call site, not in the tier: `Pill` is right almost
-            // everywhere else in the app, and its definition is not what is
-            // wrong here — the aspect ratio of this particular control is. A
-            // radius rule cannot know that.
-            .corner_radius_asymmetric(crate::ui_kit::style::r_lg_cr())
+            // The dedicated key is authored by all six styles, so the action
+            // row's corner treatment is a per-style decision again — and all
+            // four buttons resolve through ONE key, which is what makes them
+            // agree rather than four call sites happening to pass the same
+            // constant.
+            .recipe_key("button.action")
             .fixed_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; if p > 0.0 { *new_order = Some((OrderSide::Sell, p, *order_qty)); } }
