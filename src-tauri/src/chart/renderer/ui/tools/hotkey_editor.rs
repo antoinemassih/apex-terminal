@@ -103,7 +103,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     let key_bg = if *is_editing { tint(t, Tone::Accent, alpha_tint()) } else { tint(t, Tone::Border, alpha_tint()) };
                     let key_fg = if *is_editing { t.accent } else { tint(t, Tone::Text, alpha_muted()) };
                     Button::new(hk_key_name.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(key_fg)
-                        .fill(key_bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(80.0, row_height_dense())).show(ui, t);
+                        .fill(key_bg).corner_radius(crate::ui_kit::style::radius_sm()).min_size(egui::vec2(80.0, row_height_dense())).show(ui, t);
                 });
             });
         }

@@ -65,8 +65,8 @@ const PILL_H: f32 = 14.0;
 /// shared `Tag` widget renders too large for these dense diagnostics rows.
 fn pill(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(PILL_W, PILL_H), egui::Sense::hover());
-    ui.painter().rect_filled(rect, current().r_md, color_alpha(color, 50));
-    ui.painter().rect_stroke(rect, current().r_md, egui::Stroke::new(current().stroke_std, color), egui::StrokeKind::Inside);
+    ui.painter().rect_filled(rect, crate::ui_kit::style::radius_md(), color_alpha(color, 50));
+    ui.painter().rect_stroke(rect, crate::ui_kit::style::radius_md(), egui::Stroke::new(crate::ui_kit::style::stroke_std(), color), egui::StrokeKind::Inside);
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
         text, egui::FontId::proportional(font_xs()), color);
 }
@@ -316,7 +316,7 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
         ui.horizontal(|ui| {
             ui.add_space(gap_md());
             let (pill_rect, _) = ui.allocate_exact_size(egui::vec2(62.0, 14.0), egui::Sense::hover());
-            ui.painter().rect_filled(pill_rect, current().r_sm, color_alpha(color, 40));
+            ui.painter().rect_filled(pill_rect, crate::ui_kit::style::radius_sm(), color_alpha(color, 40));
             ui.painter().text(pill_rect.center(), egui::Align2::CENTER_CENTER,
                 &label, egui::FontId::monospace(font_xs()), color);
             ui.add_space(gap_sm());

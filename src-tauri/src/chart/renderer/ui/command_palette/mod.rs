@@ -463,13 +463,13 @@ fn draw_normal_mode(
                                      else if resp.hovered() { tint(t, Tone::Accent, 18) }
                                      else { egui::Color32::TRANSPARENT };
                             let painter = ui.painter_at(rect);
-                            painter.rect_filled(rect, current().r_md, bg);
+                            painter.rect_filled(rect, crate::ui_kit::style::radius_md(), bg);
 
                             let chip_col = cat_from_label(cat_label).map(|c| c.color(t)).unwrap_or(t.dim);
                             let chip_rect = egui::Rect::from_min_size(
                                 rect.min + egui::vec2(6.0, (row_h - 14.0) / 2.0),
                                 egui::vec2(62.0, 14.0));
-                            painter.rect_filled(chip_rect, current().r_sm, color_very_dim(chip_col));
+                            painter.rect_filled(chip_rect, crate::ui_kit::style::radius_sm(), color_very_dim(chip_col));
                             painter.text(chip_rect.center(), egui::Align2::CENTER_CENTER,
                                 cat_label, egui::FontId::proportional(super::style::font_xs()), chip_col);
 

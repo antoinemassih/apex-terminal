@@ -606,7 +606,7 @@ fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme
 fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: &mut ScriptResultTab, t: &Theme) {
     let is_active = *active == tab;
     let resp = Button::toggle(label, is_active)
-        .corner_radius(crate::chart_renderer::ui::style::current().r_md as f32)
+        .corner_radius(crate::ui_kit::style::radius_md())
         .show(ui, t);
     if resp.clicked() {
         *active = tab;

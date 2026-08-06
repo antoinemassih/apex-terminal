@@ -294,7 +294,7 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
                 };
 
                 let corner_r: egui::CornerRadius = if self.connected_pills {
-                    let r = super::super::style::current().r_sm;
+                    let r = crate::ui_kit::style::radius_sm().round() as u8;
                     let is_first = i == 0;
                     let is_last = i == n.saturating_sub(1);
                     match (is_first, is_last) {

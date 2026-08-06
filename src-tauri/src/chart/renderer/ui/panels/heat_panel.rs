@@ -174,7 +174,7 @@ pub(crate) fn render_heat_panel(
                     let header_btn = ui.add(Button::new(header_text.as_str()).variant(Variant::Chrome)
                         .fg(sector_col)
                         .fill(color_alpha(sector_col, alpha_faint()))
-                        .corner_radius(current().r_md as f32)
+                        .corner_radius(crate::ui_kit::style::radius_md())
                         .min_size(egui::vec2(ui.available_width(), row_height_default()))
                         .frameless(true));
                     if header_btn.clicked() {

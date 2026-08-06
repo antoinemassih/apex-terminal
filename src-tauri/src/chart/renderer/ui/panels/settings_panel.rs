@@ -737,7 +737,7 @@ fn draw_chart(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t
                             let fg = if active { t.accent } else { tint(t, Tone::Text, 120) };
                             let bg = if active { color_alpha(c, alpha_strong()) } else { color_alpha(c, alpha_muted()) };
                             if Button::new(label).variant(Variant::Chrome).size(Size::Xs).fg(fg)
-                                .fill(bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(38.0, row_height_dense())).show(ui, t).clicked() {
+                                .fill(bg).corner_radius(crate::ui_kit::style::radius_sm()).min_size(egui::vec2(38.0, row_height_dense())).show(ui, t).clicked() {
                                 chart.session_bg_color = hex.to_string();
                             }
                         }

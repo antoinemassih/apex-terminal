@@ -17,8 +17,8 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.add_space(gap_lg());
         let (badge_rect, _) = ui.allocate_exact_size(egui::vec2(68.0, 18.0), egui::Sense::hover());
         let painter = ui.painter();
-        painter.rect_filled(badge_rect, current().r_lg, color_very_dim(Category::Ai.color(t)));
-        painter.rect_stroke(badge_rect, current().r_lg, egui::Stroke::new(current().stroke_std, Category::Ai.color(t)), egui::StrokeKind::Inside);
+        painter.rect_filled(badge_rect, crate::ui_kit::style::radius_lg(), color_very_dim(Category::Ai.color(t)));
+        painter.rect_stroke(badge_rect, crate::ui_kit::style::radius_lg(), egui::Stroke::new(crate::ui_kit::style::stroke_std(), Category::Ai.color(t)), egui::StrokeKind::Inside);
         painter.text(badge_rect.center(), egui::Align2::CENTER_CENTER,
             "GEMMA 4", egui::FontId::proportional(font_sm()), Category::Ai.color(t));
         ui.add_space(gap_lg());
@@ -195,7 +195,7 @@ fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart]
         // Sparkline
         let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 54.0), egui::Sense::hover());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, current().r_md, color_half(t.toolbar_bg));
+        painter.rect_filled(rect, crate::ui_kit::style::radius_md(), color_half(t.toolbar_bg));
         let tail: Vec<_> = bars.iter().rev().take(60).rev().cloned().collect();
         if tail.len() >= 2 {
             let (mn, mx) = tail.iter().fold((f32::MAX, f32::MIN), |(a, b), bar| (a.min(bar.low), b.max(bar.high)));
@@ -213,8 +213,8 @@ fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart]
         ui.add(BodyLabel::new("Volume    —").color(t.dim));
         ui.add_space(gap_md());
         let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::hover());
-        ui.painter().rect_stroke(rect, current().r_md,
-            egui::Stroke::new(current().stroke_std, color_dim(t.dim)), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(rect, crate::ui_kit::style::radius_md(),
+            egui::Stroke::new(crate::ui_kit::style::stroke_std(), color_dim(t.dim)), egui::StrokeKind::Inside);
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
             "no cached bars", egui::FontId::proportional(font_sm()), t.dim);
     }
@@ -229,7 +229,7 @@ fn draw_theme_swatches(ui: &mut egui::Ui, th: &Theme) {
         let r = egui::Rect::from_min_size(
             egui::pos2(rect.min.x + i as f32 * w, rect.min.y),
             egui::vec2(w, rect.height()));
-        painter.rect_filled(r, current().r_sm, *c);
+        painter.rect_filled(r, crate::ui_kit::style::radius_sm(), *c);
     }
 }
 

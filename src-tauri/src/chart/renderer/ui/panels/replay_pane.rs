@@ -428,12 +428,12 @@ fn draw_progress(ui: &mut egui::Ui, s: &ReplayPaneState, t: &Theme) {
     let h = 14.0;
     let (rect, _) = ui.allocate_exact_size(egui::vec2(total_w, h), egui::Sense::hover());
     // Track
-    ui.painter().rect_filled(rect, current().r_sm, tint(t, Tone::Border, alpha_muted()));
+    ui.painter().rect_filled(rect, crate::ui_kit::style::radius_sm(), tint(t, Tone::Border, alpha_muted()));
     // Fill
     let fill_w = total_w * progress;
     if fill_w > 0.0 {
         let fill_rect = egui::Rect::from_min_size(rect.min, egui::vec2(fill_w, h));
-        ui.painter().rect_filled(fill_rect, current().r_sm, t.accent);
+        ui.painter().rect_filled(fill_rect, crate::ui_kit::style::radius_sm(), t.accent);
     }
     // Scrub handle (visual only — drag-to-seek would need a backend seek
     // endpoint that the MVP doesn't expose).

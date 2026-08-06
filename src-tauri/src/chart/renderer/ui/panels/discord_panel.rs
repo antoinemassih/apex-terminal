@@ -172,7 +172,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         .size(Size::Sm)
                         .fg(egui::Color32::WHITE)
                         .fill(discord_blurple)
-                        .corner_radius(current().r_lg as f32)
+                        .corner_radius(crate::ui_kit::style::radius_lg())
                         // Off-ladder 36.0 → nearest rung Lg (34). This floor IS
                         // active (size Sm = 22), so it is a real -2px on a
                         // standalone empty-state CTA — traded for density-awareness.
@@ -303,7 +303,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         .size(Size::Sm)
                         .fg(egui::Color32::WHITE)
                         .fill(discord_blurple)
-                        .corner_radius(current().r_sm as f32)
+                        .corner_radius(crate::ui_kit::style::radius_sm())
                         .min_size(egui::vec2(160.0, row_height_tall()))
                     ).clicked() {
                         let guild_id = watchlist.discord.selected_guild.as_deref().unwrap_or("");
@@ -488,7 +488,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 .size(Size::Sm)
                 .fg(egui::Color32::WHITE)
                 .fill(discord_blurple)
-                .corner_radius(current().r_md as f32)
+                .corner_radius(crate::ui_kit::style::radius_md())
                 .min_size(egui::vec2(38.0, row_height_default()))
             ).clicked();
             if (send_clicked || (input.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter))))

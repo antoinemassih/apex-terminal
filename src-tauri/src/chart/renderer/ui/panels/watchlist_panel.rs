@@ -248,7 +248,7 @@ if is_spawn || watchlist.open {
                                 .size(Size::Xs)
                                 .fg(session_col)
                                 .fill(badge_bg)
-                                .corner_radius(current().r_sm as f32)
+                                .corner_radius(crate::ui_kit::style::radius_sm())
                                 .stroke(egui::Stroke::NONE)
                                 // Same floor the reservation above measured against —
                                 // if these two ever disagree, the cluster overruns.
@@ -882,7 +882,7 @@ if is_spawn || watchlist.open {
                                             let badge_bg = color_alpha(opt_color, 35);
                                             // legacy: monospace+strong; Button uses plain text
                                             let badge_resp = ui.add(Button::new(item_option_type).variant(Variant::Chrome).size(Size::Sm).fg(opt_color)
-                                                .fill(badge_bg).corner_radius(current().r_sm as f32).stroke(egui::Stroke::NONE)
+                                                .fill(badge_bg).corner_radius(crate::ui_kit::style::radius_sm()).stroke(egui::Stroke::NONE)
                                                 .min_size(BTN_ICON_SM));
                                             let _ = badge_resp;
                                             ui.add_space(gap_xs());

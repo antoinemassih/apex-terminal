@@ -438,7 +438,7 @@ fn draw_play_editor(
                 for tag in TAG_PRESETS {
                     let active = watchlist.play_editor.tags.iter().any(|t| t == tag);
                     if Button::toggle(*tag, active)
-                        .corner_radius(current().r_md as f32)
+                        .corner_radius(crate::ui_kit::style::radius_md())
                         .min_size(egui::vec2(0.0, Size::Xs.height()))
                         .show(ui, t).clicked() {
                         if active { watchlist.play_editor.tags.retain(|x| x != tag); }

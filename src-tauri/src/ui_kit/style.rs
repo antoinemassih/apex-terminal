@@ -1322,3 +1322,39 @@ mod m23_token_scope_tests {
         assert_eq!(frame_tokens().gap_md, base);
     }
 }
+
+#[cfg(test)]
+mod corner_scale_tests {
+    use super::*;
+
+    /// The radius TOKENS honour the user's corner-scale preference; the raw
+    /// `StyleSettings` fields do not.
+    ///
+    /// `radius_md()` is `frame_tokens().radius_md * corner_scale_override()`,
+    /// while `current().r_md` is the unscaled preset value. Around thirty call
+    /// sites read the raw field directly, so setting Corner Scale to Sharp
+    /// flattened some surfaces and left others rounded — the preference
+    /// appeared half-broken rather than off.
+    ///
+    /// This test exists so the distinction stays deliberate: if the scale ever
+    /// stops applying, the reason ~30 sites were converted disappears with it.
+    #[test]
+    fn corner_scale_override_actually_scales_the_radius_tokens() {
+        let base = radius_md();
+
+        set_corner_scale_override(Some(CornerScale::Sharp));
+        assert_eq!(radius_md(), 0.0, "Sharp must flatten every token-driven corner");
+
+        set_corner_scale_override(Some(CornerScale::Round));
+        let round = radius_md();
+
+        set_corner_scale_override(Some(CornerScale::Standard));
+        let standard = radius_md();
+
+        assert!(round > standard, "Round ({round}) must exceed Standard ({standard})");
+
+        // Restore so the shared thread-local does not leak into other tests.
+        set_corner_scale_override(None);
+        assert_eq!(radius_md(), base, "clearing the override must restore the preset value");
+    }
+}
