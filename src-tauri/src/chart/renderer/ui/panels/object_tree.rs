@@ -677,8 +677,17 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
 
 fn draw_indicators_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
     if chart.indicators.is_empty() {
+        // `.glyph(..)` on ALL FOUR empty states, not just DRAWINGS.
+        //
+        // Every section here uses `PanelEmpty`, but only the drawings one set
+        // a glyph — so one zero-item state rendered as icon + heading + hint
+        // at ~280px tall while the other three, in the same panel and in the
+        // identical condition, rendered as two bare lines at ~180px. Same
+        // state, two visual languages, decided by whether one builder call
+        // was present.
         PanelEmpty::new("No indicators")
             .hint("Add via the Indicators panel")
+            .glyph(Icon::PULSE)
             .show(ui, t);
         return;
     }
@@ -737,6 +746,7 @@ fn draw_overlays_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
     if chart.symbol_overlays.is_empty() {
         PanelEmpty::new("No overlays")
             .hint("Add via the Indicators panel")
+            .glyph(Icon::STACK)
             .show(ui, t);
         return;
     }
@@ -789,6 +799,7 @@ fn draw_widgets_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
     if chart.chart_widgets.is_empty() {
         PanelEmpty::new("No widgets")
             .hint("Add via the Widgets toolbar")
+            .glyph(Icon::CHART_BAR)
             .show(ui, t);
         return;
     }

@@ -661,8 +661,34 @@ pub(crate) fn render(
             crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
             // ── Scrollable middle section ──
-            // Calculate available width: total - logo(25) - symbol(~70) - right section(~350)
-            let right_width = 130.0; // window controls + Opt button
+            //
+            // The middle gets everything the FIXED-RIGHT group does not need,
+            // and that width is MEASURED from the previous frame rather than
+            // guessed.
+            //
+            // It used to be `let right_width = 130.0;` — with a comment on the
+            // line above estimating the right section at "~350". The code and
+            // its own comment disagreed by 220px, and the code was the wrong
+            // one: the right group holds the window controls AND the whole
+            // panel-toggle run (Orders / Watchlist / Charts / Playbook / Feed
+            // / Screener / Signals / ORDER / search / settings / warnings).
+            //
+            // At a wide viewport the slack hid it. At 1600px the middle was
+            // handed ~220px more than existed, and the two groups drew on top
+            // of each other — the entire nav overprinted into an unreadable
+            // smear ("cript RRG Thurnal T&S Sdicator Aut1 Chart2H Análysis").
+            // Degrading by OVERLAP rather than by scroll is the worst
+            // available failure mode, and it was one pinned number away.
+            //
+            // Measure-last-frame is the same trick `ui_kit::Modal` already
+            // uses for its drop shadow. One frame of lag on a resize is
+            // invisible; a permanently wrong constant is not. The fallback is
+            // deliberately generous — erring toward a too-narrow middle
+            // scrolls, which is recoverable; erring wide overlaps, which is
+            // not.
+            let right_w_id = egui::Id::new("top_nav.right_group_w");
+            let right_width: f32 = ui.ctx().memory(|m| m.data.get_temp(right_w_id))
+                .unwrap_or(360.0);
             let middle_width = (ui.available_width() - right_width).max(60.0);
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
             // Density-first defaults for the entire scrollable middle nav:
@@ -913,7 +939,9 @@ pub(crate) fn render(
             }); // end scrollable middle
 
             // ── Fixed right: panels + window controls ──
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // `right_group` is bound so its measured width can be recorded for
+            // the NEXT frame's `middle_width` — see the comment there.
+            let right_group = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
 
                 // Window controls (Close / Maximize / Minimize) — delegated.
@@ -1342,6 +1370,18 @@ pub(crate) fn render(
 
                 crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
             });
+            // Record what the fixed-right group ACTUALLY needed, for the next
+            // frame. `min_rect` is the content it laid out, not the slot it
+            // was offered — the slot is the whole remaining row, which would
+            // feed back a growing number.
+            {
+                let w = right_group.response.rect.width();
+                if w.is_finite() && w > 0.0 {
+                    ui.ctx().memory_mut(|m| {
+                        m.data.insert_temp(egui::Id::new("top_nav.right_group_w"), w)
+                    });
+                }
+            }
 
             // (Opt button is in scroll area, near account strip toggle)
         });
