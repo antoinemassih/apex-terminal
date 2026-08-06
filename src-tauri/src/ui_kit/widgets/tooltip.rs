@@ -87,6 +87,17 @@ impl<'a> Tooltip<'a> {
     }
 
     pub fn show(self, ui: &mut Ui, response: &Response, theme: &dyn ComponentTheme) {
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, response, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point.
+    ///
+    /// Takes `response` before the ctx, keeping the widget's own argument
+    /// order — the ctx is the last parameter everywhere, so a caller does not
+    /// have to look up where it goes.
+    pub fn show_ctx(self, ui: &mut Ui, response: &Response, sctx: &super::ctx::StyleCtx<'_>) {
+        let theme = sctx.theme();
         let ctx = ui.ctx().clone();
         let id = response.id.with("apex_tooltip");
         let hover_start_id = id.with("hover_start");

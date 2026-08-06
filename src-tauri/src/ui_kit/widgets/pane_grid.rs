@@ -664,6 +664,13 @@ where
     /// Lay out and paint all panes. Applies any pending mutations (split, close,
     /// resize, focus) that result from user interaction.
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) {
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point — see `show`.
+    pub fn show_ctx(self, ui: &mut Ui, sctx: &super::ctx::StyleCtx<'_>) {
+        let theme = sctx.theme();
         let avail = ui.available_rect_before_wrap();
         if avail.width() < 1.0 || avail.height() < 1.0 {
             return;

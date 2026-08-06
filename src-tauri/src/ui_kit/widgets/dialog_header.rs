@@ -62,6 +62,17 @@ impl<'a> DialogHeader<'a> {
 
     /// Render against an explicit theme. Returns `true` if close was clicked.
     pub fn show_with(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> bool {
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point — see `show_with`.
+    ///
+    /// Named `show_with` rather than `show` for historical reasons; the ctx
+    /// entry point uses the canonical name so callers do not have to remember
+    /// which widgets are irregular.
+    pub fn show_ctx(self, ui: &mut Ui, sctx: &super::ctx::StyleCtx<'_>) -> bool {
+        let theme = sctx.theme();
         // Resolved at render time; `Header::dialog` colors itself from `theme`.
         let _dim = self.dim.unwrap_or_else(|| theme.dim());
         Header::dialog(self.title)

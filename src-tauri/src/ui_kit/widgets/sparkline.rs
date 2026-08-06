@@ -81,7 +81,15 @@ impl<'a> Sparkline<'a> {
 
     /// Allocate a rect inside `ui` and paint the sparkline into it.
     /// Returns the egui `Response` for the allocated area.
-    pub fn show(self, ui: &mut egui::Ui, _theme: &dyn ComponentTheme) -> Response {
+    pub fn show(self, ui: &mut egui::Ui, theme: &dyn ComponentTheme) -> Response {
+        // Ambient ctx — see `ctx.rs` on why `from_theme` must not be used here.
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point — see `show`.
+    pub fn show_ctx(self, ui: &mut egui::Ui, sctx: &super::ctx::StyleCtx<'_>) -> Response {
+        let _theme = sctx.theme();
         let (rect, response) = ui.allocate_exact_size(self.size, Sense::hover());
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);

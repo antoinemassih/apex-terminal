@@ -52,6 +52,14 @@ impl<'a> HeatmapGrid<'a> {
 
     /// Render the grid. Mirrors the exact pixel geometry from heat_panel.rs:147-220.
     pub fn show(mut self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
+        // Ambient ctx — see `ctx.rs` on why `from_theme` must not be used here.
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point — see `show`.
+    pub fn show_ctx(mut self, ui: &mut Ui, sctx: &super::ctx::StyleCtx<'_>) -> Response {
+        let theme = sctx.theme();
         let items = self.cells;
         let num_cols = self.num_cols.max(1);
 

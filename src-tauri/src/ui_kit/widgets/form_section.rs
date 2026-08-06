@@ -171,6 +171,14 @@ impl<'a> FormActions<'a> {
 
     /// Render the button bar and return the horizontal strip's `Response`.
     pub fn show(mut self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
+        // Ambient ctx — see `ctx.rs` on why `from_theme` must not be used here.
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point — see `show`.
+    pub fn show_ctx(mut self, ui: &mut Ui, sctx: &super::ctx::StyleCtx<'_>) -> Response {
+        let theme = sctx.theme();
         ui.horizontal(|ui| {
             // Push buttons to the right.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

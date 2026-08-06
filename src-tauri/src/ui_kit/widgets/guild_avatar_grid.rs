@@ -55,6 +55,14 @@ impl<'a> GuildAvatarGrid<'a> {
     /// Render all guild avatars inline (no scroll — caller must wrap in ScrollArea).
     /// Returns a combined Response (last allocated rect; click info is handled via callback).
     pub fn show(mut self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
+        // Ambient ctx — see `ctx.rs` on why `from_theme` must not be used here.
+        let sctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        self.show_ctx(ui, &sctx)
+    }
+
+    /// [`StyleCtx`](super::ctx::StyleCtx) entry point — see `show`.
+    pub fn show_ctx(mut self, ui: &mut Ui, sctx: &super::ctx::StyleCtx<'_>) -> Response {
+        let theme = sctx.theme();
         let discord_blurple = st::discord_blurple();
         let icon_size = 32.0_f32;
 

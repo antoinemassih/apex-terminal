@@ -103,4 +103,29 @@ fi
 # bug was still present. Rule 4 exists because Rule 4 was wrong once.
 if ! python scripts/check_self_recursion.py; then fail=1; fi
 
+# ── Rule 5 ────────────────────────────────────────────────────────────────────
+# A widget that takes a `&dyn ComponentTheme` must expose a `show_ctx`.
+#
+# `show(ui, theme)` can only ever reach the AMBIENT recipes and tokens. A caller
+# that needs per-subtree overrides — a preview pane rendering against a
+# non-ambient RecipeSet, a density-scoped region — has nowhere to put them
+# without this entry point. Every themed widget now has one; this keeps it that
+# way, so the cascade cannot quietly become opt-out again.
+noctx=""
+for f in $W/*.rs; do
+  b=$(basename "$f" .rs)
+  case " theme ctx tokens mod " in *" $b "*) continue;; esac
+  grep -q "fn show_ctx" "$f" && continue
+  if grep -qE "pub fn show[a-z_]*\([^)]*theme: &(dyn )?ComponentTheme" "$f"; then
+    noctx="$noctx $b"
+  fi
+done
+if [ -n "$noctx" ]; then
+  echo "CASCADE GATE FAILED — themed widget with no show_ctx entry point:"
+  for u in $noctx; do echo "    $u"; done
+  echo "Add: pub fn show_ctx(self, ui, sctx: &StyleCtx) and have show() delegate"
+  echo "via StyleCtx::from_ui(theme, ui)."
+  fail=1
+fi
+
 [ $fail -eq 0 ] && echo "cascade gate OK" || exit 1
