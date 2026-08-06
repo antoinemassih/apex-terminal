@@ -241,6 +241,21 @@ BID data. The header row cannot be used to identify a single column.
 It is also separated from its data by an intervening control row
 (`Count / − 10 + / N M F`), so header and body are not even adjacent.
 
+**Fixed (alignment).** The headers were a `ui.horizontal` of
+`ui.allocate_ui(vec2(col_w, 14.0), ..)`. `allocate_ui` consumes only what its
+CONTENT needs, not the size requested — so each header advanced by its own
+label width (~26px for `STK`) instead of by its column width (44px+), and the
+error compounded left-to-right. The data rows, meanwhile, advance
+`x += col + gap` and paint directly.
+
+**One grid described by two different layout mechanisms.** They agreed only by
+coincidence, and did not. The header row now uses the same arithmetic the data
+rows use, which makes the alignment structural rather than maintained.
+
+The header/data ADJACENCY is still open: the header is emitted once above all
+expiry groups, so the first group's control row sits between it and its data.
+That is an ordering change, not an alignment one.
+
 ### 2.3 — MEDIUM — labels are clipped by the panel's left border
 
 Three occurrences, all touching the border with zero padding: the top-level
@@ -251,11 +266,22 @@ mostly clipped outside the panel — only a ~20px sliver shows.
 A systemic padding/clipping problem at that boundary, not three separate
 mistakes.
 
-### 2.4 — MEDIUM — truncated label reads as debug text
+**Fixed.** The chain body has no inner left margin, so a row starting at its
+content edge sits directly under the panel's left border stroke. Applied a
+shared `chain_row_inset()` at the three row starts. The proper fix is an inner
+margin on the chain body container, but that arm spans ~700 lines and wrapping
+it is a re-indent, not a change — the constant keeps the three sites from
+drifting apart in the meantime.
 
-`sel` floats unboxed in the DTE toolbar row with ~800px of dead space before
-the `Spread` chip. Not a word in this context; reads as truncated or
-leftover text.
+### 2.4 — MEDIUM — a label that read as debug text (not a truncation)
+
+`sel` floated unboxed in the DTE toolbar row. Reported as truncated; it was
+not — the literal string was always `"sel"`. But sitting between a bordered
+dropdown and the `Spread` chip, a lowercase three-letter fragment reads as
+leftover debug text rather than a control, which is how it was reported and
+how it looks.
+
+**Fixed**: it is now `Select`. The word is short enough to spell.
 
 ### 2.5 — LOW — numeric columns are left-aligned
 
@@ -514,6 +540,9 @@ case by case.
 | 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
 | 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
+| 2.2 | Chain headers drifted off their columns | `watchlist_panel.rs` — one layout mechanism |
+| 2.3 | Chain labels clipped by the panel border | `watchlist_panel.rs` — `chain_row_inset()` |
+| 2.4 | `sel` read as debug text | `watchlist_panel.rs` — `Select` |
 | 3.6 | Rail grip painted through the Settings modal | `right_rail.rs` — Order::Middle + idle hairline |
 | 3.1 | RRG axis titles collided with tick labels | `rrg_panel.rs` — derived gutters, disjoint bands |
 | 3.2 | Auto-chart slider labels zig-zagged | `auto_chart_panel.rs` → DS `Slider`; range-aware precision |
@@ -528,7 +557,6 @@ control-size 4/4.
 
 ## 7. Open — not fixed
 
-order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 chain header layout, §2.3 left-edge clipping, §2.4
-`sel` truncation, §2.5 numeric alignment, §2.6 tab divider, §3.3 object-tree empty states, §3.4
+order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 header/data adjacency, §2.5 numeric alignment, §2.6 tab divider, §3.3 object-tree empty states, §3.4
 playbook void, §3.5 playbook label order, §3.7 mixed
 button shapes, §3.8 top-nav overlap at 1600px.

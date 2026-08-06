@@ -309,19 +309,30 @@ def main():
     t_tok, _, s_tok = args.preset.partition(":")
     t_idx, t_name = resolve(t_tok, THEME_NAMES, "theme")
     s_idx, s_name = resolve(s_tok, STYLE_NAMES, "style")
-    cmd(args.port, {"cmd": "SetThemeIdx", "idx": t_idx, "pane": 0})
-    cmd(args.port, {"cmd": "SetStyleIdx", "idx": s_idx})
-    deadline = time.time() + 10.0
+    # RE-SEND, don't just poll.
+    #
+    # A single set-then-poll loses a race at startup: the app restores its
+    # persisted theme a moment after the inspector starts answering /health, so
+    # a preset sent immediately is applied and then overwritten. The script
+    # correctly refused to shoot (which is the point), but it refused a run
+    # that was merely early rather than wrong.
+    #
+    # Re-sending each round makes the convergence check tolerant of a late
+    # restore without weakening it: the loop still exits only when /state
+    # AGREES, and still gives up rather than shooting the wrong palette.
+    deadline = time.time() + 20.0
     seen = None
     while time.time() < deadline:
         try:
+            cmd(args.port, {"cmd": "SetThemeIdx", "idx": t_idx, "pane": 0})
+            cmd(args.port, {"cmd": "SetStyleIdx", "idx": s_idx})
             _, st = http("GET", args.port, "/state", None, timeout=5.0)
             seen = (st.get("active_theme_idx"), st.get("active_style_idx"))
             if seen == (t_idx, s_idx):
                 break
         except Exception:
             pass
-        time.sleep(0.1)
+        time.sleep(0.5)
     else:
         print(f"ERROR: preset never converged: asked {(t_idx, s_idx)}, app reports {seen}",
               file=sys.stderr)
@@ -331,7 +342,23 @@ def main():
     # Start from a known-clean UI. The last sweep inherited a modal from
     # whatever ran before it and never noticed.
     cmd(args.port, {"cmd": "CloseAllDialogs"})
-    time.sleep(0.3)
+
+    # ...and a known-clean RAIL. Side-panel open flags persist across app
+    # restarts and are NOT dialogs, so `no_dialogs` cannot see them. An
+    # inherited RRG panel re-flowed the whole right side and moved the
+    # watchlist out from under every crop taken of it — the capture was valid,
+    # it just wasn't of what the filename said.
+    #
+    # Anything that changes LAYOUT has to be reset here, not asserted per
+    # surface: an assertion can only catch what /state reports, and these
+    # panels are reported nowhere.
+    for c in ({"cmd": "SetRrgOpen", "open": False},
+              {"cmd": "SetAutoChartPanel", "open": False}):
+        try:
+            cmd(args.port, c)
+        except Exception as e:
+            print(f"  (rail reset: {c['cmd']} -> {e})", file=sys.stderr)
+    time.sleep(0.4)
 
     todo = SURFACES
     if args.only:

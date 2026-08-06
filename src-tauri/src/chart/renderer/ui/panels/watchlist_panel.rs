@@ -25,6 +25,20 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
 /// Map between `WatchlistTab` and the rail's instance-tab `u8` (for duplicates).
+/// Left inset for rows that start at the CHAIN body's content edge.
+///
+/// The chain body has no inner left margin, so a row beginning at
+/// `ui.min_rect().left()` sits directly under the panel's left border stroke.
+/// Three labels were visibly clipped by it — the `DTE` field label lost its
+/// leading character outright, and the `0DTE` / `1DTE` group headers touched
+/// the border with zero breathing room, unlike every other label in the panel.
+///
+/// The proper fix is an inner margin on the chain body container, but that arm
+/// spans ~700 lines and wrapping it is a re-indent, not a change. Applied at
+/// the row starts instead, via one named constant so the three sites cannot
+/// drift apart.
+fn chain_row_inset() -> f32 { crate::chart_renderer::ui::style::gap_sm() }
+
 fn wl_tab_to_u8(t: WatchlistTab) -> u8 {
     match t { WatchlistTab::Stocks => 0, WatchlistTab::Chain => 1, WatchlistTab::Heat => 2, WatchlistTab::Scan => 3 }
 }
@@ -1592,6 +1606,7 @@ if is_spawn || watchlist.open {
                         let dte_labels: Vec<String> = dte_values.iter().map(|&d| dte_label(d)).collect();
                         let dte_opts: Vec<(i32, &str)> = dte_values.iter().zip(dte_labels.iter())
                             .map(|(d, l)| (*d, l.as_str())).collect();
+                        ui.add_space(chain_row_inset());
                         dim_label(ui, "DTE", t.dim);
                         let mut cur_dte = watchlist.chain.far_dte;
                         if super::super::inputs::select::Dropdown::new("far_dte")
@@ -1607,7 +1622,17 @@ if is_spawn || watchlist.open {
                         }
                         // Select mode toggle
                         let sel_active = watchlist.chain.select_mode;
-                        let sel_lbl: String = if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() };
+                        // "Select", not "sel".
+                        //
+                        // Not a truncation bug — it was always the literal
+                        // string — but it read as one. Sitting unboxed between
+                        // a bordered dropdown and the `Spread` chip, a
+                        // lowercase three-letter fragment looks like leftover
+                        // debug text rather than a control, which is exactly
+                        // how the audit reported it. The word is short enough
+                        // to spell.
+                        let sel_lbl: String =
+                            if sel_active { format!("{} Select", Icon::CHECK) } else { "Select".into() };
                         if ui.add(Button::new(sel_lbl.as_str()).variant(Variant::Chip).size(Size::Sm)
                             .active(sel_active)).clicked() {
                             watchlist.chain.select_mode = !watchlist.chain.select_mode;
@@ -1731,17 +1756,47 @@ if is_spawn || watchlist.open {
                     let col_ask = col_ask * scale;
                     let col_oi = col_oi * scale;
 
-                    // Column headers
-                    ui.horizontal(|ui| {
-                        // ui.set_min_width removed — was preventing sidebar resize
-                        ui.spacing_mut().item_spacing.x = gap;
+                    // Column headers — painted with the SAME x arithmetic the
+                    // data rows use below, so they cannot drift from them.
+                    //
+                    // This was a `ui.horizontal` of
+                    // `ui.allocate_ui(vec2(col_w, 14.0), |ui| dim_label(..))`.
+                    // `allocate_ui` consumes only what its CONTENT needs, not
+                    // the size requested — so each header advanced by its own
+                    // label width (~26px for "STK") instead of by its column
+                    // width (44px+). The error compounded left-to-right: the
+                    // headers bunched at the left edge while the data spanned
+                    // the panel, and by `OI` the label sat above the BID
+                    // column. The header row was useless for identifying a
+                    // single column.
+                    //
+                    // One grid described by two different layout mechanisms —
+                    // a widget flow for the headers, `x += col + gap` for the
+                    // rows. They agreed only by coincidence, and did not.
+                    // Painting both the same way makes the alignment
+                    // structural rather than maintained.
+                    {
+                        let hdr_h = font_sm() + 2.0;
+                        let (hdr_rect, _) =
+                            ui.allocate_exact_size(egui::vec2(full_w, hdr_h), egui::Sense::hover());
+                        let hp = ui.painter_at(hdr_rect);
                         let hdr_color = color_dim(t.dim);
-                        ui.add_space(col_chk);
-                        ui.allocate_ui(egui::vec2(col_stk, 14.0), |ui| { dim_label(ui, "STK", hdr_color); });
-                        ui.allocate_ui(egui::vec2(col_bid, 14.0), |ui| { dim_label(ui, "BID", hdr_color); });
-                        ui.allocate_ui(egui::vec2(col_ask, 14.0), |ui| { dim_label(ui, "ASK", hdr_color); });
-                        ui.allocate_ui(egui::vec2(col_oi, 14.0), |ui| { dim_label(ui, "OI", hdr_color); });
-                    });
+                        let hy = hdr_rect.center().y;
+                        let mut hx = hdr_rect.left() + col_chk + gap;
+                        for (label, cw) in [
+                            ("STK", col_stk), ("BID", col_bid),
+                            ("ASK", col_ask), ("OI", col_oi),
+                        ] {
+                            hp.text(
+                                egui::pos2(hx, hy),
+                                egui::Align2::LEFT_CENTER,
+                                label,
+                                mono_sm(),
+                                hdr_color,
+                            );
+                            hx += cw + gap;
+                        }
+                    }
 
                     // ── Helper to render one option row ──
                     // Track clicked contract for opening chart (normal click).
@@ -2035,6 +2090,7 @@ if is_spawn || watchlist.open {
 
                         // Per-chain controls: 0DTE
                         ui.horizontal(|ui| {
+                            ui.add_space(chain_row_inset());
                             dim_label(ui, "0DTE", t.dim);
                             // Mode dropdown (Count, %, StdDev)
                             {
@@ -2096,6 +2152,7 @@ if is_spawn || watchlist.open {
 
                         // Per-chain controls: far DTE
                         ui.horizontal(|ui| {
+                            ui.add_space(chain_row_inset());
                             dim_label(ui, &format!("{}DTE", far_dte), t.dim);
                             {
                                 let sm_header = match watchlist.chain.far_strike_mode {
