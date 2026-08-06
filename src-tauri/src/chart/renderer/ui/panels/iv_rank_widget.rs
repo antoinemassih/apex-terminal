@@ -102,7 +102,7 @@ fn draw_bar(ui: &mut egui::Ui, rank_0_100: f32, t: &Theme) {
     let avail_w = ui.available_width().min(220.0);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, 10.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
-    let cr = egui::CornerRadius::same(radius_xs() as u8);
+    let cr = crate::ui_kit::style::r_xs_cr();
     // Background track — dim at muted alpha (~25% opacity).
     painter.rect_filled(rect, cr, tint(t, Tone::Dim, alpha_muted()));
     // Filled portion — semantic colour by rank zone.

@@ -1742,8 +1742,7 @@ pub(crate) fn render(
             // Tint is painted additively over the base using alpha blend.
             // We approximate by lerping toward the severity color.
             let tint_col   = color_alpha(sev_color, (tint_alpha as f32 * alpha) as u8);
-            let body_bg    = egui::Color32::from_rgba_unmultiplied(
-                base_bg.r(), base_bg.g(), base_bg.b(), (230.0 * alpha) as u8);
+            let body_bg    = crate::ui_kit::style::color_alpha(base_bg, (230.0 * alpha) as u8);
             let bar_col    = color_alpha(sev_color, (255.0 * bar_alpha_f * alpha) as u8);
             let text_col   = tint(t, Tone::Text, (230.0 * alpha) as u8);
             let icon_col   = color_alpha(sev_color, (200.0 * alpha) as u8);

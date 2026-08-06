@@ -173,11 +173,11 @@ pub fn render_screener_heatmap(
     // ── Top bar: operand pickers + filter chip ────────────────────────────────
     ui.horizontal_wrapped(|ui| {
         // Color operand picker
-        ui.label(egui::RichText::new("COLOR").font(egui::FontId::monospace(font_xs())).color(t.dim));
+        ui.label(egui::RichText::new("COLOR").font(crate::ui_kit::style::mono_xs()).color(t.dim));
         ui.add_space(gap_xs());
         let color_label = format!("{}  ▾", &heat_state.color_key.0);
         if ui.add(
-            egui::Button::new(egui::RichText::new(&color_label).font(egui::FontId::monospace(font_xs())).color(t.accent))
+            egui::Button::new(egui::RichText::new(&color_label).font(crate::ui_kit::style::mono_xs()).color(t.accent))
                 .fill(st::color_alpha(t.accent, st::alpha_faint()))
                 .stroke(egui::Stroke::NONE)
                 .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
@@ -189,11 +189,11 @@ pub fn render_screener_heatmap(
         ui.add_space(gap_md());
 
         // Size operand picker
-        ui.label(egui::RichText::new("SIZE").font(egui::FontId::monospace(font_xs())).color(t.dim));
+        ui.label(egui::RichText::new("SIZE").font(crate::ui_kit::style::mono_xs()).color(t.dim));
         ui.add_space(gap_xs());
         let size_label = format!("{}  ▾", &heat_state.size_key.0);
         if ui.add(
-            egui::Button::new(egui::RichText::new(&size_label).font(egui::FontId::monospace(font_xs())).color(t.dim))
+            egui::Button::new(egui::RichText::new(&size_label).font(crate::ui_kit::style::mono_xs()).color(t.dim))
                 .fill(st::color_alpha(palette_ct(t).base(Tone::Text), 8))
                 .stroke(egui::Stroke::NONE)
                 .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
@@ -207,7 +207,7 @@ pub fn render_screener_heatmap(
             ui.add_space(gap_md());
             let chip_label = format!("{}  {}", sf, crate::ui_kit::icons::Icon::X);
             if ui.add(
-                egui::Button::new(egui::RichText::new(&chip_label).font(egui::FontId::monospace(font_xs())).color(t.accent))
+                egui::Button::new(egui::RichText::new(&chip_label).font(crate::ui_kit::style::mono_xs()).color(t.accent))
                     .fill(st::color_alpha(t.accent, st::alpha_soft()))
                     .stroke(egui::Stroke::NONE)
                     .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
@@ -286,7 +286,7 @@ pub fn render_screener_heatmap(
                 let hdr_resp = ui.add(
                     egui::Button::new(
                         egui::RichText::new(&hdr_text)
-                            .font(egui::FontId::monospace(font_xs()))
+                            .font(crate::ui_kit::style::mono_xs())
                             .color(sector_col)
                     )
                     .fill(st::color_alpha(sector_col, st::alpha_faint()))
@@ -528,7 +528,7 @@ fn render_operand_picker(
                         let r = ui.add(
                             egui::Button::new(
                                 egui::RichText::new(op.as_str())
-                                    .font(egui::FontId::monospace(font_xs()))
+                                    .font(crate::ui_kit::style::mono_xs())
                                     .color(label_col)
                             )
                             .fill(if is_cur { st::color_alpha(palette_ct(t).base(Tone::Accent), st::alpha_faint()) } else { Color32::TRANSPARENT })

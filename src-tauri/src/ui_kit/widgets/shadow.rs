@@ -59,7 +59,7 @@ impl ShadowSpec {
     #[inline]
     fn themed_color(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme, alpha: u8) -> Color32 {
         let s = t.shadow_color();
-        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), alpha)
+        crate::ui_kit::style::color_alpha(s, alpha)
     }
 
     // P6.2 — deleted the four deprecated `sm/md/lg/xl()` constructors.
@@ -168,12 +168,7 @@ pub fn paint(painter: &Painter, target_rect: Rect, spec: ShadowSpec) {
         let expand = step as f32 + 1.0;
         let r = shadow_rect.expand(expand);
         let cr = base_corner + expand;
-        let color = Color32::from_rgba_unmultiplied(
-            spec.color.r(),
-            spec.color.g(),
-            spec.color.b(),
-            alpha,
-        );
+        let color = crate::ui_kit::style::color_alpha(spec.color, alpha,);
         painter.rect_filled(r, cr, color);
     }
 }

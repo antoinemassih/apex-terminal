@@ -596,7 +596,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 Fill::Shade(tone, shade) => pal.shade(tone, shade),
                 Fill::Alpha(tone, a) => {
                     let b = pal.base(tone);
-                    Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                    crate::ui_kit::style::color_alpha(b, a)
                 }
             })
             .unwrap_or(default_selected_color);
@@ -686,7 +686,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             // by the easing factor so the fade still works correctly.
             let base = resolved_selected_color;
             let animated_alpha = ((base.a() as f32) * selected_t).round() as u8;
-            let sel_bg = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), animated_alpha);
+            let sel_bg = crate::ui_kit::style::color_alpha(base, animated_alpha);
             painter.rect_filled(bg_rect, cr, sel_bg);
         }
 
@@ -839,7 +839,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 if btn.active {
                     painter.rect_filled(
                         r,
-                        CornerRadius::same(radius_sm() as u8),
+                        crate::ui_kit::style::r_sm_cr(),
                         color_alpha(
                             tone_col,
                             crate::ui_kit::tokens::alpha_soft(),

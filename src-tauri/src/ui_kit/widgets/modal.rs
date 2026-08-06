@@ -430,9 +430,7 @@ impl<'a> Modal<'a> {
                     // design-mode slider tunes scrim density app-wide.
                     let scrim_base = color_alpha(palette_ct(t).base(Tone::Bg), crate::ui_kit::style::alpha_scrim());
                     let scrim_alpha = (scrim_base.a() as f32 * appear_t) as u8;
-                    let scrim_color = Color32::from_rgba_unmultiplied(
-                        scrim_base.r(), scrim_base.g(), scrim_base.b(), scrim_alpha,
-                    );
+                    let scrim_color = crate::ui_kit::style::color_alpha(scrim_base, scrim_alpha,);
                     let _ = egui::Area::new(scrim_id)
                         .order(egui::Order::Background)
                         .fixed_pos(viewport.min)
@@ -601,8 +599,6 @@ fn dialog_window_frame(
             offset: [0, 8],
             blur:   28,
             spread: 2,
-            color:  Color32::from_rgba_unmultiplied(
-                shadow_tint.r(), shadow_tint.g(), shadow_tint.b(), 80,
-            ),
+            color:  crate::ui_kit::style::color_alpha(shadow_tint, 80,),
         })
 }

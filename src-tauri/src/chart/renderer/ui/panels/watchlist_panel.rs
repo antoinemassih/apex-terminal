@@ -311,7 +311,7 @@ if is_spawn || watchlist.open {
                     let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { color_dim(t.dim) };
                     let btn_rect = egui::Rect::from_min_size(egui::pos2(full_rect.right() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
                     let filter_btn_rect = btn_rect; // capture for popup anchor
-                    ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(font_sm()), icon_col);
+                    ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), icon_col);
                     let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
                     cursor::focus_ring(ui, &btn_resp, t.accent);
                     if btn_resp.clicked() { watchlist.update_sidebar_state(|s| s.filter_open = !s.filter_open); }
@@ -319,7 +319,7 @@ if is_spawn || watchlist.open {
                     // Columns config button (sliders icon)
                     let col_btn_rect = egui::Rect::from_min_size(egui::pos2(btn_rect.left() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
                     let col_icon_col = if watchlist.wl_columns_open { t.accent } else { color_dim(t.dim) };
-                    ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(font_sm()), col_icon_col);
+                    ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), col_icon_col);
                     let col_resp = ui.interact(col_btn_rect, egui::Id::new("wl_columns_btn"), egui::Sense::click());
                     cursor::focus_ring(ui, &col_resp, t.accent);
                     if col_resp.clicked() { watchlist.update_sidebar_state(|s| s.wl_columns_open = !s.wl_columns_open); }
@@ -1048,7 +1048,7 @@ if is_spawn || watchlist.open {
                                             .drag_confirmed(drag_confirmed)
                                             .sym_font(egui::FontId::monospace(font_sz))
                                             .chg_font(egui::FontId::proportional(font_sz))
-                                            .price_font(egui::FontId::proportional(font_md()))
+                                            .price_font(crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()))
                                             .price_string(price_str)
                                             .price_right_inset(24.0)
                                             // Panel symbol layout: star at left+16, sym at star+10 when star
@@ -1104,7 +1104,7 @@ if is_spawn || watchlist.open {
                                                 badge_rect.right_center(),
                                                 egui::Align2::RIGHT_CENTER,
                                                 &badge_text,
-                                                egui::FontId::proportional(font_sm()),
+                                                crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()),
                                                 t.dim,
                                             );
                                             let badge_resp = ui.interact(badge_rect, badge_id, egui::Sense::hover());
@@ -1834,7 +1834,7 @@ if is_spawn || watchlist.open {
                         // Check mark
                         if is_saved {
                             painter.text(egui::pos2(x + col_chk * 0.5, y_center), egui::Align2::CENTER_CENTER,
-                                Icon::CHECK, egui::FontId::proportional(font_sm()), t.accent);
+                                Icon::CHECK, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), t.accent);
                         }
                         x += col_chk + gap;
 

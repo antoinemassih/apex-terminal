@@ -160,7 +160,7 @@ impl<'a> Tooltip<'a> {
                     shadow_rect,
                     super::ShadowSpec::sm_themed(theme).color({
                         let s = theme.shadow_color();
-                        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 48)
+                        crate::ui_kit::style::color_alpha(s, 48)
                     }),
                 );
                 let frame = egui::Frame::popup(ui.style())
@@ -174,7 +174,7 @@ impl<'a> Tooltip<'a> {
                         spread: 0,
                         color: {
                             let s = theme.shadow_color();
-                            Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 60)
+                            crate::ui_kit::style::color_alpha(s, 60)
                         },
                     });
                 frame.show(ui, |ui| {
@@ -241,7 +241,7 @@ pub fn paint_tooltip_card(
             cr,
             {
                 let s = theme.shadow_color();
-                egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), shadow_alpha())
+                crate::ui_kit::style::color_alpha(s, shadow_alpha())
             },
         );
     }
@@ -357,7 +357,7 @@ impl<'a> PainterTooltip<'a> {
         let line_h = Self::line_h();
         let pad_v = Self::pad_v();
         let pad_label = Self::pad_label();
-        let font = egui::FontId::monospace(font_sm());
+        let font = crate::ui_kit::style::mono_sm();
         let sep_color = color_alpha(palette_ct(theme).base(Tone::Text), alpha_tint());
 
         for (i, (line, col)) in self.lines.iter().enumerate() {

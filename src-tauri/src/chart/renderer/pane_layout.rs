@@ -231,7 +231,7 @@ impl PaneLayout {
                 ui.painter().rect_filled(
                     hl_rect,
                     egui::CornerRadius::ZERO,
-                    egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), alpha),
+                    crate::ui_kit::style::color_alpha(col, alpha),
                 );
             }
 

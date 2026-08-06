@@ -595,7 +595,7 @@ fn draw_provenance_popup(
             egui::Frame::popup(ui.style())
                 .fill(t.toolbar_bg)
                 .stroke(Stroke::new(stroke_thin(), t.toolbar_border))
-                .corner_radius(egui::CornerRadius::same(radius_sm() as u8))
+                .corner_radius(crate::ui_kit::style::r_sm_cr())
                 .shadow(shadow_tooltip_themed(t))
                 .inner_margin(gap_sm())
                 .show(ui, |ui| {

@@ -130,7 +130,7 @@ pub(crate) fn render(
                 let color = quadrant_color(row.quadrant, t);
                 painter.rect_filled(cr, radius_xs(), color);
                 painter.text(cr.center(), egui::Align2::CENTER_CENTER,
-                    &row.symbol, egui::FontId::monospace(font_xs()), t.text);
+                    &row.symbol, crate::ui_kit::style::mono_xs(), t.text);
             }
             extra_h += sector_row_h + 2.0;
         }
@@ -145,7 +145,7 @@ pub(crate) fn render(
             "Loading heatmap…"
         };
         painter.text(rect.center(), egui::Align2::CENTER_CENTER,
-            msg, egui::FontId::proportional(font_sm()), t.dim);
+            msg, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), t.dim);
         return;
     }
 
@@ -191,8 +191,7 @@ pub(crate) fn render(
         let intensity = (cell.change_pct.abs() / 3.0).clamp(0.0, 1.0);
         let base_color = if cell.change_pct >= 0.0 { t.bull } else { t.bear };
         let alpha = (intensity * 180.0 + 40.0) as u8;
-        let bg = egui::Color32::from_rgba_unmultiplied(
-            base_color.r(), base_color.g(), base_color.b(), alpha);
+        let bg = crate::ui_kit::style::color_alpha(base_color, alpha);
 
         // Cell — interactive (click to load symbol)
         let inset = egui::Rect::from_min_max(
@@ -202,8 +201,7 @@ pub(crate) fn render(
         let cell_hovered = cell_resp.hovered();
         let draw_bg = if cell_hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(),
-                (alpha as u16 + 40).min(255) as u8)
+            crate::ui_kit::style::color_alpha(base_color, (alpha as u16 + 40).min(255) as u8)
         } else { bg };
         painter.rect_filled(inset, radius_xs(), draw_bg);
         if cell_hovered {
@@ -264,7 +262,7 @@ fn quadrant_color(q: crate::apex_data::types::RotationQuadrant, t: &Theme) -> eg
         Q::Improving => 150,
         Q::Unknown   => 120,
     };
-    egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
+    crate::ui_kit::style::color_alpha(base, alpha)
 }
 
 #[cfg(test)]

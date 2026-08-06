@@ -129,7 +129,7 @@ pub(crate) fn draw(
                                 ui.painter().text(
                                     prev_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("{} Prev Strike", Icon::CARET_LEFT),
-                                    egui::FontId::monospace(font_sm()), t.text);
+                                    crate::ui_kit::style::mono_sm(), t.text);
                                 if prev_resp.clicked() {
                                     // Find the next-lower strike in the current type's chain
                                     let rows = if cur_is_call { &watchlist.chain.near.calls } else { &watchlist.chain.near.puts };
@@ -156,7 +156,7 @@ pub(crate) fn draw(
                                 ui.painter().text(
                                     next_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("Next Strike {}", Icon::CARET_RIGHT),
-                                    egui::FontId::monospace(font_sm()), t.text);
+                                    crate::ui_kit::style::mono_sm(), t.text);
                                 if next_resp.clicked() {
                                     let rows = if cur_is_call { &watchlist.chain.near.calls } else { &watchlist.chain.near.puts };
                                     let rows = if current_dte == 0 { rows }
@@ -224,7 +224,7 @@ pub(crate) fn draw(
                                                 ui.painter().rect_filled(crect, r_sm_cr(), tint(t, Tone::Bull, alpha_ghost()));
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
-                                                &call_text, egui::FontId::monospace(font_sm()),
+                                                &call_text, crate::ui_kit::style::mono_sm(),
                                                 if call_row.is_some() { t.bull } else { color_dim(t.dim) });
                                             cursor::focus_ring(ui, &cresp, t.bull);
                                             if cresp.clicked() && call_row.is_some() {
@@ -240,7 +240,7 @@ pub(crate) fn draw(
                                             };
                                             ui.painter().text(srect.center(), egui::Align2::CENTER_CENTER,
                                                 strike_txt,
-                                                egui::FontId::monospace(font_sm()),
+                                                crate::ui_kit::style::mono_sm(),
                                                 strike_col);
                                             // PUT cell
                                             let put_text = put_row.map(|r| format!("{:.2}", r.bid))
@@ -251,7 +251,7 @@ pub(crate) fn draw(
                                                 ui.painter().rect_filled(prect, r_sm_cr(), tint(t, Tone::Bear, alpha_ghost()));
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
-                                                &put_text, egui::FontId::monospace(font_sm()),
+                                                &put_text, crate::ui_kit::style::mono_sm(),
                                                 if put_row.is_some() { t.bear } else { color_dim(t.dim) });
                                             cursor::focus_ring(ui, &presp, t.bear);
                                             if presp.clicked() && put_row.is_some() {

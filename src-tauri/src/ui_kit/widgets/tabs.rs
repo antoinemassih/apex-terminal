@@ -1301,7 +1301,7 @@ mod tests {
             crate::ui_kit::sx::style::Fill::Solid(c) => c,
             crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
             crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
-                let b = pal.base(tone); egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                let b = pal.base(tone); crate::ui_kit::style::color_alpha(b, a)
             }
         };
         let default_color = pal.base(crate::ui_kit::sx::Tone::Accent);
@@ -1317,7 +1317,7 @@ mod tests {
             crate::ui_kit::sx::style::Fill::Solid(c) => c,
             crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
             crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
-                let b = pal.base(tone); egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                let b = pal.base(tone); crate::ui_kit::style::color_alpha(b, a)
             }
         };
         assert_eq!(empty_color, default_color,

@@ -90,7 +90,7 @@ impl<'a> PanelError<'a> {
                 // Bear-tinted warning icon (Shield Warning from Phosphor Bold set).
                 ui.label(
                     RichText::new(Icon::SHIELD_WARNING)
-                        .font(FontId::proportional(font_xl()))
+                        .font(crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xl()))
                         .color(t.bear()),
                 );
                 ui.add_space(gap_xs());

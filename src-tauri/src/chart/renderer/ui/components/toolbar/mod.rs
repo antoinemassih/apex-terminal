@@ -206,7 +206,7 @@ impl<'a> PaneHeaderAction<'a> {
             egui::pos2(rect.left(), rect.center().y),
             egui::Align2::LEFT_CENTER,
             self.label,
-            egui::FontId::monospace(font_md()),
+            crate::ui_kit::style::mono_md(),
             fg,
         );
         if resp.hovered() && !crate::design_tokens::is_inspect_mode() {

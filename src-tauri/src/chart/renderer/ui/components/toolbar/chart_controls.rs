@@ -1124,7 +1124,7 @@ fn grp_widgets(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
 
                     let name_x = r.left() + 38.0;
                     p.text(egui::pos2(name_x, r.top() + 10.0), egui::Align2::LEFT_CENTER,
-                        kind.label(), egui::FontId::monospace(font_sm()),
+                        kind.label(), crate::ui_kit::style::mono_sm(),
                         if is_active { t.text } else { t.dim });
 
                     let desc = widget_description(kind);
@@ -1134,7 +1134,7 @@ fn grp_widgets(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
                     if is_active {
                         p.text(egui::pos2(r.right() - 12.0, r.center().y),
                             egui::Align2::CENTER_CENTER, "\u{2713}",
-                            egui::FontId::proportional(font_sm()), t.accent);
+                            crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), t.accent);
                     }
 
                     if resp.clicked() {

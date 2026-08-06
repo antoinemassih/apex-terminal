@@ -72,7 +72,7 @@ pub(crate) fn hero_number_lg(p: &egui::Painter, pos: egui::Pos2, text: &str, col
 /// Small uppercase mono label — editorial caption under a hero value.
 pub(crate) fn sub_label(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
     p.text(pos, egui::Align2::CENTER_CENTER, text, egui::FontId::monospace(FONT_XS),
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 170));
+        crate::ui_kit::style::color_alpha(color, 170));
 }
 
 // ── Composite primitives (compose the above — what bodies should call) ────────
@@ -123,7 +123,7 @@ pub(crate) fn radial_gauge_stacked(
     let track = tint(t, Tone::Border, alpha_muted());
     donut_ring(p, center, radius, 8.0, frac.clamp(0.0, 1.0), 1.0, color, track);
     p.text(egui::pos2(center.x, center.y - 4.0), egui::Align2::CENTER_CENTER,
-        value, egui::FontId::proportional(font_xl()), color);
+        value, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xl()), color);
     p.text(egui::pos2(center.x, center.y + 14.0), egui::Align2::CENTER_CENTER,
         caption, egui::FontId::monospace(FONT_2XS), color);
 }
@@ -144,7 +144,7 @@ pub(crate) fn metric_row(
 ) {
     p.text(egui::pos2(rect.left(), rect.top()), egui::Align2::LEFT_TOP,
         label, egui::FontId::monospace(FONT_2XS),
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 120));
+        crate::ui_kit::style::color_alpha(color, 120));
     p.text(egui::pos2(rect.right(), rect.top()), egui::Align2::RIGHT_TOP,
         value, egui::FontId::monospace(FONT_SM), color);
     let bar_y = rect.top() + 11.0;
@@ -227,18 +227,18 @@ pub(crate) fn overlay_card_header(
     let hdr_r = r_lg_cr().nw;
     p.rect_filled(hdr,
         egui::CornerRadius { nw: hdr_r, ne: hdr_r, sw: 0, se: 0 },
-        Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
+        crate::ui_kit::style::color_alpha(t.toolbar_bg, 230));
     p.line_segment(
         [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
         Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
     // Icon + label (+ lock glyph).
     p.text(egui::pos2(hdr.left() + 8.0, hdr.center().y),
-        egui::Align2::LEFT_CENTER, icon, egui::FontId::proportional(font_md()), t.accent);
+        egui::Align2::LEFT_CENTER, icon, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()), t.accent);
     p.text(egui::pos2(hdr.left() + 24.0, hdr.center().y),
-        egui::Align2::LEFT_CENTER, label, egui::FontId::monospace(font_xs()), t.text);
+        egui::Align2::LEFT_CENTER, label, crate::ui_kit::style::mono_xs(), t.text);
     if locked {
         p.text(egui::pos2(hdr.left() + 24.0 + label.len() as f32 * 7.0 + 6.0, hdr.center().y),
-            egui::Align2::LEFT_CENTER, "\u{1F512}", egui::FontId::proportional(font_xs()), color_half(t.dim));
+            egui::Align2::LEFT_CENTER, "\u{1F512}", crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xs()), color_half(t.dim));
     }
 
     let btn_w = 32.0;
@@ -255,7 +255,7 @@ pub(crate) fn overlay_card_header(
             Stroke::new(stroke_thin(), if hov { t.accent } else { tint(t, Tone::Border, alpha_muted()) }),
             egui::StrokeKind::Outside);
         p.text(r.center(), egui::Align2::CENTER_CENTER,
-            glyph, egui::FontId::proportional(font_lg()), if hov { t.accent } else { t.dim });
+            glyph, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_lg()), if hov { t.accent } else { t.dim });
         r
     };
 

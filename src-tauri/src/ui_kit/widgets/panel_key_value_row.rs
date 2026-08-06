@@ -140,7 +140,7 @@ impl<'a> PanelKeyValueRow<'a> {
         // the right stays monospace so numbers align. Consistent with the
         // app-wide label=proportional / value=mono rule.
         let label_color = color_muted(palette_ct(t).base(SxTone::Dim));
-        let label_font = FontId::proportional(font_xs());
+        let label_font = crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xs());
         painter.text(
             Pos2::new(slots.label.left(), slots.label.center().y),
             egui::Align2::LEFT_CENTER,

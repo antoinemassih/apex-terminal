@@ -235,7 +235,7 @@ pub fn show_drawing_tool_picker(
                             egui::pos2(row_rect.right() - 8.0, row_rect.center().y),
                             egui::Align2::RIGHT_CENTER,
                             Icon::CARET_RIGHT,
-                            egui::FontId::proportional(font_sm()),
+                            crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()),
                             t.dim,
                         );
                         if resp.hovered() {
@@ -303,7 +303,7 @@ pub fn show_drawing_tool_picker(
                                 let s_col = if starred { t.accent } else { t.dim };
                                 ui.painter().text(
                                     star_rect.center(), egui::Align2::CENTER_CENTER,
-                                    star, egui::FontId::proportional(font_lg()), s_col);
+                                    star, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_lg()), s_col);
                                 cursor::focus_ring(ui, &star_resp, t.accent);
                                 if star_resp.clicked() { star_toggle = Some(tool.to_string()); }
                                 let txt_x = row_rect.left() + star_size + 8.0;

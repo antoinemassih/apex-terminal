@@ -646,7 +646,7 @@ fn catalog_section(ui: &mut Ui, t: &Theme, title: &str, body: impl FnOnce(&mut U
     egui::Frame::new()
         .fill(t.toolbar_bg)
         .stroke(egui::Stroke::new(stroke_thin(), t.toolbar_border))
-        .corner_radius(egui::CornerRadius::same(radius_sm() as u8))
+        .corner_radius(crate::ui_kit::style::r_sm_cr())
         .inner_margin(egui::Margin::same(gap_md() as i8))
         .show(ui, |ui| {
             body(ui);
@@ -792,7 +792,7 @@ fn color_scheme_to_portable(cs: &ColorScheme) -> PortableTheme {
     let text_c = c32(cs.text);
     let acc_c  = c32(cs.accent);
     let is_dark = cs.meta.is_dark;
-    let alpha   = |base: Color32, a: u8| Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), a);
+    let alpha   = |base: Color32, a: u8| crate::ui_kit::style::color_alpha(base, a);
 
     PortableTheme {
         accent:           acc_c,
@@ -824,7 +824,7 @@ fn color_scheme_to_portable(cs: &ColorScheme) -> PortableTheme {
 /// Build a `PortableTheme` from the concrete `gpu::Theme` for ambient restore.
 /// Derived values (element_*, ghost_*) mirror `theme_impl.rs` exactly.
 fn theme_to_portable(t: &Theme) -> PortableTheme {
-    let ca = |c: Color32, a: u8| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a);
+    let ca = |c: Color32, a: u8| crate::ui_kit::style::color_alpha(c, a);
     PortableTheme {
         accent:           t.accent,
         bull:             t.bull,

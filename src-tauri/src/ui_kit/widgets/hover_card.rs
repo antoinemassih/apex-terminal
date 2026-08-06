@@ -140,7 +140,7 @@ impl HoverCard {
                         spread: 1,
                         color: {
                             let s = theme.shadow_color();
-                            Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 70)
+                            crate::ui_kit::style::color_alpha(s, 70)
                         },
                     });
                 frame.show(ui, |ui| add_contents(ui));

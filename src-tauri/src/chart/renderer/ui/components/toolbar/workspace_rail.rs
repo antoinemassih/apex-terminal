@@ -313,7 +313,7 @@ fn expanded_row(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> eg
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, ROW_H), egui::Sense::click());
     let hovered = resp.hovered();
-    let radius = egui::CornerRadius::same(radius_sm() as u8);
+    let radius = crate::ui_kit::style::r_sm_cr();
 
     if is_active {
         ui.painter().rect_filled(rect, radius, tint(t, Tone::Accent, 28));
@@ -328,10 +328,10 @@ fn expanded_row(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> eg
     let chip = egui::Rect::from_min_size(
         egui::pos2(rect.left() + gap_sm(), rect.center().y - 9.0),
         egui::vec2(18.0, 18.0));
-    ui.painter().rect_filled(chip, egui::CornerRadius::same(radius_sm() as u8),
+    ui.painter().rect_filled(chip, crate::ui_kit::style::r_sm_cr(),
         if is_active { t.accent } else { tint(t, Tone::Border, 70) });
     ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, initials(name),
-        egui::FontId::monospace(font_xs()),
+        crate::ui_kit::style::mono_xs(),
         if is_active { contrast_fg(t.accent) } else { t.text });
 
     // Name.
@@ -339,7 +339,7 @@ fn expanded_row(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> eg
     ui.painter().text(
         egui::pos2(chip.right() + gap_sm(), rect.center().y),
         egui::Align2::LEFT_CENTER, name,
-        egui::FontId::proportional(font_sm()), name_col);
+        crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), name_col);
 
     if hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp
@@ -349,7 +349,7 @@ fn expanded_row(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> eg
 fn collapsed_chip(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(CHIP, CHIP), egui::Sense::click());
     let hovered = resp.hovered();
-    let radius = egui::CornerRadius::same(radius_sm() as u8);
+    let radius = crate::ui_kit::style::r_sm_cr();
 
     let fill = if is_active { t.accent }
         else if hovered { tint(t, Tone::Border, 80) }
@@ -360,7 +360,7 @@ fn collapsed_chip(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> 
             egui::Stroke::new(crate::ui_kit::style::stroke_bold(), t.accent), egui::StrokeKind::Outside);
     }
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, initials(name),
-        egui::FontId::monospace(font_sm()),
+        crate::ui_kit::style::mono_sm(),
         if is_active { contrast_fg(t.accent) } else { t.text });
 
     if hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }

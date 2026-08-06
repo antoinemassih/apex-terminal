@@ -422,9 +422,7 @@ impl<'a> WatchlistRow<'a> {
                     painter.rect_filled(
                         rect,
                         cr,
-                        egui::Color32::from_rgba_unmultiplied(
-                            border.r(), border.g(), border.b(), 18,
-                        ),
+                        crate::ui_kit::style::color_alpha(border, 18,),
                     );
                 }
                 // Per-row hairline bottom divider (Alto/Mariner/Relay/Lucid).
@@ -432,9 +430,7 @@ impl<'a> WatchlistRow<'a> {
                     let dy = rect.bottom() - 0.5;
                     painter.line_segment(
                         [egui::pos2(rect.left(), dy), egui::pos2(rect.right(), dy)],
-                        egui::Stroke::new(crate::ui_kit::style::stroke_thin(), egui::Color32::from_rgba_unmultiplied(
-                            border.r(), border.g(), border.b(), wl_divider,
-                        )),
+                        egui::Stroke::new(crate::ui_kit::style::stroke_thin(), crate::ui_kit::style::color_alpha(border, wl_divider,)),
                     );
                 }
                 let cy = rect.center().y;
@@ -490,7 +486,7 @@ impl<'a> WatchlistRow<'a> {
                 // ── Drag-handle grip ────────────────────────────────────
                 if drag_handle {
                     painter.text(egui::pos2(left + 6.0, cy), egui::Align2::LEFT_CENTER,
-                        icon_set.drag_handle, egui::FontId::proportional(font_sm()), color_very_dim(dim));
+                        icon_set.drag_handle, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), color_very_dim(dim));
                     zones_body.borrow_mut().drag = Some(egui::Rect::from_min_size(
                         egui::pos2(left, rect.top()), egui::vec2(14.0, rect.height())));
                 }
@@ -507,7 +503,7 @@ impl<'a> WatchlistRow<'a> {
                     };
                     let star_x = left + 16.0 + star_x_offset;
                     painter.text(egui::pos2(star_x, cy), egui::Align2::CENTER_CENTER,
-                        icon_set.star, egui::FontId::proportional(font_sm()), star_col);
+                        icon_set.star, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), star_col);
                 }
                 // Star click-zone always covers left..left+26 when pinned-or-hoverable
                 // so panel-style click partitioning works.
@@ -559,7 +555,7 @@ impl<'a> WatchlistRow<'a> {
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 5.5,
                         theme_ref.bear);
                     painter.text(egui::pos2(ind_x + 5.0, cy), egui::Align2::CENTER_CENTER,
-                        icon_set.alert, egui::FontId::proportional(font_sm()), contrast_fg(theme_ref.bear));
+                        icon_set.alert, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), contrast_fg(theme_ref.bear));
                     zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
                         egui::pos2(ind_x + 5.0, cy), egui::vec2(12.0, 12.0)));
                     ind_x += 14.0;
@@ -675,7 +671,7 @@ impl<'a> WatchlistRow<'a> {
                             egui::pos2(rect.right() - 8.0, cy),
                             egui::Align2::CENTER_CENTER,
                             icon_set.x,
-                            egui::FontId::proportional(font_sm()),
+                            crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()),
                             color_half(dim),
                         );
                     }

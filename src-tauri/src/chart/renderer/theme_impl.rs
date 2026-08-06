@@ -100,7 +100,7 @@ impl ComponentTheme for Theme {
 
 #[inline]
 fn color_alpha(c: Color32, a: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
+    crate::ui_kit::style::color_alpha(c, a)
 }
 
 /// Returns an owned `Theme` for the current frame. Resolution order:

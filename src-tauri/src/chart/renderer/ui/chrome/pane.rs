@@ -572,7 +572,7 @@ impl<'a> PaneHeaderActions<'a> {
         let hairline = current().hairline_borders;
         let label_gap  = 14.0_f32;
         let divider_sp =  7.0_f32;
-        let font = egui::FontId::monospace(font_md());
+        let font = crate::ui_kit::style::mono_md();
         let mut clicked = None;
 
         ui.horizontal(|ui| {

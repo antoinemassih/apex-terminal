@@ -102,7 +102,7 @@ pub(crate) fn render_timeframe_dropdown(
                 let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                 let sh = hover_pos.map_or(false, |p| sr.contains(p));
                 let sc = if is_fav { tint(t, Tone::Accent, alpha_heavy()) } else if sh { color_half(t.dim) } else { color_very_dim(t.dim) };
-                ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
+                ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), sc);
                 if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                     if is_fav { watchlist.timeframe.favorites.retain(|f| f != tf_label); }
@@ -231,7 +231,7 @@ pub(crate) fn render_layout_dropdown(
                 let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                 let sh = hover_pos.map_or(false, |p| sr.contains(p));
                 let sc = if is_fav { tint(t, Tone::Accent, alpha_heavy()) } else if sh { color_half(t.dim) } else { color_very_dim(t.dim) };
-                ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
+                ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), sc);
                 if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                     if is_fav { watchlist.layout_favorites.retain(|f| f != ly.label()); }

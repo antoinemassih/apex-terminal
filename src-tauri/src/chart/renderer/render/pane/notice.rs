@@ -98,8 +98,8 @@ impl PaneNotice {
         };
 
         // Title is one step larger than the instruction.
-        let title_font = FontId::proportional(font_md());
-        let instr_font = FontId::proportional(font_sm());
+        let title_font = crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md());
+        let instr_font = crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm());
 
         // ── Measure each piece ──────────────────────────────────────────────
         let title_str = format!("{}  {}", self.icon, self.title);

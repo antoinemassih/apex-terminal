@@ -33,8 +33,8 @@ pub fn ticker_strip(ui: &mut Ui, t: &Theme, entries: &[TickerEntry]) -> TickerSt
     let cy = rect.center().y;
 
     let sym_font = mono_sm();
-    let px_font  = FontId::monospace(font_xs());
-    let chg_font = FontId::monospace(font_xs());
+    let px_font  = crate::ui_kit::style::mono_xs();
+    let chg_font = crate::ui_kit::style::mono_xs();
 
     let mut cx = rect.left() + gap_sm();
     for e in entries {

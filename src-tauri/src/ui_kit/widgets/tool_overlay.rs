@@ -468,7 +468,7 @@ impl<'a> ToolOverlay<'a> {
 
 #[inline]
 fn color_alpha(c: Color32, a: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
+    crate::ui_kit::style::color_alpha(c, a)
 }
 
 #[cfg(test)]

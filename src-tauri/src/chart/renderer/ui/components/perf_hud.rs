@@ -73,8 +73,8 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
             let warn  = t.warn;
             let red   = t.bear;
             let green = t.bull;
-            let label_font = egui::FontId::monospace(font_xs());
-            let val_font   = egui::FontId::monospace(font_sm());
+            let label_font = crate::ui_kit::style::mono_xs();
+            let val_font   = crate::ui_kit::style::mono_sm();
 
             // ── Frame summary ──────────────────────────────────────────────
             let fps_col = if fps >= 55.0 { green } else if fps >= 30.0 { warn } else { red };

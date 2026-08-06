@@ -150,7 +150,7 @@ impl<'a, 'b> Autocomplete<'a, 'b> {
         let edit = egui::TextEdit::singleline(self.buffer)
             .id(edit_id)
             .hint_text(RichText::new(self.placeholder).color(color_alpha(dim, alpha_muted())))
-            .font(egui::FontSelection::FontId(egui::FontId::monospace(font_sm())))
+            .font(egui::FontSelection::FontId(crate::ui_kit::style::mono_sm()))
             .desired_width(avail);
         let resp = ui.add(edit);
 

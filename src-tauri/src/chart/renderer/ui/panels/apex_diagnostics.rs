@@ -68,7 +68,7 @@ fn pill(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
     ui.painter().rect_filled(rect, crate::ui_kit::style::radius_md(), color_alpha(color, 50));
     ui.painter().rect_stroke(rect, crate::ui_kit::style::radius_md(), egui::Stroke::new(crate::ui_kit::style::stroke_std(), color), egui::StrokeKind::Inside);
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-        text, egui::FontId::proportional(font_xs()), color);
+        text, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xs()), color);
 }
 
 // ── Row layout ───────────────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
             let (pill_rect, _) = ui.allocate_exact_size(egui::vec2(62.0, 14.0), egui::Sense::hover());
             ui.painter().rect_filled(pill_rect, crate::ui_kit::style::radius_sm(), color_alpha(color, 40));
             ui.painter().text(pill_rect.center(), egui::Align2::CENTER_CENTER,
-                &label, egui::FontId::monospace(font_xs()), color);
+                &label, crate::ui_kit::style::mono_xs(), color);
             ui.add_space(gap_sm());
             ui.label(egui::RichText::new(format!("{}ms", call.ms)).monospace().size(font_xs()).color(t.dim));
             ui.add_space(gap_sm());

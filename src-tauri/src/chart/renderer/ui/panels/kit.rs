@@ -244,7 +244,7 @@ fn paint_header_shadow(ui: &Ui, header_rect: Rect, t: &Theme) {
     // (Bauhaus/Peach/Ivory/Newsprint) get a soft gray gradient instead of
     // a brown-black smudge.
     let s = t.shadow_color;
-    let top_col = Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 42);
+    let top_col = crate::ui_kit::style::color_alpha(s, 42);
     let bot_col = Color32::TRANSPARENT;
     let mut mesh = egui::Mesh::default();
     let tl = shadow_rect.left_top();

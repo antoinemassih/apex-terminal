@@ -599,7 +599,7 @@ fn shadow_from_preset_themed(
     let s = t.shadow_color;
     egui::epaint::Shadow {
         offset, blur, spread,
-        color: Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), alpha),
+        color: crate::ui_kit::style::color_alpha(s, alpha),
     }
 }
 
@@ -1042,7 +1042,7 @@ fn dialog_separator_shadow_impl(ui: &mut egui::Ui, margin: f32, color: Color32, 
             [egui::pos2(left, y + (i + 1) as f32), egui::pos2(right, y + (i + 1) as f32)],
             Stroke::new(
                 stroke_thin(),
-                Color32::from_rgba_unmultiplied(shadow_tint.r(), shadow_tint.g(), shadow_tint.b(), a),
+                crate::ui_kit::style::color_alpha(shadow_tint, a),
             ),
         );
     }
@@ -1610,7 +1610,7 @@ pub(crate) fn tint(
     alpha: u8,
 ) -> Color32 {
     let c = crate::ui_kit::sx::palette_ct(t).base(tone);
-    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+    crate::ui_kit::style::color_alpha(c, alpha)
 }
 
 /// True when the active style draws an enclosure around button groups.
@@ -1782,8 +1782,8 @@ pub(crate) fn paint_bevel(painter: &egui::Painter, rect: egui::Rect, radius: egu
     let st = current();
     let ht = crate::ui_kit::style::frame_tokens().bevel_highlight_tint;
     let stn = crate::ui_kit::style::frame_tokens().bevel_shadow_tint;
-    let hi = Color32::from_rgba_unmultiplied(ht.r(), ht.g(), ht.b(), st.bevel_highlight_alpha);
-    let sh = Color32::from_rgba_unmultiplied(stn.r(), stn.g(), stn.b(), st.bevel_shadow_alpha);
+    let hi = crate::ui_kit::style::color_alpha(ht, st.bevel_highlight_alpha);
+    let sh = crate::ui_kit::style::color_alpha(stn, st.bevel_shadow_alpha);
     let (top_col, bot_col) = match st.surface_bevel {
         BevelStyle::None => return,
         BevelStyle::Raised => (hi, sh),
@@ -1852,7 +1852,7 @@ pub(crate) fn color_layer_down(t: &crate::chart_renderer::gpu::Theme, n: u8) -> 
 #[inline]
 pub fn shadow_color_alpha(t: &super::super::gpu::Theme, alpha: u8) -> Color32 {
     let c = t.shadow_color;
-    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+    crate::ui_kit::style::color_alpha(c, alpha)
 }
 
 // ─── Form layout ──────────────────────────────────────────────────────────────

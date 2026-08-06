@@ -239,7 +239,7 @@ impl<'a, T> Table<'a, T> {
                                     Stroke::new(stroke_thin(), dim), egui::StrokeKind::Inside);
                                 if is_sel {
                                     ui.painter().text(cb.center(), egui::Align2::CENTER_CENTER,
-                                        Icon::CHECK, egui::FontId::monospace(font_xl()), accent);
+                                        Icon::CHECK, crate::ui_kit::style::mono_xl(), accent);
                                 }
                             }
                             for ci in 0..columns_len {

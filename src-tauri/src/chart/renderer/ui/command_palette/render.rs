@@ -20,7 +20,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         painter.rect_filled(badge_rect, crate::ui_kit::style::radius_lg(), color_very_dim(Category::Ai.color(t)));
         painter.rect_stroke(badge_rect, crate::ui_kit::style::radius_lg(), egui::Stroke::new(crate::ui_kit::style::stroke_std(), Category::Ai.color(t)), egui::StrokeKind::Inside);
         painter.text(badge_rect.center(), egui::Align2::CENTER_CENTER,
-            "GEMMA 4", egui::FontId::proportional(font_sm()), Category::Ai.color(t));
+            "GEMMA 4", crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), Category::Ai.color(t));
         ui.add_space(gap_lg());
         ui.add(BodyLabel::new("placeholder").size(font_sm()).italics(true).color(t.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -216,7 +216,7 @@ fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart]
         ui.painter().rect_stroke(rect, crate::ui_kit::style::radius_md(),
             egui::Stroke::new(crate::ui_kit::style::stroke_std(), color_dim(t.dim)), egui::StrokeKind::Inside);
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-            "no cached bars", egui::FontId::proportional(font_sm()), t.dim);
+            "no cached bars", crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), t.dim);
     }
 }
 

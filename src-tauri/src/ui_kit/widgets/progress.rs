@@ -181,7 +181,7 @@ fn draw_arc(
 // Logo lives in a 24×24 viewBox; rect is the actual pixel square.
 fn paint_worm2(painter: &egui::Painter, rect: Rect, stroke_w: f32, color: Color32, time: f64) {
     let scale = rect.width() / 24.0;
-    let ghost = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 36);
+    let ghost = crate::ui_kit::style::color_alpha(color, 36);
     let to_s = |x: f32, y: f32| Pos2::new(rect.min.x + x * scale, rect.min.y + y * scale);
 
     // --- Dot: small circle top-left (cx 6.159, cy 6.290, r 3.564) ---

@@ -202,12 +202,7 @@ impl<'a> Indicator<'a> {
                 // from ~140 to 0 across the cycle.
                 let outer_r = radius * (1.0 + eased);
                 let alpha = ((1.0 - eased) * 140.0).clamp(0.0, 255.0) as u8;
-                let ring_color = Color32::from_rgba_unmultiplied(
-                    color.r(),
-                    color.g(),
-                    color.b(),
-                    alpha,
-                );
+                let ring_color = crate::ui_kit::style::color_alpha(color, alpha,);
                 painter.circle_stroke(center, outer_r, Stroke::new(st::stroke_std(), ring_color));
 
                 // Keep animating while visible.

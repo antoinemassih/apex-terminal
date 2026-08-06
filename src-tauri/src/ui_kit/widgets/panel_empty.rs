@@ -82,7 +82,7 @@ impl<'a> PanelEmpty<'a> {
                     let col = color_muted(t.dim());
                     ui.label(
                         RichText::new(g)
-                            .font(FontId::proportional(font_xl()))
+                            .font(crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xl()))
                             .color(col),
                     );
                     ui.add_space(gap_xs());

@@ -176,7 +176,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
 
     let items: Vec<&AlertItem> = alerts.iter().rev().collect(); // newest first
     let by_id: HashMap<u64, &AlertItem> = alerts.iter().map(|a| (a.id, a)).collect();
-    let font = FontId::monospace(font_sm());
+    let font = crate::ui_kit::style::mono_sm();
     let gapx = gap_sm();
     let ctx  = ui.ctx().clone();
     let now  = ctx.input(|i| i.time);
@@ -297,7 +297,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let cx0 = rect.left() + ACCENT_W + PAD_L;
         // Kind icon (replaces the type word to save space).
         p.text(pos2(cx0 + ICON_W * 0.5, cy), Align2::CENTER_CENTER, kind_icon(a.kind),
-            FontId::proportional(font_md()), accent.gamma_multiply(app_e));
+            crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()), accent.gamma_multiply(app_e));
         let mut x = cx0 + ICON_W + gapx;
         if let Some(s) = sym {
             p.text(pos2(x, cy), Align2::LEFT_CENTER, s, font.clone(), t.text.gamma_multiply(app_e));
@@ -376,7 +376,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let cr = CornerRadius::same(r);
         // Soft shadow + solid card + border + accent bar (all fade in with the morph).
         fp.rect_filled(box_rect.translate(vec2(0.0, 2.0)).expand(1.0), cr,
-            { let s = t.shadow_color; egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), (70.0 * app) as u8) });
+            { let s = t.shadow_color; crate::ui_kit::style::color_alpha(s, (70.0 * app) as u8) });
         fp.rect_filled(box_rect, cr, tint(t, Tone::Surface, 252).gamma_multiply(app.max(0.001)));
         fp.rect_stroke(box_rect, cr, Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, 160).gamma_multiply(app)), StrokeKind::Inside);
         fp.rect_filled(Rect::from_min_size(box_rect.min, vec2(ACCENT_W, box_rect.height())),
@@ -386,7 +386,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let hx = box_rect.left() + ACCENT_W + PAD_L;
         let hy = box_rect.top() + PAD_V + HEADER_H * 0.5;
         fp.text(pos2(hx + ICON_W * 0.5, hy), Align2::CENTER_CENTER, kind_icon(a.kind),
-            FontId::proportional(font_md()), accent.gamma_multiply(app));
+            crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()), accent.gamma_multiply(app));
         let mut hxx = hx + ICON_W + gapx;
         fp.text(pos2(hxx, hy), Align2::LEFT_CENTER, tag, font.clone(), accent.gamma_multiply(app));
         hxx += text_w(ui, tag, &font, accent) + gapx;
@@ -437,13 +437,13 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let resp = ui.interact(bell_rect, Id::new("alert_bell"), Sense::click());
         let p = ui.painter().with_clip_rect(frame_rect);
         let glyph_col = if bell_open || overflow > 0 { t.accent } else { tint(t, Tone::Dim, ALPHA_INTERACTIVE) };
-        p.text(bell_rect.center(), Align2::CENTER_CENTER, Icon::BELL, FontId::proportional(font_md()), glyph_col);
+        p.text(bell_rect.center(), Align2::CENTER_CENTER, Icon::BELL, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()), glyph_col);
         if overflow > 0 {
             let lbl = if overflow > 99 { "99+".to_string() } else { overflow.to_string() };
             let cf  = FontId::proportional(font_sm() - 1.0);
             let cw  = (text_w(ui, &lbl, &cf, t.text) + 6.0).max(13.0);
             let cnt = Rect::from_min_size(pos2(bell_rect.center().x + 2.0, bell_rect.top()), vec2(cw, 13.0));
-            p.rect_filled(cnt, CornerRadius::same(radius_md() as u8), t.accent);
+            p.rect_filled(cnt, crate::ui_kit::style::r_md_cr(), t.accent);
             p.text(cnt.center(), Align2::CENTER_CENTER, &lbl, cf, contrast_fg(t.accent));
         }
         if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -467,7 +467,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let frame = egui::Frame::popup(&ctx.style())
             .fill(tint(t, Tone::Surface, 255))
             .stroke(Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, 150)))
-            .corner_radius(CornerRadius::same(radius_md() as u8))
+            .corner_radius(crate::ui_kit::style::r_md_cr())
             .inner_margin(egui::Margin::same(gap_sm() as i8));
         let area = egui::Area::new(Id::new("alert_history_pop"))
             .order(egui::Order::Foreground)

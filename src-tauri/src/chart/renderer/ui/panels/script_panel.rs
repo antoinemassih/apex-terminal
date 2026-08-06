@@ -438,7 +438,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
     // treatment as the SYNTHETIC gamma badge (F3) and the DOM's SIMULATED badge.
     ui.horizontal(|ui| {
         ui.add_space(m);
-        let badge_font = egui::FontId::monospace(font_sm());
+        let badge_font = crate::ui_kit::style::mono_sm();
         let painter = ui.painter();
         let galley = painter.layout_no_wrap(
             "SIMULATED \u{2014} mock data, not a real backtest".to_string(),

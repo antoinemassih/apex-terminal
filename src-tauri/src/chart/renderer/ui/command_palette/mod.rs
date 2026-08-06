@@ -167,7 +167,7 @@ pub(crate) fn draw(
             let s = t.bg;
             let scrim_a = ((crate::chart_renderer::ui::style::alpha_scrim() as f32) * appear).round() as u8;
             ui.painter().rect_filled(screen, 0.0,
-                egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), scrim_a));
+                crate::ui_kit::style::color_alpha(s, scrim_a));
         });
 
     let ai_mode = watchlist.cmd_palette.ai_mode;

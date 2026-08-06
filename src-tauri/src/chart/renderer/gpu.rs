@@ -5723,7 +5723,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
                 let col = if i < 4 { bull } else { bear };
                 let alpha = [180, 120, 200, 80, 100, 160, 60][i] as u8;
                 p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, r.top() + 4.0), egui::vec2(3.0, 20.0)),
-                    1.0, egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), alpha));
+                    1.0, crate::ui_kit::style::color_alpha(col, alpha));
             }
         }
         // Compass

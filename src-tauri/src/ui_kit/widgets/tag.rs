@@ -180,7 +180,7 @@ impl<'a> Tag<'a> {
                     }
                     crate::ui_kit::sx::Fill::Alpha(tone, a) => {
                         let b = crate::ui_kit::sx::palette_ct(theme).base(tone);
-                        egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                        crate::ui_kit::style::color_alpha(b, a)
                     }
                 };
                 painter.rect_filled(rect, chip_cr, fill_color);
@@ -193,7 +193,7 @@ impl<'a> Tag<'a> {
                     }
                     crate::ui_kit::sx::Fill::Alpha(tone, a) => {
                         let b = crate::ui_kit::sx::palette_ct(theme).base(tone);
-                        egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                        crate::ui_kit::style::color_alpha(b, a)
                     }
                 };
                 painter.rect_stroke(
@@ -427,7 +427,7 @@ mod tests {
             crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
             crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
                 let b = pal.base(tone);
-                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                crate::ui_kit::style::color_alpha(b, a)
             }
         };
         let default_fill = crate::ui_kit::tokens::color_alpha(dim_col, 32);
@@ -444,7 +444,7 @@ mod tests {
             crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
             crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
                 let b = pal.base(tone);
-                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                crate::ui_kit::style::color_alpha(b, a)
             }
         };
         assert_eq!(empty_color, default_fill,

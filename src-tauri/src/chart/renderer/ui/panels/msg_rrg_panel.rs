@@ -398,19 +398,19 @@ fn draw_rrg_scatter(
             painter.arrow(
                 prev_pos,
                 egui::vec2(pos.x - prev_pos.x, pos.y - prev_pos.y),
-                egui::Stroke::new(crate::ui_kit::style::stroke_bold(), egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha_active())),
+                egui::Stroke::new(crate::ui_kit::style::stroke_bold(), crate::ui_kit::style::color_alpha(c, alpha_active())),
             );
         }
         // Marker radius proportional to weight (min 4, max 12 px).
         let r = (4.0 + edge.weight.clamp(0.0, 1.0) * 30.0).min(12.0);
         painter.circle_filled(pos, r + 2.0,
-            egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha_subtle()));
+            crate::ui_kit::style::color_alpha(c, alpha_subtle()));
         painter.circle_filled(pos, r, c);
         // Label.
         let lx = if pos.x + r + 26.0 > pr.right() { pos.x - r - 2.0 } else { pos.x + r + 2.0 };
         let la = if pos.x + r + 26.0 > pr.right() { egui::Align2::RIGHT_CENTER } else { egui::Align2::LEFT_CENTER };
         painter.text(egui::pos2(lx, pos.y), la, &edge.symbol, mono_sm(),
-            egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha_near_opaque()));
+            crate::ui_kit::style::color_alpha(c, alpha_near_opaque()));
     }
 
     // Border.

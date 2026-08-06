@@ -85,4 +85,22 @@ if [ -n "$unwired" ]; then
   fail=1
 fi
 
+# ── Rule 4 ────────────────────────────────────────────────────────────────────
+# No token helper may delegate to ITSELF.
+#
+# A bulk codemod that rewrites `Color32::from_rgba_unmultiplied(c.r(), c.g(),
+# c.b(), a)` into `color_alpha(c, a)` will happily rewrite the BODY OF
+# `color_alpha` — turning the canonical implementation into infinite recursion.
+# It compiles. It stack-overflows the first time anything paints.
+#
+# That happened here: an exclusion list for definition files silently failed to
+# match, and `color_alpha` plus all four `r_*_cr()` helpers were rewritten to
+# call themselves.
+#
+# Implemented in Python, not grep: the body is usually on the NEXT line, and a
+# line-based ERE cannot see that. The first version of this rule used `\s` —
+# which POSIX ERE does not support — and passed its own self-test while the
+# bug was still present. Rule 4 exists because Rule 4 was wrong once.
+if ! python scripts/check_self_recursion.py; then fail=1; fi
+
 [ $fail -eq 0 ] && echo "cascade gate OK" || exit 1

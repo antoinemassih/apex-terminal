@@ -48,7 +48,7 @@ impl Fill {
             Fill::Shade(tone, s) => pal.shade(tone, s),
             Fill::Alpha(tone, a) => {
                 let c = pal.base(tone);
-                Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
+                crate::ui_kit::style::color_alpha(c, a)
             }
             Fill::Solid(c) => c,
         }
@@ -382,7 +382,7 @@ impl SxDelta {
             Fill::Shade(tone, s)  => pal.shade(tone, s),
             Fill::Alpha(tone, a)  => {
                 let b = pal.base(tone);
-                Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                crate::ui_kit::style::color_alpha(b, a)
             }
         })
     }
@@ -412,7 +412,7 @@ impl SxDelta {
             Fill::Shade(tone, s)  => pal.shade(tone, s),
             Fill::Alpha(tone, a)  => {
                 let base = pal.base(tone);
-                Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), a)
+                crate::ui_kit::style::color_alpha(base, a)
             }
         })
     }

@@ -571,7 +571,7 @@ fn draw_rrg_content(
                 let p1 = to_screen(x1, y1);
                 // Alpha fades: oldest is very faint, newest is brighter
                 let alpha = ((i as f32 + 1.0) / n as f32 * 160.0) as u8;
-                let seg_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+                let seg_color = crate::ui_kit::style::color_alpha(color, alpha);
                 let width = 1.0 + (i as f32 / n as f32) * 1.5; // thicker toward current
                 painter.line_segment([p0, p1], egui::Stroke::new(width, seg_color));
             }
@@ -584,7 +584,7 @@ fn draw_rrg_content(
         painter.circle_filled(
             pos,
             dot_radius + 2.0,
-            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha_subtle()),
+            crate::ui_kit::style::color_alpha(color, alpha_subtle()),
         );
         // Main dot
         painter.circle_filled(pos, dot_radius, color);
@@ -613,7 +613,7 @@ fn draw_rrg_content(
             label_align,
             &sector.symbol,
             mono_sm(),
-            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200),
+            crate::ui_kit::style::color_alpha(color, 200),
         );
     }
 

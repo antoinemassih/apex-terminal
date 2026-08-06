@@ -40,14 +40,14 @@ pub fn paint_search_command_pill(
         egui::pos2(icon_x, rect.center().y),
         egui::Align2::LEFT_CENTER,
         icon,
-        egui::FontId::proportional(font_md()),
+        crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()),
         icon_color,
     );
     p.text(
         egui::pos2(icon_x + gap_2xl() + gap_xs(), rect.center().y),
         egui::Align2::LEFT_CENTER,
         label,
-        egui::FontId::monospace(font_sm()),
+        crate::ui_kit::style::mono_sm(),
         label_color,
     );
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
@@ -140,8 +140,8 @@ pub fn paint_dom_action(
     let t = ctx.t;
     let border_stroke = rule_stroke_for(t.bg, t.toolbar_border);
 
-    let font_label = egui::FontId::monospace(font_xs());
-    let font_glyph = egui::FontId::monospace(font_sm());
+    let font_label = crate::ui_kit::style::mono_xs();
+    let font_glyph = crate::ui_kit::style::mono_sm();
 
     match tier {
         QtyStepper => {
@@ -247,7 +247,7 @@ pub fn paint_pane_header_action(
         egui::pos2(rect.left(), rect.center().y),
         egui::Align2::LEFT_CENTER,
         label,
-        egui::FontId::monospace(font_md()),
+        crate::ui_kit::style::mono_md(),
         fg,
     );
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() {

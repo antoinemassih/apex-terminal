@@ -116,9 +116,9 @@ impl<'a> OpacityPicker<'a> {
             let filled = i <= cur_idx;
             let col = if filled {
                 let a = self.levels[i];
-                Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), (a * 220.0) as u8)
+                crate::ui_kit::style::color_alpha(accent, (a * 220.0) as u8)
             } else {
-                Color32::from_rgba_unmultiplied(dim.r(), dim.g(), dim.b(), 40)
+                crate::ui_kit::style::color_alpha(dim, 40)
             };
             painter.rect_filled(seg_rect, st::radius_xs(), col);
 

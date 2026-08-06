@@ -925,7 +925,7 @@ fn draw_dsl_body(ui: &mut Ui, t: &Theme, panel_w: f32) {
         TextEdit::multiline(&mut *text)
             .desired_width(panel_w - gap_md() * 2.0)
             .desired_rows(8)
-            .font(egui::FontId::monospace(font_xs()))
+            .font(crate::ui_kit::style::mono_xs())
             .text_color(t.text)
             .hint_text("rsi14 < 30 and rvol > 1.5 and signal(\"combined.score\") > 0.6"),
     );

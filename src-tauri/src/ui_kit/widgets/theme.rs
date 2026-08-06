@@ -152,7 +152,7 @@ pub trait ComponentTheme {
     /// Header divider/border colour. 38α over `text()`.
     fn header_border(&self) -> Color32 {
         let t = self.text();
-        Color32::from_rgba_unmultiplied(t.r(), t.g(), t.b(), 38)
+        crate::ui_kit::style::color_alpha(t, 38)
     }
 
     /// Compose `shadow_color()` with an explicit alpha. Mirrors
@@ -160,7 +160,7 @@ pub trait ComponentTheme {
     /// path.
     fn shadow_color_alpha(&self, alpha: u8) -> Color32 {
         let s = self.shadow_color();
-        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), alpha)
+        crate::ui_kit::style::color_alpha(s, alpha)
     }
 
     /// Theme-aware card shadow. Default: `[0, 2]` offset, blur 4, spread 0,
@@ -172,7 +172,7 @@ pub trait ComponentTheme {
             offset: [0, 2],
             blur: 4,
             spread: 0,
-            color: Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 60),
+            color: crate::ui_kit::style::color_alpha(s, 60),
         }
     }
 

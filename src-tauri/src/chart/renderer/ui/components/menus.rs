@@ -115,7 +115,7 @@ impl<'a> Widget for MenuItem<'a> {
                     egui::pos2(max_x, y),
                     egui::Align2::RIGHT_CENTER,
                     sc,
-                    egui::FontId::monospace(font_xs()),
+                    crate::ui_kit::style::mono_xs(),
                     sc_color,
                 );
             }
