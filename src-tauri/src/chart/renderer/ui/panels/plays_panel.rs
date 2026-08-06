@@ -81,11 +81,35 @@ pub(crate) fn draw_content(
     let mut activate_id: Option<String> = None;
     let mut display_id: Option<String> = None;
 
+    let mut add_clicked = false;
     egui::ScrollArea::vertical().id_salt("plays_scroll").show(ui, |ui| {
         for play in &watchlist.plays {
             render_play_card(ui, play, t, &mut remove_id, &mut activate_id, &mut display_id);
         }
+
+        // Trailing "add another" affordance, so a partly-filled list ENDS
+        // somewhere instead of trailing off into raw background.
+        //
+        // With a single play the panel was ~70% unstyled void below the card:
+        // legitimate state (there is one play), bare presentation. The zero
+        // state already gets a proper `PanelEmpty`, and the header already
+        // carries "+ New Play" — what was missing was any terminus for the
+        // in-between case, which is the case users are actually in.
+        //
+        // Deliberately understated: a ghost row, not a second primary button
+        // competing with the header action it duplicates.
+        ui.add_space(gap_sm());
+        let ghost = Button::new("+ Add another play")
+            .variant(Variant::Ghost)
+            .size(Size::Sm)
+            .full_width(true)
+            .show(ui, t);
+        if ghost.clicked() { add_clicked = true; }
     });
+    if add_clicked {
+        watchlist.play_editor.open = true;
+        if !panes.is_empty() { spawn_play_lines(watchlist, &mut panes[ap]); }
+    }
 
     if let Some(id) = remove_id {
         watchlist.plays.retain(|p| p.id != id);
@@ -759,10 +783,25 @@ fn render_play_card(
                         ui.label(egui::RichText::new(val).monospace().size(font_sm()).strong().color(col));
                     });
                 };
-                stat(&mut cols[0], "ENTRY",  format!("${:.2}", play.entry_price),  t.text);
-                stat(&mut cols[1], "TARGET", format!("${:.2}", play.target_price), t.bull);
+                // Order matches the R:R bar directly beneath: risk on the
+                // LEFT, reward on the RIGHT, entry as the pivot between them.
+                //
+                // The columns used to read ENTRY | TARGET | STOP while the bar
+                // below ran stop → target, so the label sitting above the bar's
+                // right (reward) end said STOP. The numbers were right and the
+                // bar was right; only their spatial correspondence was wrong,
+                // which is the hardest kind to notice and the easiest to
+                // misread under time pressure.
+                //
+                // STOP | ENTRY | TARGET is also the price-ladder order for a
+                // long, so the row now reads the same way the chart does.
                 if show_stop {
-                    stat(&mut cols[2], "STOP", format!("${:.2}", play.stop_price), t.bear);
+                    stat(&mut cols[0], "STOP",   format!("${:.2}", play.stop_price),   t.bear);
+                    stat(&mut cols[1], "ENTRY",  format!("${:.2}", play.entry_price),  t.text);
+                    stat(&mut cols[2], "TARGET", format!("${:.2}", play.target_price), t.bull);
+                } else {
+                    stat(&mut cols[0], "ENTRY",  format!("${:.2}", play.entry_price),  t.text);
+                    stat(&mut cols[1], "TARGET", format!("${:.2}", play.target_price), t.bull);
                 }
             });
 

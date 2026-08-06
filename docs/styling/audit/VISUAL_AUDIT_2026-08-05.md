@@ -252,9 +252,12 @@ error compounded left-to-right. The data rows, meanwhile, advance
 coincidence, and did not. The header row now uses the same arithmetic the data
 rows use, which makes the alignment structural rather than maintained.
 
-The header/data ADJACENCY is still open: the header is emitted once above all
-expiry groups, so the first group's control row sits between it and its data.
-That is an ordering change, not an alignment one.
+**Adjacency fixed too.** The header was emitted once above ALL expiry groups,
+so the first group's control row sat between it and the data it labelled — a
+column header that is not next to its column is only marginally better than one
+that is misaligned. It is now a closure called once per group, immediately
+after that group's expiry label, so every group carries its own header by
+construction.
 
 ### 2.3 — MEDIUM — labels are clipped by the panel's left border
 
@@ -298,6 +301,18 @@ column.
 
 A vertical rule sits between HEAT and SCAN but not between LIST/CHAIN or
 CHAIN/HEAT.
+
+**Investigated, then made explicit.** A divider *was* emitted for every gap;
+the two beside the active tab were swallowed by its filled card. With four tabs
+and the active one in the middle, exactly one survived — which reads as
+arbitrary decoration.
+
+The behaviour was right and simply unstated: a filled card already separates
+itself from its neighbours, so a hairline there is redundant even when visible.
+The skip is now explicit, so the strip looks the same for any active index
+instead of depending on which gaps happen to be overdrawn. The visible output
+is unchanged — one divider is the rule's result at this tab count, not an
+inconsistency.
 
 ---
 
@@ -362,15 +377,26 @@ present on one of four call sites. The other three now carry a glyph
 ### 3.4 — MEDIUM — playbook leaves ~70 % of the panel as unstyled void
 
 One card occupies the top ~330px; the remaining ~1500px is blank background
-with no empty-state treatment and no "add another play" affordance. Legitimate
-app state, bare presentation.
+with no empty-state treatment. Legitimate app state, bare presentation.
+
+**Fixed.** The zero state already had a proper `PanelEmpty` and the header
+already carried "+ New Play" — what was missing was a terminus for the
+*in-between* case, which is the case users are actually in. A ghost
+"+ Add another play" row now ends the list. Deliberately understated: not a
+second primary button competing with the header action it duplicates.
 
 ### 3.5 — LOW-MEDIUM — playbook label order contradicts its own slider
 
 Labels read ENTRY / TARGET / STOP left-to-right; the bar beneath spans
 STOP(45) → TARGET(60) with the thumb marking ENTRY(50). The arithmetic is
-right, but the label directly above the bar's right end reads `STOP` while that
+right, but the label directly above the bar's right end read `STOP` while that
 end *is* the target.
+
+**Fixed** — the columns are now STOP | ENTRY | TARGET, matching the R:R bar
+beneath (risk left, reward right, entry the pivot) and the price-ladder order
+for a long. The numbers were right and the bar was right; only their spatial
+correspondence was wrong, which is the hardest kind to notice and the easiest
+to misread under time pressure.
 
 ---
 
@@ -506,12 +532,21 @@ frame of lag on a resize is invisible; a permanently wrong constant is not. The
 fallback is deliberately generous, because erring narrow scrolls (recoverable)
 while erring wide overlaps (not). Verified clean at 1920 / 2560 / 3840.
 
-*A second, pre-existing overlap remains.* Below ~2000px the left status pills
-(`CLOSED` / `TPS`) overprint the first nav items (`Signals` / `Script`). A
-different pair of clusters, unaffected by the fix. Both live inside the same
-`horizontal_centered`, so they should lay out sequentially, and I could not
-establish why the scroll viewport appears to begin at the row's left edge
-rather than after the pills. Left open rather than guessed at.
+*A second, pre-existing overlap remains — and it needs a design decision, not a
+patch.* Below ~2000px the left status pills (`CLOSED` / `TPS`) overprint the
+first nav items (`Signals` / `Script`).
+
+I tried clipping the middle scroll region to bound anything escaping it (the
+nav paints some chrome on the FOREGROUND layer, which the scroll clip does not
+cover). **It did not fix the overlap, so I reverted it** rather than leave code
+whose comment claims a fix it does not deliver.
+
+The finding that came out of the attempt is worth more than another attempt
+would be: **this toolbar has no narrow-width strategy at all.** Its one
+responsive branch, `compact_mode`, is documented in the file as long dead.
+Nothing hides, wraps, truncates or prioritises — so past a certain width
+overlap is the only possible outcome. What to drop first (status pills? nav
+labels to icons?) is a product call.
 
 ---
 
@@ -585,6 +620,10 @@ case by case.
 | 2.0 | Chain symbol box painted "SPY" twice | `watchlist_panel.rs` — placeholder only when focused |
 | 2.1b | Every dropdown caret was a tofu box | `select.rs` — mono, not proportional |
 | 2.7 | MOVERS chips collided with "Configure filters" | `scanner_panel.rs` — explicit LTR + wrap |
+| 2.2b | Chain header not adjacent to its data | `watchlist_panel.rs` — header per expiry group |
+| 2.6 | Tab divider rule was implicit | `tabs.rs` — explicit skip beside active |
+| 3.4 | Playbook list trailed off into void | `plays_panel.rs` — ghost "add another" row |
+| 3.5 | Play labels contradicted their own bar | `plays_panel.rs` — STOP / ENTRY / TARGET |
 | 2.5 | Chain numerics left-aligned | `watchlist_panel.rs` — right-aligned, headers too |
 | 3.7 | Three corner treatments in one button row | `dom_panel.rs` — explicit `r_lg_cr()` |
 | 3.3 | Object tree had two empty-state treatments | `object_tree.rs` — glyph on all four |
@@ -606,6 +645,5 @@ control-size 4/4.
 
 ## 7. Open — not fixed
 
-order ticket unrendered on a bar-less pane (§2.8, **do this first**), §2.2 header/data adjacency, §2.6 tab divider, §3.4
-playbook void, §3.5 playbook label order, §3.8 status-pills / nav overlap below ~2000px (the middle-vs-right
+order ticket unrendered on a bar-less pane (§2.8, **do this first**), §3.8 status-pills / nav overlap below ~2000px (the middle-vs-right
 half is fixed).

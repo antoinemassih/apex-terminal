@@ -1756,26 +1756,24 @@ if is_spawn || watchlist.open {
                     let col_ask = col_ask * scale;
                     let col_oi = col_oi * scale;
 
-                    // Column headers — painted with the SAME x arithmetic the
-                    // data rows use below, so they cannot drift from them.
+                    // Column headers, as a closure called once per EXPIRY
+                    // GROUP rather than once for the whole panel.
                     //
-                    // This was a `ui.horizontal` of
-                    // `ui.allocate_ui(vec2(col_w, 14.0), |ui| dim_label(..))`.
-                    // `allocate_ui` consumes only what its CONTENT needs, not
-                    // the size requested — so each header advanced by its own
-                    // label width (~26px for "STK") instead of by its column
-                    // width (44px+). The error compounded left-to-right: the
-                    // headers bunched at the left edge while the data spanned
-                    // the panel, and by `OI` the label sat above the BID
-                    // column. The header row was useless for identifying a
-                    // single column.
+                    // Painted with the SAME x arithmetic the data rows use, so
+                    // they cannot drift from them. That replaced a
+                    // `ui.horizontal` of `ui.allocate_ui(vec2(col_w, 14.0), ..)`
+                    // — `allocate_ui` consumes only what its CONTENT needs, not
+                    // the size requested, so each header advanced by its own
+                    // label width (~26px for "STK") instead of its column width
+                    // (44px+), compounding left-to-right until `OI` sat above
+                    // the BID data.
                     //
-                    // One grid described by two different layout mechanisms —
-                    // a widget flow for the headers, `x += col + gap` for the
-                    // rows. They agreed only by coincidence, and did not.
-                    // Painting both the same way makes the alignment
-                    // structural rather than maintained.
-                    {
+                    // It also used to be emitted ONCE, above every expiry
+                    // group, which put the first group's `0DTE / Count / N M F`
+                    // control row between the header and the data it labelled.
+                    // A column header that is not adjacent to its column is
+                    // only marginally better than one that is misaligned.
+                    let paint_col_hdr = |ui: &mut egui::Ui| {
                         let hdr_h = font_sm() + 2.0;
                         let (hdr_rect, _) =
                             ui.allocate_exact_size(egui::vec2(full_w, hdr_h), egui::Sense::hover());
@@ -1787,9 +1785,9 @@ if is_spawn || watchlist.open {
                             ("STK", col_stk), ("BID", col_bid),
                             ("ASK", col_ask), ("OI", col_oi),
                         ] {
-                            // RIGHT-aligned to the same edge the data uses,
-                            // so header and column share one rule rather than
-                            // two conventions that have to be kept in sync.
+                            // RIGHT-aligned to the same edge the data uses, so
+                            // header and column share one rule rather than two
+                            // conventions that have to be kept in sync.
                             hp.text(
                                 egui::pos2(hx + cw, hy),
                                 egui::Align2::RIGHT_CENTER,
@@ -1799,7 +1797,7 @@ if is_spawn || watchlist.open {
                             );
                             hx += cw + gap;
                         }
-                    }
+                    };
 
                     // ── Helper to render one option row ──
                     // Track clicked contract for opening chart (normal click).
@@ -1922,6 +1920,8 @@ if is_spawn || watchlist.open {
                             ui.add(MonospaceCode::new(&exp_label).size_px(12.0).strong(true).color(t.accent));
                             ui.add(MonospaceCode::new(&date_str).size_px(font_sm()).color(t.dim).gamma(0.6));
                         });
+                        // Column header sits directly above THIS group's rows.
+                        paint_col_hdr(ui);
                         ui.add_space(gap_xs());
 
                         // Collect all unique strikes from calls + puts, sorted ascending

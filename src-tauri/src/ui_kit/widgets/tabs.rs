@@ -724,6 +724,20 @@ fn paint_tabs(
         let sep_color = st::color_alpha(theme.border_variant(), 200);
         let stroke = Stroke::new(st::stroke_thin(), sep_color);
         for i in 1..n {
+            // Skip the two gaps that touch the ACTIVE tab.
+            //
+            // A divider was emitted for every gap, but the active tab is a
+            // filled card and its fill/rounded corners swallowed the two beside
+            // it. With four tabs and the active one in the middle, exactly one
+            // hairline survived — which reads as arbitrary decoration rather
+            // than a rule, and was reported that way.
+            //
+            // The behaviour was right; it just was not stated. A filled card
+            // already separates itself from its neighbours, so a hairline there
+            // is redundant even when it is visible. Making the skip explicit
+            // means the strip looks the same for any active index instead of
+            // depending on which gaps happen to be overdrawn.
+            if i == cur_active || i == cur_active + 1 { continue; }
             let r = displaced_rects[i];
             ui.painter().line_segment(
                 [Pos2::new(r.left(), r.top() + 4.0),
