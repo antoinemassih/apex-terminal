@@ -37,6 +37,7 @@ These keys correspond to the RECIPE-CANDIDATE(S4) fields in
 | `tooltip` | `ui_kit::Tooltip` | Tooltip card surface. Radius only; the near-solid alpha is deliberate. |
 | `badge` | `ui_kit::Badge` | Count/notification pill. Pill in every built-in style. |
 | `progress` | `ui_kit::Progress` | The track. Pill in every built-in style; variant fill stays with the widget. |
+| `slider` | `ui_kit::Slider` | The track. Pill in every built-in style; its own key because a Slider is interactive and carries a thumb. |
 
 ### Tabs
 

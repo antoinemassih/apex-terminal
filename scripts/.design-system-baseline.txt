@@ -87,7 +87,7 @@
 2 src-tauri/src/ui_kit/widgets/separator.rs
 3 src-tauri/src/ui_kit/widgets/shadow.rs
 2 src-tauri/src/ui_kit/widgets/skeleton.rs
-4 src-tauri/src/ui_kit/widgets/slider.rs
+3 src-tauri/src/ui_kit/widgets/slider.rs
 1 src-tauri/src/ui_kit/widgets/sparkline.rs
 1 src-tauri/src/ui_kit/widgets/status_pill.rs
 3 src-tauri/src/ui_kit/widgets/stepper.rs

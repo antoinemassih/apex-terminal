@@ -47,4 +47,42 @@ printf "  widgets consuming recipes  : %-4s (floor %s)\n" "$rec_n" "$rec_floor"
 [ "$ctx_n" -lt "$ctx_floor" ] && { echo "REGRESSION: show_ctx $ctx_n < $ctx_floor"; fail=1; }
 [ "$rec_n" -lt "$rec_floor" ] && { echo "REGRESSION: recipes $rec_n < $rec_floor"; fail=1; }
 
+# ── Rule 3 ────────────────────────────────────────────────────────────────────
+# Every widget that paints CHROME must either resolve a recipe key or appear on
+# this exclusion list with a reason. Without this, the layer silently stops
+# growing the moment someone adds a widget — which is how it stalled at 6.
+#
+# Exclusions are NOT "not done yet". Each is a deliberate answer to "what would
+# a style have to say about this?":
+#
+#   data-viz — paints DATA, not chrome. A style has no opinion on a sparkline's
+#   bars or a heatmap's cells; a key there would be dead data.
+#     guild_avatar_grid heatmap_grid opacity_picker pane_grid risk_reward_bar
+#     skeleton sparkline
+#
+#   modal            — paints only the SCRIM (full viewport, radius 0). Its
+#                      panel chrome comes from PopupFrame.
+#   shadow           — a shadow-painting utility, not a surface.
+#   theme_preview_card — renders a PREVIEW OF ANOTHER THEME. It must NOT follow
+#                      the ambient recipes or every swatch would look like the
+#                      active style instead of the one being previewed.
+EXCLUDE="guild_avatar_grid heatmap_grid modal opacity_picker pane_grid risk_reward_bar shadow skeleton sparkline theme_preview_card"
+
+unwired=""
+for f in $W/*.rs; do
+  b=$(basename "$f" .rs)
+  case " theme ctx tokens mod " in *" $b "*) continue;; esac
+  echo "$EXCLUDE" | tr ' ' '
+' | grep -qx "$b" && continue
+  grep -q "get_ambient_recipes\|resolve_control_chrome\|resolve_sx\|resolve_cached" "$f" && continue
+  if grep -q "rect_filled\|rect_stroke" "$f"; then unwired="$unwired $b"; fi
+done
+if [ -n "$unwired" ]; then
+  echo "CASCADE GATE FAILED — widget paints chrome but resolves no recipe key:"
+  for u in $unwired; do echo "    $u"; done
+  echo "Give it a key (reuse a sibling's where one exists), or add it to"
+  echo "EXCLUDE in this script WITH a reason."
+  fail=1
+fi
+
 [ $fail -eq 0 ] && echo "cascade gate OK" || exit 1

@@ -321,10 +321,18 @@ impl<'a> ToolOverlay<'a> {
             if host_managed && _hdr_resp.dragged() {
                 response.drag_delta = _hdr_resp.drag_delta();
             }
+            // REUSES `section.header` for the FILL only — the asymmetric
+            // radius is load-bearing here (top corners follow the panel, bottom
+            // must stay square against the body). Same as ToolPopover.
+            let hdr_default = color_alpha(border_col, st::alpha_tint());
+            let (_, hdr_fill, _) = crate::ui_kit::widgets::theme::resolve_control_chrome(
+                ui.ctx(), theme, "section.header",
+                0.0, hdr_default, hdr_default, 0.0,
+            );
             ui.painter().rect_filled(
                 header_rect,
                 CornerRadius { nw: radius.nw, ne: radius.ne, sw: 0, se: 0 },
-                color_alpha(border_col, st::alpha_tint()),
+                hdr_fill,
             );
             ui.painter().hline(
                 header_rect.x_range(),

@@ -317,6 +317,13 @@ fn aperture() -> RecipeSet {
             "progress",
             spec(d().radius(RadiusTier::Pill)),
         ),
+        // `slider` — the track. Pill like `progress` and `switch`; its own
+        // key because a Slider is interactive and carries a thumb, so a style
+        // may want to separate the two.
+        (
+            "slider",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
         // `.ds-btn--secondary { border: 1.5px solid border; background:
         // transparent }` + `.ds-btn { font-weight: 500 }`, `.is-active` →
         // inverted block.
@@ -505,6 +512,13 @@ fn cadence() -> RecipeSet {
         ),
         (
             "progress",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        // `slider` — the track. Pill like `progress` and `switch`; its own
+        // key because a Slider is interactive and carries a thumb, so a style
+        // may want to separate the two.
+        (
+            "slider",
             spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { background: bg-surface; border-radius:
@@ -714,6 +728,13 @@ fn alto() -> RecipeSet {
         ),
         (
             "progress",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        // `slider` — the track. Pill like `progress` and `switch`; its own
+        // key because a Slider is interactive and carries a thumb, so a style
+        // may want to separate the two.
+        (
+            "slider",
             spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { background: linear-gradient(bg-elevated,
@@ -955,6 +976,13 @@ fn mariner() -> RecipeSet {
         ),
         (
             "progress",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        // `slider` — the track. Pill like `progress` and `switch`; its own
+        // key because a Slider is interactive and carries a thumb, so a style
+        // may want to separate the two.
+        (
+            "slider",
             spec(d().radius(RadiusTier::Pill)),
         ),
         // `.ds-btn--secondary { box-shadow: inset 0 1px 0 rgba(180,210,240,.08),
@@ -1201,6 +1229,13 @@ fn lucid() -> RecipeSet {
             "progress",
             spec(d().radius(RadiusTier::Pill)),
         ),
+        // `slider` — the track. Pill like `progress` and `switch`; its own
+        // key because a Slider is interactive and carries a thumb, so a style
+        // may want to separate the two.
+        (
+            "slider",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
         (
             "button.ghost",
             spec(d().radius(RadiusTier::Md).border(tone(ToneRef::Border), BorderWidthTier::Std)),
@@ -1430,6 +1465,13 @@ fn meridien() -> RecipeSet {
         ),
         (
             "progress",
+            spec(d().radius(RadiusTier::Pill)),
+        ),
+        // `slider` — the track. Pill like `progress` and `switch`; its own
+        // key because a Slider is interactive and carries a thumb, so a style
+        // may want to separate the two.
+        (
+            "slider",
             spec(d().radius(RadiusTier::Pill)),
         ),
         (
@@ -1897,14 +1939,14 @@ mod tests {
     /// Authoring an unregistered key produces dead data — no widget reads it.
     #[test]
     fn every_authored_key_is_registered() {
-        const REGISTERED: [&str; 39] = [
+        const REGISTERED: [&str; 40] = [
             "button.primary", "button.ghost", "button.danger", "button.success", "button.chrome",
             // Form controls — radius only; state colours stay with the widget.
             "input", "select", "checkbox",
             // Surfaces & compound controls — radius only.
             "popover", "segmented", "switch",
             // Feedback surfaces & meters — radius only.
-            "alert", "tooltip", "badge", "progress",
+            "alert", "tooltip", "badge", "progress", "slider",
             // `button.action` — large block controls in a trading action row.
             // Consumed via `Button::recipe_key("button.action")` (the DOM
             // BUY/SELL/FLATTEN/CANCEL row), not via a Variant, because it is a

@@ -186,8 +186,16 @@ fn paint_slider<T: egui::emath::Numeric>(
             // Track background.
             let dim_mul = if disabled { 0.5 } else { 1.0 };
             let track_bg = st::color_alpha(palette_ct(theme).base(Tone::Dim), 64).gamma_multiply(dim_mul);
-            let cr = CornerRadius::same((track_h * 0.5) as u8);
-            painter.rect_filled(track_rect, cr, track_bg);
+            // `slider` key — the TRACK. Its own key rather than reusing
+            // `progress`: both are capsule tracks, but a Slider is interactive
+            // and carries a thumb, so a style may legitimately want to treat
+            // the two differently. Keys are append-only, so this is the point
+            // to make that call.
+            let (cr, track_fill, _) = super::theme::resolve_control_chrome(
+                ui.ctx(), theme, "slider",
+                track_h * 0.5, track_bg, track_bg, 0.0,
+            );
+            painter.rect_filled(track_rect, cr, track_fill);
 
             // Filled portion.
             let fill_color = variant_color(variant, theme).gamma_multiply(dim_mul);

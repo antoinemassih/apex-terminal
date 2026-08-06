@@ -149,10 +149,24 @@ impl<'a> ToolPopover<'a> {
                                 egui::vec2(avail_w, TITLE_H),
                                 Sense::hover(),
                             );
+                            // REUSES `section.header` for the FILL only.
+                            //
+                            // The radius stays asymmetric on purpose — this
+                            // band sits on top of a rounded panel, so its top
+                            // corners follow the panel and its bottom corners
+                            // must stay square. `resolve_control_chrome`
+                            // returns a symmetric radius, so taking it here
+                            // would round the bottom edge into the body.
+                            let hdr_default = color_alpha(border_col, st::alpha_tint());
+                            let (_, hdr_fill, _) =
+                                crate::ui_kit::widgets::theme::resolve_control_chrome(
+                                    ui.ctx(), theme, "section.header",
+                                    0.0, hdr_default, hdr_default, 0.0,
+                                );
                             ui.painter().rect_filled(
                                 title_rect,
                                 CornerRadius { nw: radius.nw, ne: radius.ne, sw: 0, se: 0 },
-                                color_alpha(border_col, st::alpha_tint()),
+                                hdr_fill,
                             );
                             ui.painter().hline(
                                 title_rect.x_range(),
