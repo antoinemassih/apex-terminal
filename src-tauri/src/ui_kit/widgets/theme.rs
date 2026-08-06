@@ -300,6 +300,47 @@ pub struct PortableTheme {
 }
 
 impl PortableTheme {
+    /// Snapshot any [`ComponentTheme`] into an OWNED, fully-featured theme.
+    ///
+    /// For deferred-render builders (`ContextMenu` and friends) that are
+    /// constructed with a theme and shown later, where holding a
+    /// `&dyn ComponentTheme` across the gap is awkward.
+    ///
+    /// The alternative such builders reached for was a hand-rolled struct of
+    /// the four or five colours they happened to need — `MenuTheme` was one.
+    /// That works until the widget wants anything else: the projection is
+    /// lossy, so everything downstream of it is cut off from the palette AND
+    /// from the recipe layer, and cannot resolve a key even in principle.
+    /// Snapshotting the WHOLE theme costs a struct copy and keeps the widget
+    /// inside the design system.
+    pub fn snapshot(t: &dyn ComponentTheme) -> Self {
+        Self {
+            accent: t.accent(),
+            bull: t.bull(),
+            bear: t.bear(),
+            text: t.text(),
+            dim: t.dim(),
+            border: t.border(),
+            border_variant: t.border_variant(),
+            warn: t.warn(),
+            bg: t.bg(),
+            surface: t.surface(),
+            element_hover: t.element_hover(),
+            element_active: t.element_active(),
+            element_selected: t.element_selected(),
+            element_disabled: t.element_disabled(),
+            ghost_hover: t.ghost_hover(),
+            ghost_active: t.ghost_active(),
+            icon: t.icon(),
+            icon_muted: t.icon_muted(),
+            icon_disabled: t.icon_disabled(),
+            icon_accent: t.icon_accent(),
+            shadow_color: t.shadow_color(),
+            section_header_mono: t.section_header_mono(),
+            cards_float: t.cards_float(),
+        }
+    }
+
     /// Reasonable dark-theme defaults — neutral grays, blue accent, soft
     /// black shadow. Good enough to bring up a new app's UI and iterate.
     pub fn dark() -> Self {

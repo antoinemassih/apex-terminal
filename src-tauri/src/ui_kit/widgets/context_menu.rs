@@ -23,7 +23,7 @@
 
 use egui::{Align2, Color32, FontId, Id, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 
-use super::theme::ComponentTheme;
+use super::theme::{ComponentTheme, PortableTheme};
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::motion;
 
@@ -36,33 +36,18 @@ use crate::ui_kit::text_style::TextStyle;
 
 // ─── Shared theme snapshot ───────────────────────────────────────────────────
 
-/// Lightweight theme snapshot copied out of a `ComponentTheme` so
-/// `MenuBuilder` can be passed to user closures without lifetime gymnastics.
-#[derive(Copy, Clone)]
-pub struct MenuTheme {
-    pub accent: Color32,
-    pub dim: Color32,
-    pub bg: Color32,
-    pub fg: Color32,
-    pub danger: Color32,
-    /// Themed shadow tint (light themes use soft gray, dark themes black).
-    pub shadow: Color32,
-}
-
-impl MenuTheme {
-    pub fn from_component<T: ComponentTheme + ?Sized>(t: &T) -> Self {
-        Self {
-            // NB: `t: &T` is `?Sized` here, so it can't coerce to palette_ct's
-            // `&dyn ComponentTheme` — these stay direct (byte-identical anyway).
-            accent: t.accent(),
-            dim: t.dim(),
-            bg: t.bg(),
-            fg: t.text(),
-            danger: t.danger(),
-            shadow: t.shadow_color(),
-        }
-    }
-}
+// `MenuTheme` is GONE — it was a six-colour projection of `ComponentTheme`
+// (accent/dim/bg/fg/danger/shadow) snapshotted at construction so the builder
+// need not hold a borrow until `.show()`.
+//
+// The lifetime problem was real; the fix was not. Everything downstream of the
+// projection was cut off from the rest of the palette AND from the recipe
+// layer — the menu could not resolve a recipe key even in principle, because
+// `resolve` needs a `&dyn ComponentTheme` and the six colours are not one.
+//
+// `PortableTheme::snapshot(t)` solves the same lifetime problem, is an OWNED
+// `ComponentTheme`, and costs a struct copy. A widget that needs to outlive a
+// borrow should snapshot the WHOLE theme, never a hand-picked subset of it.
 
 // ─── ContextMenu builder ─────────────────────────────────────────────────────
 
@@ -76,17 +61,17 @@ pub enum MenuAnchor {
 pub struct ContextMenu {
     id: Id,
     anchor: Option<MenuAnchor>,
-    theme: MenuTheme,
+    theme: PortableTheme,
     min_width: f32,
 }
 
 impl ContextMenu {
     /// Construct from any `ComponentTheme`. Matches legacy `ContextMenu::new(&Theme)`.
-    pub fn new<T: ComponentTheme + ?Sized>(t: &T) -> Self {
+    pub fn new<T: ComponentTheme>(t: &T) -> Self {
         Self {
             id: Id::new("apex_context_menu"),
             anchor: None,
-            theme: MenuTheme::from_component(t),
+            theme: PortableTheme::snapshot(t),
             min_width: 160.0,
         }
     }
@@ -150,12 +135,12 @@ impl ContextMenu {
                     super::ShadowSpec {
                         radius: 16.0,
                         offset: egui::Vec2::new(0.0, 4.0),
-                        color: color_alpha(theme.shadow, 77),
+                        color: color_alpha(theme.shadow_color(), 77),
                         spread: 0.0,
                     },
                 );
                 let frame = PopupFrame::new()
-                    .colors(theme.bg, theme.dim)
+                    .colors(theme.bg(), theme.dim())
                     .ctx(ui.ctx())
                     .border_alpha(BorderAlpha::Line)
                     .corner_radius(radius_sm())
@@ -179,7 +164,7 @@ impl ContextMenu {
 
 pub struct MenuBuilder<'a> {
     pub ui: &'a mut Ui,
-    pub theme: MenuTheme,
+    pub theme: PortableTheme,
 }
 
 impl<'a> MenuBuilder<'a> {
@@ -197,7 +182,7 @@ impl<'a> MenuBuilder<'a> {
 // ─── MenuRow trait ───────────────────────────────────────────────────────────
 
 pub trait MenuRow {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response;
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response;
 }
 
 // ─── MenuSection ─────────────────────────────────────────────────────────────
@@ -211,13 +196,13 @@ impl<'a> MenuSection<'a> {
 }
 
 impl<'a> MenuRow for MenuSection<'a> {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
         let resp = ui.horizontal(|ui| {
             ui.add_space(gap_sm());
             ui.label(
                 RichText::new(self.label.to_uppercase())
                     .size(font_xs())
-                    .color(color_alpha(theme.dim, alpha_strong())),
+                    .color(color_alpha(theme.dim(), alpha_strong())),
             )
         }).response;
         ui.add_space(gap_xs());
@@ -230,7 +215,7 @@ impl<'a> MenuRow for MenuSection<'a> {
 pub struct MenuDivider;
 
 impl MenuRow for MenuDivider {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
         let (rect, resp) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), 1.0),
             Sense::hover(),
@@ -240,7 +225,7 @@ impl MenuRow for MenuDivider {
                 egui::pos2(rect.left() + gap_sm(), rect.center().y),
                 egui::pos2(rect.right() - gap_sm(), rect.center().y),
             ],
-            Stroke::new(stroke_hair(), color_alpha(theme.dim, alpha_line())),
+            Stroke::new(stroke_hair(), color_alpha(theme.dim(), alpha_line())),
         );
         ui.add_space(gap_xs());
         resp
@@ -251,7 +236,7 @@ impl MenuRow for MenuDivider {
 
 fn paint_row(
     ui: &mut Ui,
-    theme: &MenuTheme,
+    theme: &PortableTheme,
     label: &str,
     fg: Color32,
     icon: Option<&str>,
@@ -285,7 +270,7 @@ fn paint_row(
                     .min_size(egui::vec2(ui.available_width().max(80.0), 20.0)),
             );
             if let Some(sc) = shortcut {
-                let sc_color = color_alpha(theme.dim, alpha_muted());
+                let sc_color = color_alpha(theme.dim(), alpha_muted());
                 let max_x = r.rect.right() - gap_sm();
                 let y = r.rect.center().y;
                 ui.painter().text(
@@ -308,7 +293,7 @@ fn paint_row(
     let v = crate::ui_kit::interaction::apply_interaction(
         resp.rect,
         crate::ui_kit::interaction::InteractionState::new().hovered(resp.hovered()),
-        theme.accent,
+        theme.accent(),
         &crate::ui_kit::interaction::InteractionTokens::borderless(),
     );
     if v.fill != Color32::TRANSPARENT {
@@ -316,15 +301,16 @@ fn paint_row(
         // style restyles every floating surface at once instead of one of them
         // quietly keeping the old look.
         //
-        // Resolved against the AMBIENT theme, not `theme`: this widget is
-        // handed a `MenuTheme`, which is a lossy six-colour projection of
-        // `ComponentTheme` built at the call boundary. Everything downstream of
-        // that projection is cut off from the palette and the recipe layer.
-        // `MenuTheme` is a duplication-phase target; using the ambient theme is
-        // the same thing `Widget::ui` already does for un-themed call sites.
-        let amb = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        // Resolved against the menu's OWN theme now.
+        //
+        // This used to reach for the ambient theme because the widget was
+        // handed a `MenuTheme` — a six-colour projection that is not a
+        // `ComponentTheme` and so could not be passed to `resolve` at all. With
+        // the snapshot upgraded to `PortableTheme` the workaround is gone: the
+        // menu resolves against the theme it was actually constructed with,
+        // which is what a caller passing an explicit theme expects.
         let (pop_cr, pop_fill, _) = crate::ui_kit::widgets::theme::resolve_control_chrome(
-            ui.ctx(), &amb, "popover",
+            ui.ctx(), theme, "popover",
             radius_sm(), v.fill, v.fill, 0.0,
         );
         ui.painter().rect_filled(resp.rect, pop_cr, pop_fill);
@@ -343,8 +329,8 @@ impl<'a> MenuItem<'a> {
 }
 
 impl<'a> MenuRow for MenuItem<'a> {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
-        paint_row(ui, theme, self.label, theme.dim, None, None, None, None)
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
+        paint_row(ui, theme, self.label, theme.dim(), None, None, None, None)
     }
 }
 
@@ -360,8 +346,8 @@ impl<'a> MenuItemWithShortcut<'a> {
 }
 
 impl<'a> MenuRow for MenuItemWithShortcut<'a> {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
-        paint_row(ui, theme, self.label, theme.dim, None, Some(self.shortcut), None, None)
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
+        paint_row(ui, theme, self.label, theme.dim(), None, Some(self.shortcut), None, None)
     }
 }
 
@@ -377,8 +363,8 @@ impl<'a> MenuItemWithIcon<'a> {
 }
 
 impl<'a> MenuRow for MenuItemWithIcon<'a> {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
-        paint_row(ui, theme, self.label, theme.dim, Some(self.icon), None, None, None)
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
+        paint_row(ui, theme, self.label, theme.dim(), Some(self.icon), None, None, None)
     }
 }
 
@@ -394,12 +380,12 @@ impl<'a> CheckMenuItem<'a> {
 }
 
 impl<'a> MenuRow for CheckMenuItem<'a> {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
         let resp = paint_row(
             ui,
             theme,
             self.label,
-            theme.dim,
+            theme.dim(),
             None,
             None,
             None,
@@ -427,13 +413,13 @@ impl<'a, T: PartialEq + Clone> RadioMenuItem<'a, T> {
 }
 
 impl<'a, T: PartialEq + Clone> MenuRow for RadioMenuItem<'a, T> {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
         let selected = *self.current == self.value;
         let resp = paint_row(
             ui,
             theme,
             self.label,
-            theme.dim,
+            theme.dim(),
             None,
             None,
             None,
@@ -467,12 +453,12 @@ impl<'a, F> MenuRow for Submenu<'a, F>
 where
     F: FnOnce(&mut MenuBuilder<'_>),
 {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
         let resp = paint_row(
             ui,
             theme,
             self.label,
-            theme.dim,
+            theme.dim(),
             None,
             None,
             Some("\u{25B8}"),
@@ -493,7 +479,7 @@ where
                 .show(ui.ctx(), |ui| {
                     ui.set_opacity(appear_t);
                     let frame = PopupFrame::new()
-                        .colors(theme.bg, theme.dim)
+                        .colors(theme.bg(), theme.dim())
                         .ctx(ui.ctx())
                         .border_alpha(BorderAlpha::Line)
                         .corner_radius(radius_sm())
@@ -501,7 +487,7 @@ where
                         .build();
                     frame.show(ui, |ui| {
                         ui.set_min_width(140.0);
-                        let mut mb = MenuBuilder { ui, theme: *theme };
+                        let mut mb = MenuBuilder { ui, theme: theme.clone() };
                         (self.body)(&mut mb);
                     });
                 });
@@ -524,7 +510,7 @@ impl<'a> DangerMenuItem<'a> {
 }
 
 impl<'a> MenuRow for DangerMenuItem<'a> {
-    fn show(self, ui: &mut Ui, theme: &MenuTheme) -> Response {
-        paint_row(ui, theme, self.label, theme.danger, self.icon, None, None, None)
+    fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
+        paint_row(ui, theme, self.label, theme.danger(), self.icon, None, None, None)
     }
 }
