@@ -49,3 +49,32 @@ first CSS block I happened to grep.
 Before treating anything here as authoritative, ask which of the three columns
 above the question falls into. Composition questions go to the bespoke app.
 Token questions go to `tokens.full.json`. `normalized.html` is for looking at.
+
+## Three findings the harness produced, all wrong
+
+Recorded together because they are one mistake made three times, and the third
+would have cost the most work.
+
+| harness says | bespoke apps say |
+|---|---|
+| all six number their panels | four do; aperture and cadence do not |
+| numeral is `--np-accent-ink` at 10px | true for the four that have one |
+| panels are **outlined cards** (`.np-panel{border:1px solid}`) | panels are **grid rules** — `border-right` + `border-bottom` only |
+
+The third is the clearest. `trading app - Lucid _ new _/cleanup.css`:
+
+```css
+/* Consistent panel rhythm — kill double borders */
+.panel { border-top: 0 !important; border-left: 0 !important; }
+.workspace > .panel:last-child { border-right: 0 !important; }
+```
+
+The bespoke design actively strips two sides to turn boxes into rules, and
+drops the trailing edge so the outer frame is not doubled. Meridien's own
+`styles.css` does the same by construction (`border-right` + `border-bottom`
+on `.panel`, nothing else).
+
+So "outlined panel cards", which sat on the Meridien fidelity plan as an
+open item, is **not a gap** — our flush regions with edge hairlines are nearer
+the design than outlined cards would have been. Implementing it would have
+been a visible regression dressed as fidelity work.

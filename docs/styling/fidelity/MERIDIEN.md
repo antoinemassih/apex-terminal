@@ -125,8 +125,12 @@ would have sent us optimising the wrong axis.
 - **Right-aligned panel meta.** Each header carries a muted right-side caption
   (`MEGACAPS`, `LVL 2 · 14 DEEP`, `3 OPEN`, `INTRADAY`). We have counts, not
   captions.
-- **Outlined panel cards.** The source's panels are distinct hairline-bordered
-  boxes separated by page background. Ours are flush regions.
+- ~~**Outlined panel cards.**~~ **WITHDRAWN — not a gap.** This came from
+  `normalized.html` (see [SOURCES.md](SOURCES.md)). The bespoke apps use grid
+  RULES, not outlined cards: `.panel` carries `border-right` + `border-bottom`
+  only, and Lucid's `cleanup.css` explicitly sets `border-top: 0; border-left:
+  0` to "kill double borders". Our flush regions with edge hairlines are closer
+  to the design than outlines would be.
 
 ---
 
