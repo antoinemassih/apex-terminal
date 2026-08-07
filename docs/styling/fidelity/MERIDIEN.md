@@ -1,0 +1,127 @@
+# Meridien — fidelity against the design source
+
+**Source of truth:** `ApexTerminalThemes/trading app - meridien/`
+(`design-system/primitives.css`, `styles.css`, `apex.css`), reference render
+`ApexTerminalThemes/meridien-terminal.png`.
+
+**Ours:** theme 21 (`meridien` scheme) × style 0 (`meridien`) — the certified
+pairing per `design_system::presets`. Captured with recipes LIVE (they were
+frozen at startup until `fe96d5ca`, so no previous screenshot of Meridien ever
+showed its authored recipes).
+
+---
+
+## 0. The headline finding
+
+**Meridien has never been an implementation of the Meridien design source.**
+
+`builtin.rs` says so directly, at the radii block:
+
+> `radii + strokes aligned to the LIVE default style (style_defaults(0))`. The
+> Phase B source-swap deliberately defined Meridien-the-default as the graduated
+> `dt_f32!` scale to preserve the existing look — so the design_system Meridien
+> matches it (equivalence test: field-exact).
+
+And `equivalence_tests::style_axis_equivalence` **enforces** it: the
+design-system Meridien is asserted field-exact against legacy
+`style_defaults_pub(0)`.
+
+So Meridien is the app's pre-existing default style wearing the Meridien name,
+pinned there by a test. That is a defensible migration decision — it kept the
+app looking unchanged during the swap — but it means "Meridien fidelity" has
+never been measured against anything, and the test will fail the moment we
+start.
+
+**That test is the first thing to decide about, not the radii.**
+
+---
+
+## 1. Token gaps (measured, source vs ours)
+
+| token | source | ours | delta |
+|---|---|---|---|
+| `radius-sm` | 3px | 4.0 | +1 |
+| `radius-md` | 6px | 6.0 | ✓ |
+| `radius-lg` | 14px | 12.0 | −2 |
+| `radius-xl` | 22px | — | absent |
+| `radius-pill` | 99px | **0.0** | inverted |
+
+`pill: 0.0` is the consequential one. Anything resolving `RadiusTier::Pill`
+renders **square** in Meridien — including the `switch`, `badge` and `progress`
+recipes, which I authored as Pill on the reasoning that "a track is a capsule by
+definition". In Meridien they are not capsules at all.
+
+Whether that is wrong depends on what Meridien actually does, which is worth
+stating carefully:
+
+- Radius values actually used across the source CSS: `50%` ×8 (dots/avatars),
+  `0` ×4, `3px` ×3, `4px` ×1, `10px` ×1, `99px` ×1.
+- The single `99px` is the **scrollbar thumb**, not a UI pill language.
+- But the reference render's active nav item ("Trade") is clearly a rounded
+  pill — produced by `radius-lg: 14px` on a ~28px control, not by a pill token.
+
+So Meridien is genuinely a **sharp** system, and our `RadiusTier::None`
+authoring for buttons/inputs/popovers is right in spirit. The errors are
+narrower than "it should be rounded":
+
+1. Its small controls are **3px, not 0** — Meridien is sharp, not razor-sharp.
+2. `pill = 0` makes short capsule controls square, where the source would round
+   them via `lg`.
+
+---
+
+## 2. Density — the largest visible gap
+
+Measured from the reference render vs our capture, both full-app screenshots:
+
+| | source | ours |
+|---|---|---|
+| watchlist row pitch | ~25px | ~15px |
+
+Ours is roughly **60% of the source's row height**. Meridien is an *editorial /
+paper* system — the whitespace is the design. At our density it reads as a
+dense terminal that happens to be beige, which is not the same thing.
+
+This is the single change that would move Meridien closest to the source, and
+it is also the most invasive: row height is a density token consumed
+app-wide.
+
+---
+
+## 3. Signature devices we do not implement
+
+- **Numbered section headers.** The source labels every panel `01 WATCHLIST`,
+  `02 ORDER BOOK`, `03 POSITIONS`, `04 ORDER TICKET` — accent numeral +
+  uppercase mono title. It is the most recognisable thing about the layout. We
+  have none of it.
+- **Right-aligned panel meta.** Each header carries a muted right-side caption
+  (`MEGACAPS`, `LVL 2 · 14 DEEP`, `3 OPEN`, `INTRADAY`). We have counts, not
+  captions.
+- **Outlined panel cards.** The source's panels are distinct hairline-bordered
+  boxes separated by page background. Ours are flush regions.
+
+---
+
+## 4. What already matches
+
+Worth recording so it is not "fixed" by accident:
+
+- Paper/cream background and the warm neutral ramp.
+- Sharp panel corners.
+- Uppercase mono section labels with letter-spacing.
+- Terracotta accent; muted sage/olive for positive, terracotta for negative.
+- Mono numerals throughout the data columns.
+
+---
+
+## 5. Recommended order
+
+1. **Decide the equivalence test.** It currently asserts Meridien == the legacy
+   default. Fidelity work cannot start until that is either retired or
+   re-pointed at the source. Nothing below is safe while it stands.
+2. **Radii** — `sm 4→3`, `lg 12→14`, and give `pill` a real value so capsule
+   controls are not square. Cheap, contained, visible.
+3. **Density** — the row-pitch gap. Biggest visual win, widest blast radius;
+   do it deliberately and re-shoot every surface.
+4. **Signature devices** — numbered headers and panel meta captions. These are
+   new components, not token changes, and should be scoped separately.
