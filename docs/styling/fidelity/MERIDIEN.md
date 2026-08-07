@@ -22,17 +22,17 @@ showed its authored recipes).
 > `dt_f32!` scale to preserve the existing look — so the design_system Meridien
 > matches it (equivalence test: field-exact).
 
-And `equivalence_tests::style_axis_equivalence` **enforces** it: the
-design-system Meridien is asserted field-exact against legacy
-`style_defaults_pub(0)`.
+So Meridien is the app's pre-existing default style wearing the Meridien name.
+That is a defensible migration decision — it kept the app looking unchanged
+through the swap — but it means "Meridien fidelity" had never been measured
+against anything.
 
-So Meridien is the app's pre-existing default style wearing the Meridien name,
-pinned there by a test. That is a defensible migration decision — it kept the
-app looking unchanged during the swap — but it means "Meridien fidelity" has
-never been measured against anything, and the test will fail the moment we
-start.
-
-**That test is the first thing to decide about, not the radii.**
+**I claimed `equivalence_tests::style_axis_equivalence` enforced this and had to
+be dealt with first. That was wrong.** The test records radii in its
+`noted_differences` bucket, which prints but does not fail; only directly-mapped
+scalar fields are strict-checked. Verified by making the change — the test still
+passes. There was never a blocker; I had read the comment ("equivalence test:
+field-exact") and not the test.
 
 ---
 
@@ -70,21 +70,29 @@ narrower than "it should be rounded":
 
 ---
 
-## 2. Density — the largest visible gap
+## 2. Density — CORRECTED, and it is minor
 
-Measured from the reference render vs our capture, both full-app screenshots:
+**My first pass on this was wrong, and wrong in the flattering direction.** I
+eyeballed a *downscaled* capture against a *native-resolution* reference and
+reported ours as "~15px vs ~25px — roughly 60% of the source". Measuring both
+at their own scales, by autocorrelation of the ink profile down the watchlist
+column:
 
-| | source | ours |
+| | period | logical |
 |---|---|---|
-| watchlist row pitch | ~25px | ~15px |
+| source | 25px (autocorr 0.50) | 25px |
+| ours | 45px (autocorr 0.85) | **30px** (÷1.5 DPI) |
 
-Ours is roughly **60% of the source's row height**. Meridien is an *editorial /
-paper* system — the whitespace is the design. At our density it reads as a
-dense terminal that happens to be beige, which is not the same thing.
+Ours is **30 vs 25 — 20% LOOSER, not 40% tighter.** The direction was inverted.
 
-This is the single change that would move Meridien closest to the source, and
-it is also the most invasive: row height is a density token consumed
-app-wide.
+So density is a modest gap, not the headline, and "Meridien reads as a dense
+terminal that happens to be beige" was not supported by anything. Tightening
+the comfortable row height from 28 → 25 would close it, which is a small
+token change rather than the invasive app-wide one I described.
+
+Recording the error rather than quietly deleting it: comparing two screenshots
+means normalising for DPI and render width first, every time. The same mistake
+would have sent us optimising the wrong axis.
 
 ---
 
@@ -116,12 +124,13 @@ Worth recording so it is not "fixed" by accident:
 
 ## 5. Recommended order
 
-1. **Decide the equivalence test.** It currently asserts Meridien == the legacy
-   default. Fidelity work cannot start until that is either retired or
-   re-pointed at the source. Nothing below is safe while it stands.
-2. **Radii** — `sm 4→3`, `lg 12→14`, and give `pill` a real value so capsule
-   controls are not square. Cheap, contained, visible.
-3. **Density** — the row-pitch gap. Biggest visual win, widest blast radius;
-   do it deliberately and re-shoot every surface.
-4. **Signature devices** — numbered headers and panel meta captions. These are
-   new components, not token changes, and should be scoped separately.
+1. ~~Decide the equivalence test.~~ **Not a blocker — I was wrong.** The test
+   records radii in its `noted_differences` bucket, which reports but does not
+   fail. Only directly-mapped scalar fields are strict. Verified by making the
+   change: `style_axis_equivalence` still passes.
+2. **Radii** — DONE. `sm 4→3`, `lg 12→14`, `pill 0→14`.
+3. **Signature devices** — numbered headers, panel meta captions, outlined
+   panel cards. With density demoted, these ARE the visible gap: they are what
+   makes the reference render recognisably Meridien. New components / style
+   treatments, not token changes.
+4. **Density** — 30 → 25 logical row pitch. Small, do it last, re-shoot.

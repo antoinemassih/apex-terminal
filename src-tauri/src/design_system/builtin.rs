@@ -1042,18 +1042,42 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             cta_padding_x: 16.0, button_height: 24.0, button_padding_x: 10.0, tab_height: 28.0,
             ..Spacing::default()
         },
-        // radii + strokes aligned to the LIVE default style (style_defaults(0)).
-        // The Phase B source-swap deliberately defined Meridien-the-default as
-        // the graduated dt_f32! scale to preserve the existing look — so the
-        // design_system Meridien matches it (equivalence test: field-exact).
+        // Radii from the DESIGN SOURCE — `trading app - meridien/design-system/
+        // primitives.css` — not from the legacy default style.
+        //
+        // These used to be copied from `style_defaults(0)` to keep the app
+        // looking unchanged through the Phase B source-swap. That was a
+        // reasonable migration call, but it left Meridien as the app's old
+        // default wearing the Meridien name, and nothing had ever been measured
+        // against the source.
+        //
+        // Meridien IS a sharp system, so this is a small correction, not a
+        // reinvention. Radius values actually used across its CSS: 50% x8
+        // (dots), 0 x4, 3px x3, 4px x1, 10px x1, 99px x1 — and that lone 99px
+        // is the SCROLLBAR THUMB, not a UI pill language.
+        //
+        //   sm 4 -> 3    source `--radius-sm: 3px`; Meridien is sharp, not
+        //                razor-sharp — its small controls carry a 3px soften.
+        //   lg 12 -> 14  source `--radius-lg: 14px`.
+        //   pill 0 -> 14 `pill: 0` made every `RadiusTier::Pill` control render
+        //                SQUARE — switch tracks, badges, progress bars. The
+        //                source has no pill token in use; its rounded controls
+        //                (the active nav item in the reference render) get their
+        //                capsule shape from `lg` on a short element. Pointing
+        //                pill at the same 14px reproduces that instead of
+        //                squaring a switch.
+        //
+        // The equivalence test records radii as a DOCUMENTED DIVERGENCE
+        // (`noted_differences`), not a strict field match, so this is expected
+        // to differ from `style_defaults(0)` and does not fail it.
         radii: Radii {
             none: 0.0,
             xs: 2.0,
-            sm: 4.0,
+            sm: 3.0,
             md: 6.0,
-            lg: 12.0,
-            full: 9999.0, // pill = fully round
-            pill: 0.0,    // r_pill = 0 (Meridien sharp pill)
+            lg: 14.0,
+            full: 9999.0, // true circles (dots/avatars) — source uses 50%
+            pill: 14.0,   // capsule via lg, per the source
             chip: 0.0,    // r_chip = 0
         },
         strokes: Strokes {
