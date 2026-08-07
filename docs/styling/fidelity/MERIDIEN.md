@@ -150,6 +150,13 @@ Worth recording so it is not "fixed" by accident:
    change: `style_axis_equivalence` still passes.
 2. **Radii** — DONE. `sm 4→3`, `lg 12→14`, `pill 0→14`. Required recording
    the divergence in `RADIUS_DIVERGENCES` + the golden snapshot (see §0).
+> **Superseded in part — see [SOURCES.md](SOURCES.md).** The section below
+> concluded that all six styles number their panels, on the strength of
+> `faithful/<style>/normalized.html`. That file is a token harness which renders
+> identical markup for every style, so it cannot answer that question. The
+> bespoke apps say four do (meridien, lucid, alto, mariner) and two do not
+> (aperture, cadence). The code and tests now follow the bespoke apps.
+
 ### Correction: the reference set, and what numbering actually is
 
 `ApexTerminalThemes/faithful/<style>/normalized.html` is the real fidelity

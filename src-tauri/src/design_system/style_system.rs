@@ -766,20 +766,29 @@ pub struct Treatments {
     /// `uppercase_section_labels`'s `style_label_case` path. It occupies the
     /// header's leading (icon) slot, which is already accent + mono + measured.
     ///
-    /// **Defaults to `true`, and that is the source's answer, not a guess.**
-    /// The reference set at `ApexTerminalThemes/faithful/<style>/normalized.
-    /// html` has the same `<span class="num">` in its panel header for ALL SIX
-    /// documented systems, every one of them coloured `--np-accent-ink`:
+    /// **Defaults to `false`; four of the six documented styles opt in.**
     ///
-    /// ```text
-    /// .np-ph .num { font-family: var(--mono); font-size: 10px;
-    ///               color: var(--np-accent-ink); letter-spacing: .06em }
-    /// ```
+    /// Settled against the BESPOKE apps, which is the only evidence that can
+    /// answer this:
     ///
-    /// It was first authored `true` for Meridien alone, on the strength of the
-    /// Meridien reference render — the only one I had looked at. The device is
-    /// shared panel language across the whole reference set; only its token
-    /// values differ per style. The flag stays so a theme pack can opt out.
+    /// | style | numbers | where |
+    /// |---|---|---|
+    /// | meridien, lucid, alto, mariner | yes | `num="01".."08"` in the app |
+    /// | aperture | no | `SectionH` is `title \| sub \| right` — no numeral |
+    /// | cadence | no | `num` appears only in its design-system doc |
+    ///
+    /// I got the scope wrong twice before this. First `true` for Meridien
+    /// alone, from its render. Then `true` for all six, from
+    /// `faithful/<style>/normalized.html` — which carries the numeral for
+    /// every theme, but is a token-driven harness that renders the SAME markup
+    /// for all of them to isolate colour and shape. Its own HANDOFF.md says so:
+    /// *"visual sanity-check only (token-driven; NOT a pixel clone of the
+    /// bespoke app)"*. It cannot answer a composition question, and I used it
+    /// for one before reading that line.
+    ///
+    /// Default `false` rather than `true` because 4-of-6 is not a mandate, and
+    /// the styles with no bespoke reference (octave, relay, glass) should not
+    /// inherit a decoration by coin-flip.
     pub numbered_section_labels: bool,
 
     /// When `true`, the segmented control idle state uses a filled background.
@@ -887,7 +896,7 @@ impl Default for Treatments {
             solid_active_fills:       false,
             hairline_borders:         false,
             uppercase_section_labels: false,
-            numbered_section_labels: true,
+            numbered_section_labels: false,
             segmented_filled_idle:    false,
             focus_ring:               FocusRingStyle::Outline,
             surface_bevel:            BevelStyle::None,

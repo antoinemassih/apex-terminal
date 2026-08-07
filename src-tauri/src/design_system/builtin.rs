@@ -1127,8 +1127,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       true,  // solid_active_fills = true
             hairline_borders:         true,  // hairline_borders = true
             uppercase_section_labels: true,  // uppercase_section_labels = true
-            // Every faithful reference numbers its panels: 01 WATCHLIST,
-            // 02 ORDER BOOK, 03 POSITIONS, 04 ORDER TICKET.
+            // The bespoke Meridien app numbers its panels 01..08.
             numbered_section_labels: true,
             segmented_filled_idle:    false,
             focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.0
@@ -1265,7 +1264,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       false, // solid_active_fills = false
             hairline_borders:         false, // hairline_borders = false
             uppercase_section_labels: false, // uppercase_section_labels = false
-            numbered_section_labels: true,
+            // Aperture's SectionH is `title | sub | right` — no numeral.
+            numbered_section_labels: false,
             segmented_filled_idle:    true,
             focus_ring: FocusRingStyle::Glow, // focus_ring_width = 2.0 → Glow
             surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
@@ -1401,7 +1401,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       true,  // solid_active_fills = true
             hairline_borders:         true,  // hairline_borders = true
             uppercase_section_labels: true,  // uppercase_section_labels = true
-            numbered_section_labels: true,
+            numbered_section_labels: false,
             segmented_filled_idle:    false,
             focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.5
             surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
@@ -1497,6 +1497,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             ..Shadows::default()
         },
         treatments: Treatments {
+            // The bespoke Alto app numbers its panels 01..08.
+            numbered_section_labels: true,
             hairline_borders: false, uppercase_section_labels: true,
             surface_bevel: BevelStyle::Raised, bevel_highlight_alpha: 16, bevel_shadow_alpha: 90,
             wl_row_divider_alpha: 22, section_header_mono: true, wl_symbol_mono: true,
@@ -1517,6 +1519,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         density: Density { factor: 0.85, row_height_dense: 22.0, row_height_comfortable: 28.0, ..Density::default() },
         shadows: alto.shadows.clone(),
         treatments: Treatments {
+            // The bespoke Mariner app numbers its panels 01..08.
+            numbered_section_labels: true,
             hairline_borders: false, uppercase_section_labels: true,
             surface_bevel: BevelStyle::Raised, bevel_highlight_alpha: 20, bevel_shadow_alpha: 97,
             wl_row_divider_alpha: 28, section_header_mono: true, wl_symbol_mono: true,
@@ -1548,6 +1552,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             ..Shadows::default()
         },
         treatments: Treatments {
+            // The bespoke Lucid app numbers its panels 01..08.
+            numbered_section_labels: true,
             solid_active_fills: true, hairline_borders: false, uppercase_section_labels: true,
             serif_headlines: true, invert_active_fill: true,
             surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
@@ -1637,32 +1643,36 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
 
 #[cfg(test)]
 mod tests {
-    /// Every documented style numbers its panels.
+    /// Exactly the four documented styles whose BESPOKE app numbers its
+    /// panels do so here — no more, no less.
     ///
-    /// This test previously asserted the OPPOSITE — that only Meridien did —
-    /// which is what I believed after reading one reference render. The
-    /// reference set at `ApexTerminalThemes/faithful/<style>/normalized.html`
-    /// carries the same `<span class="num">` panel header in all six, each
-    /// coloured `--np-accent-ink`. A test can encode a wrong belief just as
-    /// firmly as a right one; this one now names its evidence.
+    /// This assertion has now been wrong twice, in both directions, so it
+    /// carries its evidence:
     ///
-    /// Styles WITHOUT a faithful reference (octave, relay, glass) inherit the
-    /// default rather than being singled out — consistent panel language beats
-    /// an arbitrary split.
+    /// - meridien, lucid, alto, mariner — `num="01".."08"` in the real app
+    /// - aperture — `SectionH` is `title | sub | right`, no numeral
+    /// - cadence — `num` appears only in its design-system document
+    ///
+    /// The trap both times was `faithful/<style>/normalized.html`, which shows
+    /// the numeral for every theme. It is a token harness that renders
+    /// identical markup for all six to isolate colour and shape; its own
+    /// HANDOFF.md calls it "NOT a pixel clone of the bespoke app". It answers
+    /// token questions and cannot answer composition questions.
     #[test]
-    fn documented_styles_all_number_their_section_headers() {
-        const REFERENCED: &[&str] =
-            &["meridien", "aperture", "cadence", "alto", "mariner", "lucid"];
-        let missing: Vec<String> = super::builtin_style_systems()
-            .iter()
-            .filter(|s| REFERENCED.contains(&s.meta.id.as_str()))
-            .filter(|s| !s.treatments.numbered_section_labels)
-            .map(|s| s.meta.id.clone())
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "these styles have a faithful reference that numbers its panels,              but do not number: {missing:?}"
-        );
+    fn only_the_styles_whose_design_numbers_panels_do_so() {
+        const NUMBERS: &[&str] = &["meridien", "lucid", "alto", "mariner"];
+        const DOES_NOT: &[&str] = &["aperture", "cadence"];
+
+        for s in super::builtin_style_systems() {
+            let id = s.meta.id.as_str();
+            let on = s.treatments.numbered_section_labels;
+            if NUMBERS.contains(&id) {
+                assert!(on, "{id}'s app numbers its panels 01..08, but the style does not");
+            }
+            if DOES_NOT.contains(&id) {
+                assert!(!on, "{id}'s app has no panel numerals, but the style adds them");
+            }
+        }
     }
 
     use super::*;
