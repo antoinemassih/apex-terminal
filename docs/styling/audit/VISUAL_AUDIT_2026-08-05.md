@@ -532,9 +532,32 @@ frame of lag on a resize is invisible; a permanently wrong constant is not. The
 fallback is deliberately generous, because erring narrow scrolls (recoverable)
 while erring wide overlaps (not). Verified clean at 1920 / 2560 / 3840.
 
-*A second, pre-existing overlap remains — and it needs a design decision, not a
-patch.* Below ~2000px the left status pills (`CLOSED` / `TPS`) overprint the
-first nav items (`Signals` / `Script`).
+*The second overlap is now FIXED — and it was not what anyone described.*
+
+Instrumenting the fixed-right group at a 1500px window gave
+`min_rect = [[-163.3, 9.0] - [1483.0, 68.6]]`. **Its content starts at
+x = -163**: it needs ~1646px and, laid out right-to-left from the right edge,
+ran off the LEFT of the screen and painted across the status pills and the
+middle section.
+
+So the pills were victims, not participants; the nav items were not
+overprinting each other; and `middle_width` collapsing to its 60px floor was
+the correct response to having no room, not the cause. All three of my earlier
+hypotheses — and the audit's own description — were about the wrong elements.
+
+Fourteen labelled toggles (Screener … Script) are ~1400px of that 1646.
+**Fixed** by dropping their labels to icons when the group will not fit, in the
+single `nav_label` closure they all funnel through. Every one already carries a
+Tooltip, so nothing becomes unreachable.
+
+The threshold is MEASURED, not pinned: the labelled width is recorded only on
+frames that actually rendered labels, so the expand test compares against a
+real labelled width rather than the compact one — otherwise each state would
+make the other look correct and the bar would oscillate every frame. A 48px
+dead-band covers a window sized exactly at the boundary.
+
+Verified: compact at 1600/1920/2200, labelled at 2560/3840, no overlap at any
+width. Six repeat captures at 2470 — the boundary — differ by **0 pixels**.
 
 Three hypotheses, all wrong, all reverted rather than left in place claiming a
 fix they did not deliver: (1) foreground-layer chrome escaping the scroll clip
@@ -644,7 +667,7 @@ case by case.
 | 2.5 | Chain numerics left-aligned | `watchlist_panel.rs` — right-aligned, headers too |
 | 3.7 | Three corner treatments in one button row | `dom_panel.rs` — explicit `r_lg_cr()` |
 | 3.3 | Object tree had two empty-state treatments | `object_tree.rs` — glyph on all four |
-| 3.8 | Nav middle/right collision at narrow widths | `top_nav.rs` — measured, not pinned |
+| 3.8 | Nav overflowed the window at narrow widths | `top_nav.rs` — measured width + icon-only compact mode |
 | 2.2 | Chain headers drifted off their columns | `watchlist_panel.rs` — one layout mechanism |
 | 2.3 | Chain labels clipped by the panel border | `watchlist_panel.rs` — `chain_row_inset()` |
 | 2.4 | `sel` read as debug text | `watchlist_panel.rs` — `Select` |
@@ -662,5 +685,5 @@ control-size 4/4.
 
 ## 7. Open — not fixed
 
-order ticket unrendered on a bar-less pane (§2.8, **do this first**), §3.8 status-pills / nav overlap below ~2000px (the middle-vs-right
-half is fixed).
+order ticket unrendered on a bar-less pane (§2.8) — needs a product decision
+(should a ticket survive a data outage?) and lives in sacred `core.rs`.

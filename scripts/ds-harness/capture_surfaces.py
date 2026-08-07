@@ -39,6 +39,18 @@ be able to REPORT. The watchlist tab was switchable but not observable, which
 is precisely why the tab sweep could fail four times in silence. If you add a
 surface here and find you cannot assert it, add the field to `/state` first.
 
+KNOWN CAPTURE ARTIFACT — the mouse cursor
+════════════════════════════════════════════════════════════════════════════
+The screenshot path BitBlts the window DC, which picks up the MOUSE CURSOR.
+It appears as a small dark blob and is NOT a UI defect.
+
+How to tell: it sits at the same PHYSICAL x/y in every capture regardless of
+window size. Measured at x 736-761 / 772-797 across 3300px, 3840px and 5760px
+captures — identical. Anything the app draws moves when the layout reflows.
+
+A visual audit already spent time on this one; if a "dark artifact" appears at
+a constant position across differently-sized captures, it is the pointer.
+
 Usage:
     python capture_surfaces.py                     # full sweep -> docs/styling/audit
     python capture_surfaces.py --only 09,13

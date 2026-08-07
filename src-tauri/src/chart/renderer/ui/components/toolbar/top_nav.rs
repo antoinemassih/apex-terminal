@@ -939,6 +939,44 @@ pub(crate) fn render(
             }); // end scrollable middle
 
             // ── Fixed right: panels + window controls ──
+            //
+            // COMPACT MODE — nav toggles drop their labels when the group will
+            // not fit.
+            //
+            // Instrumenting this at a 1500px window showed the group's content
+            // rect starting at x = -163: it needs ~1646px and was laid out
+            // right-to-left from the right edge, so it ran off the LEFT of the
+            // screen and painted across the status pills and the middle
+            // section. `middle_width` collapsing to its 60px floor was the
+            // correct response to that, not the cause — there genuinely was no
+            // room.
+            //
+            // Fourteen labelled toggles (Screener … Script) are ~1400px of
+            // that. Icon-only they are ~480px, which fits with room to spare.
+            // Nothing becomes unreachable: every one already carries a Tooltip.
+            //
+            // The threshold is MEASURED, not pinned. `right_group_w_labelled`
+            // is recorded only on frames that actually rendered labels, so the
+            // expand test always compares against a real labelled width rather
+            // than the compact one — otherwise the two states would each make
+            // the other look correct and the bar would oscillate every frame.
+            // The dead-band is what stops a window sized exactly at the
+            // boundary from flickering.
+            const MIN_MIDDLE: f32 = 60.0;   // matches the middle_width floor
+            const HYSTERESIS: f32 = 48.0;   // dead-band, ~half a labelled toggle
+            let labelled_id = egui::Id::new("top_nav.right_group_w_labelled");
+            let compact_id  = egui::Id::new("top_nav.nav_compact");
+            let labelled_w: f32 = ui.ctx().memory(|m| m.data.get_temp(labelled_id)).unwrap_or(0.0);
+            let was_compact: bool = ui.ctx().memory(|m| m.data.get_temp(compact_id)).unwrap_or(false);
+            let room = ui.available_width() - MIN_MIDDLE;
+            // Already compact? Require the extra dead-band before expanding.
+            let nav_compact = if was_compact {
+                labelled_w > room - HYSTERESIS
+            } else {
+                labelled_w > room
+            };
+            ui.ctx().memory_mut(|m| m.data.insert_temp(compact_id, nav_compact));
+
             // `right_group` is bound so its measured width can be recorded for
             // the NEXT frame's `middle_width` — see the comment there.
             let right_group = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1063,6 +1101,12 @@ pub(crate) fn render(
                     if sp >= 0.5 {
                         let sep = if sp > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
                         txt = txt.chars().map(|c| c.to_string()).collect::<Vec<_>>().join(sep);
+                    }
+                    // Compact: icon only. Falls back to the LABEL when a style
+                    // hides icons entirely (Meridien) — dropping both would
+                    // leave an empty button.
+                    if nav_compact {
+                        return if st.nav_buttons_label_only { txt } else { icon.to_string() };
                     }
                     if st.nav_buttons_label_only { txt } else { format!("{} {}", icon, txt) }
                 };
@@ -1390,7 +1434,11 @@ pub(crate) fn render(
                 let w = right_group.inner;
                 if w.is_finite() && w > 0.0 {
                     ui.ctx().memory_mut(|m| {
-                        m.data.insert_temp(egui::Id::new("top_nav.right_group_w"), w)
+                        m.data.insert_temp(egui::Id::new("top_nav.right_group_w"), w);
+                        // Only a LABELLED frame tells us what labels cost. Recording
+                        // the compact width here would make the group look like it
+                        // fits, expand it, overflow, collapse — forever.
+                        if !nav_compact { m.data.insert_temp(labelled_id, w); }
                     });
                 }
             }
