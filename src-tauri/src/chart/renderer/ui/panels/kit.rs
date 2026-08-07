@@ -94,6 +94,13 @@ pub(crate) struct HeaderStrip {
     /// Everything between the title and the close button: the LTR title-actions
     /// flow and the RTL trailing-actions flow both live here.
     pub actions: Rect,
+    /// Trailing meta caption slot, right-aligned before the actions —
+    /// `None` when the header has no caption.
+    ///
+    /// The reference pushes it with `margin-left: auto`, i.e. it takes the
+    /// slack rather than a share of it. Modelled here as a fixed slot placed
+    /// AFTER the growing actions slot, which is the same thing.
+    pub meta: Option<Rect>,
     /// The `HEADER_CLOSE_SIZE`-square close button, flush right — `None` when
     /// the header is not closable.
     pub close: Option<Rect>,
@@ -103,7 +110,7 @@ pub(crate) struct HeaderStrip {
 /// widths: `Item::auto()` has no intrinsic size under `Flex::solve` (leaves
 /// carry no measure function), so intrinsic content is measured by the caller
 /// and passed as `Item::fixed`.
-fn header_flex(icon_w: Option<f32>, title_w: f32, closable: bool) -> Flex {
+fn header_flex(icon_w: Option<f32>, title_w: f32, meta_w: Option<f32>, closable: bool) -> Flex {
     let mut f = Flex::row()
         // Strip inset — the same `gap_sm` the cursor arithmetic used.
         .padding_sides(gap_sm(), gap_sm(), 0.0, 0.0)
@@ -119,13 +126,15 @@ fn header_flex(icon_w: Option<f32>, title_w: f32, closable: bool) -> Flex {
         // the strip when a panel is narrower than its own title.
         .item(Item::fixed(title_w).shrink(1.0).margin_start(title_margin))
         .item(Item::grow(1.0).margin_start(gap_md()));
+    if let Some(w) = meta_w {
+        f = f.item(Item::fixed(w).margin_start(gap_md()));
+    }
     if closable {
         f = f.item(Item::fixed(HEADER_CLOSE_SIZE).margin_start(gap_sm()));
     }
     f
 }
 
-/// Solve [`header_flex`] inside `rect` and hand back absolute slot rects.
 /// Ratio of the section ordinal's font size to the header title's.
 ///
 /// From the faithful reference set, which sizes them separately:
@@ -134,6 +143,16 @@ fn header_flex(icon_w: Option<f32>, title_w: f32, closable: bool) -> Flex {
 /// and expensive: on a tabbed header the extra width pushed a tab into the "»"
 /// overflow menu, so a decoration cost a visible control.
 const ORDINAL_FONT_RATIO: f32 = 10.0 / 11.5;
+
+/// Ratio of the header's trailing meta caption to its title size.
+///
+/// `.np-ph .sub { font-size: 9.5px }` against `.np-ph .ttl { font-size: 11.5px }`.
+const META_FONT_RATIO: f32 = 9.5 / 11.5;
+
+/// The meta caption's font, derived from the header's title size.
+fn meta_font(font_size: f32) -> FontId {
+    crate::ui_kit::style::mono_at((font_size * META_FONT_RATIO).round().max(8.0))
+}
 
 /// The ordinal's font, derived from the header's title size.
 fn ordinal_font(font_size: f32) -> FontId {
@@ -161,18 +180,21 @@ fn next_section_ordinal(ctx: &egui::Context) -> u32 {
     })
 }
 
+/// Solve [`header_flex`] inside `rect` and hand back absolute slot rects.
 pub(crate) fn solve_header_strip(
     rect: Rect,
     icon_w: Option<f32>,
     title_w: f32,
+    meta_w: Option<f32>,
     closable: bool,
 ) -> HeaderStrip {
-    let solved = header_flex(icon_w, title_w, closable).solve(rect.size());
+    let solved = header_flex(icon_w, title_w, meta_w, closable).solve(rect.size());
     let off = rect.min.to_vec2();
     let mut it = solved.into_iter().map(|r| r.translate(off));
     let icon = if icon_w.is_some() { it.next() } else { None };
     let title = it.next().unwrap_or(Rect::NOTHING);
     let actions = it.next().unwrap_or(Rect::NOTHING);
+    let meta = if meta_w.is_some() { it.next() } else { None };
     // The close SLOT is full-height; the button itself is a centred square,
     // exactly as the old `Rect::from_center_size(.., splat(HEADER_CLOSE_SIZE))`.
     let close = if closable {
@@ -180,7 +202,7 @@ pub(crate) fn solve_header_strip(
     } else {
         None
     };
-    HeaderStrip { icon, title, actions, close }
+    HeaderStrip { icon, title, actions, meta, close }
 }
 
 /// Solved slots of the tab-driven header strip.
@@ -333,6 +355,8 @@ pub struct PanelHeader<'a> {
     watchlist: Option<&'a Watchlist>,
     /// Eligible for Meridien's section ordinal. See [`Self::numbered`].
     numbered: bool,
+    /// Trailing meta caption. See [`Self::meta`].
+    meta: Option<&'a str>,
 }
 
 impl<'a> PanelHeader<'a> {
@@ -344,8 +368,18 @@ impl<'a> PanelHeader<'a> {
             closable: true,
             watchlist: None,
             numbered: false,
+            meta: None,
         }
     }
+
+    /// A short trailing caption, right-aligned before the header's actions —
+    /// the reference's `<span class="sub">`: `Megacaps · 12`, `Lvl 2 · 14
+    /// deep`, `3 open`.
+    ///
+    /// Pass only text derived from real state. The reference captions are
+    /// design copy for a static mock; ours have to be true, or the header is
+    /// asserting something the panel cannot back up.
+    pub fn meta(mut self, meta: &'a str) -> Self { self.meta = Some(meta); self }
     pub fn icon(mut self, icon: &'a str) -> Self { self.icon = Some(icon); self }
 
     /// Mark this header as a SECTION header, eligible for Meridien's ordinal.
@@ -444,7 +478,33 @@ impl<'a> PanelHeader<'a> {
             .layout_no_wrap(title_text.clone(), title_font.clone(), t.text)
             .size().x;
 
-        let strip = solve_header_strip(rect, icon_w, title_w, self.closable);
+        let meta_text = self.meta.map(|m| style_label_case(m));
+        let meta_fid = meta_font(font_size);
+        let mut meta_w = meta_text.as_ref().map(|m| {
+            painter.layout_no_wrap(m.clone(), meta_fid.clone(), t.dim).size().x
+        });
+
+        // THE CAPTION YIELDS TO THE TITLE, for the reason the ordinal yields to
+        // the tabs: it is the least important thing on the strip.
+        //
+        // Its flex slot is FIXED while the title's can `.shrink(1.0)`, so
+        // without this a caption on a narrow panel does not get squeezed —
+        // it squeezes the title, and the panel ends up captioned but unnamed.
+        // Drop the caption whole rather than let it clip the title; a truncated
+        // caption is worth less than the name of the panel it captions.
+        if let (Some(mw), Some(iw_or_zero)) = (meta_w, Some(icon_w.unwrap_or(0.0))) {
+            let chrome = gap_sm() * 2.0                                  // strip inset
+                + iw_or_zero + if icon_w.is_some() { gap_sm() } else { 0.0 }
+                + gap_md()                                               // title → actions
+                + gap_md()                                               // actions → meta
+                + if self.closable { HEADER_CLOSE_SIZE + gap_sm() } else { 0.0 };
+            if chrome + title_w + mw > rect.width() {
+                meta_w = None;
+            }
+        }
+        let meta_text = if meta_w.is_some() { meta_text } else { None };
+
+        let strip = solve_header_strip(rect, icon_w, title_w, meta_w, self.closable);
 
         // Paint icon + title in painter mode, into their solved slots.
         if let (Some(g), Some(islot)) = (lead.as_ref(), strip.icon) {
@@ -468,6 +528,14 @@ impl<'a> PanelHeader<'a> {
         // Weight belongs to the font. If these want to be heavier, register a
         // bold face and ask for it.
         painter.text(title_pos, Align2::LEFT_CENTER, &title_text, title_font, t.text);
+
+        // Trailing meta caption — muted, mono, below title size.
+        if let (Some(m), Some(mslot)) = (meta_text.as_ref(), strip.meta) {
+            painter.text(
+                Pos2::new(mslot.left(), mslot.center().y),
+                Align2::LEFT_CENTER, m, meta_fid, t.dim,
+            );
+        }
 
         let mut closed = false;
 
@@ -1009,7 +1077,7 @@ mod tests {
     #[test]
     fn icon_title_actions_and_a_flush_right_close() {
         let r = header();
-        let s = solve_header_strip(r, Some(16.0), 80.0, true);
+        let s = solve_header_strip(r, Some(16.0), 80.0, None, true);
 
         let icon = s.icon.expect("icon slot");
         assert!(approx(icon.left(), r.left() + gap_sm()), "got {}", icon.left());
@@ -1037,7 +1105,7 @@ mod tests {
     #[test]
     fn without_an_icon_the_title_starts_at_the_strip_inset() {
         let r = header();
-        let s = solve_header_strip(r, None, 80.0, true);
+        let s = solve_header_strip(r, None, 80.0, None, true);
         assert!(s.icon.is_none());
         assert!(approx(s.title.left(), r.left() + gap_sm()), "got {}", s.title.left());
     }
@@ -1048,7 +1116,7 @@ mod tests {
     #[test]
     fn the_actions_slot_absorbs_all_remaining_width() {
         let r = header();
-        let s = solve_header_strip(r, Some(16.0), 80.0, true);
+        let s = solve_header_strip(r, Some(16.0), 80.0, None, true);
         let expected = r.width()
             - gap_sm() * 2.0            // strip inset both ends
             - 16.0 - gap_sm()           // icon + its gutter
@@ -1061,7 +1129,7 @@ mod tests {
     #[test]
     fn without_a_close_button_the_actions_slot_reaches_the_trailing_inset() {
         let r = header();
-        let s = solve_header_strip(r, None, 80.0, false);
+        let s = solve_header_strip(r, None, 80.0, None, false);
         assert!(s.close.is_none());
         assert!(approx(s.actions.right(), r.right() - gap_sm()), "got {}", s.actions.right());
     }
@@ -1071,7 +1139,7 @@ mod tests {
     #[test]
     fn slots_span_the_full_header_height() {
         let r = header();
-        let s = solve_header_strip(r, Some(16.0), 80.0, true);
+        let s = solve_header_strip(r, Some(16.0), 80.0, None, true);
         assert!(approx(s.icon.unwrap().height(), r.height()));
         assert!(approx(s.title.height(), r.height()));
         assert!(approx(s.title.center().y, r.center().y));
@@ -1083,7 +1151,7 @@ mod tests {
     #[test]
     fn a_long_title_yields_rather_than_pushing_the_close_off() {
         let r = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(120.0, 32.0));
-        let s = solve_header_strip(r, None, 400.0, true);
+        let s = solve_header_strip(r, None, 400.0, None, true);
         let close = s.close.expect("close slot");
         assert!(approx(close.right(), r.right() - gap_sm()), "got {}", close.right());
         assert!(close.left() >= r.left(), "close fell off the strip: {}", close.left());
@@ -1173,5 +1241,33 @@ mod tests {
         let mut tab2 = 0u8;
         assert!(PanelHeaderTabs::new(&mut tab2, tabs).numbered().numbered,
                 "PanelHeaderTabs::numbered() must set the flag");
+    }
+
+    /// A caption widens the header's intrinsic need; it must not do so at the
+    /// title's expense.
+    ///
+    /// `solve_header_strip` gives the title a `.shrink(1.0)` slot and the meta
+    /// a FIXED one, so on a narrow panel the caption wins by construction —
+    /// the exact inversion of what should happen. Both cases below use a
+    /// title far too wide for the strip.
+    #[test]
+    fn meta_slot_is_dropped_before_the_title_is_squeezed() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(180.0, 26.0));
+
+        // Wide title + wide caption: the caption has to go.
+        let cramped = solve_header_strip(rect, None, 400.0, Some(90.0), true);
+        // Roomy strip, same caption: it stays.
+        let roomy = solve_header_strip(
+            Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 26.0)),
+            None, 400.0, Some(90.0), true);
+
+        assert!(roomy.meta.is_some(), "a caption that fits must be laid out");
+        // The solver itself always lays out what it is given — the DROP is the
+        // caller's decision, so assert the property that makes the drop
+        // necessary: with both present, the title cannot get its width.
+        assert!(
+            cramped.title.width() < 400.0,
+            "expected the title to be squeezed when a fixed caption shares a              narrow strip — if this stops being true the drop rule in              PanelHeader::show_full is dead code and should go"
+        );
     }
 }

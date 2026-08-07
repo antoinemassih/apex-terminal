@@ -115,7 +115,10 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
     let pane_h = pane_tabs_header_h(watchlist);
     let pane_font = watchlist.pane_header_size.title_font();
 
+    // Same reasoning as the indicators panel: the drawing COUNT is already on
+    // the section header below, but which pane owns these objects is not.
     let resp = SidePanelShell::new("object_tree", "OBJECTS")
+        .meta(panes[ap].symbol.clone())
         .side(Side::Left)
         .width(Width::Narrow)
         .pane_metrics(pane_h, pane_font)

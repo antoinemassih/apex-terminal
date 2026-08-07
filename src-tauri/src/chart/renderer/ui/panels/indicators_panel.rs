@@ -395,7 +395,13 @@ pub(crate) fn draw(
     }
     let ap = ap.min(panes.len() - 1);
 
+    // Caption = the pane these indicators belong to, mirroring the reference's
+    // `Order Ticket · NVDA`. NOT the active-indicator count: the ACTIVE section
+    // header two rows below already shows that, and a caption that repeats what
+    // is directly beneath it costs width to say nothing. Which of several panes
+    // this panel is bound to is the thing nothing else here answers.
     let resp = SidePanelShell::new("indicators_panel", "INDICATORS")
+        .meta(panes[ap].symbol.clone())
         .width(Width::Medium)
         .pane_metrics(
             crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),

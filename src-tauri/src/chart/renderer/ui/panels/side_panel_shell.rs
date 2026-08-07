@@ -236,6 +236,7 @@ pub struct SidePanelShell<'a> {
     id: &'a str,
     title: &'a str,
     icon: Option<&'a str>,
+    meta: Option<String>,
     width: Width,
     width_bounds: Option<RangeInclusive<f32>>,
     side: Side,
@@ -252,6 +253,7 @@ impl<'a> SidePanelShell<'a> {
             id,
             title,
             icon: None,
+            meta: None,
             width: Width::default(),
             width_bounds: None,
             side: Side::Right,
@@ -260,6 +262,19 @@ impl<'a> SidePanelShell<'a> {
             footer: None,
             rail_slot: None,
         }
+    }
+
+    /// A short trailing caption for the header, right-aligned before the
+    /// actions — the reference set's `<span class="sub">` (`3 open`,
+    /// `Lvl 2 · 14 deep`).
+    ///
+    /// Owned rather than borrowed because every real caption is computed:
+    /// a count, a mode, a symbol. A `&str` parameter would have forced each
+    /// caller to hold a temporary alive across the whole builder chain, which
+    /// is exactly the friction that makes people reach for a literal — and a
+    /// literal here would be a header asserting something nothing measured.
+    pub fn meta(mut self, meta: impl Into<String>) -> Self {
+        self.meta = Some(meta.into()); self
     }
 
     /// Render into a rail slot instead of an `egui::SidePanel`. When `Some`, the
@@ -340,7 +355,7 @@ impl<'a> SidePanelShell<'a> {
         // (not a crude strip) so the panel keeps its native header styling. The
         // only addition is the size-cycle control, injected left of the close.
         if let Some(slot) = self.rail_slot {
-            let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
+            let SidePanelShell { id, title, icon, meta, pane_metrics, header_actions, footer, .. } = self;
             let mut ui = rail_slot_ui(ctx, id, slot, t);
             let mut close_clicked = false;
             let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
@@ -350,7 +365,7 @@ impl<'a> SidePanelShell<'a> {
                         render_rail_size_control(ui, t, slot.height);
                         if let Some(a) = header_actions { a(ui, t); }
                     };
-                    let closed = render_header(ui, t, title, icon, pane_metrics, Some(Box::new(actions)));
+                    let closed = render_header(ui, t, title, icon, meta.as_deref(), pane_metrics, Some(Box::new(actions)));
                     if closed { close_clicked = true; }
                 });
             paint_header_underline_and_shadow(&mut ui, t, header_resp.response.rect, id);
@@ -374,7 +389,7 @@ impl<'a> SidePanelShell<'a> {
                 egui::Frame::NONE
             });
 
-        let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
+        let SidePanelShell { id, title, icon, meta, pane_metrics, header_actions, footer, .. } = self;
 
         let mut close_clicked = false;
         let panel_inner = panel.show(ctx, |ui| {
@@ -383,7 +398,7 @@ impl<'a> SidePanelShell<'a> {
                 let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
                     .fill(t.header_surface()).borderless().square().padding(0.0)
                     .show(ui, t, |ui| {
-                        let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
+                        let closed = render_header(ui, t, title, icon, meta.as_deref(), pane_metrics, header_actions);
                         if closed { close_clicked = true; }
                     });
                 paint_header_underline_and_shadow(ui, t, header_resp.response.rect, id);
@@ -408,7 +423,7 @@ impl<'a> SidePanelShell<'a> {
                 let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
                     .fill(t.header_surface()).borderless().square().padding(0.0)
                     .show(ui, t, |ui| {
-                        let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
+                        let closed = render_header(ui, t, title, icon, meta.as_deref(), pane_metrics, header_actions);
                         if closed { close_clicked = true; }
                     });
                 paint_header_underline_and_shadow(ui, t, header_resp.response.rect, id);
@@ -652,11 +667,13 @@ fn render_header<'a>(
     t: &Theme,
     title: &'a str,
     icon: Option<&'a str>,
+    meta: Option<&'a str>,
     pane_metrics: Option<(f32, f32)>,
     actions: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
 ) -> bool {
     let mut header = PanelHeader::new(title).numbered();
     if let Some(g) = icon { header = header.icon(g); }
+    if let Some(m) = meta { header = header.meta(m); }
     if let Some((h, f)) = pane_metrics {
         header = header.height(h).font_size(f);
     }
@@ -740,7 +757,7 @@ mod tests {
     #[test]
     fn shell_header_places_icon_title_and_a_flush_right_close() {
         let r = panel_header_rect();
-        let s = solve_header_strip(r, Some(12.0), 64.0, true);
+        let s = solve_header_strip(r, Some(12.0), 64.0, None, true);
 
         let icon = s.icon.expect("icon slot");
         assert!(approx(icon.left(), r.left() + gap_sm()), "got {}", icon.left());
@@ -757,7 +774,7 @@ mod tests {
     #[test]
     fn shell_header_without_an_icon_still_spans_the_full_strip() {
         let r = panel_header_rect();
-        let s = solve_header_strip(r, None, 64.0, true);
+        let s = solve_header_strip(r, None, 64.0, None, true);
         assert!(s.icon.is_none());
         assert!(approx(s.title.left(), r.left() + gap_sm()), "got {}", s.title.left());
         let close = s.close.expect("close slot");
@@ -771,7 +788,7 @@ mod tests {
     #[test]
     fn header_rect_stays_wider_than_its_inset_content() {
         let r = panel_header_rect();
-        let s = solve_header_strip(r, None, 64.0, true);
+        let s = solve_header_strip(r, None, 64.0, None, true);
         assert!(s.title.left() > r.left(), "content is not inset");
         assert!(s.close.unwrap().right() < r.right(), "content is not inset");
     }
@@ -783,9 +800,9 @@ mod tests {
     #[test]
     fn the_close_button_is_anchored_regardless_of_icon_or_title() {
         let r = panel_header_rect();
-        let plain = solve_header_strip(r, None, 64.0, true).close.unwrap();
-        let with_icon = solve_header_strip(r, Some(12.0), 64.0, true).close.unwrap();
-        let long_title = solve_header_strip(r, Some(12.0), 240.0, true).close.unwrap();
+        let plain = solve_header_strip(r, None, 64.0, None, true).close.unwrap();
+        let with_icon = solve_header_strip(r, Some(12.0), 64.0, None, true).close.unwrap();
+        let long_title = solve_header_strip(r, Some(12.0), 240.0, None, true).close.unwrap();
         assert_eq!(plain, with_icon);
         assert_eq!(plain, long_title);
     }
