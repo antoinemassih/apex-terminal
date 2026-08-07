@@ -142,7 +142,7 @@ impl<'a> SelectableRow<'a> {
         }
 
         let painter = ui.painter_at(rect);
-        let cr = CornerRadius::same(st::radius_sm() as u8);
+        let cr = crate::ui_kit::style::r_sm_cr();
 
         // Background fill — M3.3: one call to the interaction table replaces the
         // selected / hover / disabled branch ladder. Selected reads as an accent

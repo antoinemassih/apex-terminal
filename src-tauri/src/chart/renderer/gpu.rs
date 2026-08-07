@@ -5419,8 +5419,8 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         };
 
         // Corner radii — reduced for dropdowns, moderate for buttons
-        let r = egui::CornerRadius::same(style::radius_sm() as u8);
-        let popup_r = egui::CornerRadius::same(style::radius_md() as u8); // halved from 12
+        let r = crate::ui_kit::style::r_sm_cr();
+        let popup_r = crate::ui_kit::style::r_md_cr(); // halved from 12
 
         // ── Widget styling ──
 
@@ -7574,10 +7574,10 @@ impl GpuCtx {
         let _ = crate::NATIVE_EGUI_CTX.set(egui_ctx.clone());
         let mut visuals = egui::Visuals::dark();
         // Subtle rounded corners on all widgets
-        let r3 = egui::CornerRadius::same(style::radius_sm() as u8);
-        let r6 = egui::CornerRadius::same(style::radius_md() as u8);
+        let r3 = crate::ui_kit::style::r_sm_cr();
+        let r6 = crate::ui_kit::style::r_md_cr();
         visuals.window_corner_radius = r6;
-        visuals.menu_corner_radius = egui::CornerRadius::same(style::radius_sm() as u8);
+        visuals.menu_corner_radius = crate::ui_kit::style::r_sm_cr();
         visuals.widgets.noninteractive.corner_radius = r3;
         visuals.widgets.inactive.corner_radius = r3;
         visuals.widgets.hovered.corner_radius = r3;

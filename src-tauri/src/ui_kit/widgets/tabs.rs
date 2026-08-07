@@ -506,7 +506,7 @@ fn paint_tabs(
         // the rounded inner tabs — recipe overrides the *inner* tab radius.
         ui.painter().rect_filled(
             total_rect,
-            CornerRadius::same(st::radius_md() as u8),
+            crate::ui_kit::style::r_md_cr(),
             st::color_alpha(palette_ct(theme).base(Tone::Surface), 200),
         );
     }
@@ -665,7 +665,7 @@ fn paint_tabs(
             st::color_alpha(palette_ct(theme).base(Tone::Surface), 200),
             hover_t,
         );
-        ui.painter().rect_filled(plus_rect, CornerRadius::same(st::radius_sm() as u8), bg);
+        ui.painter().rect_filled(plus_rect, crate::ui_kit::style::r_sm_cr(), bg);
         ui.painter().text(
             plus_rect.center(),
             Align2::CENTER_CENTER,

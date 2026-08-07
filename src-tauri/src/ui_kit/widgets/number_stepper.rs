@@ -113,7 +113,7 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
             // Style inactive/hover/active states to match Input appearance.
             let pal = palette_ct(theme);
             let v = &mut ui.style_mut().visuals;
-            let cr = egui::CornerRadius::same(st::radius_sm() as u8);
+            let cr = crate::ui_kit::style::r_sm_cr();
             v.widgets.inactive.bg_fill    = pal.base(Tone::Surface);
             v.widgets.inactive.bg_stroke  = Stroke::new(st::stroke_thin(), pal.base(Tone::Border));
             v.widgets.inactive.corner_radius   = cr;

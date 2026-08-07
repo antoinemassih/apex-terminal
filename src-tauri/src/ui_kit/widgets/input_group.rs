@@ -99,7 +99,7 @@ impl<'a> InputGroup<'a> {
         // Cascade-aware chip font (== mono at font_xs today, subtree-overridable).
         let chip_font = TextStyle::MonoXs.font_id_in(ui);
         let chip_gap = st::gap_xs();
-        let radius = CornerRadius::same(st::radius_sm() as u8);
+        let radius = crate::ui_kit::style::r_sm_cr();
 
         // Measure the prefix and suffix chip widths so we can reserve space.
         let prefix_w = self.prefix.map(|p| {

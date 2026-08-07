@@ -110,7 +110,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
     let font_size = size.font_size();
     let pad_x = size.padding_x();
     let pad_y = st::gap_xs();
-    let radius = CornerRadius::same(st::radius_sm() as u8);
+    let radius = crate::ui_kit::style::r_sm_cr();
 
     let outer = ui.vertical(|ui| {
         // ── Label ──

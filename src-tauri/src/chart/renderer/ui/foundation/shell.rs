@@ -33,10 +33,10 @@ impl Radius {
         use crate::ui_kit::style as ut;
         match self {
             Radius::None => egui::CornerRadius::ZERO,
-            Radius::Xs   => egui::CornerRadius::same(ut::radius_xs() as u8),
-            Radius::Sm   => egui::CornerRadius::same(ut::radius_sm() as u8),
-            Radius::Md   => egui::CornerRadius::same(ut::radius_md() as u8),
-            Radius::Lg   => egui::CornerRadius::same(ut::radius_lg() as u8),
+            Radius::Xs   => crate::ui_kit::style::r_xs_cr(),
+            Radius::Sm   => crate::ui_kit::style::r_sm_cr(),
+            Radius::Md   => crate::ui_kit::style::r_md_cr(),
+            Radius::Lg   => crate::ui_kit::style::r_lg_cr(),
             Radius::Pill => egui::CornerRadius::same(ut::radius_pill().min(255.0) as u8),
         }
     }

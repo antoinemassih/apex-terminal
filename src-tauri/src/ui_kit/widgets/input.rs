@@ -683,7 +683,7 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
             .fill(bg)
             .stroke(Stroke::new(st::stroke_std(), palette_ct(theme).base(Tone::Border)))
             .inner_margin(inner_margin)
-            .corner_radius(CornerRadius::same(st::radius_sm() as u8));
+            .corner_radius(crate::ui_kit::style::r_sm_cr());
         let mut out: Option<Response> = None;
         frame.show(ui, |ui| {
             let base = if multiline {

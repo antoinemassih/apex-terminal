@@ -6,6 +6,40 @@
 
 #![allow(unused_imports)]
 
+// ── Drawing-tool preview colours ─────────────────────────────────────────────
+//
+// These are deliberately theme-INDEPENDENT, for the same reason the RRG sector
+// colours are (see `rrg_panel::SECTOR_COLORS`): a tool's preview colour is an
+// IDENTITY. A fib is gold in every charting package on the market, and a trader
+// mid-draw identifies the tool by its colour before reading any label. Pinning
+// them to palette tones would make the same tool change colour per theme, which
+// is the opposite of useful.
+//
+// ⚠ Do NOT "tokenise" these. A previous magic-number codemod substituted ALPHA
+// tokens into the sector-colour RGB tuples; it compiled and looked right only
+// because those tokens happened to equal the literals that day. The same trap
+// applies here.
+//
+// Hoisted into one table because they were inline at 19 sites with real
+// duplication — the fib gold appeared four separate times, the golden-band
+// yellow twice. One definition each, alpha variants derived via `color_alpha`,
+// so a change lands everywhere the tool is drawn.
+const TOOL_TRENDLINE: egui::Color32 = egui::Color32::from_rgb( 70, 130, 255);
+const TOOL_FIB:       egui::Color32 = egui::Color32::from_rgb(255, 193,  37); // gold
+const TOOL_CHAN_FIB:  egui::Color32 = egui::Color32::from_rgb(196, 163,  90);
+const TOOL_CHAN:      egui::Color32 = egui::Color32::from_rgb(130, 220, 180);
+const TOOL_FORK:      egui::Color32 = egui::Color32::from_rgb(126, 207, 207);
+const TOOL_FAN:       egui::Color32 = egui::Color32::from_rgb(232, 201, 107);
+const TOOL_REGRESSION:egui::Color32 = egui::Color32::from_rgb(180, 128, 232);
+const TOOL_XABCD:     egui::Color32 = egui::Color32::from_rgb(255, 159,  67);
+const TOOL_VLINE:     egui::Color32 = egui::Color32::from_rgb(100, 160, 255);
+const TOOL_RAY:       egui::Color32 = egui::Color32::from_rgb(100, 200, 255);
+const TOOL_FIB_EXT:   egui::Color32 = egui::Color32::from_rgb(255, 215,   0);
+const TOOL_WAVE:      egui::Color32 = egui::Color32::from_rgb( 78, 205, 196);
+const TOOL_PITCHFORK: egui::Color32 = egui::Color32::from_rgb(116, 185, 255);
+/// Neutral wash behind a preview region — white at a very low alpha.
+const TOOL_WASH:      egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
+
 use crate::chart_renderer::gpu::*;
 use crate::chart_renderer::ui::style::{
     color_alpha, mono_2xs, mono_xs, mono_3xs,
@@ -53,7 +87,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
     Py: Fn(f32) -> f32,
     Bx: Fn(f32) -> f32,
 {
-    let blue = egui::Color32::from_rgb(70, 130, 255);
+    let blue = TOOL_TRENDLINE;
     let clamp_pt = |p: egui::Pos2| -> egui::Pos2 {
         let margin = 10000.0;
         egui::pos2(p.x.clamp(-margin, margin), p.y.clamp(-margin, margin))
@@ -108,7 +142,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
             let y0 = py(p0);
             painter.rect_filled(
                 egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(pos.y)), egui::pos2(rect.left()+cw, y0.max(pos.y))),
-                0.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 15));
+                0.0, color_alpha(TOOL_WASH, 15));
             painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(stroke_std(), color_alpha(t.text,120)));
             painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(stroke_std(), color_alpha(t.text,120)));
         }
@@ -122,7 +156,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibonacci" {
         // Fibonacci preview: retracement + extension levels
-        let fib_color = egui::Color32::from_rgb(255, 193, 37); // gold
+        let fib_color = TOOL_FIB;
         if let Some((b0, p0)) = chart.pending_pt {
             let price_cursor = min_p + (max_p - min_p) * (1.0 - (pos.y - rect.top() - pt) / ch);
             let x0 = bx(b0); let x1 = pos.x;
@@ -169,7 +203,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
             if y382.is_finite() && y618.is_finite() {
                 painter.rect_filled(egui::Rect::from_min_max(
                     egui::pos2(xl, y382.min(y618)), egui::pos2(xr, y382.max(y618))),
-                    0.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 12));
+                    0.0, color_alpha(TOOL_FIB, 12));
             }
         }
         // Gold crosshair
@@ -180,7 +214,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
     } else if chart.draw_tool == "channel" || chart.draw_tool == "fibchannel" {
         // Channel / Fib-channel preview
         let is_fib = chart.draw_tool == "fibchannel";
-        let chan_color = if is_fib { egui::Color32::from_rgb(196, 163, 90) } else { egui::Color32::from_rgb(130, 220, 180) };
+        let chan_color = if is_fib { TOOL_CHAN_FIB } else { TOOL_CHAN };
         if let Some((b0, p0)) = chart.pending_pt {
             if let Some((b1, p1)) = chart.pending_pt2 {
                 let cursor_price = min_p + (max_p - min_p) * (1.0 - (pos.y - rect.top() - pt) / ch);
@@ -221,7 +255,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
     } else if chart.draw_tool == "barmarker" {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     } else if chart.draw_tool == "pitchfork" {
-        let fork_color = egui::Color32::from_rgb(126, 207, 207);
+        let fork_color = TOOL_FORK;
         let n_pts = chart.pending_pts.len();
         if n_pts == 0 {
             // First click hint
@@ -242,7 +276,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), fork_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "gannfan" {
-        let fan_color = egui::Color32::from_rgb(232, 201, 107);
+        let fan_color = TOOL_FAN;
         if let Some((b0, p0)) = chart.pending_pt {
             let origin = egui::pos2(bx(b0), py(p0));
             let chart_right = rect.left() + cw;
@@ -262,7 +296,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), fan_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "regression" {
-        let reg_color = egui::Color32::from_rgb(180, 128, 232);
+        let reg_color = TOOL_REGRESSION;
         if let Some((b0, _)) = chart.pending_pt {
             let x0 = bx(b0); let x1 = pos.x;
             painter.line_segment([egui::pos2(x0, rect.top()+pt), egui::pos2(x0, rect.top()+pt+ch)],
@@ -270,14 +304,14 @@ pub(super) fn render_tool_previews<Py, Bx>(
             painter.line_segment([egui::pos2(x1, rect.top()+pt), egui::pos2(x1, rect.top()+pt+ch)],
                 egui::Stroke::new(stroke_std(), color_alpha(reg_color, 120)));
             painter.rect_filled(egui::Rect::from_x_y_ranges(x0.min(x1)..=x0.max(x1), (rect.top()+pt)..=(rect.top()+pt+ch)),
-                0.0, egui::Color32::from_rgba_unmultiplied(180, 128, 232, 15));
+                0.0, color_alpha(TOOL_REGRESSION, 15));
         }
         let ch_len = 8.0;
         painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), reg_color));
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), reg_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "xabcd" {
-        let xabcd_color = egui::Color32::from_rgb(255, 159, 67);
+        let xabcd_color = TOOL_XABCD;
         let labels = ["X","A","B","C","D"];
         for i in 0..chart.pending_pts.len().saturating_sub(1) {
             let pa = egui::pos2(bx(chart.pending_pts[i].0), py(chart.pending_pts[i].1));
@@ -302,7 +336,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), xabcd_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "vline" {
-        let vl_color = egui::Color32::from_rgb(100, 160, 255);
+        let vl_color = TOOL_VLINE;
         let x = pos.x;
         painter.line_segment([egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch)],
             egui::Stroke::new(stroke_std(), color_alpha(vl_color, 160)));
@@ -311,7 +345,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), vl_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "ray" {
-        let ray_color = egui::Color32::from_rgb(100, 200, 255);
+        let ray_color = TOOL_RAY;
         if let Some((b0, p0)) = chart.pending_pt {
             let start = egui::pos2(bx(b0), py(p0));
             let chart_right = rect.left() + cw;
@@ -331,7 +365,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), ray_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibext" {
-        let fibext_color = egui::Color32::from_rgb(255, 215, 0);
+        let fibext_color = TOOL_FIB_EXT;
         let n_pts = chart.pending_pts.len();
         let labels = ["A","B","C"];
         for i in 0..n_pts.saturating_sub(1) {
@@ -371,7 +405,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), fibext_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibtimezone" {
-        let ftz_color = egui::Color32::from_rgb(255, 193, 37);
+        let ftz_color = TOOL_FIB;
         let anchor_bar = (pos.x - rect.left() + off - bs*0.5) / bs + vs;
         let fib_nums: &[u32] = &[1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
         let chart_right = rect.left() + cw;
@@ -390,7 +424,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), ftz_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibarc" {
-        let farc_color = egui::Color32::from_rgb(255, 193, 37);
+        let farc_color = TOOL_FIB;
         if let Some((b0, p0)) = chart.pending_pt {
             let center = egui::pos2(bx(b0), py(p0));
             let dist = center.distance(pos);
@@ -413,7 +447,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), farc_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "gannbox" {
-        let gb_color = egui::Color32::from_rgb(232, 201, 107);
+        let gb_color = TOOL_FAN;
         if let Some((_b0, _p0)) = chart.pending_pt {
             let start = egui::pos2(bx(_b0), py(_p0));
             let xl = start.x.min(pos.x); let xr = start.x.max(pos.x);
@@ -434,7 +468,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
     } else if chart.draw_tool == "elliott_impulse" || chart.draw_tool == "elliott_corrective"
            || chart.draw_tool == "elliott_wxy" || chart.draw_tool == "elliott_wxyxz"
            || chart.draw_tool == "elliott_sub_impulse" || chart.draw_tool == "elliott_sub_corrective" {
-        let wave_color = egui::Color32::from_rgb(78, 205, 196);
+        let wave_color = TOOL_WAVE;
         let impulse_labels = ["1","2","3","4","5"];
         let corrective_labels = ["A","B","C"];
         let wxy_labels = ["W","X","Y"];
@@ -478,13 +512,13 @@ pub(super) fn render_tool_previews<Py, Bx>(
         painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), av_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "pricerange" {
-        let pr_color = egui::Color32::from_rgb(116, 185, 255);
+        let pr_color = TOOL_PITCHFORK;
         if let Some((_b0, p0)) = chart.pending_pt {
             let y0 = py(p0);
             painter.rect_filled(
                 egui::Rect::from_min_max(egui::pos2(chart.pending_pt.map(|_| pos.x).unwrap_or(pos.x), y0.min(pos.y)),
                                          egui::pos2(pos.x.max(chart.pending_pt.map(|_| pos.x).unwrap_or(pos.x)), y0.max(pos.y))),
-                0.0, egui::Color32::from_rgba_unmultiplied(116, 185, 255, 20));
+                0.0, color_alpha(TOOL_PITCHFORK, 20));
             painter.line_segment([egui::pos2(rect.left(), y0), egui::pos2(rect.left()+cw, y0)],
                 egui::Stroke::new(stroke_std(), color_alpha(pr_color, 160)));
             painter.line_segment([egui::pos2(rect.left(), pos.y), egui::pos2(rect.left()+cw, pos.y)],

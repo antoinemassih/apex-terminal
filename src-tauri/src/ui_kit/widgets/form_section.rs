@@ -104,7 +104,7 @@ impl<'a> FieldSet<'a> {
         let border_col = st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_muted());
         let frame = egui::Frame::NONE
             .stroke(Stroke::new(st::stroke_thin(), border_col))
-            .corner_radius(CornerRadius::same(st::radius_sm() as u8))
+            .corner_radius(crate::ui_kit::style::r_sm_cr())
             .inner_margin(egui::Margin::same(self.inner_margin as i8));
 
         frame.show(ui, |ui| {

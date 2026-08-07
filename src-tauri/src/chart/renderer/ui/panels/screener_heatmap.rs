@@ -180,7 +180,7 @@ pub fn render_screener_heatmap(
             egui::Button::new(egui::RichText::new(&color_label).font(crate::ui_kit::style::mono_xs()).color(t.accent))
                 .fill(st::color_alpha(t.accent, st::alpha_faint()))
                 .stroke(egui::Stroke::NONE)
-                .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
+                .corner_radius(crate::ui_kit::style::r_sm_cr())
                 .min_size(vec2(0.0, row_height_dense()))
         ).clicked() {
             heat_state.color_picker_open = !heat_state.color_picker_open;
@@ -196,7 +196,7 @@ pub fn render_screener_heatmap(
             egui::Button::new(egui::RichText::new(&size_label).font(crate::ui_kit::style::mono_xs()).color(t.dim))
                 .fill(st::color_alpha(palette_ct(t).base(Tone::Text), 8))
                 .stroke(egui::Stroke::NONE)
-                .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
+                .corner_radius(crate::ui_kit::style::r_sm_cr())
                 .min_size(vec2(0.0, row_height_dense()))
         ).clicked() {
             heat_state.size_picker_open = !heat_state.size_picker_open;
@@ -210,7 +210,7 @@ pub fn render_screener_heatmap(
                 egui::Button::new(egui::RichText::new(&chip_label).font(crate::ui_kit::style::mono_xs()).color(t.accent))
                     .fill(st::color_alpha(t.accent, st::alpha_soft()))
                     .stroke(egui::Stroke::NONE)
-                    .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
+                    .corner_radius(crate::ui_kit::style::r_sm_cr())
                     .min_size(vec2(0.0, row_height_dense()))
             ).clicked() {
                 cx.dispatch(AppCommand::ScreenerSetSectorFilter { sector: None });
@@ -291,7 +291,7 @@ pub fn render_screener_heatmap(
                     )
                     .fill(st::color_alpha(sector_col, st::alpha_faint()))
                     .stroke(egui::Stroke::NONE)
-                    .corner_radius(egui::CornerRadius::same(st::radius_md() as u8))
+                    .corner_radius(crate::ui_kit::style::r_md_cr())
                     .min_size(vec2(avail_w, row_height_default()))
                     .frame(false)
                 );
@@ -515,7 +515,7 @@ fn render_operand_picker(
     let mut selected: Option<String> = None;
     egui::Frame::new()
         .fill(st::color_alpha(palette_ct(t).base(Tone::Text), 6))
-        .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
+        .corner_radius(crate::ui_kit::style::r_sm_cr())
         .inner_margin(egui::Margin::symmetric(4, 4))
         .show(ui, |ui| {
             egui::ScrollArea::vertical()
