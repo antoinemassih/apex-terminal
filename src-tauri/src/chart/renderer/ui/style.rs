@@ -3311,7 +3311,7 @@ mod s2_equivalence_tests {
     const RADIUS_DIVERGENCES: &[(usize, &str, u8, u8)] = &[
         (0, "r_sm",   4,  3),
         (0, "r_lg",  12, 14),
-        (0, "r_pill", 0, 14),
+        (0, "r_pill", 0, 99),
     ];
 
     fn check_radius(id: usize, token: &str, new: u8, legacy: u8) {
@@ -3546,7 +3546,7 @@ mod s2_equivalence_tests {
             // Radii from the Meridien design source (primitives.css), not the
             // legacy default scale they were pinned to through the Phase B
             // source-swap: sm 4->3, lg 12->14, pill 0->14.
-            r_xs: 2, r_sm: 3, r_md: 6, r_lg: 14, r_pill: 14, r_chip: 0,
+            r_xs: 2, r_sm: 3, r_md: 6, r_lg: 14, r_pill: 99, r_chip: 0,
             density: 1, pane_gap: 0.0,
             shadows_enabled: true, shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
             hairline_borders: true, solid_active_fills: true, uppercase_section_labels: true,
@@ -3640,7 +3640,8 @@ mod s2_equivalence_tests {
             row_height_px: 26.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
             wl_row_divider_alpha: 12, wl_symbol_mono: false, section_header_mono: false,
             section_header_tracking: 0.4,
-            r_xs: 2, r_sm: 3, r_md: 5, r_lg: 8, r_pill: 99, r_chip: 0,
+            // Lucid, from faithful/lucid/tokens.full.json — was half-scale.
+            r_xs: 4, r_sm: 6, r_md: 8, r_lg: 10, r_pill: 99, r_chip: 0,
             density: 1, pane_gap: 0.0,
             shadows_enabled: false, shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
             hairline_borders: false, solid_active_fills: true, uppercase_section_labels: true,

@@ -1077,7 +1077,15 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             md: 6.0,
             lg: 14.0,
             full: 9999.0, // true circles (dots/avatars) — source uses 50%
-            pill: 14.0,   // capsule via lg, per the source
+            // 99, per `faithful/meridien/tokens.full.json` -> radii.pill = 99px.
+            //
+            // I set this to 14 first, reasoning from the raw CSS that the one
+            // 99px there was a scrollbar thumb rather than a UI pill language,
+            // and that the render's pill nav item was `lg` on a short control.
+            // My own gap table had already recorded the token as 99px — I
+            // wrote it down and then overrode it with an inference. Token
+            // questions are answered by the token set (see SOURCES.md).
+            pill: 99.0,
             chip: 0.0,    // r_chip = 0
         },
         strokes: Strokes {
@@ -1545,7 +1553,11 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         // override it; see ShellSpec::resolve_archetype.
         shell: ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() },
         typography: Typography { size_xl: 28.0, label_tracking: 0.4, section_tracking: 0.4, ..Typography::default() },
-        radii: Radii { none: 0.0, xs: 2.0, sm: 3.0, md: 5.0, lg: 8.0, full: 9999.0, pill: 99.0, chip: 0.0 },
+        // Radii from `faithful/lucid/tokens.full.json` (xs 4, sm 6, md 8,
+        // lg 10). Lucid had never been checked against its source: every step
+        // was roughly HALF the authored value (2/3/5/8), which is why it read
+        // sharper than the design intends.
+        radii: Radii { none: 0.0, xs: 4.0, sm: 6.0, md: 8.0, lg: 10.0, full: 9999.0, pill: 99.0, chip: 0.0 },
         density: Density { factor: 1.0, row_height_dense: 26.0, row_height_comfortable: 34.0, ..Density::default() },
         shadows: Shadows {
             card: ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
@@ -1643,6 +1655,76 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
 
 #[cfg(test)]
 mod tests {
+    /// Every documented style's radius scale, pinned to its DESIGN TOKENS.
+    ///
+    /// Values are `faithful/<style>/tokens.full.json` — the DTCG token set,
+    /// which is the authority for token questions (see
+    /// `docs/styling/fidelity/SOURCES.md`). Not the raw CSS, which contains
+    /// several compositions per style, and not `normalized.html`, which is a
+    /// fixed-markup harness.
+    ///
+    /// This test is the generalisation of a one-off diff that found two live
+    /// defects the moment it was run:
+    ///
+    /// - Meridien `pill` was 14 where the token set says 99. I had recorded
+    ///   "99px" in my own gap table, then overrode it with an inference from
+    ///   the raw CSS.
+    /// - Lucid's whole scale was roughly HALF its authored values
+    ///   (2/3/5/8 against 4/6/8/10). Lucid had never been checked at all.
+    ///
+    /// `pill` is compared as a SENTINEL, not a number: the token sets say
+    /// 99/999/9999 for "fully round" and we normalise to 99. Anything >= 99 is
+    /// the same statement.
+    ///
+    /// Styles with no faithful token set (octave, relay, glass) are not listed
+    /// and are not checked — there is nothing to check them against.
+    #[test]
+    fn documented_styles_match_their_source_radius_scale() {
+        // (style, xs, sm, md, lg) — `None` where the token set omits the step.
+        const SRC: &[(&str, Option<f32>, f32, f32, f32)] = &[
+            ("meridien", None,       3.0,  6.0, 14.0),
+            ("aperture", Some(8.0), 10.0, 14.0, 20.0),
+            ("cadence",  Some(4.0),  6.0, 10.0, 14.0),
+            ("alto",     Some(2.0),  4.0,  6.0,  8.0),
+            ("mariner",  Some(2.0),  4.0,  6.0,  8.0),
+            ("lucid",    Some(4.0),  6.0,  8.0, 10.0),
+        ];
+
+        let styles = super::builtin_style_systems();
+        let mut deltas: Vec<String> = Vec::new();
+
+        for &(id, xs, sm, md, lg) in SRC {
+            let Some(st) = styles.iter().find(|s| s.meta.id == id) else {
+                deltas.push(format!("{id}: no such built-in style"));
+                continue;
+            };
+            let r = &st.radii;
+            let mut chk = |token: &str, want: f32, got: f32| {
+                if (want - got).abs() > 0.001 {
+                    deltas.push(format!("{id}.{token}: source={want} ours={got}"));
+                }
+            };
+            if let Some(x) = xs { chk("xs", x, r.xs); }
+            chk("sm", sm, r.sm);
+            chk("md", md, r.md);
+            chk("lg", lg, r.lg);
+            if r.pill < 99.0 {
+                deltas.push(format!(
+                    "{id}.pill: source is fully-round (99/999/9999); ours={}                      — anything below 99 renders capsule controls square",
+                    r.pill));
+            }
+        }
+
+        assert!(
+            deltas.is_empty(),
+            "{} radius token(s) diverge from the design source:
+  {}",
+            deltas.len(),
+            deltas.join("
+  ")
+        );
+    }
+
     /// Exactly the four documented styles whose BESPOKE app numbers its
     /// panels do so here — no more, no less.
     ///
