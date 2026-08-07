@@ -232,6 +232,7 @@ impl StyleSystem {
                 "solid_active_fills":         bool_tok!(tr.solid_active_fills),
                 "hairline_borders":           bool_tok!(tr.hairline_borders),
                 "uppercase_section_labels":   bool_tok!(tr.uppercase_section_labels),
+                "numbered_section_labels":    bool_tok!(tr.numbered_section_labels),
                 "segmented_filled_idle":      bool_tok!(tr.segmented_filled_idle),
                 "focus_ring":                 str_tok!(focus_ring_str),
                 // Previously-defaulted fields — now fully round-tripped

@@ -2759,6 +2759,20 @@ pub fn active_style_system() -> std::sync::Arc<crate::design_system::StyleSystem
         .unwrap_or_else(|| std::sync::Arc::new(crate::design_system::StyleSystem::default()))
 }
 
+/// Every live style system's id, in slot order.
+///
+/// Exists so external tooling (the ds-harness) can resolve a style NAME to its
+/// index without keeping its own copy of the list. Two harness scripts each
+/// hardcoded that list; both had drifted.
+pub fn style_system_ids() -> Vec<String> {
+    style_system_store()
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .map(|s| s.meta.id.clone())
+        .collect()
+}
+
 /// Overwrite the StyleSystem for slot `id` (index-aligned with STYLE_STORE).
 pub fn set_style_system(id: u8, ss: crate::design_system::StyleSystem) {
     let mut store = style_system_store().write().unwrap_or_else(|e| e.into_inner());
@@ -2978,6 +2992,24 @@ pub fn section_header_font_id() -> egui::FontId {
     } else {
         egui::FontId::new(font_xs(), egui::FontFamily::Proportional)
     }
+}
+
+/// `true` when the active style prefixes panel section headers with an accent
+/// ordinal (`01 WATCHLIST`). See `Treatments::numbered_section_labels`.
+///
+/// Deliberately NOT folded into [`style_label_case`]: the numeral is accent-
+/// coloured and the title is not, so this cannot be a string transform.
+pub fn style_numbers_sections() -> bool {
+    // Read the design_system treatment DIRECTLY rather than via `current()`.
+    //
+    // The first version mirrored this into `StyleSettings` like
+    // `uppercase_section_labels`, and `style-mig-lint` caught it: that struct
+    // is the legacy god-object being shrunk, and its pub-field count is
+    // ratcheted (99). Growing it to add a *new* treatment is backwards — the
+    // mirror exists to carry fields that predate `Treatments`, not to receive
+    // fresh ones. Nothing was lost by dropping the mirror: the cascade is the
+    // same, one hop shorter.
+    active_style_system().treatments.numbered_section_labels
 }
 
 /// Returns `s` uppercased (and letter-spaced) for active styles that request it (#5, #12).
@@ -3261,14 +3293,50 @@ mod s2_equivalence_tests {
         (a as i16 - b as i16).abs() <= 1
     }
 
+    /// Radius tokens that are KNOWN to differ between the new design-system
+    /// styles and the frozen legacy literals, because a deliberate fidelity
+    /// edit moved them.
+    ///
+    /// `(style id, token, legacy value, new value)`.
+    ///
+    /// Meridien's legacy radii were never Meridien's: the Phase B source-swap
+    /// defined Meridien-the-default as the app's pre-existing `dt_f32!` scale
+    /// to keep the look unchanged through the swap. These three now come from
+    /// the actual design source (`trading app - meridien/design-system/
+    /// primitives.css`: sm 3, lg 14) — `r_pill` was the consequential one, at
+    /// `0` every `RadiusTier::Pill` control rendered square.
+    ///
+    /// This is an allow-list, not a relaxed assertion: a fourth divergence, or
+    /// a different value for one of these three, still fails.
+    const RADIUS_DIVERGENCES: &[(usize, &str, u8, u8)] = &[
+        (0, "r_sm",   4,  3),
+        (0, "r_lg",  12, 14),
+        (0, "r_pill", 0, 14),
+    ];
+
+    fn check_radius(id: usize, token: &str, new: u8, legacy: u8) {
+        if new == legacy {
+            return;
+        }
+        let allowed = RADIUS_DIVERGENCES
+            .iter()
+            .any(|&(i, t, l, n)| i == id && t == token && l == legacy && n == new);
+        assert!(
+            allowed,
+            "id={id} {token} mismatch: new={new} legacy={legacy} — this is not a \
+             recorded divergence. If the change is deliberate, add it to \
+             RADIUS_DIVERGENCES with a note on why."
+        );
+    }
+
     fn check_style_equal(id: usize, new: &StyleSettings, legacy: &StyleSettings) {
         // Radii
-        assert_eq!(new.r_xs,   legacy.r_xs,   "id={} r_xs mismatch", id);
-        assert_eq!(new.r_sm,   legacy.r_sm,   "id={} r_sm mismatch", id);
-        assert_eq!(new.r_md,   legacy.r_md,   "id={} r_md mismatch", id);
-        assert_eq!(new.r_lg,   legacy.r_lg,   "id={} r_lg mismatch", id);
-        assert_eq!(new.r_pill, legacy.r_pill, "id={} r_pill mismatch", id);
-        assert_eq!(new.r_chip, legacy.r_chip, "id={} r_chip mismatch", id);
+        check_radius(id, "r_xs",   new.r_xs,   legacy.r_xs);
+        check_radius(id, "r_sm",   new.r_sm,   legacy.r_sm);
+        check_radius(id, "r_md",   new.r_md,   legacy.r_md);
+        check_radius(id, "r_lg",   new.r_lg,   legacy.r_lg);
+        check_radius(id, "r_pill", new.r_pill, legacy.r_pill);
+        check_radius(id, "r_chip", new.r_chip, legacy.r_chip);
 
         // Strokes
         assert!(f32_eq(new.stroke_hair,  legacy.stroke_hair),  "id={} stroke_hair mismatch: {} vs {}", id, new.stroke_hair, legacy.stroke_hair);
@@ -3475,7 +3543,10 @@ mod s2_equivalence_tests {
             row_height_px: 22.0, wl_row_side_margin: 0.0, wl_row_corner_radius: 0,
             wl_row_divider_alpha: 0,  wl_symbol_mono: false, section_header_mono: false,
             section_header_tracking: 0.0,
-            r_xs: 2, r_sm: 4, r_md: 6, r_lg: 12, r_pill: 0, r_chip: 0,
+            // Radii from the Meridien design source (primitives.css), not the
+            // legacy default scale they were pinned to through the Phase B
+            // source-swap: sm 4->3, lg 12->14, pill 0->14.
+            r_xs: 2, r_sm: 3, r_md: 6, r_lg: 14, r_pill: 14, r_chip: 0,
             density: 1, pane_gap: 0.0,
             shadows_enabled: true, shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
             hairline_borders: true, solid_active_fills: true, uppercase_section_labels: true,

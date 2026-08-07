@@ -27,12 +27,32 @@ That is a defensible migration decision — it kept the app looking unchanged
 through the swap — but it means "Meridien fidelity" had never been measured
 against anything.
 
-**I claimed `equivalence_tests::style_axis_equivalence` enforced this and had to
-be dealt with first. That was wrong.** The test records radii in its
-`noted_differences` bucket, which prints but does not fail; only directly-mapped
-scalar fields are strict-checked. Verified by making the change — the test still
-passes. There was never a blocker; I had read the comment ("equivalence test:
-field-exact") and not the test.
+**The test situation, stated correctly on the third attempt.** There are TWO
+equivalence suites, and I checked the wrong one twice:
+
+| suite | file | radii |
+|---|---|---|
+| `equivalence_tests::style_axis_equivalence` | `design_system/equivalence_tests.rs` | `noted_differences` — reports, does not fail |
+| `s2_equivalence_tests` | `chart/renderer/ui/style.rs` | **strict**, plus a golden snapshot |
+
+First I claimed the change was blocked (I had read a code comment, not a test).
+Then I claimed there was no blocker at all, having run only the `design_system`
+suite. Both wrong: `s2_equivalence_tests` *does* enforce radii field-exactly,
+and the radii commit broke two of its tests — `style_defaults_equivalence_id_0_
+meridien` and `styles_0_to_8_token_snapshot`. I shipped that commit without
+running the full suite.
+
+Now resolved properly rather than by loosening the check:
+
+- `RADIUS_DIVERGENCES` — a named allow-list of `(style, token, legacy, new)`.
+  The three Meridien radii are recorded there with the reason. A *fourth*
+  divergence, or a different value for one of these three, still fails. Proven
+  by editing one entry and watching the test fail.
+- The golden snapshot was updated via its own sanctioned "deliberate design
+  edit" path, with a comment naming the source.
+
+The lesson is the cheap one: `cargo test --lib`, not the tests I expect to be
+relevant.
 
 ---
 
@@ -128,9 +148,34 @@ Worth recording so it is not "fixed" by accident:
    records radii in its `noted_differences` bucket, which reports but does not
    fail. Only directly-mapped scalar fields are strict. Verified by making the
    change: `style_axis_equivalence` still passes.
-2. **Radii** — DONE. `sm 4→3`, `lg 12→14`, `pill 0→14`.
-3. **Signature devices** — numbered headers, panel meta captions, outlined
-   panel cards. With density demoted, these ARE the visible gap: they are what
-   makes the reference render recognisably Meridien. New components / style
-   treatments, not token changes.
+2. **Radii** — DONE. `sm 4→3`, `lg 12→14`, `pill 0→14`. Required recording
+   the divergence in `RADIUS_DIVERGENCES` + the golden snapshot (see §0).
+3. **Signature devices** — numbered headers (DONE), panel meta captions,
+   outlined panel cards. With density demoted, these ARE the visible gap: they
+   are what makes the reference render recognisably Meridien. New components /
+   style treatments, not token changes.
+
+   **Numbered headers — how.** `Treatments::numbered_section_labels`, authored
+   `true` for Meridien alone and `false` by default, cascading through the same
+   adapter as `uppercase_section_labels`. Two things are worth recording:
+
+   - It could not ride on `style_label_case`. That is a string transform, and
+     the numeral is accent-coloured while the title is not.
+   - It needed no new layout. The header's leading slot — the icon slot — is
+     already accent, mono, measured and flex-placed, which is exactly an
+     ordinal's requirements. The ordinal takes that slot and replaces the icon
+     (the source has no icons in numbered headers, and a glyph plus a numeral
+     reads as two competing leading marks).
+
+   The ordinal is frame-scoped, held in egui memory keyed by pass number so it
+   self-resets on the first header of each frame. A counter reset by a
+   "begin frame" hook would keep counting through any frame that skipped the
+   hook, and the numbers would climb until someone noticed a panel reading 47.
+
+   **Found on the way in:** `PanelHeader` painted every title TWICE, 0.5px
+   apart, as faux-bold — citing "the same trick painter_pane symbol mode uses",
+   which is the code that rendered `SPY` as `SPYY` and was deleted earlier in
+   this work. The trick had been copied before it was known to be broken, so
+   fixing the original left this copy behind. Every side-panel title has been
+   double-drawn since. Now a single draw.
 4. **Density** — 30 → 25 logical row pitch. Small, do it last, re-shoot.

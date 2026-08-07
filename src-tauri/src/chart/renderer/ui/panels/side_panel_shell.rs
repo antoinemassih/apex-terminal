@@ -516,7 +516,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
             let mut ui = rail_slot_ui(ctx, id, slot, t);
             let mut close_clicked = false;
             let stripped: Vec<(T, &str)> = tabs.iter().map(|(v, l, _)| (*v, *l)).collect();
-            let mut header = PanelHeaderTabs::new(current, &stripped).id_salt(id);
+            let mut header = PanelHeaderTabs::new(current, &stripped).id_salt(id).numbered();
             if let Some((h, f)) = pane_metrics { header = header.height(h).font_size(f); }
             if let Some(cb) = on_tab_secondary { header = header.on_tab_secondary(cb); }
             let mut actions = header_actions;
@@ -561,7 +561,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
             // Strip the glyph for the underlying PanelHeaderTabs widget which
             // takes `&[(T, &str)]`. Glyphs are reserved for a future enhancement.
             let stripped: Vec<(T, &str)> = tabs.iter().map(|(v, l, _)| (*v, *l)).collect();
-            let mut header = PanelHeaderTabs::new(current, &stripped).id_salt(id);
+            let mut header = PanelHeaderTabs::new(current, &stripped).id_salt(id).numbered();
             if let Some((h, f)) = pane_metrics {
                 header = header.height(h).font_size(f);
             }
@@ -655,7 +655,7 @@ fn render_header<'a>(
     pane_metrics: Option<(f32, f32)>,
     actions: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
 ) -> bool {
-    let mut header = PanelHeader::new(title);
+    let mut header = PanelHeader::new(title).numbered();
     if let Some(g) = icon { header = header.icon(g); }
     if let Some((h, f)) = pane_metrics {
         header = header.height(h).font_size(f);

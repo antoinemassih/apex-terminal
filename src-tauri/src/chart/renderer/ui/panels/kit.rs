@@ -126,6 +126,27 @@ fn header_flex(icon_w: Option<f32>, title_w: f32, closable: bool) -> Flex {
 }
 
 /// Solve [`header_flex`] inside `rect` and hand back absolute slot rects.
+/// Hand out the next panel ordinal for THIS frame (`1`, `2`, `3`, …).
+///
+/// Meridien numbers its panels in visual order down the frame, so the ordinal
+/// is a property of paint order, not of panel identity — there is no stable
+/// per-panel number to store, and panels open and close.
+///
+/// The counter lives in egui memory keyed by the pass number, so it resets
+/// itself on the first header of every frame. That matters: a counter reset by
+/// some "begin frame" hook would silently keep counting on any frame that
+/// skipped the hook, and the numbers would drift upward forever.
+fn next_section_ordinal(ctx: &egui::Context) -> u32 {
+    let id = egui::Id::new("panel_header.section_ordinal");
+    let pass = ctx.cumulative_pass_nr();
+    ctx.memory_mut(|m| {
+        let (last, n) = m.data.get_temp::<(u64, u32)>(id).unwrap_or((u64::MAX, 0));
+        let n = if last == pass { n + 1 } else { 1 };
+        m.data.insert_temp(id, (pass, n));
+        n
+    })
+}
+
 pub(crate) fn solve_header_strip(
     rect: Rect,
     icon_w: Option<f32>,
@@ -296,6 +317,8 @@ pub struct PanelHeader<'a> {
     font_size_override: Option<f32>,
     closable: bool,
     watchlist: Option<&'a Watchlist>,
+    /// Eligible for Meridien's section ordinal. See [`Self::numbered`].
+    numbered: bool,
 }
 
 impl<'a> PanelHeader<'a> {
@@ -306,9 +329,19 @@ impl<'a> PanelHeader<'a> {
             font_size_override: None,
             closable: true,
             watchlist: None,
+            numbered: false,
         }
     }
     pub fn icon(mut self, icon: &'a str) -> Self { self.icon = Some(icon); self }
+
+    /// Mark this header as a SECTION header, eligible for Meridien's ordinal.
+    ///
+    /// Opt-in for the same reason as [`PanelHeaderTabs::numbered`]: not every
+    /// `PanelHeader` is a section. `PaneHeader` (heatmap, portfolio) uses this
+    /// widget for a pane's own title bar, and panes paint before the side
+    /// panels — left on by default it would have taken `01` in any layout with
+    /// one open, renumbering every panel beside it.
+    pub fn numbered(mut self) -> Self { self.numbered = true; self }
     /// Pin the header to the chart-pane height/font configured by this
     /// `Watchlist`'s `pane_header_size`. Side panels that pass this line up
     /// pixel-y with the chart pane header above them.
@@ -368,10 +401,26 @@ impl<'a> PanelHeader<'a> {
         let icon_font = crate::ui_kit::style::mono_at(font_size);
         let title_text = style_label_case(self.title);
 
+        // Leading slot: an accent ordinal for numbering styles (Meridien),
+        // otherwise the caller's icon glyph.
+        //
+        // The ordinal REPLACES the icon rather than stacking with it — the
+        // design source has no icons in its numbered headers, and a
+        // number-plus-glyph pair would read as two competing leading marks.
+        // Reusing the icon slot means no new layout: it is already accent-
+        // coloured, mono, measured, and placed by the same flex solve.
+        let lead: Option<String> = if self.numbered
+            && crate::chart_renderer::ui::style::style_numbers_sections()
+        {
+            Some(format!("{:02}", next_section_ordinal(ui.ctx())))
+        } else {
+            self.icon.map(|g| g.to_string())
+        };
+
         // Measure the intrinsic content, then let the flex engine place it.
         // (`Item::auto()` cannot help here — `Flex::solve` has no font access.)
-        let icon_w = self.icon.map(|g| {
-            painter.layout_no_wrap(g.to_string(), icon_font.clone(), t.accent).size().x
+        let icon_w = lead.as_ref().map(|g| {
+            painter.layout_no_wrap(g.clone(), icon_font.clone(), t.accent).size().x
         });
         let title_w = painter
             .layout_no_wrap(title_text.clone(), title_font.clone(), t.text)
@@ -380,7 +429,7 @@ impl<'a> PanelHeader<'a> {
         let strip = solve_header_strip(rect, icon_w, title_w, self.closable);
 
         // Paint icon + title in painter mode, into their solved slots.
-        if let (Some(g), Some(islot)) = (self.icon, strip.icon) {
+        if let (Some(g), Some(islot)) = (lead.as_ref(), strip.icon) {
             painter.text(
                 Pos2::new(islot.left(), islot.center().y),
                 Align2::LEFT_CENTER, g, icon_font, t.accent,
@@ -388,11 +437,18 @@ impl<'a> PanelHeader<'a> {
         }
 
         let title_pos = Pos2::new(strip.title.left(), strip.title.center().y);
-        // Pseudo-bold via double-paint (same trick painter_pane symbol mode uses).
-        painter.text(
-            Pos2::new(title_pos.x + 0.5, title_pos.y),
-            Align2::LEFT_CENTER, &title_text, title_font.clone(), t.text,
-        );
+
+        // ONE draw.
+        //
+        // This painted the title TWICE, 0.5px apart, as faux-bold — and its
+        // comment cited "the same trick painter_pane symbol mode uses", which
+        // is the code that rendered "SPY" as "SPYY" and was deleted earlier in
+        // this work. The trick was copied before it was known to be broken, so
+        // fixing the original left this one behind: every side-panel title has
+        // been double-drawn since.
+        //
+        // Weight belongs to the font. If these want to be heavier, register a
+        // bold face and ask for it.
         painter.text(title_pos, Align2::LEFT_CENTER, &title_text, title_font, t.text);
 
         let mut closed = false;
@@ -447,6 +503,8 @@ pub struct PanelHeaderTabs<'a, T: PartialEq + Copy + 'a> {
     closable: bool,
     salt: &'a str,
     watchlist: Option<&'a Watchlist>,
+    /// Eligible for Meridien's section ordinal. See [`Self::numbered`].
+    numbered: bool,
     /// Optional per-tab right-click handler — invoked inside each tab's
     /// `context_menu` with that tab's value. Used by `SplitTabs` for the
     /// "open this tab as a new instance" menu; ignored by plain callers.
@@ -462,6 +520,7 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
             closable: true,
             salt: "panel_tabs",
             watchlist: None,
+            numbered: false,
             on_tab_secondary: None,
         }
     }
@@ -481,6 +540,20 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
     /// Pin tab height + label font to the chart pane's metrics so the tab
     /// strip lines up with the strip in the pane header above.
     pub fn watchlist(mut self, wl: &'a Watchlist) -> Self { self.watchlist = Some(wl); self }
+
+    /// Mark this strip as a SECTION header, eligible for Meridien's ordinal.
+    ///
+    /// Opt-in, not opt-out. `PanelHeaderTabs` is used for two different things:
+    /// section headers on side panels, and tab bars inside docks and split
+    /// panes. Only the first is a numbered section.
+    ///
+    /// The first version numbered every strip, and the bottom dock — which
+    /// paints before the central panel but sits last on screen — took `01`,
+    /// so the panels read 01 at the bottom, 02 and 03 above it. Ordinals are a
+    /// reading-order device; getting the order wrong is worse than not having
+    /// them. Opt-in also means a tab strip added somewhere new later cannot
+    /// silently consume an ordinal and shift every panel's number by one.
+    pub fn numbered(mut self) -> Self { self.numbered = true; self }
 
     pub fn show(self, ui: &mut Ui, t: &Theme) -> bool {
         self.show_with(ui, t, |_| {})
@@ -519,6 +592,30 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
         let tab_y = rect.top() + HEADER_TAB_TOP_INSET;
         let tab_pad = gap_md() + 4.0;
         let mut cx = chrome.strip.left();
+
+        // Numbered section headers (Meridien) also apply to tabbed panels.
+        //
+        // A tabbed header has no title to prefix, so the ordinal leads the tab
+        // strip instead. Skipping this variant was tempting — it is the harder
+        // one — but it would have left the watchlist unnumbered while the rail
+        // beside it read "01", and a lone ordinal looks like a bug rather than
+        // a system. Numbering has to be all-or-nothing to read as a device.
+        //
+        // Taking room from the strip is safe: tabs that no longer fit fall
+        // into the existing "»" overflow menu rather than clipping.
+        if self.numbered && crate::chart_renderer::ui::style::style_numbers_sections() {
+            let ord = format!("{:02}", next_section_ordinal(ui.ctx()));
+            let ord_font = crate::ui_kit::style::mono_at(font_size);
+            let ord_w = painter
+                .layout_no_wrap(ord.clone(), ord_font.clone(), t.accent)
+                .size().x;
+            painter.text(
+                Pos2::new(cx, rect.center().y),
+                Align2::LEFT_CENTER, ord, ord_font, t.accent,
+            );
+            cx += ord_w + gap_sm();
+        }
+
         let mut tab_rects: Vec<Rect> = Vec::with_capacity(self.tabs.len());
 
         let active_idx = self.tabs.iter().position(|(v, _)| *v == *self.current).unwrap_or(0);
@@ -966,5 +1063,65 @@ mod tests {
         let c = solve_header_tabs_strip(r, false);
         assert!(c.close.is_none());
         assert!(approx(c.strip.right(), r.right() - gap_sm()), "got {}", c.strip.right());
+    }
+
+    // ── Numbered section headers (Meridien) ──────────────────────────────────
+
+    /// Within one pass the ordinal counts up from 1; the next pass restarts.
+    ///
+    /// The restart is the whole point. An earlier shape reset the counter from
+    /// a "begin frame" hook, which keeps counting on any frame that skips the
+    /// hook — the numbers would climb forever and nobody would notice until a
+    /// panel read `47`.
+    #[test]
+    fn section_ordinal_counts_per_pass_and_restarts() {
+        let ctx = egui::Context::default();
+
+        let mut first = Vec::new();
+        let _ = ctx.run(Default::default(), |ctx| {
+            for _ in 0..4 {
+                first.push(next_section_ordinal(ctx));
+            }
+        });
+        assert_eq!(first, vec![1, 2, 3, 4], "ordinals must count up within a pass");
+
+        let mut second = Vec::new();
+        let _ = ctx.run(Default::default(), |ctx| {
+            for _ in 0..3 {
+                second.push(next_section_ordinal(ctx));
+            }
+        });
+        assert_eq!(second, vec![1, 2, 3], "a new pass must restart at 1, not continue");
+    }
+
+    /// The header renders the ordinal zero-padded to two digits.
+    #[test]
+    fn section_ordinal_is_zero_padded_to_two_digits() {
+        assert_eq!(format!("{:02}", 1u32), "01");
+        assert_eq!(format!("{:02}", 9u32), "09");
+        assert_eq!(format!("{:02}", 12u32), "12");
+    }
+
+    /// Numbering is opt-in on BOTH header widgets.
+    ///
+    /// The default is the whole safety property. Default-on is how the bottom
+    /// dock took `01` while sitting last on screen, and how a heatmap pane
+    /// would have taken it in any layout with one open. A new tab strip or
+    /// pane header added later must not be able to shift every panel's number
+    /// by one just by existing.
+    #[test]
+    fn section_numbering_is_opt_in_on_both_header_widgets() {
+        assert!(!PanelHeader::new("WATCHLIST").numbered,
+                "PanelHeader must not number by default");
+        assert!(PanelHeader::new("WATCHLIST").numbered().numbered,
+                "PanelHeader::numbered() must set the flag");
+
+        let mut tab = 0u8;
+        let tabs: &[(u8, &str)] = &[(0, "LIST"), (1, "CHAIN")];
+        assert!(!PanelHeaderTabs::new(&mut tab, tabs).numbered,
+                "PanelHeaderTabs must not number by default");
+        let mut tab2 = 0u8;
+        assert!(PanelHeaderTabs::new(&mut tab2, tabs).numbered().numbered,
+                "PanelHeaderTabs::numbered() must set the flag");
     }
 }

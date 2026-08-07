@@ -111,6 +111,28 @@ STYLE_NAMES = [
     "mariner", "lucid", "relay", "glass",
 ]
 
+def live_axis_names(port, fallback_themes, fallback_styles):
+    """Ask the APP what colour schemes and styles it has, in index order.
+
+    The hardcoded lists below are a fallback for when the app is not up yet
+    (`--list`, unit-ish uses). They are NOT authoritative and they drift:
+    THEME_NAMES sat at 21 entries while the app shipped 22, so `--preset
+    meridien:meridien` died with "unknown theme 'meridien'" for a scheme that
+    had been at index 21 all along.
+    """
+    try:
+        import urllib.request, json
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/state", timeout=3) as r:
+            st = json.load(r)
+        themes = [str(x) for x in st.get("theme_names") or []]
+        styles = [str(x) for x in st.get("style_names") or []]
+        if themes and styles:
+            return themes, styles
+        print("  ! /state has no theme_names/style_names — using the stale local copy")
+    except Exception as e:
+        print(f"  ! could not read live axis names ({e}) — using the stale local copy")
+    return fallback_themes, fallback_styles
+
 # Default sweep: the six DS palettes x their matching style systems
 # (aperture/cadence/alto/mariner/lucid have both a palette and a style;
 # meridien exists only as a style — paired with the aperture palette here).
@@ -145,14 +167,33 @@ def png_size(path: Path):
     return w, h
 
 
+def _axis_key(name: str) -> str:
+    """Normalise an axis name so slug and display forms both resolve.
+
+    The live lists come from the app's DISPLAY names ("tokyo night",
+    "rose pine"); presets have always been written as slugs ("tokyo-night",
+    "rose-pine"). Without this, switching the harness to the live lists would
+    have silently broken every existing preset that names one of those two.
+    """
+    import unicodedata
+    n = unicodedata.normalize("NFKD", name.strip().lower())
+    n = "".join(c for c in n if not unicodedata.combining(c))
+    for ch in (" ", "_", "."):
+        n = n.replace(ch, "-")
+    return n
+
+
 def resolve(token: str, names: list[str], what: str) -> tuple[int, str]:
     token = token.strip().lower()
     if token.isdigit():
         idx = int(token)
         name = names[idx] if idx < len(names) else f"{what}{idx}"
         return idx, name
-    if token in names:
-        return names.index(token), token
+    keys = [_axis_key(n) for n in names]
+    key = _axis_key(token)
+    if key in keys:
+        i = keys.index(key)
+        return i, names[i]
     raise SystemExit(f"unknown {what} '{token}' (use an index or one of {names})")
 
 
@@ -277,8 +318,9 @@ def main():
         t, _, s = entry.strip().partition(":")
         if not s:
             raise SystemExit(f"bad pair '{entry}' — expected theme:style")
-        pairs.append((resolve(t, THEME_NAMES, "theme"),
-                      resolve(s, STYLE_NAMES, "style")))
+        themes, styles = live_axis_names(args.port, THEME_NAMES, STYLE_NAMES)
+        pairs.append((resolve(t, themes, "theme"),
+                      resolve(s, styles, "style")))
 
     failures = 0
     for (t_idx, t_name), (s_idx, s_name) in pairs:

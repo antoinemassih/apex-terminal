@@ -85,6 +85,28 @@ STYLE_NAMES = [
     "mariner", "lucid", "relay", "glass",
 ]
 
+def live_axis_names(port, fallback_themes, fallback_styles):
+    """Ask the APP what colour schemes and styles it has, in index order.
+
+    The hardcoded lists below are a fallback for when the app is not up yet
+    (`--list`, unit-ish uses). They are NOT authoritative and they drift:
+    THEME_NAMES sat at 21 entries while the app shipped 22, so `--preset
+    meridien:meridien` died with "unknown theme 'meridien'" for a scheme that
+    had been at index 21 all along.
+    """
+    try:
+        import urllib.request, json
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/state", timeout=3) as r:
+            st = json.load(r)
+        themes = [str(x) for x in st.get("theme_names") or []]
+        styles = [str(x) for x in st.get("style_names") or []]
+        if themes and styles:
+            return themes, styles
+        print("  ! /state has no theme_names/style_names — using the stale local copy")
+    except Exception as e:
+        print(f"  ! could not read live axis names ({e}) — using the stale local copy")
+    return fallback_themes, fallback_styles
+
 # Audit on a CERTIFIED pairing, not whatever the app happened to boot with.
 #
 # The previous audit set was shot on theme_idx=15 + style_idx=0 — a "Custom
@@ -281,13 +303,32 @@ def capture(port, surface, out_dir, settle_ms):
     return dest
 
 
+def _axis_key(name: str) -> str:
+    """Normalise an axis name so slug and display forms both resolve.
+
+    The live lists come from the app's DISPLAY names ("tokyo night",
+    "rose pine"); presets have always been written as slugs ("tokyo-night",
+    "rose-pine"). Without this, switching the harness to the live lists would
+    have silently broken every existing preset that names one of those two.
+    """
+    import unicodedata
+    n = unicodedata.normalize("NFKD", name.strip().lower())
+    n = "".join(c for c in n if not unicodedata.combining(c))
+    for ch in (" ", "_", "."):
+        n = n.replace(ch, "-")
+    return n
+
+
 def resolve(token, names, what):
     token = token.strip().lower()
     if token.isdigit():
         idx = int(token)
         return idx, (names[idx] if idx < len(names) else f"{what}{idx}")
-    if token in names:
-        return names.index(token), token
+    keys = [_axis_key(n) for n in names]
+    key = _axis_key(token)
+    if key in keys:
+        i = keys.index(key)
+        return i, names[i]
     raise SystemExit(f"unknown {what} '{token}' (index or one of {names})")
 
 
@@ -319,8 +360,9 @@ def main():
         return 1
 
     t_tok, _, s_tok = args.preset.partition(":")
-    t_idx, t_name = resolve(t_tok, THEME_NAMES, "theme")
-    s_idx, s_name = resolve(s_tok, STYLE_NAMES, "style")
+    themes, styles = live_axis_names(args.port, THEME_NAMES, STYLE_NAMES)
+    t_idx, t_name = resolve(t_tok, themes, "theme")
+    s_idx, s_name = resolve(s_tok, styles, "style")
     # RE-SEND, don't just poll.
     #
     # A single set-then-poll loses a race at startup: the app restores its

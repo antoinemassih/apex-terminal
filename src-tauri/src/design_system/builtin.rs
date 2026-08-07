@@ -1127,6 +1127,10 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       true,  // solid_active_fills = true
             hairline_borders:         true,  // hairline_borders = true
             uppercase_section_labels: true,  // uppercase_section_labels = true
+            // The design source numbers every panel: 01 WATCHLIST, 02 ORDER
+            // BOOK, 03 POSITIONS, 04 ORDER TICKET. Meridien is the only
+            // built-in style that does this.
+            numbered_section_labels: true,
             segmented_filled_idle:    false,
             focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.0
             surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
@@ -1262,6 +1266,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       false, // solid_active_fills = false
             hairline_borders:         false, // hairline_borders = false
             uppercase_section_labels: false, // uppercase_section_labels = false
+            numbered_section_labels: false,
             segmented_filled_idle:    true,
             focus_ring: FocusRingStyle::Glow, // focus_ring_width = 2.0 → Glow
             surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
@@ -1397,6 +1402,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       true,  // solid_active_fills = true
             hairline_borders:         true,  // hairline_borders = true
             uppercase_section_labels: true,  // uppercase_section_labels = true
+            numbered_section_labels: false,
             segmented_filled_idle:    false,
             focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.5
             surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
@@ -1632,6 +1638,28 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
 
 #[cfg(test)]
 mod tests {
+    /// Numbered headers are a Meridien signature, taken from its design source
+    /// (`trading app - meridien/`), which labels every panel `01 WATCHLIST`,
+    /// `02 ORDER BOOK`, …
+    ///
+    /// This asserts it stays a signature. The treatment defaults to `false`, so
+    /// a new style picks it up only by explicitly opting in — and if one does,
+    /// that should be a decision someone made, not a copy-paste that spread the
+    /// numerals across a system where they mean nothing.
+    #[test]
+    fn only_meridien_numbers_its_section_headers() {
+        let numbering: Vec<String> = super::builtin_style_systems()
+            .iter()
+            .filter(|s| s.treatments.numbered_section_labels)
+            .map(|s| s.meta.id.clone())
+            .collect();
+        assert_eq!(
+            numbering,
+            vec!["meridien".to_string()],
+            "expected only Meridien to number section headers, got {numbering:?}"
+        );
+    }
+
     use super::*;
 
     #[test]

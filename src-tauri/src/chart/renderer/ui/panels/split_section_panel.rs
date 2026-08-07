@@ -170,7 +170,7 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
         let mut close_clicked = false;
         panel.show(ctx, |ui| {
             // ── Header ────────────────────────────────────────────────────
-            let mut header = PanelHeader::new(title);
+            let mut header = PanelHeader::new(title).numbered();
             if let Some(g) = icon { header = header.icon(g); }
             if let Some((h, f)) = pane_metrics {
                 header = header.height(h).font_size(f);

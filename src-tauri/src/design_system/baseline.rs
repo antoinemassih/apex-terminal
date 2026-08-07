@@ -260,6 +260,13 @@ pub fn baseline_style_system() -> StyleSystem {
             hairline_borders:         true,
             // uppercase_section_labels = true (style_defaults(0))
             uppercase_section_labels: true,
+            // DELIBERATE DIVERGENCE from builtin Meridien, which sets this
+            // `true`. This baseline is the *legacy* style_defaults(0) — the
+            // pre-swap default look — and legacy had no numbered headers.
+            // Numbering is a fidelity feature added against the design source,
+            // so builtin Meridien and this baseline are expected to differ
+            // here, exactly as they now differ on radii.
+            numbered_section_labels: false,
             // No segmented_filled_idle field in StyleSettings; Meridien default = false
             segmented_filled_idle:    false,
             // focus_ring_width = 1.0 → Outline

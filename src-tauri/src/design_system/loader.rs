@@ -516,6 +516,7 @@ impl StyleSystem {
             solid_active_fills:       read_bool_or(&tr_sec, "solid_active_fills",       "treatments", d_tr.solid_active_fills),
             hairline_borders:         read_bool_or(&tr_sec, "hairline_borders",         "treatments", d_tr.hairline_borders),
             uppercase_section_labels: read_bool_or(&tr_sec, "uppercase_section_labels", "treatments", d_tr.uppercase_section_labels),
+            numbered_section_labels: read_bool_or(&tr_sec, "numbered_section_labels", "treatments", d_tr.numbered_section_labels),
             segmented_filled_idle:    read_bool_or(&tr_sec, "segmented_filled_idle",    "treatments", d_tr.segmented_filled_idle),
             focus_ring: tr_sec
                 .get("focus_ring")
@@ -851,6 +852,7 @@ mod tests {
                 solid_active_fills: true,
                 hairline_borders: true,
                 uppercase_section_labels: true,
+                numbered_section_labels: false,
                 segmented_filled_idle: true,
                 focus_ring: FocusRingStyle::Glow,
                 surface_bevel: BevelStyle::Raised,

@@ -53,3 +53,4 @@ dev/bug_report.md
 
 # dev-inspector generated screenshots
 dev/screenshots/
+__pycache__/

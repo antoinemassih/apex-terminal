@@ -757,6 +757,19 @@ pub struct Treatments {
     /// When `true`, section / group labels are rendered in uppercase.
     pub uppercase_section_labels: bool,
 
+    /// When `true`, panel section headers are prefixed with a zero-padded
+    /// ordinal in the accent colour — `01 WATCHLIST`, `02 ORDER BOOK`, … —
+    /// numbered in visual order down the frame.
+    ///
+    /// This is a *treatment*, not a string transform: the numeral is accent-
+    /// coloured while the title is not, so it cannot ride on
+    /// `uppercase_section_labels`'s `style_label_case` path. It occupies the
+    /// header's leading (icon) slot, which is already accent + mono + measured.
+    ///
+    /// Authored `true` only for Meridien, where the design source
+    /// (`trading app - meridien/`) numbers every panel. `false` elsewhere.
+    pub numbered_section_labels: bool,
+
     /// When `true`, the segmented control idle state uses a filled background.
     /// When `false`, idle segments are transparent with an outline.
     pub segmented_filled_idle: bool,
@@ -862,6 +875,7 @@ impl Default for Treatments {
             solid_active_fills:       false,
             hairline_borders:         false,
             uppercase_section_labels: false,
+            numbered_section_labels: false,
             segmented_filled_idle:    false,
             focus_ring:               FocusRingStyle::Outline,
             surface_bevel:            BevelStyle::None,

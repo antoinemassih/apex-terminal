@@ -467,6 +467,7 @@ let _ = ctx;
                             ("shadows_enabled",         "bool", "Drop shadows on cards and modals"),
                             ("solid_active_fills",      "bool", "Solid fills on active/selected items"),
                             ("uppercase_section_labels","bool", "Uppercase section label text globally"),
+                            ("numbered_section_labels", "bool", "Prefix panel headers with an accent ordinal (01, 02, ...)"),
                             ("serif_headlines",         "bool", "Serif font for hero numerics (price, P&L)"),
                             ("vertical_group_dividers", "bool", "Vertical group dividers in toolbar"),
                             ("show_active_tab_underline","bool","Underline beneath the active tab"),
@@ -1449,6 +1450,7 @@ fn two_axis_style_editor(ui: &mut egui::Ui, s: &mut StyleSystem) {
         two_axis_bool(ui, "solid_active_fills",       &mut s.treatments.solid_active_fills);
         two_axis_bool(ui, "hairline_borders",         &mut s.treatments.hairline_borders);
         two_axis_bool(ui, "uppercase_section_labels", &mut s.treatments.uppercase_section_labels);
+        two_axis_bool(ui, "numbered_section_labels",  &mut s.treatments.numbered_section_labels);
         two_axis_bool(ui, "segmented_filled_idle",    &mut s.treatments.segmented_filled_idle);
         // focus_ring enum
         ui.horizontal(|ui| {
@@ -2461,6 +2463,7 @@ fn field_tip(name: &str) -> &'static str {
         "shadows_enabled"           => "Enable drop shadows on cards and modals",
         "solid_active_fills"        => "Use solid fills on active/selected items instead of tinted",
         "uppercase_section_labels"  => "Uppercase section label text globally",
+        "numbered_section_labels"   => "Prefix panel section headers with an accent ordinal (01 WATCHLIST)",
         "serif_headlines"           => "Use serif font for hero numerics (price, P&L)",
         "vertical_group_dividers"   => "Show vertical group dividers in the toolbar",
         "show_active_tab_underline" => "Show an underline beneath the active tab",

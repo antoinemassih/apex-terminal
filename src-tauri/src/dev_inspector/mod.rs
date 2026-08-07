@@ -1284,6 +1284,17 @@ pub fn end_frame(
         // `reset` step already uses.
         "active_theme_idx": active_chart.map(|c| c.theme_idx).unwrap_or(0),
         "active_style_idx": crate::chart_renderer::ui::style::active_style_idx(),
+        // The live axis lists, in index order.
+        //
+        // Both ds-harness scripts kept their own hardcoded copy of these, and
+        // both had drifted: `THEME_NAMES` stopped at 20, so `--preset
+        // meridien:meridien` failed with "unknown theme 'meridien'" for a
+        // scheme that has existed at index 21 the whole time. A list that
+        // mirrors a type and is maintained by hand will drift; the fix is for
+        // the app to say what it has.
+        "theme_names": crate::chart_renderer::gpu::get_all_themes()
+            .iter().map(|t| t.name.to_lowercase()).collect::<Vec<_>>(),
+        "style_names": crate::chart_renderer::ui::style::style_system_ids(),
         "open_dialogs":    open_dialogs,
         // ApexData subscription hygiene. `set_quotes` is driven from the
         // per-frame render loop, so without suppression the terminal pushed a
