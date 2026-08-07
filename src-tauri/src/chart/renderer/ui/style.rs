@@ -2927,6 +2927,26 @@ fn effective_density() -> crate::ui_kit::style::DensityMode {
 pub fn style_row_height() -> f32 {
     current().row_height_px * effective_density().scale()
 }
+
+/// The COMFORTABLE row height — `Density.row_height_comfortable`, scaled.
+///
+/// The density block has always carried two row heights per style
+/// (`row_height_dense`, `row_height_comfortable`), but only the dense one was
+/// ever wired: it becomes `StyleSettings.row_height_px` and backs
+/// [`style_row_height`]. `row_height_comfortable` was loaded, exported, and
+/// exposed in the design inspector while no code read it.
+///
+/// The watchlist, meanwhile, hardcoded `28.0` — which IS Meridien's
+/// `row_height_comfortable`. The token and the literal had the same value and
+/// no connection, so density and style switching moved every list except the
+/// most visible one.
+///
+/// Reads the design_system directly rather than adding a `StyleSettings`
+/// field: that struct is the legacy mirror being shrunk and its pub-field
+/// count is ratcheted.
+pub fn style_row_height_comfortable() -> f32 {
+    active_style_system().density.row_height_comfortable * effective_density().scale()
+}
 /// Density-aware button height. Reads `button_height_px` then scales by effective density.
 pub fn style_button_height() -> f32 {
     current().button_height_px * effective_density().scale()

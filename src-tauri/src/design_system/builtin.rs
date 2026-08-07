@@ -1655,6 +1655,33 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
 
 #[cfg(test)]
 mod tests {
+    /// Every style declares TWO row heights, and comfortable must exceed dense.
+    ///
+    /// Both have always existed in `Density`; only `row_height_dense` was
+    /// wired, becoming `StyleSettings.row_height_px`. `row_height_comfortable`
+    /// was loaded, exported and inspector-editable while nothing read it — and
+    /// the watchlist hardcoded `28.0`, which is exactly Meridien's value for
+    /// it. The token and the literal agreed by coincidence and had no
+    /// connection, so density and style switching reached every list except
+    /// the most visible one.
+    ///
+    /// This guards the contract that makes the pair meaningful. If a style
+    /// ever sets comfortable <= dense, "comfortable" has stopped meaning
+    /// anything and the watchlist would render denser than the dense lists.
+    #[test]
+    fn every_style_comfortable_row_exceeds_dense() {
+        let bad: Vec<String> = super::builtin_style_systems()
+            .iter()
+            .filter(|s| s.density.row_height_comfortable <= s.density.row_height_dense)
+            .map(|s| format!("{}: comfortable={} dense={}",
+                             s.meta.id, s.density.row_height_comfortable,
+                             s.density.row_height_dense))
+            .collect();
+        assert!(bad.is_empty(), "comfortable row must exceed dense:
+  {}", bad.join("
+  "));
+    }
+
     /// Every documented style's radius scale, pinned to its DESIGN TOKENS.
     ///
     /// Values are `faithful/<style>/tokens.full.json` — the DTCG token set,

@@ -229,4 +229,25 @@ Meridien has room and shows both.
    this work. The trick had been copied before it was known to be broken, so
    fixing the original left this copy behind. Every side-panel title has been
    double-drawn since. Now a single draw.
-4. **Density** — 30 → 25 logical row pitch. Small, do it last, re-shoot.
+4. ~~**Density** — 30 → 25 logical row pitch.~~ **WITHDRAWN — measured against
+   the wrong numbers.** The type/density comparison in §2 divided
+   `Typography.size_sm` (10) by the rendered pitch (30) to get a text:row ratio
+   of 0.33 against the source's 0.50.
+
+   `watchlist_panel.rs` reads neither token. It hardcoded `28.0`/`34.0` rows
+   and `14.0`/`15.0` fonts, and calls `style_row_height()` **zero** times.
+   Measuring what it actually renders: 14px text in a 28px row = **0.50**,
+   which is the source's ratio exactly. There was no density gap.
+
+   The real defect was the bypass. `Density` has always carried two row heights
+   per style, and only `row_height_dense` was wired;
+   `row_height_comfortable` was loaded, exported and inspector-editable while
+   nothing read it — and Meridien's value for it is `28.0`, the literal the
+   watchlist used. The token and the literal agreed by coincidence, with no
+   connection between them, so density and style switching moved the DOM
+   ladder, chain, alerts and orders but never the watchlist. Now wired
+   (`style_row_height_comfortable`); Meridien is pixel-identical.
+
+   **Still off-token:** the row fonts (14/15) match no `Typography` value in
+   any style. Wiring them would change what renders rather than just where the
+   number comes from, so it needs its own decision.

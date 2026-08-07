@@ -617,7 +617,7 @@ if is_spawn || watchlist.open {
                                 let sym_fg = if is_active { t.text } else { tint(t, Tone::Text, 230) };
                                 let wresp = WatchlistRow::new(pin_sym, *pin_price, change_pct)
                                     .theme(t)
-                                    .height(28.0)
+                                    .height(crate::chart_renderer::ui::style::style_row_height_comfortable())
                                     .font_size_override(14.0)
                                     .pin_state(WatchlistPinState::Pinned)
                                     .active(is_active)
@@ -974,7 +974,28 @@ if is_spawn || watchlist.open {
                                             if e.abs() > 0.01 { Some(e) } else { None }
                                         } else { None };
                                         let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
-                                        let row_h = if item_pinned { 34.0 } else { 28.0 };
+                                        // Row heights come from the density system.
+                                        //
+                                        // These were literal `34.0` / `28.0`. Both had exact
+                                        // tokens all along — `28.0` is Meridien's
+                                        // `row_height_comfortable` and `34.0` is `control_lg` —
+                                        // so the numbers were right and the wiring was missing.
+                                        // `style_row_height` is used ZERO times in this file,
+                                        // which is why the density toggle moved the DOM ladder,
+                                        // the chain, alerts and orders but never the watchlist.
+                                        //
+                                        // Same values, so nothing moves; the difference is that
+                                        // they now respond to density and to the active style.
+                                        //
+                                        // `font_sz` stays literal deliberately: 14/15 match no
+                                        // token in any style's `Typography`, so wiring them would
+                                        // change what is rendered rather than just where the
+                                        // number comes from. Tracked separately.
+                                        let row_h = if item_pinned {
+                                            crate::ui_kit::widgets::tokens::Size::Lg.height()
+                                        } else {
+                                            crate::chart_renderer::ui::style::style_row_height_comfortable()
+                                        };
                                         let font_sz = if item_pinned { 15.0 } else { 14.0 };
 
                                         // ── Price-flash tint ────────────────────────────────────────
