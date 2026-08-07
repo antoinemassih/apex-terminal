@@ -766,8 +766,20 @@ pub struct Treatments {
     /// `uppercase_section_labels`'s `style_label_case` path. It occupies the
     /// header's leading (icon) slot, which is already accent + mono + measured.
     ///
-    /// Authored `true` only for Meridien, where the design source
-    /// (`trading app - meridien/`) numbers every panel. `false` elsewhere.
+    /// **Defaults to `true`, and that is the source's answer, not a guess.**
+    /// The reference set at `ApexTerminalThemes/faithful/<style>/normalized.
+    /// html` has the same `<span class="num">` in its panel header for ALL SIX
+    /// documented systems, every one of them coloured `--np-accent-ink`:
+    ///
+    /// ```text
+    /// .np-ph .num { font-family: var(--mono); font-size: 10px;
+    ///               color: var(--np-accent-ink); letter-spacing: .06em }
+    /// ```
+    ///
+    /// It was first authored `true` for Meridien alone, on the strength of the
+    /// Meridien reference render — the only one I had looked at. The device is
+    /// shared panel language across the whole reference set; only its token
+    /// values differ per style. The flag stays so a theme pack can opt out.
     pub numbered_section_labels: bool,
 
     /// When `true`, the segmented control idle state uses a filled background.
@@ -875,7 +887,7 @@ impl Default for Treatments {
             solid_active_fills:       false,
             hairline_borders:         false,
             uppercase_section_labels: false,
-            numbered_section_labels: false,
+            numbered_section_labels: true,
             segmented_filled_idle:    false,
             focus_ring:               FocusRingStyle::Outline,
             surface_bevel:            BevelStyle::None,

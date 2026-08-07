@@ -1127,9 +1127,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       true,  // solid_active_fills = true
             hairline_borders:         true,  // hairline_borders = true
             uppercase_section_labels: true,  // uppercase_section_labels = true
-            // The design source numbers every panel: 01 WATCHLIST, 02 ORDER
-            // BOOK, 03 POSITIONS, 04 ORDER TICKET. Meridien is the only
-            // built-in style that does this.
+            // Every faithful reference numbers its panels: 01 WATCHLIST,
+            // 02 ORDER BOOK, 03 POSITIONS, 04 ORDER TICKET.
             numbered_section_labels: true,
             segmented_filled_idle:    false,
             focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.0
@@ -1266,7 +1265,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       false, // solid_active_fills = false
             hairline_borders:         false, // hairline_borders = false
             uppercase_section_labels: false, // uppercase_section_labels = false
-            numbered_section_labels: false,
+            numbered_section_labels: true,
             segmented_filled_idle:    true,
             focus_ring: FocusRingStyle::Glow, // focus_ring_width = 2.0 → Glow
             surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
@@ -1402,7 +1401,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             solid_active_fills:       true,  // solid_active_fills = true
             hairline_borders:         true,  // hairline_borders = true
             uppercase_section_labels: true,  // uppercase_section_labels = true
-            numbered_section_labels: false,
+            numbered_section_labels: true,
             segmented_filled_idle:    false,
             focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.5
             surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
@@ -1638,25 +1637,31 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
 
 #[cfg(test)]
 mod tests {
-    /// Numbered headers are a Meridien signature, taken from its design source
-    /// (`trading app - meridien/`), which labels every panel `01 WATCHLIST`,
-    /// `02 ORDER BOOK`, …
+    /// Every documented style numbers its panels.
     ///
-    /// This asserts it stays a signature. The treatment defaults to `false`, so
-    /// a new style picks it up only by explicitly opting in — and if one does,
-    /// that should be a decision someone made, not a copy-paste that spread the
-    /// numerals across a system where they mean nothing.
+    /// This test previously asserted the OPPOSITE — that only Meridien did —
+    /// which is what I believed after reading one reference render. The
+    /// reference set at `ApexTerminalThemes/faithful/<style>/normalized.html`
+    /// carries the same `<span class="num">` panel header in all six, each
+    /// coloured `--np-accent-ink`. A test can encode a wrong belief just as
+    /// firmly as a right one; this one now names its evidence.
+    ///
+    /// Styles WITHOUT a faithful reference (octave, relay, glass) inherit the
+    /// default rather than being singled out — consistent panel language beats
+    /// an arbitrary split.
     #[test]
-    fn only_meridien_numbers_its_section_headers() {
-        let numbering: Vec<String> = super::builtin_style_systems()
+    fn documented_styles_all_number_their_section_headers() {
+        const REFERENCED: &[&str] =
+            &["meridien", "aperture", "cadence", "alto", "mariner", "lucid"];
+        let missing: Vec<String> = super::builtin_style_systems()
             .iter()
-            .filter(|s| s.treatments.numbered_section_labels)
+            .filter(|s| REFERENCED.contains(&s.meta.id.as_str()))
+            .filter(|s| !s.treatments.numbered_section_labels)
             .map(|s| s.meta.id.clone())
             .collect();
-        assert_eq!(
-            numbering,
-            vec!["meridien".to_string()],
-            "expected only Meridien to number section headers, got {numbering:?}"
+        assert!(
+            missing.is_empty(),
+            "these styles have a faithful reference that numbers its panels,              but do not number: {missing:?}"
         );
     }
 

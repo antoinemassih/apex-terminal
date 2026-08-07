@@ -126,6 +126,20 @@ fn header_flex(icon_w: Option<f32>, title_w: f32, closable: bool) -> Flex {
 }
 
 /// Solve [`header_flex`] inside `rect` and hand back absolute slot rects.
+/// Ratio of the section ordinal's font size to the header title's.
+///
+/// From the faithful reference set, which sizes them separately:
+/// `.np-ph .num { font-size: 10px }` against `.np-ph .ttl { font-size: 11.5px }`.
+/// I first painted the ordinal at the FULL title size, which is both unfaithful
+/// and expensive: on a tabbed header the extra width pushed a tab into the "»"
+/// overflow menu, so a decoration cost a visible control.
+const ORDINAL_FONT_RATIO: f32 = 10.0 / 11.5;
+
+/// The ordinal's font, derived from the header's title size.
+fn ordinal_font(font_size: f32) -> FontId {
+    crate::ui_kit::style::mono_at((font_size * ORDINAL_FONT_RATIO).round().max(8.0))
+}
+
 /// Hand out the next panel ordinal for THIS frame (`1`, `2`, `3`, …).
 ///
 /// Meridien numbers its panels in visual order down the frame, so the ordinal
@@ -409,18 +423,22 @@ impl<'a> PanelHeader<'a> {
         // number-plus-glyph pair would read as two competing leading marks.
         // Reusing the icon slot means no new layout: it is already accent-
         // coloured, mono, measured, and placed by the same flex solve.
-        let lead: Option<String> = if self.numbered
+        //
+        // An ordinal is set BELOW the title size per the reference; an icon
+        // keeps the header's own size. Same slot, different type sizes.
+        let (lead, lead_font): (Option<String>, FontId) = if self.numbered
             && crate::chart_renderer::ui::style::style_numbers_sections()
         {
-            Some(format!("{:02}", next_section_ordinal(ui.ctx())))
+            (Some(format!("{:02}", next_section_ordinal(ui.ctx()))),
+             ordinal_font(font_size))
         } else {
-            self.icon.map(|g| g.to_string())
+            (self.icon.map(|g| g.to_string()), icon_font)
         };
 
         // Measure the intrinsic content, then let the flex engine place it.
         // (`Item::auto()` cannot help here — `Flex::solve` has no font access.)
         let icon_w = lead.as_ref().map(|g| {
-            painter.layout_no_wrap(g.clone(), icon_font.clone(), t.accent).size().x
+            painter.layout_no_wrap(g.clone(), lead_font.clone(), t.accent).size().x
         });
         let title_w = painter
             .layout_no_wrap(title_text.clone(), title_font.clone(), t.text)
@@ -432,7 +450,7 @@ impl<'a> PanelHeader<'a> {
         if let (Some(g), Some(islot)) = (lead.as_ref(), strip.icon) {
             painter.text(
                 Pos2::new(islot.left(), islot.center().y),
-                Align2::LEFT_CENTER, g, icon_font, t.accent,
+                Align2::LEFT_CENTER, g, lead_font, t.accent,
             );
         }
 
@@ -593,27 +611,59 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
         let tab_pad = gap_md() + 4.0;
         let mut cx = chrome.strip.left();
 
-        // Numbered section headers (Meridien) also apply to tabbed panels.
+        // Numbered section headers also apply to tabbed panels.
         //
         // A tabbed header has no title to prefix, so the ordinal leads the tab
         // strip instead. Skipping this variant was tempting — it is the harder
-        // one — but it would have left the watchlist unnumbered while the rail
-        // beside it read "01", and a lone ordinal looks like a bug rather than
-        // a system. Numbering has to be all-or-nothing to read as a device.
+        // one — but it would leave the watchlist unnumbered while the rail
+        // beside it reads "01", and a lone ordinal looks like a bug rather than
+        // a system.
         //
-        // Taking room from the strip is safe: tabs that no longer fit fall
-        // into the existing "»" overflow menu rather than clipping.
+        // THE ORDINAL YIELDS TO THE TABS. It is a decoration; the tabs are
+        // controls. Taking their width looked free because tabs that no longer
+        // fit fall into the "»" overflow menu rather than clipping — but the
+        // Aperture capture showed SCAN disappearing from a header that had been
+        // showing it, so the decoration was costing a visible control. Reducing
+        // the ordinal to its reference size (10px against an 11.5px title)
+        // helped and was the right fix on its own terms, but did not close the
+        // gap in the styles with the widest tabs.
+        //
+        // So: count how many tabs fit with the ordinal and without it. If the
+        // ordinal costs even one, drop it — and do NOT consume an ordinal
+        // number, or every panel below would shift by one for an ordinal
+        // nobody can see.
+        let fitting_tabs = |start_x: f32| -> usize {
+            let max_right = chrome.strip.right() - (HEADER_CLOSE_SIZE + gap_sm() * 2.0);
+            let mut x = start_x;
+            let mut n = 0;
+            for (_, label) in self.tabs.iter() {
+                let w = tab_pad
+                    + painter.layout_no_wrap(label.to_string(), title_font.clone(), t.dim).size().x
+                    + tab_pad;
+                if x + w > max_right { break; }
+                x += w;
+                n += 1;
+            }
+            n
+        };
+
         if self.numbered && crate::chart_renderer::ui::style::style_numbers_sections() {
-            let ord = format!("{:02}", next_section_ordinal(ui.ctx()));
-            let ord_font = crate::ui_kit::style::mono_at(font_size);
+            let ord_font = ordinal_font(font_size);
+            // "00" — measure a fixed-width sample so the fit decision cannot
+            // flip between "01" and "02" and make a tab flicker per panel.
             let ord_w = painter
-                .layout_no_wrap(ord.clone(), ord_font.clone(), t.accent)
+                .layout_no_wrap("00".to_string(), ord_font.clone(), t.accent)
                 .size().x;
-            painter.text(
-                Pos2::new(cx, rect.center().y),
-                Align2::LEFT_CENTER, ord, ord_font, t.accent,
-            );
-            cx += ord_w + gap_sm();
+            let advance = ord_w + gap_sm();
+
+            if fitting_tabs(cx + advance) >= fitting_tabs(cx) {
+                let ord = format!("{:02}", next_section_ordinal(ui.ctx()));
+                painter.text(
+                    Pos2::new(cx, rect.center().y),
+                    Align2::LEFT_CENTER, ord, ord_font, t.accent,
+                );
+                cx += advance;
+            }
         }
 
         let mut tab_rects: Vec<Rect> = Vec::with_capacity(self.tabs.len());

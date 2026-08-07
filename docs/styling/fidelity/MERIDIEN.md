@@ -150,6 +150,46 @@ Worth recording so it is not "fixed" by accident:
    change: `style_axis_equivalence` still passes.
 2. **Radii** — DONE. `sm 4→3`, `lg 12→14`, `pill 0→14`. Required recording
    the divergence in `RADIUS_DIVERGENCES` + the golden snapshot (see §0).
+### Correction: the reference set, and what numbering actually is
+
+`ApexTerminalThemes/faithful/<style>/normalized.html` is the real fidelity
+source — a normalised reference for ALL SIX systems, not just Meridien. I found
+it only after building the numbered headers, by grepping for a caption string
+that was not in the app JSX I had been reading.
+
+Two things it corrects:
+
+1. **Numbered headers are not a Meridien signature.** All six references carry
+   the same `<span class="num">` panel header, every one coloured
+   `--np-accent-ink`. I had authored the treatment `true` for Meridien alone and
+   written a test — `only_meridien_numbers_its_section_headers` — that actively
+   enforced the wrong belief. Now default `true`, with the test naming its
+   evidence instead.
+
+2. **The numeral is set below the title**: `.num` 10px against `.ttl` 11.5px.
+   I painted it at full title size, which cost real width — see the yield rule
+   below.
+
+Nearly a third error: `trading app - meridien/styles.css` sets
+`.panel-head .ttl .num { color: var(--muted) }`, and I was about to "fix" our
+accent numeral to muted on the strength of it. The reference render shows the
+numeral clearly terracotta. That CSS belongs to a different composition in the
+same folder. **When source files disagree, the render is the arbiter.**
+
+### The yield rule
+
+On a tabbed header the ordinal is a decoration competing with controls. The
+first version took its width unconditionally, on the reasoning that tabs which
+no longer fit fall into the existing "»" overflow menu rather than clipping —
+so nothing is lost. The Aperture capture showed `SCAN` vanishing from a header
+that had been showing it. Overflow is not free; it is a hidden control.
+
+The ordinal now counts how many tabs fit with it and without it, and drops
+itself if it costs even one — without consuming an ordinal, so the panels below
+do not shift by one for a numeral nobody can see. Aperture therefore shows all
+four tabs and no ordinal on that panel, while its rail still reads `01`.
+Meridien has room and shows both.
+
 3. **Signature devices** — numbered headers (DONE), panel meta captions,
    outlined panel cards. With density demoted, these ARE the visible gap: they
    are what makes the reference render recognisably Meridien. New components /
