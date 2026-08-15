@@ -846,6 +846,13 @@ impl<K: PartialEq + std::fmt::Debug> SolvedSlots<K> {
         self.get(key).map(|s| Rect::from_center_size(s.center(), Vec2::splat(size)))
     }
 
+    /// Every solved rect in declaration order, spacing included.
+    ///
+    /// Keyed lookup is the point of this type, but anonymous spacing has no
+    /// key by design — so assertions about the elastic middle ("does the
+    /// spacer reach the right edge?") need the raw list.
+    pub fn rects(&self) -> &[Rect] { &self.rects }
+
     /// Number of solved rects, spacing included.
     pub fn len(&self) -> usize { self.rects.len() }
     /// True when no slots were declared.

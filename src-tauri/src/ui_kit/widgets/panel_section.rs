@@ -67,7 +67,7 @@ use egui::{Color32, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, S
 use super::super::icons::Icon;
 use super::tooltip::Tooltip;
 use super::theme::{active_theme, get_ambient_recipes};
-use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, FlexSlots, Item, SolvedSlots};
 use crate::ui_kit::tokens::{
     color_alpha, font_sm, font_xs, gap_lg, gap_sm, gap_xs, radius_xs, stroke_thin,
 };
@@ -168,7 +168,6 @@ const SECTION_BTN_HOVER_ALPHA: u8 = 24;
 /// nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Slot {
-    Gap,
     Caret,
     Title,
     Count,
@@ -201,48 +200,47 @@ struct HeaderMetrics {
 /// `caret · title · count …… meta · action|delete`. Note the trailing pair:
 /// the old RTL child added the button FIRST, which put it right-most, and the
 /// meta text to its left — so meta precedes the button here.
-fn header_slots(m: &HeaderMetrics) -> Vec<(Slot, Item)> {
-    let mut v: Vec<(Slot, Item)> = Vec::new();
-    if let Some(c) = m.caret {
-        v.push((Slot::Caret, Item::fixed(c.x).cross(c.y)));
+fn header_slots(m: &HeaderMetrics) -> FlexSlots<Slot> {
+    // Row semantics are unchanged: `gap_xs` between children (which stood in
+    // for egui's `item_spacing` in the old horizontal layout), children
+    // vertically centered — same as `Layout::left_to_right(Align::Center)`.
+    // Padding is NOT set here: the enclosing `egui::Frame` still supplies the
+    // `gap_lg` / `gap_sm` inner margin, untouched.
+    //
+    // AUDIT 2026-08 — this used to return `Vec<(Slot, Item)>` and be paired
+    // with a `header_flex` that threw the keys away, after which `show` and the
+    // tests each re-derived "which index is the title" by scanning that vec.
+    // That is `FlexSlots` written by hand, one file at a time; it is now the
+    // layout engine's own API, so the key travels with the item and
+    // `SolvedSlots::get` replaces the local `rect_of` helper.
+    let mut f = Flex::row()
+        .gap(gap_xs())
+        .align(FlexAlign::Center)
+        .slot_if(Slot::Caret, m.caret.is_some(),
+                 Item::fixed(m.caret.map_or(0.0, |c| c.x)).cross(m.caret.map_or(0.0, |c| c.y)))
         // was `ui.add_space(gap_xs())` after the caret label
-        v.push((Slot::Gap, Item::fixed(gap_xs())));
-    }
-    v.push((Slot::Title, Item::fixed(m.title.x).cross(m.title.y)));
+        .pad_if(m.caret.is_some(), gap_xs())
+        .slot(Slot::Title, Item::fixed(m.title.x).cross(m.title.y));
     if let Some(c) = m.count {
         // was `ui.add_space(gap_xs())` before the count chip
-        v.push((Slot::Gap, Item::fixed(gap_xs())));
-        v.push((Slot::Count, Item::fixed(c.x).cross(c.y)));
+        f = f.pad(gap_xs()).slot(Slot::Count, Item::fixed(c.x).cross(c.y));
     }
     // The elastic middle — this ONE item replaces the whole
     // `with_layout(Layout::right_to_left(Align::Center))` nesting.
-    v.push((Slot::Gap, Item::grow(1.0)));
+    f = f.spacer(1.0);
     if let Some(sz) = m.meta {
-        v.push((Slot::Meta, Item::fixed(sz.x).cross(sz.y)));
+        f = f.slot(Slot::Meta, Item::fixed(sz.x).cross(sz.y));
     }
     if let Some(sz) = m.delete {
-        v.push((Slot::Delete, Item::fixed(sz.x).cross(sz.y)));
+        f = f.slot(Slot::Delete, Item::fixed(sz.x).cross(sz.y));
     } else if let Some(sz) = m.action {
-        if m.meta.is_some() {
-            // was `ui.add_space(gap_sm())` between the action button and meta
-            v.push((Slot::Gap, Item::fixed(gap_sm())));
-        }
-        v.push((Slot::Action, Item::fixed(sz.x).cross(sz.y)));
+        // was `ui.add_space(gap_sm())` between the action button and meta
+        f = f.pad_if(m.meta.is_some(), gap_sm())
+             .slot(Slot::Action, Item::fixed(sz.x).cross(sz.y));
     }
-    v
+    f
 }
 
-/// The header container itself: one row, `gap_xs()` gutter (the token that
-/// stood in for egui's `item_spacing` in the old horizontal layout), children
-/// vertically centered — same as `Layout::left_to_right(Align::Center)`.
-/// Padding is NOT set here: the enclosing `egui::Frame` still supplies the
-/// `gap_lg` / `gap_sm` inner margin, untouched.
-fn header_flex(slots: &[(Slot, Item)]) -> Flex {
-    Flex::row()
-        .gap(gap_xs())
-        .align(FlexAlign::Center)
-        .items(slots.iter().map(|(_, it)| it.clone()))
-}
 
 /// Row height = the tallest piece, which is what `ui.horizontal` produced.
 fn header_row_height(m: &HeaderMetrics) -> f32 {
@@ -552,9 +550,8 @@ impl<'a> PanelSection<'a> {
                         .max_rect(row_rect)
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
-                header_flex(&slots).show(&mut row_ui, |idx, ui| {
-                    match slots[idx].0 {
-                        Slot::Gap => {}
+                slots.show(&mut row_ui, |slot, ui| {
+                    match slot {
                         // Leading caret (collapsible mode only): proportional
                         // 12px glyph in title_color. Drawn as a label — the
                         // click sense lives on the whole header strip below.
@@ -1305,20 +1302,18 @@ mod header_layout_tests {
         (a - b).abs() < 0.01
     }
 
-    /// Solve a header at `w` × its natural row height, returning
-    /// (slots, rects) so tests can look a piece up by name.
-    fn solve(m: &HeaderMetrics, w: f32) -> (Vec<(Slot, Item)>, Vec<Rect>) {
-        let slots = header_slots(m);
-        let rects = header_flex(&slots).solve(Vec2::new(w, header_row_height(m)));
-        (slots, rects)
+    /// Solve a header at `w` × its natural row height.
+    ///
+    /// The local `rect_of` helper that used to live here — scan the slot vec
+    /// for a key, index the rect vec with the position — is now
+    /// `SolvedSlots::get`, so these tests exercise the shared lookup rather
+    /// than a private copy of it.
+    fn solve(m: &HeaderMetrics, w: f32) -> crate::ui_kit::layout::SolvedSlots<Slot> {
+        header_slots(m).solve(Vec2::new(w, header_row_height(m)))
     }
 
-    fn rect_of(slots: &[(Slot, Item)], rects: &[Rect], want: Slot) -> Rect {
-        let i = slots
-            .iter()
-            .position(|(s, _)| *s == want)
-            .unwrap_or_else(|| panic!("no {:?} slot in header", want));
-        rects[i]
+    fn rect_of(solved: &crate::ui_kit::layout::SolvedSlots<Slot>, want: Slot) -> Rect {
+        solved.get(want).unwrap_or_else(|| panic!("no {want:?} slot in header"))
     }
 
     /// The core of the migration: the title keeps its intrinsic width at the
@@ -1331,9 +1326,9 @@ mod header_layout_tests {
             action: Some(vec2(40.0, 16.0)),
             ..Default::default()
         };
-        let (slots, rects) = solve(&m, 300.0);
-        let title = rect_of(&slots, &rects, Slot::Title);
-        let action = rect_of(&slots, &rects, Slot::Action);
+        let solved = solve(&m, 300.0);
+        let title = rect_of(&solved, Slot::Title);
+        let action = rect_of(&solved, Slot::Action);
         assert!(approx(title.left(), 0.0), "title left {}", title.left());
         assert!(approx(title.width(), 80.0), "title width {}", title.width());
         assert!(approx(action.right(), 300.0), "action right {}", action.right());
@@ -1351,9 +1346,9 @@ mod header_layout_tests {
             title: vec2(80.0, 14.0),
             ..Default::default()
         };
-        let (slots, rects) = solve(&m, 300.0);
-        let caret = rect_of(&slots, &rects, Slot::Caret);
-        let title = rect_of(&slots, &rects, Slot::Title);
+        let solved = solve(&m, 300.0);
+        let caret = rect_of(&solved, Slot::Caret);
+        let title = rect_of(&solved, Slot::Title);
         assert!(approx(caret.left(), 0.0));
         assert!(approx(caret.width(), 12.0));
         // gutter + gap_xs spacer + gutter after the 12px caret.
@@ -1369,9 +1364,9 @@ mod header_layout_tests {
             count: Some(vec2(9.0, 12.0)),
             ..Default::default()
         };
-        let (slots, rects) = solve(&m, 300.0);
-        let title = rect_of(&slots, &rects, Slot::Title);
-        let count = rect_of(&slots, &rects, Slot::Count);
+        let solved = solve(&m, 300.0);
+        let title = rect_of(&solved, Slot::Title);
+        let count = rect_of(&solved, Slot::Count);
         assert!(approx(count.width(), 9.0));
         assert!(approx(count.left(), title.right() + gap_xs() * 3.0));
     }
@@ -1382,14 +1377,13 @@ mod header_layout_tests {
     #[test]
     fn without_a_trailing_slot_the_row_still_spans_to_the_right_edge() {
         let m = HeaderMetrics { title: vec2(80.0, 14.0), ..Default::default() };
-        let (slots, rects) = solve(&m, 300.0);
-        assert_eq!(slots.last().unwrap().0, Slot::Gap, "row ends with the elastic middle");
-        assert!(
-            approx(rects.last().unwrap().right(), 300.0),
-            "spacer right {}",
-            rects.last().unwrap().right()
-        );
-        let title = rect_of(&slots, &rects, Slot::Title);
+        let solved = solve(&m, 300.0);
+        // The row ends with the elastic middle. It carries no key now
+        // (spacing is anonymous), so this asserts the property that mattered:
+        // the last solved rect reaches the right edge.
+        let last = *solved.rects().last().expect("row has slots");
+        assert!(approx(last.right(), 300.0), "spacer right {}", last.right());
+        let title = rect_of(&solved, Slot::Title);
         assert!(approx(title.left(), 0.0));
     }
 
@@ -1404,9 +1398,9 @@ mod header_layout_tests {
             action: Some(vec2(40.0, 16.0)),
             ..Default::default()
         };
-        let (slots, rects) = solve(&m, 300.0);
-        let meta = rect_of(&slots, &rects, Slot::Meta);
-        let action = rect_of(&slots, &rects, Slot::Action);
+        let solved = solve(&m, 300.0);
+        let meta = rect_of(&solved, Slot::Meta);
+        let action = rect_of(&solved, Slot::Action);
         assert!(approx(action.right(), 300.0));
         assert!(meta.right() < action.left(), "meta must precede the action button");
         // gutter + gap_sm spacer + gutter
@@ -1431,13 +1425,10 @@ mod header_layout_tests {
             delete: Some(Vec2::splat(SECTION_BTN_H)),
             ..Default::default()
         };
-        let (slots, rects) = solve(&m, 300.0);
-        assert!(
-            !slots.iter().any(|(s, _)| *s == Slot::Action),
-            "delete wins over action"
-        );
-        let del = rect_of(&slots, &rects, Slot::Delete);
-        let meta = rect_of(&slots, &rects, Slot::Meta);
+        let solved = solve(&m, 300.0);
+        assert!(solved.get(Slot::Action).is_none(), "delete wins over action");
+        let del = rect_of(&solved, Slot::Delete);
+        let meta = rect_of(&solved, Slot::Meta);
         assert!(approx(del.right(), 300.0), "delete right {}", del.right());
         assert!(approx(del.width(), SECTION_BTN_H));
         assert!(approx(del.left() - meta.right(), gap_xs()));
@@ -1455,9 +1446,9 @@ mod header_layout_tests {
         };
         // Tallest piece is the 16px button, so that's the row height.
         assert!(approx(header_row_height(&m), 16.0));
-        let (slots, rects) = solve(&m, 300.0);
+        let solved = solve(&m, 300.0);
         for want in [Slot::Caret, Slot::Title, Slot::Action] {
-            let r = rect_of(&slots, &rects, want);
+            let r = rect_of(&solved, want);
             assert!(
                 approx(r.center().y, 8.0),
                 "{:?} center y {} want 8",
@@ -1465,7 +1456,7 @@ mod header_layout_tests {
                 r.center().y
             );
         }
-        assert!(approx(rect_of(&slots, &rects, Slot::Title).height(), 14.0));
+        assert!(approx(rect_of(&solved, Slot::Title).height(), 14.0));
     }
 
     /// Degenerate width (panel dragged shut / first frame) must not panic and
@@ -1480,8 +1471,8 @@ mod header_layout_tests {
             ..Default::default()
         };
         let slots = header_slots(&m);
-        let rects = header_flex(&slots).solve(Vec2::new(0.0, 16.0));
-        assert_eq!(rects.len(), slots.len());
+        let solved = slots.solve(Vec2::new(0.0, 16.0));
+        assert_eq!(solved.len(), slots.len(), "every slot solves to exactly one rect");
     }
 }
 
