@@ -314,36 +314,15 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         }
     });
 
-    // ── COMPONENTS · Sx preview — live recipe-driven buttons ──
-    // These render through `ui_kit::sx` (Tailwind-like utilities + a cva recipe)
-    // using the ACTIVE theme's color ramps. Switch theme/style above and watch
-    // them restyle live — proof the new styling system is wired into the app.
-    PanelSection::new("COMPONENTS · Sx preview").show(ui, t, |ui, t| {
-        ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
-        let intents = [
-            ("primary", "Primary"), ("ghost", "Ghost"),
-            ("danger", "Danger"),   ("success", "Success"),
-        ];
-        for (intent, label) in intents {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                ui.allocate_ui_with_layout(
-                    egui::vec2(58.0, 24.0),
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| { ui.label(egui::RichText::new(label).size(font_xs()).color(t.dim)); },
-                );
-                for size in ["sm", "md", "lg"] {
-                    crate::ui_kit::sx::recipes::button(ui, t, size, &[("intent", intent), ("size", size)]);
-                }
-            });
-        }
-        ui.add_space(gap_xs());
-        // Adopt the ramp bridge: a real lightness shade of `Dim`, not an alpha tint.
-        use crate::ui_kit::sx::{Shade, Tone};
-        ui.label(egui::RichText::new(
-            "via ui_kit::sx — utilities + cva recipe + motion, resolved against the active theme ramps. Hover for the eased accent ring."
-        ).size(font_2xs()).italics().color(shade(t, Tone::Dim, Shade::S300)));
-    });
+    // AUDIT 2026-08: the "COMPONENTS · Sx preview" gallery lived here. It was
+    // the ONLY consumer of `ui_kit::sx::recipes` — a second, parallel recipe
+    // system (a cva-style layer) sitting alongside the live `RecipeSpec` one.
+    //
+    // Its own comment called it "proof the new styling system is wired into the
+    // app", but the system it proved had exactly one call site: this gallery.
+    // The recipe layer that actually paints widgets is `RecipeSpec`, with 34
+    // consumption points. Two recipe systems is one too many, so the cva layer
+    // and its demo are deleted rather than left to look load-bearing.
 
     // ── DENSITY override (Compact / Standard / Spacious) — P4.3 ──
     // Independent of palette and style preset; overrides StyleSettings.density.

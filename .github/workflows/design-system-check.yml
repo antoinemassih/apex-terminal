@@ -70,3 +70,20 @@ jobs:
       - name: Run token-consumer gate (authorable but unread tokens)
         if: ${{ !cancelled() }}
         run: python dev/token_consumer_gate.py
+
+      # The SINGULARITY gate. Every check above polices values INSIDE the design
+      # system. This one polices how many design systems there are.
+      #
+      # Eight overlapping ways to answer "what colour/size should this be?" had
+      # accumulated, because each new one was added beside the last rather than
+      # in place of it, and nothing ever failed for having two. `sx::recipes`
+      # was a complete second recipe engine whose only consumer was a settings
+      # gallery captioned "proof the new styling system is wired into the app".
+      #
+      # Deleting it is not durable on its own — only a census that objects when
+      # it grows back is. Legacy systems are ceilings (may shrink, never grow),
+      # canonical ones are floors (a migration is not finished by abandoning
+      # the destination), deleted ones must stay at zero.
+      - name: Run single-system gate (parallel styling systems)
+        if: ${{ !cancelled() }}
+        run: python dev/single_system_gate.py
