@@ -77,15 +77,29 @@ SYSTEMS = {
     # DELETED — a second recipe engine beside `RecipeSpec`.
     "sx::recipes":         ("forbidden", r"sx\s*::\s*recipes?\s*::"),
 
-    # LEGACY — genuinely parallel read paths.
+    # LEGACY — not a rival store; the cascade read at the wrong depth.
     #
-    # `style::current()` returns `StyleSettings` from a global lookup keyed on
-    # `active_style_idx()`. `frame_tokens()` returns the per-frame
-    # `TokenSnapshot`. Both claim to answer "how big/what colour", but only the
-    # snapshot honours design-inspector overrides — so a widget calling
-    # `current()` at paint time silently opts out of the token cascade. That is
-    # the parallel path. (Its use to BUILD the snapshot is fine and is why this
-    # is a ceiling rather than a ban.)
+    # Worth stating precisely, because "parallel system" is the wrong diagnosis
+    # and would lead to the wrong fix. `begin_frame()` resolves ONE effective
+    # style per frame, in precedence order:
+    #
+    #     hot-reload override  ->  DesignTokens (F12)  ->  StyleSettings
+    #                                     |
+    #                                     v
+    #                              TokenSnapshot  ->  frame_tokens()
+    #
+    # `current()` IS the StyleSettings layer at the bottom of that chain —
+    # `begin_frame` literally calls it. So it is a source feeding the single
+    # resolver, not a second source of truth, and the base values agree.
+    #
+    # The bug is depth. A widget calling `current()` at PAINT time re-reads the
+    # bottom layer directly and so silently skips the two layers above it: live
+    # inspector edits and hot-reloaded theme JSON don't move it, while the
+    # widget beside it does move. That is the "frozen chrome" class — an
+    # element pinned to a value the cascade used to produce.
+    #
+    # Hence a ceiling, not a ban: using `current()` to BUILD the snapshot is
+    # exactly right, and reading it at paint time is what must stop growing.
     "style::current()":    ("legacy",    r"\b(?:style|StyleSettings)\s*::\s*current\s*\(\s*\)"),
 
     # CANONICAL — the single system's contract, default impl, and read paths.
