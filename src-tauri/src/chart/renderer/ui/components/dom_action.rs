@@ -31,7 +31,19 @@ pub fn paint_search_command_pill(
 ) -> Response {
     let resp = ui.allocate_rect(rect, egui::Sense::click());
     let p = ui.painter_at(panel_rect);
-    let r_cr = egui::CornerRadius::same(crate::dt_f32!(radius.xs, 2.0) as u8);
+    // AUDIT 2026-08 — the radius ACCESSORS, not a raw DesignTokens read.
+    //
+    // These were `dt_f32!(radius.xs, 2.0)` / `dt_f32!(radius.sm, 3.0)`, which
+    // reads the inspector's token store directly and bypasses the cascade: the
+    // buttons stayed at 2/3px on every style, square on the round ones and
+    // round on the square ones, and ignored the user's corner-scale override
+    // that 74 other radius call sites honour.
+    //
+    // It also made the inspector's own slider discontinuous. `radius.sm`
+    // defaults to 4.0 while this fallback said 3.0, and `pick_f32` returns the
+    // fallback until the token differs from pristine — so nudging that slider
+    // by 0.1 jumped these corners from 3.0 to 4.1.
+    let r_cr = egui::CornerRadius::same(crate::ui_kit::style::radius_xs() as u8);
     let actual_bg = if resp.hovered() { bg_hover } else { bg };
     p.rect_filled(rect, r_cr, actual_bg);
     p.rect_stroke(rect, r_cr, border, egui::StrokeKind::Inside);
@@ -135,8 +147,8 @@ pub fn paint_dom_action(
     use DomActionTier::*;
     let resp = ui.allocate_rect(rect, egui::Sense::click());
     let hover = resp.hovered();
-    let r_xs = egui::CornerRadius::same(crate::dt_f32!(radius.xs, 2.0) as u8);
-    let r_sm = egui::CornerRadius::same(crate::dt_f32!(radius.sm, 3.0) as u8);
+    let r_xs = egui::CornerRadius::same(crate::ui_kit::style::radius_xs() as u8);
+    let r_sm = egui::CornerRadius::same(crate::ui_kit::style::radius_sm() as u8);
     let t = ctx.t;
     let border_stroke = rule_stroke_for(t.bg, t.toolbar_border);
 

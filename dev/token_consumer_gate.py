@@ -5,6 +5,7 @@ Two layers, one question: can a theme author this and have anything happen?
 
   1. `ui_kit::style` ACCESSORS backed by `frame_tokens()` (the original check).
   2. `StyleSystem` FIELDS — the thing a `.apextheme` file actually contains.
+  3. `dt_*!` FALLBACKS — the value rendered until a token is authored.
 
 Layer 2 was unguarded, and it is the layer a theme author edits. A field there
 can be authored, exported, re-imported and round-trip asserted while no
@@ -298,6 +299,67 @@ def unread_style_system_fields():
     return fields, unread
 
 
+
+# ── Layer 3: dt_* fallbacks vs token defaults ───────────────────────────────
+#
+# `dt_f32!(radius.sm, 3.0)` renders `3.0` until someone moves the `radius.sm`
+# slider, at which point it renders whatever that slider says. If the token's
+# DEFAULT is 4.0, the first 0.1 nudge jumps the widget from 3.0 to 4.1 — the
+# control has a discontinuity at its own resting position.
+#
+# It is invisible from either side. Reading the call site, 3.0 looks like a
+# considered choice. Reading the token table, 4.0 looks like the value in use.
+# Only comparing them shows that the app renders one number and the inspector
+# is calibrated to another.
+#
+# Four instances of this shape turned up in one session — `splitter_width`
+# (6 vs 8), `toolbar.height` (36 vs 38), `pane_header.height` (36 vs 28) and
+# `radius.sm` (4 vs 3) — three of them found only by tracing an unrelated bug.
+DT_CALL_RE = re.compile(r"dt_f32!\(\s*([\w.]+)\s*,\s*(-?[0-9]+(?:\.[0-9]+)?)\s*\)")
+DT_GROUP_RE = re.compile(r"(\w+):\s*(\w+Tokens)\s*\{([^}]*)\}")
+DT_FIELD_RE = re.compile(r"(\w+):\s*(-?[0-9]+(?:\.[0-9]+)?)")
+
+
+def dt_token_defaults():
+    """`group.field` -> default value, from the `DesignTokens` Default impl."""
+    path = os.path.join(SRC, "foundation", "design_tokens.rs")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            src = LINE_COMMENT_RE.sub("", fh.read())
+    except OSError:
+        return {}
+    out = {}
+    for g in DT_GROUP_RE.finditer(src):
+        for f in DT_FIELD_RE.finditer(g.group(3)):
+            out[f"{g.group(1)}.{f.group(1)}"] = float(f.group(2))
+    return out
+
+
+def dt_fallback_mismatches():
+    """Call sites whose literal fallback differs from the token's default."""
+    defaults = dt_token_defaults()
+    if not defaults:
+        return []
+    out = []
+    for root, dirs, files in os.walk(SRC):
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        for f in files:
+            if not f.endswith(".rs"):
+                continue
+            p = os.path.join(root, f)
+            try:
+                with open(p, encoding="utf-8") as fh:
+                    text = LINE_COMMENT_RE.sub("", fh.read())
+            except (OSError, UnicodeDecodeError):
+                continue
+            for m in DT_CALL_RE.finditer(text):
+                path, fb = m.group(1), float(m.group(2))
+                if path in defaults and abs(defaults[path] - fb) > 1e-6:
+                    out.append((path, defaults[path], fb,
+                                os.path.relpath(p, SRC).replace("\\", "/")))
+    return sorted(out)
+
+
 def main():
     show = "--show" in sys.argv
 
@@ -350,8 +412,26 @@ def main():
         )
         return 1
 
+    dt_bad = dt_fallback_mismatches()
+    if dt_bad:
+        print("TOKEN-CONSUMER GATE FAILED — dt_* fallback disagrees with the "
+              "token default:\n")
+        for path, default, fb, where in dt_bad:
+            print(f"  {path}: token default {default}, call-site fallback {fb}")
+            print(f"      {where}")
+        print(
+            "\nThe app renders the FALLBACK until the token is authored, so these\n"
+            "two numbers are the same pixel measured from two places. While they\n"
+            "differ, the inspector slider is discontinuous at its resting value:\n"
+            "the first nudge jumps to a different baseline. Make them agree, or\n"
+            "use the `ui_kit::style` accessor and stop reading the token store\n"
+            "directly."
+        )
+        return 1
+
     print(f"token-consumer gate: PASS ({len(counts)} accessors, "
-          f"{len(all_fields)} StyleSystem fields, all consumed)")
+          f"{len(all_fields)} StyleSystem fields, "
+          f"{len(dt_token_defaults())} dt_* defaults, all consistent)")
     return 0
 
 
