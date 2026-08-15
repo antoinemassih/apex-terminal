@@ -353,3 +353,32 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   minimum there needs a TALLER header, which is a product density decision and
   is deliberately not taken here. Screenshot of Meridien confirms one uniform
   row.
+- [ ] **AT-149** `P2` `C` `OTHER` — Font family has two mechanisms split by provenance; the token is decorative for every builtin style
+
+  `style_preferred_font(style_id)` is a hardcoded index map (`1 => Some(1)`,
+  `4 => Some(6)`, …) used for BUILTIN styles. Imported theme packs instead go
+  through `Typography.family_ui`, read by `theme_pack_bridge`. Two answers to
+  "what font is this style in", chosen by where the style came from.
+
+  The builtins' authored `family_ui` says `"Inter"` for all three that set it
+  at all — including Alto and Mariner, which actually render in IBM Plex Sans
+  via the map. So the token is not merely unused for builtins, it is WRONG for
+  them, and it round-trips through export/import saying so.
+
+  NOT a mechanical migration, because of a semantic the map has and the token
+  does not. `None` in the map means "this style has no opinion — honour the
+  user's font picker" (Meridien, Octave). `family_ui` is always populated, so
+  making it authoritative gives every style an opinion and silently overrides
+  the user's choice on those two.
+
+  It cannot be resolved by comparing against the default either: `"Inter"` is
+  both the `Typography::default()` value AND Aperture's deliberate choice, so
+  "differs from default" cannot distinguish "no opinion" from "explicitly
+  Inter". `equivalence_tests` additionally asserts `!family_ui.is_empty()`, so
+  the empty string is not available as a sentinel without changing that too.
+
+  Needs a schema decision first — `Option<String>`, a separate
+  `family_ui_is_preference` flag, or a reserved sentinel — and then the map is
+  deleted and each builtin authors its true family. Font is the single most
+  visible thing in the app, so this wants its own commit and a screenshot pass
+  across all nine styles.
