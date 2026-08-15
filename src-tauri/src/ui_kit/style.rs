@@ -868,16 +868,17 @@ pub const ELEVATE_MODAL:         i16 = 38; // modal / dialog (highest Z)
 #[inline]
 fn motion_scale() -> f32 { motion_speed_override().scale() }
 
-/// 0 ms — no animation; snap instantly (unaffected by MotionSpeed override).
-#[inline] pub fn motion_instant() -> u32 {   0 }
-/// 80 ms — micro-interactions (hover state transitions).
-#[inline] pub fn motion_fast()    -> u32 { ( 80.0 * motion_scale()) as u32 }
-/// 160 ms — standard UI transitions (open/close, slide, fade).
-#[inline] pub fn motion_std()     -> u32 { (160.0 * motion_scale()) as u32 }
-/// 240 ms — comfortable / non-urgent transitions.
-#[inline] pub fn motion_slow()    -> u32 { (240.0 * motion_scale()) as u32 }
-/// 400 ms — emphasis / decorative animations (rarely used).
-#[inline] pub fn motion_xslow()   -> u32 { (400.0 * motion_scale()) as u32 }
+// The millisecond motion ladder (`motion_instant/fast/std/slow/xslow`) lived
+// here and is REMOVED (audit 2026-08). It was a second, parallel motion scale:
+// milliseconds and override-aware, against `ui_kit::widgets::motion`'s
+// `FAST/MED/SLOW` in seconds, which is what every animation actually uses (52
+// call sites between FAST and MED). It had zero consumers.
+//
+// Two ladders for one axis is the failure; which one survives is a detail. The
+// seconds one won because it is the one the app calls, and it is now
+// override-aware too — `motion::scaled()` applies `motion_speed_override()` at
+// the `ease_bool` / `ease_value` chokepoint, so the user's Motion setting acts
+// on all 52 sites rather than on the zero that read this ladder.
 
 // ─── Density (P4.3) ──────────────────────────────────────────────────────────
 //

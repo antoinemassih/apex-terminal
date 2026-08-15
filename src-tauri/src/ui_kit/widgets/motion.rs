@@ -168,12 +168,29 @@ fn pointer_is_dragging(ctx: &Context) -> bool {
     ctx.input(|i| i.pointer.is_decidedly_dragging())
 }
 
+/// Apply the user's `MotionSpeed` to a duration.
+///
+/// AUDIT 2026-08 — the setting was two-thirds inert. `MotionSpeed` offers Off
+/// (0x) / Fast (0.5x) / Standard (1.0x) / Slow (1.5x), is shown in the settings
+/// panel and persisted with the workspace. `Off` worked, because
+/// `animations_disabled()` short-circuits below. Fast and Slow did NOTHING:
+/// every call site passes a raw constant (`motion::FAST`, `motion::MED`) and
+/// nothing multiplied it by the scale.
+///
+/// The scale belongs HERE rather than at the 52 call sites — this and
+/// `ease_value` are the two entry points every animation in the app goes
+/// through, so one multiplication makes the setting real everywhere.
+#[inline]
+fn scaled(duration: f32) -> f32 {
+    duration * crate::ui_kit::style::motion_speed_override().scale()
+}
+
 // ── Bool tracker ───────────────────────────────────────────────────────
 pub fn ease_bool(ctx: &Context, id: Id, value: bool, duration: f32) -> f32 {
     if animations_disabled() || pointer_is_dragging(ctx) {
         return if value { 1.0 } else { 0.0 };
     }
-    let raw = ctx.animate_bool_with_time(id, value, duration);
+    let raw = ctx.animate_bool_with_time(id, value, scaled(duration));
     let target = if value { 1.0 } else { 0.0 };
     let in_flight = (raw - target).abs() > ANIM_EPSILON;
     observe(id, in_flight, next_tick());
@@ -185,7 +202,7 @@ pub fn ease_value(ctx: &Context, id: Id, target: f32, duration: f32) -> f32 {
     if animations_disabled() || pointer_is_dragging(ctx) {
         return target;
     }
-    let raw = ctx.animate_value_with_time(id, target, duration);
+    let raw = ctx.animate_value_with_time(id, target, scaled(duration));
     let in_flight = (raw - target).abs() > ANIM_EPSILON;
     observe(id, in_flight, next_tick());
     raw
@@ -627,3 +644,45 @@ pub const SCROLL_STOP_THRESHOLD: f32 = 0.1;
 /// click → smooth scroll). Matches `motion::FAST` philosophy but slightly
 /// longer so the eye can track long jumps.
 pub const SCROLL_EASE: f32 = SCROLL_EASE_DURATION; // 200ms cubic ease-out
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The user's Motion setting must actually change durations.
+    ///
+    /// It did not. `MotionSpeed` offers Off / Fast (0.5x) / Standard / Slow
+    /// (1.5x), appears in the settings panel and persists with the workspace —
+    /// and only `Off` did anything, through the `animations_disabled()`
+    /// short-circuit. Fast and Slow were inert, because every call site passes
+    /// a raw constant (`motion::FAST`, `motion::MED`) and nothing multiplied it
+    /// by the scale.
+    ///
+    /// Asserted on `scaled()` rather than through a real `Context`: the defect
+    /// was arithmetic that never happened, not a rendering problem, and a test
+    /// that needs a window to prove a multiplication is a test nobody runs.
+    #[test]
+    fn motion_speed_scales_durations() {
+        use crate::ui_kit::style::{
+            motion_speed_override, set_motion_speed_override, MotionSpeed,
+        };
+        let prev = motion_speed_override();
+        for (mode, factor) in [
+            (MotionSpeed::Off, 0.0_f32),
+            (MotionSpeed::Fast, 0.5),
+            (MotionSpeed::Standard, 1.0),
+            (MotionSpeed::Slow, 1.5),
+        ] {
+            set_motion_speed_override(Some(mode));
+            let got = scaled(MED);
+            assert!(
+                (got - MED * factor).abs() < 1e-6,
+                "{mode:?}: MED ({MED}) should scale to {}, got {got} — a Motion                  setting that does not change the duration is a control that lies",
+                MED * factor,
+            );
+        }
+        set_motion_speed_override(Some(prev));
+    }
+}
