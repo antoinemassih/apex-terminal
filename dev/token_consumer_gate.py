@@ -315,7 +315,18 @@ def unread_style_system_fields():
 # Four instances of this shape turned up in one session — `splitter_width`
 # (6 vs 8), `toolbar.height` (36 vs 38), `pane_header.height` (36 vs 28) and
 # `radius.sm` (4 vs 3) — three of them found only by tracing an unrelated bug.
-DT_CALL_RE = re.compile(r"dt_f32!\(\s*([\w.]+)\s*,\s*(-?[0-9]+(?:\.[0-9]+)?)\s*\)")
+# Every NUMERIC dt_* variant, not just f32. The four instances that motivated
+# this check were all f32, and gating only f32 would have left the identical
+# defect ungated for the 19 `dt_u8!` / `dt_i8!` / `dt_usize!` sites — alphas and
+# insets drift exactly the same way sizes do. Checked at the time of writing:
+# all 19 agree with their token defaults, which is worth keeping true rather
+# than discovering later.
+#
+# `dt_rgba!` is excluded: its fallback is a colour expression, not a literal
+# this can compare.
+DT_CALL_RE = re.compile(
+    r"dt_(?:f32|u8|i8|usize)!\(\s*([\w.]+)\s*,\s*(-?[0-9]+(?:\.[0-9]+)?)\s*\)"
+)
 DT_GROUP_RE = re.compile(r"(\w+):\s*(\w+Tokens)\s*\{([^}]*)\}")
 DT_FIELD_RE = re.compile(r"(\w+):\s*(-?[0-9]+(?:\.[0-9]+)?)")
 
