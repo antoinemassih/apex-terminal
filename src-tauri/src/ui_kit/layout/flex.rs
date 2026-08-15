@@ -998,6 +998,57 @@ mod tests {
         );
     }
 
+    /// A padded row of fixed slots with a trailing `grow` reproduces a cursor
+    /// walk exactly.
+    ///
+    /// This is the shape almost every hand-laid-out row in the app has:
+    ///
+    ///     let mut cx = inner.left() + 1.0;
+    ///     let a = Rect::from_min_size(pos2(cx, y), vec2(w_a, h));
+    ///     cx = a.right() + 4.0;
+    ///     let b = Rect::from_min_size(pos2(cx, y), vec2(w_b, h));
+    ///     cx = b.right() + 3.0;
+    ///     let c_w = inner.right() - cx - 1.0;
+    ///
+    /// Migrating one means claiming the solver produces the same numbers. The
+    /// DOM order-entry row is a money path, so that claim is asserted here
+    /// rather than eyeballed — including the trailing slot's width, which in
+    /// the cursor version is the one value derived from all the others.
+    #[test]
+    fn padded_fixed_row_with_trailing_grow_matches_a_cursor_walk() {
+        let (left, width, h) = (0.0_f32, 240.0_f32, 20.0_f32);
+        let (pad_l, pad_r) = (1.0_f32, 1.0_f32);
+        let (w_a, w_b) = (240.0 * 0.48, 240.0 * 0.30);
+        let (gap_ab, gap_bc) = (4.0_f32, 3.0_f32);
+
+        // The cursor version, written out.
+        let cur_a_x = left + pad_l;
+        let cur_b_x = cur_a_x + w_a + gap_ab;
+        let cur_c_x = cur_b_x + w_b + gap_bc;
+        let cur_c_w = (left + width) - cur_c_x - pad_r;
+
+        let solved = Flex::row()
+            .padding_sides(pad_l, pad_r, 0.0, 0.0)
+            .slot("a", Item::fixed(w_a))
+            .pad(gap_ab)
+            .slot("b", Item::fixed(w_b))
+            .pad(gap_bc)
+            .slot("c", Item::grow(1.0))
+            .solve_in(Rect::from_min_size(egui::pos2(left, 0.0), Vec2::new(width, h)));
+
+        let (a, b, c) = (solved.rect("a"), solved.rect("b"), solved.rect("c"));
+        assert!(approx(a.min.x, cur_a_x), "a.x {} vs cursor {}", a.min.x, cur_a_x);
+        assert!(approx(a.width(), w_a), "a.w {} vs {}", a.width(), w_a);
+        assert!(approx(b.min.x, cur_b_x), "b.x {} vs cursor {}", b.min.x, cur_b_x);
+        assert!(approx(b.width(), w_b), "b.w {} vs {}", b.width(), w_b);
+        assert!(approx(c.min.x, cur_c_x), "c.x {} vs cursor {}", c.min.x, cur_c_x);
+        assert!(
+            approx(c.width(), cur_c_w),
+            "the trailing grow must fill exactly what the cursor computed: {} vs {}",
+            c.width(), cur_c_w,
+        );
+    }
+
     // ── Composition ─────────────────────────────────────────────────────────
 
     /// A flex nested inside a flex child lays out within THAT child's rect.

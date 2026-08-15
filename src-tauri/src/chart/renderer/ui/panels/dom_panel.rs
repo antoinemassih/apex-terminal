@@ -9,6 +9,7 @@ use super::super::widgets::rows::dom_row::{ColumnLayout, DomRow, DomRowDragCx};
 use crate::ui_kit::widgets::{Button, Select};
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::layout::{Flex, Item};
 use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
 use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
@@ -401,13 +402,33 @@ pub(crate) fn draw(
     let is_mkt = *dom_order_type == DomOrderType::Market;
 
     // Row 1: [stepper: − qty +]  [MKT/LMT combo]  [A]
+    //
+    // AUDIT 2026-08 — solved, not walked. This was a cursor: `cx = left()+1`,
+    // then `cx = stepper.right()+4`, then `cx = combo.right()+3`, with the arm
+    // button sized by `inner.right() - cx - 1`. Hand-rolled flexbox, where each
+    // control's position depends on the measured edge of the one before it, so
+    // a change to any width silently walks everything after it.
+    //
+    // The 4px and 3px gutters are kept EXACTLY rather than normalised onto the
+    // gap ladder: this is the order-entry row, and a 1px reflow here is not
+    // worth taking on a money path for tidiness. They are now declared in the
+    // layout spec instead of accumulated into a cursor.
     let r1y = ctrl_top + pad_top;
-    let half_w = aw * 0.48;
-    let mut cx = inner.left() + 1.0;
+    let row1 = egui::Rect::from_min_size(
+        egui::pos2(inner.left(), r1y),
+        egui::vec2(inner.width(), r1h),
+    );
+    let row1_slots = Flex::row()
+        .padding_sides(1.0, 1.0, 0.0, 0.0)
+        .slot("stepper", Item::fixed(aw * 0.48))
+        .pad(4.0)
+        .slot("combo", Item::fixed(aw * 0.30))
+        .pad(3.0)
+        .slot("arm", Item::grow(1.0))
+        .solve_in(row1);
 
     // ── Quantity stepper — single rounded pill housing the - / qty / + cells.
-    let stepper_w = half_w;
-    let stepper_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(stepper_w, r1h));
+    let stepper_rect = row1_slots.rect("stepper");
     let stepper_radius = egui::CornerRadius::same((r1h * 0.5) as u8);
     painter.rect_filled(stepper_rect, stepper_radius, tint(t, Tone::Bg, 200));
     painter.rect_stroke(
@@ -451,12 +472,9 @@ pub(crate) fn draw(
         if s > 0.5 { *order_qty += 1; }
         else if s < -0.5 && *order_qty > 1 { *order_qty -= 1; }
     }
-    cx = stepper_rect.right() + 4.0;
-
     // ── MKT / LMT combobox (proper Select, not a click-cycle).
     const ORDER_TYPE_LABELS: &[&str] = &["MKT", "LMT"];
-    let mw = aw * 0.30;
-    let combo_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(mw, r1h));
+    let combo_rect = row1_slots.rect("combo");
     {
         let mut sel: usize = if is_mkt { 0 } else { 1 };
         let prev = sel;
@@ -472,12 +490,9 @@ pub(crate) fn draw(
             if sel == 0 { *dom_selected_price = None; }
         }
     }
-    cx = combo_rect.right() + 3.0;
-
     // ── Arm toggle — when armed: red bg + live PULSE icon. When disarmed:
     // neutral Secondary with shield-style icon. Tooltip explains the state.
-    let armw = inner.right() - cx - 1.0;
-    let arm_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
+    let arm_rect = row1_slots.rect("arm");
     let arm_radius = crate::ui_kit::style::r_sm_cr();
     let arm_resp = ui.allocate_rect(arm_rect, egui::Sense::click());
     if *dom_armed {

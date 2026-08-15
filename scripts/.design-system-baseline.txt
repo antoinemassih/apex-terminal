@@ -31,7 +31,7 @@
 1 src-tauri/src/chart/renderer/ui/panels/connection_panel.rs
 4 src-tauri/src/chart/renderer/ui/panels/dashboard_pane.rs
 4 src-tauri/src/chart/renderer/ui/panels/discord_panel.rs
-19 src-tauri/src/chart/renderer/ui/panels/dom_panel.rs
+16 src-tauri/src/chart/renderer/ui/panels/dom_panel.rs
 9 src-tauri/src/chart/renderer/ui/panels/heatmap_pane.rs
 1 src-tauri/src/chart/renderer/ui/panels/indicators_panel.rs
 5 src-tauri/src/chart/renderer/ui/panels/kit.rs
