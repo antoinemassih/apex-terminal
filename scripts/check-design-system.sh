@@ -107,6 +107,23 @@ PATTERNS=(
 # total to zero is not the goal and would mean mangling the chart renderer to
 # satisfy a lint.
 REGEX_PATTERNS=(
+  # ALPHA. `color_alpha(t.text, 60)` and `tint(t, Tone::Dim, 160)` pass an
+  # opacity as a bare number. Measured at the 2026-08 audit: 634 such literals,
+  # of which 354 do not correspond to ANY rung of the alpha ladder — more than
+  # half of the app's opacity is off-system.
+  #
+  # The off-ladder values are not scattered either, which is the interesting
+  # part: 160 and 180 appear 72 times between them, in the gap between `scrim`
+  # (140) and `solid` (200); 8/12/18/25/30 appear 81 times around and below
+  # `faint` (10). Those are not mistakes, they are an unofficial second ladder
+  # that grew because the real one has holes where the app needs tiers.
+  #
+  # Matched whether or not the value is on-ladder, because `alpha_dim()` says
+  # what it means and `60` does not, and a literal stops tracking the moment a
+  # style re-pitches the ramp. Fixing this properly means deciding which of the
+  # recurring off-ladder values deserve rungs — a design call, recorded as
+  # AT-150 rather than guessed at here.
+  "(color_alpha|tint)\([^)]*,[[:space:]]*[0-9]{1,3}[[:space:]]*\)"
   "\.(left|right|top|bottom|center_x|center_y)\(\)[[:space:]]*[-+][[:space:]]*[0-9]+\.[0-9]+"
   "add_space\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"
   "Margin::(same|symmetric)\([[:space:]]*[0-9]+"

@@ -382,3 +382,35 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   deleted and each builtin authors its true family. Font is the single most
   visible thing in the app, so this wants its own commit and a screenshot pass
   across all nine styles.
+- [ ] **AT-150** `P2` `C` `UX` — The alpha ladder has holes where the app concentrates its opacity; 354 literals sit off-system
+
+  Measured across the tree (excluding the token-definition and dev surfaces):
+  634 opacity literals passed to `color_alpha` / `tint`, of which **354 match
+  no rung of the alpha ladder**.
+
+      ladder   10 faint  15 ghost  20 soft  40 subtle  48 tint  60 dim
+               80 strong  100 active  120 heavy  140 scrim  200 solid
+
+      off-ladder, by frequency
+               160 x36   180 x36   30 x23   220 x22   18 x22   12 x16
+               128 x16   50 x15    230 x13  150 x11   25 x10   8 x10
+
+  The distribution is the finding. These are not scattered one-offs: 160 and
+  180 appear 72 times between them, all in the gap between `scrim` (140) and
+  `solid` (200), and 8/12/18/25/30 appear 81 times around and below `faint`
+  (10). An unofficial second ladder grew in the holes of the real one.
+
+  So the fix is NOT to snap 354 call sites to the nearest rung — that changes
+  opacity in hundreds of places to satisfy a lint, and the call sites are
+  arguably right: the app genuinely needs a tier between scrim and solid, and
+  one or two below faint. The fix is to decide which recurring values deserve
+  rungs, name them, and then migrate.
+
+  Naming is the part that needs a person: what IS 160 — a heavier scrim, a
+  veil, a modal backdrop? The name determines where future call sites land, so
+  guessing it is worse than leaving the numbers.
+
+  Gated meanwhile: `check-design-system.sh` now counts every literal alpha
+  (on-ladder included — `alpha_dim()` says what it means and `60` does not, and
+  a literal stops tracking when a style re-pitches the ramp). Baseline 740 ->
+  1294; the delta IS this class.
