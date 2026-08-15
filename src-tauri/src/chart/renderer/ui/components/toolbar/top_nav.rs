@@ -1076,7 +1076,18 @@ pub(crate) fn render(
                         ),
                     };
                     let _ = tip_label; // used in tooltip below
-                    let (dot_rect, resp) = ui.allocate_exact_size(egui::vec2(crate::ui_kit::style::icon_lg(), crate::ui_kit::style::icon_lg()), egui::Sense::click());
+                    // AUDIT 2026-08 — the HIT TARGET is a control, not an icon.
+                    //
+                    // This allocated `icon_lg()` square, so the connection dot
+                    // came out 20px in a row of 32px controls: visibly short,
+                    // and under the 28px touch minimum the dev-inspector's
+                    // design audit checks. `toolbar_control_h()` exists for
+                    // exactly this — its own comment says "ONE height for every
+                    // control in the toolbar row", written when the label chips
+                    // had the same bug. The dot itself is unchanged; only the
+                    // box you can click grew to match its neighbours.
+                    let hit = crate::chart_renderer::ui::style::toolbar_control_h();
+                    let (dot_rect, resp) = ui.allocate_exact_size(egui::vec2(hit, hit), egui::Sense::click());
                     ui.painter().circle_filled(dot_rect.center(), 3.0, dot_color);
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                     crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);

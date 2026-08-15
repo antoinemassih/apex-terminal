@@ -145,7 +145,14 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     use crate::ui_kit::icons::Icon;
 
     // ── Sizing / timing ──
-    const BADGE_H:     f32   = 26.0;
+    // AUDIT 2026-08 — the control ladder, not a literal. These pills are
+    // interactive (click to expand, click to dismiss) and were a hardcoded
+    // 26.0, which is under the 28px touch minimum the dev-inspector's design
+    // audit enforces — it reported all ten of them every frame. `control_h_md`
+    // is 28 and is the token every other interactive control in the chrome
+    // resolves from, so the badges now scale with density like their
+    // neighbours instead of staying pinned two pixels short.
+    let badge_h: f32 = crate::ui_kit::style::control_h_md();
     const ACCENT_W:    f32   = 3.0;
     const PAD_L:       f32   = 8.0;
     const PAD_R:       f32   = 6.0;
@@ -202,8 +209,8 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
 
     // ── Fixed frame + a fixed 4½-slot window pinned just left of the bell. ──
     let avail = ui.available_width().max(BELL_W + 8.0);
-    let (frame_rect, _) = ui.allocate_exact_size(vec2(avail, BADGE_H), Sense::hover());
-    let bell_rect = Rect::from_min_size(pos2(frame_rect.right() - BELL_W, frame_rect.top()), vec2(BELL_W, BADGE_H));
+    let (frame_rect, _) = ui.allocate_exact_size(vec2(avail, badge_h), Sense::hover());
+    let bell_rect = Rect::from_min_size(pos2(frame_rect.right() - BELL_W, frame_rect.top()), vec2(BELL_W, badge_h));
     let slot_pitch = SLOT_W + gapx;
     let area_right = bell_rect.left() - gapx;
     let area_w = (AREA_SLOTS * slot_pitch - gapx).min((avail - BELL_W - gapx).max(slot_pitch));
@@ -264,7 +271,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let app_e   = ease_out(appear);
         if appear < 1.0 { animating = true; }
 
-        let rect = Rect::from_min_size(pos2(cur_left, frame_rect.top()), vec2(w, BADGE_H));
+        let rect = Rect::from_min_size(pos2(cur_left, frame_rect.top()), vec2(w, badge_h));
         rects.insert(id, rect);
 
         let resp = ui.interact(rect, Id::new(("alert_badge", id)), Sense::click());
@@ -289,7 +296,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let (_, more) = vital_part(&summary);
         let full    = truncate_ellipsis(&summary, FULL_CAP);
         let p = ui.painter().with_clip_rect(badge_clip);
-        let r  = r_pill().nw.min((BADGE_H * 0.5) as u8);
+        let r  = r_pill().nw.min((badge_h * 0.5) as u8);
         let cy = rect.center().y;
         p.rect_filled(rect, CornerRadius::same(r), color_alpha(accent, PILL_TINT_A).gamma_multiply(app_e));
         let bar = Rect::from_min_size(rect.min, vec2(ACCENT_W, rect.height()));
@@ -361,10 +368,10 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let inner_w = BOX_W - ACCENT_W - PAD_L - PAD_R;
         let mcol = t.text.gamma_multiply(app);
         let galley = ui.fonts(|f| f.layout(full.clone(), font.clone(), mcol, inner_w));
-        let target_h = (PAD_V + HEADER_H + gap_xs() + galley.size().y + PAD_V).max(BADGE_H);
+        let target_h = (PAD_V + HEADER_H + gap_xs() + galley.size().y + PAD_V).max(badge_h);
 
         let box_w = pill.width() + (BOX_W - pill.width()) * app;
-        let box_h = BADGE_H + (target_h - BADGE_H) * app;
+        let box_h = badge_h + (target_h - badge_h) * app;
         // Anchor at the pill's left and grow right + down (newest badges sit on
         // the left now). Clamp so the box never spills off the screen edge.
         let screen_r = ctx.screen_rect().right();
@@ -372,7 +379,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         box_rect = Rect::from_min_size(pos2(box_left, pill.top()), vec2(box_w, box_h));
 
         let fp = ctx.layer_painter(LayerId::new(egui::Order::Foreground, Id::new(("alert_box_layer", id))));
-        let r = r_pill().nw.min((BADGE_H * 0.5) as u8);
+        let r = r_pill().nw.min((badge_h * 0.5) as u8);
         let cr = CornerRadius::same(r);
         // Soft shadow + solid card + border + accent bar (all fade in with the morph).
         fp.rect_filled(box_rect.translate(vec2(0.0, 2.0)).expand(1.0), cr,

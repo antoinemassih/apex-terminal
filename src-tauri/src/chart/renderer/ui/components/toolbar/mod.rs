@@ -64,7 +64,7 @@ pub fn toolbar_btn(
     // tint = the "multiple/weird" highlights.
     // Active = accent FOREGROUND only (no competing bg fill).
     let mut btn = if is_icon_only {
-        Button::icon(label).glyph_size(16.0).placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Toolbar)
+        Button::icon(label).glyph_size(crate::ui_kit::style::icon_sm()).placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Toolbar)
     } else {
         Button::new(label)
     }

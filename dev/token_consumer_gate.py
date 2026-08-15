@@ -137,6 +137,19 @@ ALLOWED_UNREAD = {
     # strips comments precisely so documentation cannot satisfy a wiring check,
     # and it was right where the grep was not.
     "font_display_xl",
+    # Top rung of the icon ladder (14/16/18/20). xs/sm/md are consumed; lg lost
+    # its only caller when the connection dot stopped sizing its HIT TARGET
+    # from the icon ladder — a click box is a control, not a glyph, so that use
+    # was wrong even though it kept this gate green.
+    #
+    # Kept rather than deleted, for the same reason as the two above: a ladder
+    # with a hole in it is worse than one with an unused top rung, and a theme
+    # authoring `icons.lg` should not silently do nothing when the next large
+    # glyph arrives. Worth noticing that this is the THIRD allow-listed rung —
+    # if a fourth appears, the ladders are being defined wider than the app
+    # actually uses, and the right fix is to narrow them rather than keep
+    # adding entries here.
+    "icon_lg",
 }
 
 
