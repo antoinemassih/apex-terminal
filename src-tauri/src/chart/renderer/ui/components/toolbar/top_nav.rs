@@ -370,7 +370,14 @@ pub(crate) fn render(
     /// The CARD height — what the rounded region actually occupies.
     fn toolbar_card_height() -> f32 {
         let tb_scale = style_current().toolbar_height_scale;
-        (38.0 * tb_scale).max(crate::chart_renderer::ui::style::toolnav_min_height())
+        // AUDIT 2026-08 — the base height is a token, not a literal. The design
+        // inspector has shipped a "toolbar height" slider all along with no
+        // consumer, while this line hardcoded 38.0 a few files away; the token
+        // said 36.0, which nobody noticed because nothing read it. Aligned to
+        // the 38.0 that actually ships, then wired, so the slider moves the bar
+        // it is labelled with.
+        (crate::dt_f32!(toolbar.height, 38.0) * tb_scale)
+            .max(crate::chart_renderer::ui::style::toolnav_min_height())
     }
 
     /// The card plus the `region_gap` that surrounds it — the full band the

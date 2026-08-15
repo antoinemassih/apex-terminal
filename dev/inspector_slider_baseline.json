@@ -5,9 +5,7 @@
     "form.label_width",
     "icon_button.min_size",
     "order_entry.padding",
-    "pane_header.height",
     "panel.margin_bottom",
-    "panel.margin_top",
-    "toolbar.height"
+    "panel.margin_top"
   ]
 }

@@ -553,7 +553,12 @@ impl<'a> PaneHeaderActions<'a> {
     pub fn new(actions: &'a [(&'a str, bool)]) -> Self {
         Self {
             actions,
-            header_height: 28.0,
+            // AUDIT 2026-08 — token, not a literal. The inspector has shipped
+            // a "pane header height" slider with no consumer while this default
+            // was hardcoded; the token said 36.0 against a drawn 28.0, which
+            // nobody caught because nothing read it. Aligned to what ships,
+            // then wired.
+            header_height: crate::dt_f32!(pane_header.height, 28.0),
             active_color: Color32::TRANSPARENT,
             inactive_color: Color32::TRANSPARENT,
             border_color: Color32::TRANSPARENT,
