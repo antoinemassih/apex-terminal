@@ -91,6 +91,9 @@ def area_of(relpath):
     return "misc"
 
 
+# Any `#[cfg(...)]` whose predicate names `test` as a whole word — covers the
+# bare `#[cfg(test)]` and compound forms like `#[cfg(all(test, feature = "x"))]`.
+TEST_CFG_RE = re.compile(r"#\[cfg\([^\n]*\btest\b")
 UNWRAP_RE = re.compile(r"\.unwrap\(\)")
 EXPECT_RE = re.compile(r"\.expect\(")
 DEAD_RE = re.compile(r"#\[allow\([^)]*dead_code")
@@ -134,8 +137,21 @@ def collect():
         # unwrap IS the test failure) and must not count against the release
         # budget. Rust convention puts test modules at the end of the file, so
         # truncate at the first #[cfg(test)] for these two counts.
+        # AUDIT 2026-08: this used to search for the LITERAL "#[cfg(test)]" only,
+        # so a test module gated on a compound predicate — e.g.
+        # `#[cfg(all(test, feature = "design-mode"))]` — was never recognised as
+        # tests, and every `.unwrap()`/`.expect()` inside it counted against the
+        # production panic budget. A gate that mis-classifies test code as
+        # production produces false failures, and a gate that cries wolf gets
+        # baselined away, which is how a ratchet quietly stops ratcheting.
+        #
+        # Match any cfg attribute whose predicate mentions `test` as a whole
+        # word, and cut at the earliest one.
         prod = text
-        cut = text.find("#[cfg(test)]")
+        cut = min(
+            (m.start() for m in TEST_CFG_RE.finditer(text)),
+            default=-1,
+        )
         if cut != -1:
             prod = text[:cut]
         n_unwrap = len(UNWRAP_RE.findall(prod))

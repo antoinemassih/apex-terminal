@@ -377,9 +377,82 @@ impl DesignTokens {
 #[cfg(feature = "design-mode")]
 static DESIGN_TOKENS: OnceLock<RwLock<DesignTokens>> = OnceLock::new();
 
+/// The token set as it was at `init` — the shipped baseline, never mutated.
+///
+/// AUDIT 2026-08: this is what makes the inspector an OVERRIDE layer instead of
+/// a replacement. See [`pick_f32`] for why that distinction was load-bearing.
+#[cfg(feature = "design-mode")]
+static PRISTINE: OnceLock<DesignTokens> = OnceLock::new();
+
 #[cfg(feature = "design-mode")]
 pub fn init(tokens: DesignTokens) {
+    let _ = PRISTINE.set(tokens.clone());
     let _ = DESIGN_TOKENS.set(RwLock::new(tokens));
+}
+
+/// The shipped baseline captured at `init`.
+#[cfg(feature = "design-mode")]
+pub fn pristine() -> Option<&'static DesignTokens> {
+    PRISTINE.get()
+}
+
+// ── Override resolution ─────────────────────────────────────────────────────
+//
+// AUDIT 2026-08 — THE BUG THESE FUNCTIONS EXIST TO FIX.
+//
+// `dt_f32!(gap.md, sp.md)` reads "use the inspector's gap.md, or fall back to
+// `sp.md`". But `sp.md` is not a fallback — it is the value authored by the
+// ACTIVE StyleSystem. And because `init()` runs at startup, `get()` returned
+// `Some` forever, so the macro took the inspector's global value EVERY time and
+// the authored one was never reached.
+//
+// Net effect: in any build with the design inspector compiled in, switching
+// style could not move typography, spacing or alphas — the very ladders the
+// design system exists to drive. The proof test only passed because tests build
+// without `design-mode`.
+//
+// Fix: the inspector value wins ONLY where it differs from the shipped
+// baseline, i.e. only where a human actually moved something. Everywhere else
+// the authored value flows through untouched.
+//
+// These also resolve by BORROW. The old macros called `get()`, which clones the
+// entire ~30-substruct `DesignTokens` on every single token read — dozens of
+// times per frame.
+
+/// Resolve an f32 token: inspector override if moved off baseline, else authored.
+#[cfg(feature = "design-mode")]
+pub fn pick_f32(get_field: impl Fn(&DesignTokens) -> f32, authored: f32) -> f32 {
+    let (Some(lock), Some(base)) = (DESIGN_TOKENS.get(), PRISTINE.get()) else { return authored };
+    let Ok(cur) = lock.read() else { return authored };
+    let live = get_field(&cur);
+    if (live - get_field(base)).abs() > f32::EPSILON { live } else { authored }
+}
+
+/// Resolve a u8 token. See [`pick_f32`].
+#[cfg(feature = "design-mode")]
+pub fn pick_u8(get_field: impl Fn(&DesignTokens) -> u8, authored: u8) -> u8 {
+    let (Some(lock), Some(base)) = (DESIGN_TOKENS.get(), PRISTINE.get()) else { return authored };
+    let Ok(cur) = lock.read() else { return authored };
+    let live = get_field(&cur);
+    if live != get_field(base) { live } else { authored }
+}
+
+/// Resolve an i8 token. See [`pick_f32`].
+#[cfg(feature = "design-mode")]
+pub fn pick_i8(get_field: impl Fn(&DesignTokens) -> i8, authored: i8) -> i8 {
+    let (Some(lock), Some(base)) = (DESIGN_TOKENS.get(), PRISTINE.get()) else { return authored };
+    let Ok(cur) = lock.read() else { return authored };
+    let live = get_field(&cur);
+    if live != get_field(base) { live } else { authored }
+}
+
+/// Resolve an `[r,g,b,a]` token. See [`pick_f32`].
+#[cfg(feature = "design-mode")]
+pub fn pick_rgba(get_field: impl Fn(&DesignTokens) -> [u8; 4], authored: [u8; 4]) -> [u8; 4] {
+    let (Some(lock), Some(base)) = (DESIGN_TOKENS.get(), PRISTINE.get()) else { return authored };
+    let Ok(cur) = lock.read() else { return authored };
+    let live = get_field(&cur);
+    if live != get_field(base) { live } else { authored }
 }
 
 #[cfg(feature = "design-mode")]
@@ -473,13 +546,7 @@ pub fn is_inspect_mode() -> bool { false }
 macro_rules! dt_f32 {
     ($($path:ident).+, $default:expr) => {{
         #[cfg(feature = "design-mode")]
-        {
-            if let Some(t) = $crate::design_tokens::get() {
-                t.$($path).+
-            } else {
-                $default
-            }
-        }
+        { $crate::design_tokens::pick_f32(|t| t.$($path).+, $default) }
         #[cfg(not(feature = "design-mode"))]
         { $default }
     }};
@@ -490,13 +557,7 @@ macro_rules! dt_f32 {
 macro_rules! dt_u8 {
     ($($path:ident).+, $default:expr) => {{
         #[cfg(feature = "design-mode")]
-        {
-            if let Some(t) = $crate::design_tokens::get() {
-                t.$($path).+
-            } else {
-                $default
-            }
-        }
+        { $crate::design_tokens::pick_u8(|t| t.$($path).+, $default) }
         #[cfg(not(feature = "design-mode"))]
         { $default }
     }};
@@ -560,11 +621,7 @@ macro_rules! dt_rgba {
     ($($path:ident).+, $default:expr) => {{
         #[cfg(feature = "design-mode")]
         {
-            let rgba: [u8; 4] = if let Some(t) = $crate::design_tokens::get() {
-                t.$($path).+
-            } else {
-                $default
-            };
+            let rgba: [u8; 4] = $crate::design_tokens::pick_rgba(|t| t.$($path).+, $default);
             egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3])
         }
         #[cfg(not(feature = "design-mode"))]
@@ -590,5 +647,57 @@ pub fn load_toml(path: &std::path::Path) -> DesignTokens {
             eprintln!("[design-mode] Cannot read {:?}: {e}", path);
             panic!("Failed to read design.toml");
         }
+    }
+}
+
+#[cfg(all(test, feature = "design-mode"))]
+mod override_semantics_tests {
+    use super::*;
+
+    /// `init` is a `OnceLock` and `DESIGN_TOKENS` is process-global, so these
+    /// two tests share one store. They deliberately use DIFFERENT fields —
+    /// `spacing.lg` is never mutated, `spacing.md` is — so neither can corrupt
+    /// the other regardless of run order.
+    fn ensure_init() {
+        init(DesignTokens::default());
+    }
+
+    /// AUDIT 2026-08: the regression this guards.
+    ///
+    /// `dt_f32!(gap.md, sp.md)` reads as "inspector value, else fall back to
+    /// `sp.md`". But `sp.md` is the value authored by the ACTIVE StyleSystem,
+    /// and `init()` runs at startup — so `get()` was always `Some` and the
+    /// authored value was NEVER reached. Switching style could not move
+    /// typography, spacing or alphas in any build with the inspector compiled
+    /// in, which is every design-mode build.
+    ///
+    /// The old proof test passed only because tests build WITHOUT design-mode,
+    /// so it never exercised the broken branch. This one is gated ON it.
+    #[test]
+    fn authored_value_survives_an_untouched_inspector() {
+        ensure_init();
+        // spacing.lg is never written by any test — it stays at baseline.
+        let authored = pristine().expect("pristine").spacing.lg + 7.0;
+        assert_eq!(
+            pick_f32(|t| t.spacing.lg, authored),
+            authored,
+            "an untouched inspector must not replace the StyleSystem-authored              value — this is the bug that made styling feel impossible"
+        );
+    }
+
+    /// The other half: once a human actually moves a control, it must win.
+    /// A fix that made the inspector inert would be just as broken.
+    #[test]
+    fn a_moved_control_overrides_the_authored_value() {
+        ensure_init();
+        let moved = pristine().expect("pristine").spacing.md + 13.0;
+        if let Some(lock) = DESIGN_TOKENS.get() {
+            lock.write().expect("write").spacing.md = moved;
+        }
+        assert_eq!(
+            pick_f32(|t| t.spacing.md, 999.0),
+            moved,
+            "a control the user actually moved must beat the authored value"
+        );
     }
 }

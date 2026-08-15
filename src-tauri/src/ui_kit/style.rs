@@ -667,7 +667,12 @@ pub fn stroke_heavy()       -> f32 { 3.0 }
 
 // ─── Radii (px) — pure constants ─────────────────────────────────────────────
 
-pub fn radius_pill() -> f32 { frame_tokens().radius_pill }
+/// AUDIT 2026-08 (M0.3 accept criterion): every sibling radius accessor
+/// multiplies by `corner_scale_override()` — this one did not. Under
+/// `CornerScale::Sharp` (0.0x) every tier squared EXCEPT pills, which stayed at
+/// 99, so the plan's own acceptance test ("Sharp squares everything uniformly",
+/// exit criterion P-9) could never pass. One missing multiplier.
+pub fn radius_pill() -> f32 { frame_tokens().radius_pill * corner_scale_override().scale() }
 
 // ─── Alpha (0..=255) — pure constants ────────────────────────────────────────
 
@@ -1356,5 +1361,40 @@ mod corner_scale_tests {
         // Restore so the shared thread-local does not leak into other tests.
         set_corner_scale_override(None);
         assert_eq!(radius_md(), base, "clearing the override must restore the preset value");
+    }
+
+    /// AUDIT 2026-08: the test above only ever checked `radius_md()`, which is
+    /// exactly how `radius_pill()` shipped without the `corner_scale_override()`
+    /// multiplier its four siblings all have. Under Sharp everything squared
+    /// except pills, which stayed at 99 — so the plan's acceptance criterion
+    /// "Sharp squares everything uniformly" (exit criterion P-9) was false, and
+    /// nothing failed.
+    ///
+    /// Covering EVERY tier is the point: a per-tier accessor that forgets the
+    /// scale is invisible unless the test enumerates them.
+    #[test]
+    fn sharp_squares_every_radius_tier_including_pill() {
+        set_corner_scale_override(Some(CornerScale::Sharp));
+
+        let tiers: [(&str, f32); 5] = [
+            ("radius_xs",   radius_xs()),
+            ("radius_sm",   radius_sm()),
+            ("radius_md",   radius_md()),
+            ("radius_lg",   radius_lg()),
+            ("radius_pill", radius_pill()),
+        ];
+
+        set_corner_scale_override(None);
+
+        let unsquared: Vec<&str> = tiers.iter()
+            .filter(|(_, v)| *v != 0.0)
+            .map(|(n, _)| *n)
+            .collect();
+
+        assert!(
+            unsquared.is_empty(),
+            "CornerScale::Sharp must flatten EVERY tier; these ignored it: {unsquared:?} \
+             — an accessor missing its corner_scale_override() multiplier"
+        );
     }
 }
