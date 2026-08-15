@@ -11,6 +11,7 @@
 #![allow(unused_imports)]
 
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant as KitVariant, Size as KitSize}, Input};
@@ -21,7 +22,7 @@ use crate::chart_renderer::ui::style::{
     alpha_heavy,
     font_xs, font_sm,
     mono_sm, icon_sm,
-    gap_xs, gap_sm, gap_md,
+    gap_xs, gap_xs_mid, gap_sm, gap_md,
     stroke_std, stroke_thin, r_md_cr, radius_xs, radius_sm,
 };
 
@@ -93,13 +94,24 @@ pub(crate) fn render_timeframe_dropdown(
                     ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 24.0)), radius_xs(), t.accent);
                 }
 
+                // Same two-piece row as the layout picker below: a label at
+                // the left and a favourite star flush right. Was `left()+14`
+                // and `right()-22` — two constants that had to agree with a
+                // row width written a third place.
+                let row_slots = Flex::row()
+                    .align(FlexAlign::Center)
+                    .padding_sides(gap_md(), gap_xs_mid(), 0.0, 0.0)
+                    .slot("label", Item::grow(1.0))
+                    .slot("star", Item::fixed(icon_sm()).cross(icon_sm()))
+                    .solve_in(row_rect);
+
                 let lc = row_text_color(is_cur, hovered, t);
                 ui.painter().text(
-                    egui::pos2(row_rect.left() + 14.0, row_rect.center().y),
+                    row_slots.rect("label").left_center(),
                     egui::Align2::LEFT_CENTER, tf_label, mono_sm(), lc,
                 );
 
-                let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
+                let sr = row_slots.rect("star");
                 let sh = hover_pos.map_or(false, |p| sr.contains(p));
                 let sc = if is_fav { tint(t, Tone::Accent, alpha_heavy()) } else if sh { color_half(t.dim) } else { color_very_dim(t.dim) };
                 ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), sc);
@@ -214,7 +226,22 @@ pub(crate) fn render_layout_dropdown(
                     ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 26.0)), radius_xs(), t.accent);
                 }
 
-                let gr = egui::Rect::from_min_size(egui::pos2(row_rect.left() + 6.0, row_rect.center().y - 9.5), egui::vec2(29.0, 19.0));
+                // AUDIT 2026-08 — the row's four pieces are solved, not
+                // arithmetic. This was `left()+6`, `left()+42`, `left()+74` and
+                // `right()-22`: four independent constants that had to be kept
+                // consistent by hand, and that silently stop lining up the
+                // moment the glyph, the label font or the row width changes.
+                // Named slots so each piece asks for its own box.
+                let row_slots = Flex::row()
+                    .align(FlexAlign::Center)
+                    .padding_sides(gap_xs_mid(), gap_xs_mid(), 0.0, 0.0)
+                    .slot("glyph", Item::fixed(29.0).cross(19.0))
+                    .pad(gap_sm())
+                    .slot("label", Item::fixed(32.0))
+                    .slot("desc", Item::grow(1.0))
+                    .slot("star", Item::fixed(icon_sm()).cross(icon_sm()))
+                    .solve_in(row_rect);
+                let gr = row_slots.rect("glyph");
                 let gc = if is_cur { t.accent } else if hovered { t.dim } else { color_half(t.dim) };
                 let mini = ly.pane_rects(gr, ly.max_panes(), 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5);
                 for mr in &mini {
@@ -224,9 +251,9 @@ pub(crate) fn render_layout_dropdown(
                 }
 
                 let lc = row_text_color(is_cur, hovered, t);
-                ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), mono_sm(), lc);
+                ui.painter().text(row_slots.rect("label").left_center(), egui::Align2::LEFT_CENTER, ly.label(), mono_sm(), lc);
                 let dc = if hovered { tint(t, Tone::Dim, alpha_heavy()) } else { color_muted(t.dim) };
-                ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);
+                ui.painter().text(row_slots.rect("desc").left_center(), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);
 
                 let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                 let sh = hover_pos.map_or(false, |p| sr.contains(p));

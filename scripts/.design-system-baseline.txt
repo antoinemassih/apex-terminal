@@ -12,7 +12,7 @@
 2 src-tauri/src/chart/renderer/ui/components/headers.rs
 5 src-tauri/src/chart/renderer/ui/components/toolbar/alert_feed.rs
 7 src-tauri/src/chart/renderer/ui/components/toolbar/chart_controls.rs
-12 src-tauri/src/chart/renderer/ui/components/toolbar/dropdowns.rs
+7 src-tauri/src/chart/renderer/ui/components/toolbar/dropdowns.rs
 1 src-tauri/src/chart/renderer/ui/components/toolbar/mod.rs
 1 src-tauri/src/chart/renderer/ui/components/toolbar/ticker_strip.rs
 8 src-tauri/src/chart/renderer/ui/components/toolbar/top_nav.rs
