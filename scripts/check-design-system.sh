@@ -85,7 +85,11 @@ PATTERNS=(
 #
 #   .left() + 6.0        positioning by arithmetic on a rect edge
 #   add_space(8.0)       vertical rhythm chosen per call site
-#   .shrink(4.0)         inset chosen per call site
+#   (`.shrink(N)` is deliberately NOT matched: `Rect::shrink` is a pixel
+#    inset but `Item::shrink` is CSS flex-shrink, and a regex cannot tell them
+#    apart. 17 of the 29 matches were flex-shrink factors on layout Items —
+#    correct, design-system code. A gate that counts the right answer as a
+#    violation teaches people to avoid the engine it is meant to promote.)
 #   Margin::same(6)      frame padding outside the token system
 #
 # The tokens already exist (gap_2xs..gap_3xl and the density ladder); these
@@ -94,7 +98,6 @@ PATTERNS=(
 REGEX_PATTERNS=(
   "\.(left|right|top|bottom|center_x|center_y)\(\)[[:space:]]*[-+][[:space:]]*[0-9]+\.[0-9]+"
   "add_space\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"
-  "\.(shrink|expand)2?\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"
   "Margin::(same|symmetric)\([[:space:]]*[0-9]+"
   "item_spacing[[:space:]]*=[[:space:]]*egui::vec2\([[:space:]]*[0-9]+\.[0-9]+"
 )

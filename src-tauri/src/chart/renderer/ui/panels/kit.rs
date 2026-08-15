@@ -106,34 +106,6 @@ pub(crate) struct HeaderStrip {
     pub close: Option<Rect>,
 }
 
-/// The flex spec for the static-title header strip. Widths are MEASURED galley
-/// widths: `Item::auto()` has no intrinsic size under `Flex::solve` (leaves
-/// carry no measure function), so intrinsic content is measured by the caller
-/// and passed as `Item::fixed`.
-fn header_flex(icon_w: Option<f32>, title_w: f32, meta_w: Option<f32>, closable: bool) -> Flex {
-    let mut f = Flex::row()
-        // Strip inset — the same `gap_sm` the cursor arithmetic used.
-        .padding_sides(gap_sm(), gap_sm(), 0.0, 0.0)
-        // Every slot spans the full strip height so painting at `slot.center().y`
-        // is identical to the old `rect.center().y` vertical centring.
-        .align(FlexAlign::Stretch);
-    let title_margin = if icon_w.is_some() { gap_sm() } else { 0.0 };
-    if let Some(w) = icon_w {
-        f = f.item(Item::fixed(w));
-    }
-    f = f
-        // The title yields (shrinks) rather than shoving the close button off
-        // the strip when a panel is narrower than its own title.
-        .item(Item::fixed(title_w).shrink(1.0).margin_start(title_margin))
-        .item(Item::grow(1.0).margin_start(gap_md()));
-    if let Some(w) = meta_w {
-        f = f.item(Item::fixed(w).margin_start(gap_md()));
-    }
-    if closable {
-        f = f.item(Item::fixed(HEADER_CLOSE_SIZE).margin_start(gap_sm()));
-    }
-    f
-}
 
 /// Ratio of the section ordinal's font size to the header title's.
 ///
