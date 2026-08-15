@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """Token-consumer gate — every design token must be READ by something.
 
+Two layers, one question: can a theme author this and have anything happen?
+
+  1. `ui_kit::style` ACCESSORS backed by `frame_tokens()` (the original check).
+  2. `StyleSystem` FIELDS — the thing a `.apextheme` file actually contains.
+
+Layer 2 was unguarded, and it is the layer a theme author edits. A field there
+can be authored, exported, re-imported and round-trip asserted while no
+rendering code ever reads it.
+
 WHY THIS EXISTS
 ---------------
 The design-system audit found the same defect over and over: a token is added
@@ -58,6 +67,41 @@ TEST_CFG_RE = re.compile(r"#\[cfg\([^\n]*\btest\b")
 
 # Tokens allowed to have zero consumers, each with a reason. Keep this SHORT —
 # every entry is a token the design system cannot actually deliver.
+# ── Layer 2: StyleSystem fields ────────────────────────────────────────────
+#
+# Files that DECLARE or SERIALISE the style system. A read in one of these is
+# not a consumer: round-tripping a value through JSON proves it survives, not
+# that it does anything.
+SS_DECL_FILES = {
+    "style_system.rs", "export.rs", "loader.rs", "baseline.rs", "builtin.rs",
+    "design_inspector.rs", "convert.rs", "model.rs",
+}
+
+# Fields with no reader today, each a deliberate carry rather than an oversight.
+# The count is a CEILING; adding to it needs a reason written here.
+SS_ALLOWED_UNREAD = {
+    # ShellSpec: `archetype` is wired; these three are DECLARED FEATURES that
+    # were never built. `NavStyle::IconRail` means a vertical strip replacing
+    # the top bar — a structural change, not a flag. The live nav appearance
+    # comes from `Treatments.nav_buttons_*`, which is a different axis (label
+    # rendering), so these are not duplicates of a working mechanism; they are
+    # a roadmap sitting in data. Kept so the intent survives, listed so nobody
+    # believes authoring them does something.
+    "nav", "dock", "rail",
+    # Elevation: the whole group. `chart/renderer/ui/style.rs` carries a TODO
+    # reading "Phase B3 promotes these to StyleSystem.elevation" — the promotion
+    # never happened, so the group has never had a reader.
+    "elevation", "l1", "l2", "l3",
+    # Typography: superseded by the M1 `ui_*` ladder, which is what
+    # `begin_frame` reads. These are the pre-M1 names, kept for theme-pack
+    # compatibility so older `.apextheme` files still parse.
+    "size_md", "size_lg", "mono_sm", "mono_md", "mono_lg",
+    # Assorted rungs declared alongside used ones and never called for:
+    # a zero radius, a full radius, a fully-opaque alpha, one spacing rung,
+    # a segmented-control idle treatment, and numeral tracking.
+    "none", "full", "opaque", "gmd", "segmented_filled_idle", "tracking",
+}
+
 ALLOWED_UNREAD = {
     # The leading ladder is tight/heading/dense/compact/normal/loose. Five of
     # the six are assigned to a `TextStyle` tier in `ui_kit/text_style.rs`;
@@ -159,6 +203,74 @@ def count_calls(text, name):
     return n
 
 
+_SS_READ_CACHE = {}
+
+
+def SS_READ_RE(name):
+    """`.field` as a real field access, cached.
+
+    Built here rather than inline because the inline version was written
+    through a shell heredoc, which turned `\\b` into a literal backspace and
+    `\\.` into an escaped backslash. The regex then matched nothing, every
+    StyleSystem field looked unread, and the gate reported 195 false findings —
+    including fields wired and pixel-verified minutes earlier. grep showed the
+    line as correct, because a backspace is invisible.
+    """
+    if name not in _SS_READ_CACHE:
+        _SS_READ_CACHE[name] = re.compile(r"\.\s*" + re.escape(name) + r"\b")
+    return _SS_READ_CACHE[name]
+
+
+SS_STRUCT_RE = re.compile(r"pub struct (\w+)\s*\{(.*?)\n\}", re.S)
+SS_FIELD_RE = re.compile(r"pub (\w+)\s*:")
+
+
+def style_system_fields():
+    """Every `pub` field name declared in a StyleSystem struct."""
+    path = os.path.join(SRC, "design_system", "style_system.rs")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            src = LINE_COMMENT_RE.sub("", fh.read())
+    except OSError:
+        return {}
+    out = {}
+    for m in SS_STRUCT_RE.finditer(src):
+        for f in SS_FIELD_RE.finditer(m.group(2)):
+            out.setdefault(f.group(1), set()).add(m.group(1))
+    return out
+
+
+def unread_style_system_fields():
+    """StyleSystem fields nothing outside declaration/serialisation reads.
+
+    NOTE: this deliberately does NOT truncate files at `#[cfg(test)]`. An
+    earlier version did, and `chart/renderer/ui/style.rs` has a test module
+    ABOVE `style_system_to_style_settings` — so the adapter that reads most of
+    these was cut off and 37 fields were reported inert that are read every
+    frame. Over-counting a read is a missed warning; under-counting one is a
+    fabricated finding.
+    """
+    fields = style_system_fields()
+    if not fields:
+        return {}, {}
+    seen = {n: 0 for n in fields}
+    for root, dirs, files in os.walk(SRC):
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        for f in files:
+            if not f.endswith(".rs") or f in SS_DECL_FILES:
+                continue
+            try:
+                with open(os.path.join(root, f), encoding="utf-8") as fh:
+                    text = strip_comments(fh.read())
+            except (OSError, UnicodeDecodeError):
+                continue
+            for name in seen:
+                seen[name] += len(re.findall(SS_READ_RE(name), text))
+    unread = {n: fields[n] for n, c in seen.items()
+              if c == 0 and n not in SS_ALLOWED_UNREAD}
+    return fields, unread
+
+
 def main():
     show = "--show" in sys.argv
 
@@ -199,7 +311,20 @@ def main():
         )
         return 1
 
-    print(f"token-consumer gate: PASS ({len(counts)} accessors, all consumed)")
+    all_fields, ss_unread = unread_style_system_fields()
+    if ss_unread:
+        print("TOKEN-CONSUMER GATE FAILED — StyleSystem fields nothing reads:\n")
+        for name in sorted(ss_unread):
+            print(f"  {name}  (in {', '.join(sorted(ss_unread[name]))})")
+        print(
+            "\nA theme can author these, export them, and round-trip them, and no\n"
+            "rendering code will ever look at them. Wire a reader, delete the field,\n"
+            "or add it to SS_ALLOWED_UNREAD with a reason."
+        )
+        return 1
+
+    print(f"token-consumer gate: PASS ({len(counts)} accessors, "
+          f"{len(all_fields)} StyleSystem fields, all consumed)")
     return 0
 
 
