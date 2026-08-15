@@ -99,6 +99,11 @@ pub fn begin_frame() {
     let ass = override_style.clone().unwrap_or_else(active_style_system);
     let (sp, ty, al) = (&ass.spacing, &ass.typography, &ass.alphas);
 
+    // The effective density multiplier for this frame — the user's override if
+    // set, else the active style's mode. Applied once, where the structural
+    // ladder is written into the snapshot (see the note there).
+    let dens = effective_density().scale();
+
     // Resolve radii — precedence order:
     //   1. Hot-reload override (workspace JSON → watcher).
     //   2. DesignTokens (design-mode inspector slider — live).
@@ -211,17 +216,35 @@ pub fn begin_frame() {
         font_caption:       st.font_caption,
         font_section_label: st.font_section_label,
         // M4.5: structural proportions from the active StyleSystem's Density.
-        row_dense:      ass.density.row_dense,
-        row_compact:    ass.density.row_compact,
-        row_default:    ass.density.row_default,
-        row_spacious:   ass.density.row_spacious,
-        row_tall:       ass.density.row_tall,
+        //
+        // AUDIT 2026-08 — DENSITY IS APPLIED ONCE, HERE.
+        //
+        // The chart-side accessors (`style_row_height`,
+        // `style_row_height_comfortable`, `style_button_height`) each multiplied
+        // by `effective_density().scale()` themselves, while the ui_kit ladder
+        // (`row_height_*`, `control_h_*`) read the snapshot raw. So changing the
+        // density preference moved some rows and left others fixed — every new
+        // accessor had to remember to apply the scale, and the ones that forgot
+        // were invisible because the default scale is 1.0.
+        //
+        // Scaling as the snapshot is built makes every `frame_tokens()` consumer
+        // density-aware for free, including ones added later.
+        //
+        // Rails and splitter are deliberately NOT scaled: density is vertical
+        // rhythm. A rail is a horizontal width and the splitter is a pointer hit
+        // target — shrinking either with density would change hit areas, not
+        // rhythm.
+        row_dense:      ass.density.row_dense    * dens,
+        row_compact:    ass.density.row_compact  * dens,
+        row_default:    ass.density.row_default  * dens,
+        row_spacious:   ass.density.row_spacious * dens,
+        row_tall:       ass.density.row_tall     * dens,
         splitter_width: ass.density.splitter_width,
-        control_xs:     ass.density.control_xs,
-        control_sm:     ass.density.control_sm,
-        control_md:     ass.density.control_md,
-        control_lg:     ass.density.control_lg,
-        control_xl:     ass.density.control_xl,
+        control_xs:     ass.density.control_xs * dens,
+        control_sm:     ass.density.control_sm * dens,
+        control_md:     ass.density.control_md * dens,
+        control_lg:     ass.density.control_lg * dens,
+        control_xl:     ass.density.control_xl * dens,
         rail_narrow:    ass.density.rail_narrow,
         rail_medium:    ass.density.rail_medium,
         rail_wide:      ass.density.rail_wide,
@@ -2958,6 +2981,15 @@ pub fn style_row_height() -> f32 {
 /// field: that struct is the legacy mirror being shrunk and its pub-field
 /// count is ratcheted.
 pub fn style_row_height_comfortable() -> f32 {
+    // NOTE: `row_height_comfortable` is the LEGACY density field and is not
+    // carried in `TokenSnapshot`, so the once-only density scaling applied in
+    // `begin_frame` to the structural ladder does not cover it — the scale is
+    // still applied here, and that is not a double-apply.
+    //
+    // It does mean this one accessor bypasses the hot-reload override, because
+    // it reads the style store directly. Left as-is deliberately: routing it
+    // through the snapshot would need a snapshot field, and the legacy pair is
+    // meant to retire in favour of the row_* ladder rather than grow.
     active_style_system().density.row_height_comfortable * effective_density().scale()
 }
 /// Density-aware button height. Reads `button_height_px` then scales by effective density.
@@ -4228,6 +4260,60 @@ mod m1_ladder_tests {
         assert_eq!(snap.splitter_width, 13.0, "splitter width must follow the override");
         assert_eq!(snap.rail_wide, 517.0, "rail width must follow the override");
         assert_eq!(snap.control_md, 47.0, "control height must follow the override");
+    }
+
+    /// AUDIT 2026-08: density must move the WHOLE vertical ladder.
+    ///
+    /// The chart-side accessors each applied `effective_density().scale()`
+    /// themselves while the ui_kit ladder read the snapshot raw, so changing
+    /// density moved some rows and left others fixed — and because the default
+    /// scale is 1.0, any accessor that forgot the multiplier was invisible.
+    ///
+    /// The scale is now applied once, as the snapshot is built. This asserts the
+    /// RELATIONSHIP (every row and control moves together) rather than pinning
+    /// numbers, so it survives re-authoring.
+    #[test]
+    fn density_scales_the_whole_vertical_ladder_uniformly() {
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = density_override();
+
+        set_density_override(Some(crate::ui_kit::style::DensityMode::Spacious));
+        begin_frame();
+        let roomy = crate::ui_kit::style::frame_tokens();
+
+        set_density_override(Some(crate::ui_kit::style::DensityMode::Compact));
+        begin_frame();
+        let tight = crate::ui_kit::style::frame_tokens();
+
+        set_density_override(prev);
+        begin_frame();
+
+        let pairs: [(&str, f32, f32); 7] = [
+            ("row_dense",    roomy.row_dense,    tight.row_dense),
+            ("row_compact",  roomy.row_compact,  tight.row_compact),
+            ("row_default",  roomy.row_default,  tight.row_default),
+            ("row_spacious", roomy.row_spacious, tight.row_spacious),
+            ("row_tall",     roomy.row_tall,     tight.row_tall),
+            ("control_sm",   roomy.control_sm,   tight.control_sm),
+            ("control_md",   roomy.control_md,   tight.control_md),
+        ];
+        let unmoved: Vec<&str> = pairs.iter()
+            .filter(|(_, r, t)| (r - t).abs() < f32::EPSILON)
+            .map(|(n, _, _)| *n)
+            .collect();
+
+        assert!(
+            unmoved.is_empty(),
+            "every vertical-rhythm token must respond to density; these did not: \
+             {unmoved:?} — an accessor reading the snapshot without the scale"
+        );
+
+        // Rails are a horizontal width and the splitter is a hit target; density
+        // is vertical rhythm, so neither should move.
+        assert_eq!(roomy.splitter_width, tight.splitter_width,
+            "the splitter is a pointer hit target, not vertical rhythm");
+        assert_eq!(roomy.rail_wide, tight.rail_wide,
+            "rail width is horizontal; density must not shrink it");
     }
 
     /// M5 — the frozen-chrome invariant, for EVERY style.
