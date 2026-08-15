@@ -415,7 +415,11 @@ pub fn frame_tokens() -> TokenSnapshot {
 // snapshot get the `DEFAULT_TOKEN_SNAPSHOT` values, which match the
 // stand-alone constants below.
 
-#[inline] pub fn gap_xs_mid() -> f32 { frame_tokens().gap_xs_mid }
+// `gap_xs_mid` lives with the rest of the spacing ladder further down, beside
+// gap_2xs..gap_3xl. It used to be declared here, ~240 lines from its siblings,
+// and was the only rung that did not apply `spacing_scale_override()` — which
+// is exactly the kind of thing distance hides. See the ladder for the defect
+// that caused.
 // Radius helpers apply the user's CornerScale override multiplier (Sharp/Subtle
 // /Standard/Round). Standard = 1.0× is the no-op; Sharp = 0.0× returns zero for
 // every tier (square-corner Meridien aesthetic). Override defaults to Standard.
@@ -660,6 +664,13 @@ pub const FONT_XL:      f32 = 22.0;
 // spreads them. Override defaults to Standard.
 #[inline] pub fn gap_2xs() -> f32 { 2.0 * spacing_scale_override().scale() }
 #[inline] pub fn gap_xs()  -> f32 { frame_tokens().gap_xs  * spacing_scale_override().scale() }
+// The 6.0 rung between gap_xs and gap_sm. It was declared ~240 lines above the
+// rest of the ladder and was the ONLY rung without the scale multiplier, so
+// the ladder collapsed at Tight (0.75x): gap_xs 3.0, gap_xs_mid 6.0 (frozen),
+// gap_sm 6.0 — the mid rung landed exactly on the rung above it and the
+// distinction between them disappeared. Byte-identical at Standard (1.0x),
+// which is why nothing caught it.
+#[inline] pub fn gap_xs_mid() -> f32 { frame_tokens().gap_xs_mid * spacing_scale_override().scale() }
 #[inline] pub fn gap_sm()  -> f32 { frame_tokens().gap_sm  * spacing_scale_override().scale() }
 #[inline] pub fn gap_md()  -> f32 { frame_tokens().gap_md  * spacing_scale_override().scale() }
 #[inline] pub fn gap_lg()  -> f32 { frame_tokens().gap_lg  * spacing_scale_override().scale() }
@@ -1269,6 +1280,143 @@ pub fn measure_with(ui: &egui::Ui, text: &str, font: egui::FontId) -> egui::Vec2
 #[inline]
 pub fn font_at(size: f32, family: egui::FontFamily) -> egui::FontId {
     egui::FontId::new(size, family)
+}
+
+// ── Ladder-ordering invariants ───────────────────────────────────────────────
+//
+// AUDIT 2026-08. Every other design-system check asks whether a value is a
+// token. None of them could see a ladder whose rungs are all legal tokens but
+// no longer in order.
+//
+// `gap_xs_mid` was declared ~240 lines from the rest of the spacing ladder and
+// was the only rung that did not apply `spacing_scale_override()`. At Standard
+// (1.0x) it was byte-identical to correct, so nothing caught it — but at Tight
+// (0.75x) the ladder read 3.0 / 6.0 / 6.0: the mid rung landed exactly on the
+// rung above it and the two became indistinguishable.
+//
+// The bug is not the missing multiplier, it is that a ladder had no stated
+// invariant. These tests give all three ladders one, checked at EVERY override
+// setting rather than only the default that hides the problem.
+#[cfg(test)]
+mod ladder_ordering_tests {
+    use super::*;
+
+    /// Serialises the process-global override atomics these tests write.
+    static LADDER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn assert_non_decreasing(label: &str, setting: &str, rungs: &[(&str, f32)]) {
+        for w in rungs.windows(2) {
+            let ((n0, v0), (n1, v1)) = (w[0], w[1]);
+            assert!(
+                v1 >= v0,
+                "{label} ladder INVERTED at {setting}: {n0}={v0} but {n1}={v1} \
+                 — a smaller rung must never outrank a larger one",
+            );
+        }
+    }
+
+    fn assert_strictly_increasing_at(label: &str, setting: &str, rungs: &[(&str, f32)]) {
+        for w in rungs.windows(2) {
+            let ((n0, v0), (n1, v1)) = (w[0], w[1]);
+            assert!(
+                v1 > v0,
+                "{label} ladder COLLAPSED at {setting}: {n0}={v0} and {n1}={v1} \
+                 are indistinguishable, so the two rungs render identically",
+            );
+        }
+    }
+
+    #[test]
+    fn spacing_ladder_stays_ordered_at_every_scale() {
+        let _g = LADDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = spacing_scale_override();
+
+        for (name, mode) in [
+            ("Tight", SpacingScale::Tight),
+            ("Standard", SpacingScale::Standard),
+            ("Loose", SpacingScale::Loose),
+        ] {
+            set_spacing_scale_override(Some(mode));
+            let rungs = [
+                ("gap_2xs", gap_2xs()),
+                ("gap_xs", gap_xs()),
+                ("gap_xs_mid", gap_xs_mid()),
+                ("gap_sm", gap_sm()),
+                ("gap_md", gap_md()),
+                ("gap_lg", gap_lg()),
+                ("gap_xl", gap_xl()),
+                ("gap_2xl", gap_2xl()),
+                ("gap_3xl", gap_3xl()),
+            ];
+            // STRICT at every scale, not just Standard. The first draft
+            // asserted strictness only at Standard and non-decreasing
+            // elsewhere — which could not see the very defect that prompted
+            // it, because a frozen rung COLLAPSES onto its neighbour
+            // (gap_xs_mid 6.0 == gap_sm 6.0 at Tight) rather than inverting.
+            // Reverting the gap_xs_mid fix left that draft green. Spacing has
+            // no legitimate collapse case, so equality is always a bug here.
+            assert_strictly_increasing_at("spacing", name, &rungs);
+        }
+        set_spacing_scale_override(Some(prev));
+    }
+
+    #[test]
+    fn radius_ladder_stays_ordered_at_every_scale() {
+        let _g = LADDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = corner_scale_override();
+
+        // Sharp is 0.0x — every rung collapses to zero BY DESIGN (the
+        // square-corner aesthetic), so this ladder is only ever asserted
+        // non-decreasing. Strict ordering is checked at Standard alone.
+        for (name, mode) in [
+            ("Sharp", CornerScale::Sharp),
+            ("Standard", CornerScale::Standard),
+        ] {
+            set_corner_scale_override(Some(mode));
+            let rungs = [
+                ("radius_xs", radius_xs()),
+                ("radius_sm", radius_sm()),
+                ("radius_md", radius_md()),
+                ("radius_lg", radius_lg()),
+                ("radius_pill", radius_pill()),
+            ];
+            assert_non_decreasing("radius", name, &rungs);
+            if matches!(mode, CornerScale::Standard) {
+                assert_strictly_increasing_at("radius", name, &rungs);
+            }
+        }
+        set_corner_scale_override(Some(prev));
+    }
+
+    #[test]
+    fn stroke_ladder_stays_ordered_at_every_weight() {
+        let _g = LADDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = border_weight_override();
+
+        for (name, mode) in [
+            ("Hairline", BorderWeight::Hairline),
+            ("Standard", BorderWeight::Standard),
+        ] {
+            set_border_weight_override(Some(mode));
+            // NOTE THE ORDER: `stroke_medium` (0.8) sits BELOW `stroke_std`
+            // (1.0), not above it. The first draft of this test assumed the
+            // name ranked it above std and reported an inversion — the test
+            // was wrong, the ladder was not. Recorded here because the naming
+            // invites the same mistake: hair/thin/medium are the sub-1px tier
+            // and std/bold/thick are the >=1px tier, so "medium" means medium
+            // HAIRLINE, not medium weight overall.
+            let rungs = [
+                ("stroke_hair", stroke_hair()),
+                ("stroke_thin", stroke_thin()),
+                ("stroke_medium", stroke_medium()),
+                ("stroke_std", stroke_std()),
+                ("stroke_bold", stroke_bold()),
+                ("stroke_thick", stroke_thick()),
+            ];
+            assert_strictly_increasing_at("stroke", name, &rungs);
+        }
+        set_border_weight_override(Some(prev));
+    }
 }
 
 // ── M2.3 token-scope tests ───────────────────────────────────────────────────
