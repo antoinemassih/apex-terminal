@@ -174,7 +174,18 @@ pub fn begin_frame() {
         // Strokes (already resolved with override + DesignTokens precedence above).
         stroke_hair,
         stroke_thin,
-        stroke_medium: crate::dt_f32!(stroke.medium, 0.8),
+        // AUDIT 2026-08 — fall back to the STYLE, not to 0.8.
+        //
+        // Every other stroke rung falls back to its `StyleSettings` value
+        // (`st.stroke_hair` etc.); this one used a literal because
+        // StyleSettings has no `stroke_medium` field — a gap this file's own
+        // header comment records. The consequence was not documented though: a
+        // style authoring `strokes.medium` was ignored outright, so the rung
+        // between `thin` and `std` was the one weight no theme could set.
+        //
+        // `ass.strokes.medium` is the authored value and needs no StyleSettings
+        // detour, the same way `icons` and `line_heights` are read.
+        stroke_medium: crate::dt_f32!(stroke.medium, ass.strokes.medium),
         // `stroke.heavy` is 2.5 in DesignTokens and had a live inspector
         // slider that nothing consumed; `stroke_extra_thick()` hardcoded the
         // same 2.5. Same number, two homes — now one.
@@ -188,6 +199,7 @@ pub fn begin_frame() {
         gap_2xs:           sp.gap_2xs,
         alpha_whisper:     al.whisper,
         alpha_hint:        al.hint,
+        focus_ring:   ass.treatments.focus_ring,
         icon_xs:      ass.icons.xs,
         icon_sm:      ass.icons.sm,
         icon_md:      ass.icons.md,

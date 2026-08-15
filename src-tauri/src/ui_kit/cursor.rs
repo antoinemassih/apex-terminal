@@ -133,12 +133,41 @@ pub fn focus_ring(
     focus_ring_alpha: u8,
     focus_ring_width: f32,
 ) {
+    use crate::design_system::style_system::FocusRingStyle;
     use egui::{CornerRadius, Stroke, StrokeKind};
     if !resp.has_focus() {
         return;
     }
+
+    // AUDIT 2026-08 — the STYLE decides the ring, not this function.
+    //
+    // `Treatments.focus_ring` (None / Outline / Glow) is authored by every
+    // builtin style, has a picker in the design inspector, and round-trips
+    // through export/import — and nothing read it. One fixed outline was drawn
+    // regardless, so a style asking for no focus ring got one anyway and
+    // Aperture's `Glow` was indistinguishable from everyone else's `Outline`.
+    let style = crate::ui_kit::style::frame_tokens().focus_ring;
+    if style == FocusRingStyle::None {
+        return;
+    }
+
     let color = crate::ui_kit::style::color_alpha(accent, focus_ring_alpha);
     let radius = CornerRadius::same((crate::ui_kit::style::radius_sm() as u8).saturating_add(1));
+
+    // Glow keeps the crisp ring and adds a wider, fainter one outside it —
+    // a halo rather than a second border. Outline is the ring alone.
+    if style == FocusRingStyle::Glow {
+        ui.painter().rect_stroke(
+            resp.rect.expand(2.0 + focus_ring_width),
+            radius,
+            Stroke::new(
+                focus_ring_width,
+                crate::ui_kit::style::color_alpha(accent, focus_ring_alpha / 3),
+            ),
+            StrokeKind::Outside,
+        );
+    }
+
     ui.painter().rect_stroke(
         resp.rect.expand(2.0),
         radius,

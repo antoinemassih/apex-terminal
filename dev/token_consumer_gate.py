@@ -115,6 +115,11 @@ SS_ALLOWED_UNREAD = {
     # a zero radius, a full radius, a fully-opaque alpha, one spacing rung,
     # a segmented-control idle treatment, and numeral tracking.
     "none", "full", "opaque", "gmd", "segmented_filled_idle", "tracking",
+    # Spacing.xl / .xxl — superseded by the gap_* ladder. `begin_frame` reads
+    # `sp.gap_xl` / `sp.gap_2xl`; these two are the pre-ladder names, kept so
+    # older `.apextheme` files still parse. Same situation as the pre-M1
+    # typography names above.
+    "xl", "xxl",
 }
 
 ALLOWED_UNREAD = {
@@ -249,6 +254,55 @@ def SS_READ_RE(name):
     return _SS_READ_CACHE[name]
 
 
+# `dt_f32!(group.field, ..)` etc. A dt_* macro reads DESIGN TOKENS. It can
+# never be a read of a StyleSystem field, but its argument looks exactly like
+# one — so `Treatments.focus_ring` was scored as consumed on the strength of
+# `dt_rgba!(semantic.focus_ring, ..)`, a different token that merely shares a
+# leaf name. Stripping these before counting is exact rather than heuristic.
+# Strips ONLY the token path — `dt_f32!(stroke.medium, ..)` -> `dt_f32!(..)`.
+#
+# The first version removed the whole macro call, which was too much: a dt_*
+# FALLBACK is frequently a real StyleSystem read (`dt_f32!(stroke.medium,
+# ass.strokes.medium)`), and deleting the call deleted that read too. It
+# reported `Strokes.medium` as unread seconds after I had wired it — the gate
+# contradicting a change I had just made, which is the cheapest possible signal
+# that the gate is wrong.
+DT_MACRO_PATH_RE = re.compile(
+    r"(dt_(?:f32|u8|i8|usize|rgba|bool)!\()\s*[\w.]+\s*,"
+)
+
+
+TEST_MOD_RE = re.compile(r"#\[cfg\([^\n]*\btest\b[^\n]*\)\]\s*(?:pub\s+)?mod\s+\w+\s*\{")
+
+
+def strip_test_modules(text):
+    """Remove `#[cfg(test)] mod .. { .. }` bodies, keeping the rest of the file.
+
+    Brace-matched rather than truncated. Truncating at the first test module
+    threw away everything below it, which in `chart/renderer/ui/style.rs` is the
+    adapter that reads most of the StyleSystem — and produced 37 confident,
+    wrong "inert field" findings. Leaving tests in is the opposite error: a
+    round-trip `assert_eq!` then counts as a consumer, and a test proving a
+    value SURVIVES serialisation is not evidence that anything reads it.
+    """
+    out, i = [], 0
+    while True:
+        m = TEST_MOD_RE.search(text, i)
+        if not m:
+            out.append(text[i:])
+            return "".join(out)
+        out.append(text[i:m.start()])
+        depth, j = 1, m.end()
+        while depth and j < len(text):
+            c = text[j]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+            j += 1
+        i = j
+
+
 SS_STRUCT_RE = re.compile(r"pub struct (\w+)\s*\{(.*?)\n\}", re.S)
 SS_FIELD_RE = re.compile(r"pub (\w+)\s*:")
 
@@ -289,7 +343,9 @@ def unread_style_system_fields():
                 continue
             try:
                 with open(os.path.join(root, f), encoding="utf-8") as fh:
-                    text = strip_comments(fh.read())
+                    text = DT_MACRO_PATH_RE.sub(
+                        r"\1", strip_test_modules(strip_comments(fh.read()))
+                    )
             except (OSError, UnicodeDecodeError):
                 continue
             for name in seen:

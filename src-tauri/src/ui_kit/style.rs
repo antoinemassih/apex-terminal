@@ -172,6 +172,11 @@ pub struct TokenSnapshot {
     // inset box-shadow faces (Alto/Mariner raised, Cadence elevated cards).
     // Populated by chart-side begin_frame() from StyleSettings.surface_bevel.
     pub surface_bevel: crate::design_system::style_system::BevelStyle,
+    /// How a focused control is ringed. Authored per style (Aperture asks for
+    /// `Glow`, the others `Outline`) and, until now, honoured nowhere: the
+    /// painter drew one fixed outline whatever the style said, so
+    /// `FocusRingStyle::None` did not remove the ring and `Glow` did not glow.
+    pub focus_ring: crate::design_system::style_system::FocusRingStyle,
     pub bevel_highlight_alpha: u8, // white inner top-edge alpha (0 = no highlight)
     pub bevel_shadow_alpha:    u8, // black inner bottom-edge alpha (0 = no shadow)
     /// M1 Change C: authored bevel tint (RGB; alpha from the knobs above).
@@ -251,6 +256,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     panel_tab_treatment: 0, // Line (PanelHeaderTreatment::Line)
     // Bevel defaults: flat/none (no bevel until the chart-app pushes a themed preset).
     surface_bevel:         crate::design_system::style_system::BevelStyle::None,
+    focus_ring:            crate::design_system::style_system::FocusRingStyle::Outline,
     bevel_highlight_alpha: 0,
     bevel_shadow_alpha:    0,
     bevel_highlight_tint: Color32::WHITE,

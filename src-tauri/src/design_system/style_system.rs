@@ -1006,7 +1006,10 @@ pub enum BevelStyle {
 }
 
 /// How focus rings are drawn (dimension-only; ring colour comes from `ColorScheme.accent`).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+///
+/// `Copy` because it now travels in `TokenSnapshot`, which is copied per frame
+/// — a three-variant fieldless enum has nothing to clone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FocusRingStyle {
     /// No visible ring — rely on fill/colour change only.
     None,
