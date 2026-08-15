@@ -622,7 +622,16 @@ where
         Self {
             state,
             render,
-            splitter_width:   6.0, // intentional: standard hit-band width per spec
+            // AUDIT 2026-08: was a hardcoded `6.0` with the comment
+            // "intentional: standard hit-band width per spec". The comment
+            // defended the literal, but `Density::splitter_width` had existed
+            // since M4.5 and its default IS 6.0 — so the token and the literal
+            // agreed by construction and nothing revealed that no code read the
+            // token. `splitter_width()` had zero consumers in the whole tree.
+            //
+            // A theme could author a splitter thickness and it would be
+            // silently ignored. Now it is read.
+            splitter_width:   crate::ui_kit::style::splitter_width(),
             splitter_color:   None,
             show_pane_chrome: true,
             on_split:         None,

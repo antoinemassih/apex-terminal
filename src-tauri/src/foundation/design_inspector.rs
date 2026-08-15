@@ -1417,10 +1417,45 @@ fn two_axis_style_editor(ui: &mut egui::Ui, s: &mut StyleSystem) {
     });
 
     // ── Density ──────────────────────────────────────────────────────────────
+    //
+    // AUDIT 2026-08: this section used to expose ONLY `factor`,
+    // `row_height_dense` and `row_height_comfortable` — the legacy trio. The
+    // structural ladder that M4.5 added (row_*, splitter_width, rail_*,
+    // control_*) is what `ui_kit::style::row_height_*()`, the splitter and the
+    // side rails actually read, and it had no control anywhere in the app.
+    //
+    // So the one screen for tuning density could not touch a single dimension
+    // the eye reads as density. Every one of these is authorable in a theme
+    // pack; there was simply no way to try a value before writing it.
     two_axis_section(ui, "Density", hdr, |ui| {
         two_axis_f32(ui, "factor",                 &mut s.density.factor,                 0.5..=2.0);
-        two_axis_f32(ui, "row_height_dense",        &mut s.density.row_height_dense,        10.0..=60.0);
-        two_axis_f32(ui, "row_height_comfortable",  &mut s.density.row_height_comfortable,  10.0..=80.0);
+
+        ui.label(RichText::new("legacy").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        two_axis_f32(ui, "  row_height_dense",       &mut s.density.row_height_dense,       10.0..=60.0);
+        two_axis_f32(ui, "  row_height_comfortable", &mut s.density.row_height_comfortable, 10.0..=80.0);
+
+        // The ladder that actually drives list rows.
+        ui.label(RichText::new("rows").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        two_axis_f32(ui, "  row_dense",    &mut s.density.row_dense,    10.0..=60.0);
+        two_axis_f32(ui, "  row_compact",  &mut s.density.row_compact,  10.0..=60.0);
+        two_axis_f32(ui, "  row_default",  &mut s.density.row_default,  10.0..=60.0);
+        two_axis_f32(ui, "  row_spacious", &mut s.density.row_spacious, 10.0..=60.0);
+        two_axis_f32(ui, "  row_tall",     &mut s.density.row_tall,     10.0..=80.0);
+
+        // Control-height ladder — Size::{Xs..Xl}::height().
+        ui.label(RichText::new("controls").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        two_axis_f32(ui, "  control_xs", &mut s.density.control_xs, 10.0..=60.0);
+        two_axis_f32(ui, "  control_sm", &mut s.density.control_sm, 10.0..=60.0);
+        two_axis_f32(ui, "  control_md", &mut s.density.control_md, 10.0..=60.0);
+        two_axis_f32(ui, "  control_lg", &mut s.density.control_lg, 10.0..=80.0);
+        two_axis_f32(ui, "  control_xl", &mut s.density.control_xl, 10.0..=90.0);
+
+        // Chrome proportions.
+        ui.label(RichText::new("chrome").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        two_axis_f32(ui, "  splitter_width", &mut s.density.splitter_width, 1.0..=20.0);
+        two_axis_f32(ui, "  rail_narrow",    &mut s.density.rail_narrow,    120.0..=600.0);
+        two_axis_f32(ui, "  rail_medium",    &mut s.density.rail_medium,    120.0..=600.0);
+        two_axis_f32(ui, "  rail_wide",      &mut s.density.rail_wide,      120.0..=800.0);
     });
 
     // ── Shadows ───────────────────────────────────────────────────────────────

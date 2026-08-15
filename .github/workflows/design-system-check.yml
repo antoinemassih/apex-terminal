@@ -55,3 +55,18 @@ jobs:
       - name: Run control-size lint (literal control heights)
         if: ${{ !cancelled() }}
         run: python scripts/control_size_lint.py
+
+      # The CONSUMPTION gate. The lints above ask "is this value a token?".
+      # This one asks the opposite and previously-unasked question: "does
+      # anything READ this token?"
+      #
+      # It exists because new token defaults are deliberately set equal to the
+      # literal they replace, so an unauthored style renders byte-identically —
+      # which means nothing moves when a token IS wired and nothing breaks when
+      # it ISN'T. `splitter_width` shipped with zero consumers behind a comment
+      # defending the literal; `row_height_comfortable` had none for four days
+      # after its milestone was marked complete. No compiler or test can see
+      # that. Only a call-site count can.
+      - name: Run token-consumer gate (authorable but unread tokens)
+        if: ${{ !cancelled() }}
+        run: python dev/token_consumer_gate.py

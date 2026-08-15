@@ -103,8 +103,12 @@ pub struct TokenSnapshot {
     /// Default tab treatment for ui-kit Tabs widgets (0=Line, 1=Segmented,
     /// 2=Filled, 3=Card, 4=Pane). Populated by begin_frame from StyleSettings.
     /// Kept as u8 so the chart-side `begin_frame` struct literal needs no change.
-    /// Read via the typed accessor `panel_tab_treatment_typed()` in new ui_kit code,
-    /// or via `style_panel_header_treatment()` for the design_system enum form.
+    /// Read via `style_tab_treatment()`, which is the accessor that is actually
+    /// consumed. AUDIT 2026-08: this doc used to point at
+    /// `panel_tab_treatment_typed()` and `style_panel_header_treatment()` —
+    /// both had ZERO consumers, and the latter returned a hardcoded Default
+    /// rather than reading the snapshot at all. Both are deleted; panel-header
+    /// treatment needs its own snapshot field before it can mean anything.
     pub panel_tab_treatment: u8,
 
     // ── S3: `pane_active_indicator` and `panel_header_treatment` ─────────────
@@ -1095,30 +1099,6 @@ pub fn style_pane_active_indicator() -> crate::design_system::style_system::Pane
     crate::design_system::style_system::PaneActiveIndicator::default()
 }
 
-/// Returns the panel-header treatment.
-///
-/// **S3 status**: the `TokenSnapshot` does not yet carry a `panel_header_treatment`
-/// field (same reason as `style_pane_active_indicator`). Returns the typed enum
-/// Default (`PanelHeaderTreatment::Line`) until the field is wired in a later
-/// round. For the tab-treatment value (which IS in the snapshot via
-/// `panel_tab_treatment: u8`), use `panel_tab_treatment_typed()` instead.
-#[inline]
-pub fn style_panel_header_treatment() -> crate::design_system::style_system::PanelHeaderTreatment {
-    crate::design_system::style_system::PanelHeaderTreatment::default()
-}
-
-/// Typed accessor for `panel_tab_treatment` — converts the snapshot's u8 field
-/// to the `design_system` enum. Equivalent to `style_tab_treatment()` but
-/// returns `PanelHeaderTreatment` instead of `TabTreatment`.
-///
-/// This is the production-ready typed path: `panel_tab_treatment: u8` is
-/// already in `TokenSnapshot` and populated by chart-side `begin_frame`.
-#[inline]
-pub fn panel_tab_treatment_typed() -> crate::design_system::style_system::PanelHeaderTreatment {
-    crate::design_system::style_system::PanelHeaderTreatment::from_u8(
-        frame_tokens().panel_tab_treatment,
-    )
-}
 
 // ─── Surface bevel (portable) ────────────────────────────────────────────────
 //
