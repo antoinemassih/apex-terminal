@@ -145,6 +145,13 @@ pub struct TokenSnapshot {
     pub row_spacious: f32,
     pub row_tall: f32,
     pub splitter_width: f32,
+    /// Gutter between panes in the mosaic.
+    ///
+    /// Was readable only as `chart_renderer::ui::style::current().pane_gap` —
+    /// the bottom layer of the cascade — so the gutter ignored every layer
+    /// above it. Editing it in the F12 inspector or a hot-reloaded theme JSON
+    /// did nothing, while the panes it separates restyled normally.
+    pub pane_gap: f32,
     /// Control-height ladder backing `Size::height()` (M-refine).
     pub control_xs: f32,
     pub control_sm: f32,
@@ -203,6 +210,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     row_spacious:   24.0,
     row_tall:       30.0,
     splitter_width:  6.0,
+    pane_gap:        8.0,
     control_xs: 18.0, control_sm: 22.0, control_md: 28.0, control_lg: 34.0, control_xl: 40.0,
     rail_narrow:   240.0,
     rail_medium:   300.0,
@@ -532,6 +540,10 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 #[inline] pub fn row_height_tall()      -> f32 { frame_tokens().row_tall }
 /// Splitter / drag-handle thickness (per-style).
 #[inline] pub fn splitter_width()       -> f32 { frame_tokens().splitter_width }
+/// Mosaic pane gutter (per-style). Prefer this over reading
+/// `chart_renderer::ui::style::current().pane_gap` at paint time: that is the
+/// bottom of the cascade and skips the inspector / hot-reload layers above it.
+#[inline] pub fn pane_gap()             -> f32 { frame_tokens().pane_gap }
 /// Side-rail width presets (per-style).
 #[inline] pub fn control_h_xs()         -> f32 { frame_tokens().control_xs }
 #[inline] pub fn control_h_sm()         -> f32 { frame_tokens().control_sm }

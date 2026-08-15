@@ -10534,7 +10534,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         } else {
             legacy_count
         };
-        let gap = crate::chart_renderer::ui::style::current().pane_gap;
+        let gap = crate::ui_kit::style::pane_gap();
         let (visible_count, pane_rects) = if let Some(max_idx) = watchlist.maximized_pane {
             if max_idx < actual_count {
                 // Maximized: show only one pane fullscreen
@@ -10595,7 +10595,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
             // Vertical dividers (drag left/right to adjust column widths)
             let actual_header_h_v = pane_tabs_header_h(watchlist);
-            let v_gap = crate::chart_renderer::ui::style::current().pane_gap;
+            let v_gap = crate::ui_kit::style::pane_gap();
             let v_tol = v_gap / 2.0 + 3.0;
             for (di, &div_x) in v_dividers.iter().enumerate() {
                 // Union of all right-side pane rects (left edge ≈ div_x + gap/2)
@@ -10788,7 +10788,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             let pl_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
             let _changed = {
                 let pl = watchlist.pane_layout.as_mut().expect("checked some");
-                let gap_overlay = crate::chart_renderer::ui::style::current().pane_gap;
+                let gap_overlay = crate::ui_kit::style::pane_gap();
                 pl.show_overlays(ui, full_rect, gap_overlay, &pl_t)
             };
         }

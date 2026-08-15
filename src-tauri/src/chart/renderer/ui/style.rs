@@ -240,6 +240,15 @@ pub fn begin_frame() {
         row_spacious:   ass.density.row_spacious * dens,
         row_tall:       ass.density.row_tall     * dens,
         splitter_width: ass.density.splitter_width,
+        // Sourced from `st` (= `current()`), NOT from `ass.density`, and that is
+        // deliberate. `pane_gap` lives on StyleSettings and varies per style
+        // (8.0 default, 0.0 for the flush baseline); `Density` has no such
+        // field. Reading it off `ass.density` would mean inventing a default
+        // and silently overriding every style that authored 0.0 — a visible
+        // regression traded for a tidier line. Routing the existing value
+        // through the snapshot is byte-identical today and is what lets the
+        // override / inspector layers reach it at all.
+        pane_gap:       st.pane_gap,
         control_xs:     ass.density.control_xs * dens,
         control_sm:     ass.density.control_sm * dens,
         control_md:     ass.density.control_md * dens,
@@ -4221,6 +4230,70 @@ mod m1_ladder_tests {
 
         assert_eq!(snap.gap_md, 99.0, "authored gap_md must reach TokenSnapshot");
         assert_eq!(snap.font_sm, 33.0, "authored ui_sm must reach TokenSnapshot");
+    }
+
+    /// `pane_gap` routed through the snapshot must equal the value the mosaic
+    /// read before — for EVERY style, not just the default.
+    ///
+    /// The gutter used to be readable only as `current().pane_gap`, the bottom
+    /// layer of the cascade, so it ignored the inspector and hot-reload layers
+    /// above it. Moving the four paint-time reads onto `frame_tokens()` is only
+    /// safe if the snapshot carries the same number, and the danger is specific:
+    /// `DEFAULT_TOKEN_SNAPSHOT.pane_gap` is 8.0 while styles may author 0.0 for
+    /// a flush mosaic. Get the wiring wrong and every flush style grows an 8px
+    /// gutter — a change that compiles, passes every other test, and is only
+    /// visible to the eye.
+    ///
+    /// So this asserts equivalence per style, and pins a non-default value so
+    /// the test cannot pass by both sides being 8.0.
+    ///
+    /// NOTE ON ISOLATION — this test mutates the active style IN PLACE rather
+    /// than adding presets, and that is not a style preference. The sibling
+    /// tests pair `add_style_system` with `add_style_preset` because the two
+    /// stores are index-aligned and each asserts `sys_id == set_id`. A first
+    /// draft of this test called `add_style_preset` twice with no matching
+    /// system, drifting STYLE_STORE two slots ahead — which passed in
+    /// isolation and failed `authored_card_stack_reaches_ui_kit` (13 vs 15)
+    /// hundreds of tests later. `M1_GLOBAL_STATE_TEST_LOCK` does not help
+    /// here: it serialises ACCESS, while the damage was store GROWTH, which
+    /// outlives the lock. Mutating in place and restoring leaves no trace.
+    #[test]
+    fn pane_gap_snapshot_matches_style_settings() {
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
+        let original = get_style_settings(prev_active);
+
+        // A FLUSH mosaic — the case the 8.0 default would break.
+        let mut flush = original.clone();
+        flush.pane_gap = 0.0;
+        set_style_settings(prev_active, flush);
+        begin_frame();
+        let snap_flush = crate::ui_kit::style::pane_gap();
+        let settings_flush = current().pane_gap;
+
+        // ...and a wide gutter, to prove it TRACKS rather than pins.
+        let mut wide = original.clone();
+        wide.pane_gap = 13.0;
+        set_style_settings(prev_active, wide);
+        begin_frame();
+        let snap_wide = crate::ui_kit::style::pane_gap();
+        let settings_wide = current().pane_gap;
+
+        // Restore BEFORE asserting so a failure cannot poison other tests.
+        set_style_settings(prev_active, original);
+        begin_frame();
+
+        assert_eq!(settings_flush, 0.0, "fixture did not take: flush style");
+        assert_eq!(
+            snap_flush, settings_flush,
+            "flush mosaic (pane_gap 0.0) must survive the snapshot — an 8.0 \
+             default leaking here puts a gutter between every pane"
+        );
+        assert_eq!(settings_wide, 13.0, "fixture did not take: wide style");
+        assert_eq!(
+            snap_wide, settings_wide,
+            "pane_gap must TRACK the active style, not pin to one value"
+        );
     }
 
     /// AUDIT 2026-08: the STRUCTURAL half of the same proof.

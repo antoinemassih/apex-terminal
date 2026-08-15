@@ -749,7 +749,7 @@ impl Layout {
     pub(crate) fn pane_rects(self, rect: egui::Rect, count: usize, split_h: f32, split_v: f32, split_h2: f32, split_v2: f32, split_v3: f32, split_v4: f32, split_v5: f32, split_v6: f32) -> Vec<egui::Rect> {
         if count == 0 { return vec![]; }
         // pane_gap from StyleSettings lets the user control inter-pane spacing.
-        let gap = super::ui::style::current().pane_gap;
+        let gap = crate::ui_kit::style::pane_gap();
         match self {
             Layout::Two if count >= 2 => {
                 // Two side-by-side panes with adjustable horizontal split
