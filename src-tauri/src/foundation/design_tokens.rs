@@ -71,7 +71,7 @@ pub struct RadiusTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StrokeTokens {
     pub hair: f32, pub thin: f32, pub medium: f32, pub std: f32,
-    pub bold: f32, pub thick: f32, pub heavy: f32, pub xheavy: f32,
+    pub bold: f32, pub thick: f32, pub heavy: f32, 
     /// Decorative / accent rule (3 px). Backs `ui_kit::style::stroke_rule()`.
     ///
     /// Added because that accessor was a hardcoded `3.0` with 3 live call
@@ -94,46 +94,46 @@ pub struct AlphaTokens { pub faint: u8, pub ghost: u8, pub soft: u8, pub subtle:
 pub struct ShadowTokens { pub offset: f32, pub alpha: u8, pub spread: f32, pub gradient: [u8; 3] }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolbarTokens { pub height: f32, pub height_compact: f32, pub btn_min_height: f32, pub btn_padding_x: f32, pub right_controls_width: f32 }
+pub struct ToolbarTokens { pub height: f32,    }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PanelTokens { pub margin_x: f32, pub margin_top: f32, pub margin_bottom: f32, pub compact_margin_x: f32, pub compact_margin_top: f32, pub compact_margin_bottom: f32, pub width_sm: f32, pub width_md: f32, pub width_default: f32, pub width_lg: f32, pub width_xl: f32, pub order_width_compact: f32, pub order_width_advanced: f32, pub tooltip_width_sm: f32, pub tooltip_width_md: f32, pub content_width_lg: f32, pub content_width_xl: f32 }
+pub struct PanelTokens {  pub margin_top: f32, pub margin_bottom: f32,  pub compact_margin_top: f32, pub compact_margin_bottom: f32,        pub tooltip_width_sm: f32, pub tooltip_width_md: f32, pub content_width_lg: f32, pub content_width_xl: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DialogTokens { pub header_darken: u8, pub header_padding_x: f32, pub header_padding_y: f32, pub section_indent: f32 }
+pub struct DialogTokens { pub header_darken: u8,   }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ButtonTokens { pub action_height: f32, pub trade_height: f32, pub small_height: f32, pub simple_height: f32, pub trade_brightness: f32, pub trade_hover_brightness: f32 }
+pub struct ButtonTokens {      }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CardTokens { pub margin_left: i8, pub margin_right: i8, pub margin_y: i8, pub radius: f32, pub stripe_width: f32, pub width_sm: f32, pub width_md: f32, pub height_sm: f32, pub height_md: f32, pub height_lg: f32 }
+pub struct CardTokens { pub margin_left: i8, pub margin_right: i8, pub margin_y: i8, pub radius: f32, pub stripe_width: f32,     }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BadgeTokens { pub font_size: f32, pub height: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TabTokens { pub underline_thickness: f32, pub close_width: f32, pub padding_x: f32, pub add_width: f32 }
+pub struct TabTokens {    }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TableTokens { pub header_height: f32, pub row_height: f32, pub row_height_compact: f32, pub item_height: f32, pub interact_height: f32 }
+pub struct TableTokens { pub header_height: f32,    }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChartTokens { pub right_pad_bars: u32, pub padding_bottom: f32, pub padding_top: f32, pub padding_right: f32, pub replay_height: f32, pub replay_progress_height: f32, pub pnl_strip_height: f32, pub pnl_header_height: f32, pub style_bar_width: f32 }
+pub struct ChartTokens { pub right_pad_bars: u32, pub padding_bottom: f32, pub padding_top: f32, pub padding_right: f32,  pub replay_progress_height: f32,   }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WatchlistTokens { pub row_width: f32, pub strip_width: f32, pub strip_width_narrow: f32 }
+pub struct WatchlistTokens {   }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrderEntryTokens { pub padding: f32, pub pill_width_sm: f32, pub pill_width_md: f32, pub pill_height: f32 }
+pub struct OrderEntryTokens { pub padding: f32,   }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaneHeaderTokens { pub height_compact: f32, pub height: f32 }
+pub struct PaneHeaderTokens {  pub height: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SegmentedTokens { pub trough_darken: u8, pub trough_expand_x: f32, pub btn_padding_x: f32, pub btn_min_height: f32 }
+pub struct SegmentedTokens { pub trough_darken: u8, pub trough_expand_x: f32,  }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IconButtonTokens { pub icon_padding: f32, pub min_size: f32 }
+pub struct IconButtonTokens {  pub min_size: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormTokens { pub label_width: f32, pub row_height: f32 }
@@ -328,23 +328,23 @@ impl Default for DesignTokens {
             font: FontTokens { xxs: 8.0, xs: 9.0, sm_tight: 10.0, sm: 11.0, md: 13.0, input: 13.0, lg: 16.0, xl: 22.0, xxl: 28.0, display: 32.0, display_lg: 42.0 },
             spacing: SpacingTokens { xs: 4.0, xs_mid: 6.0, sm: 8.0, md: 12.0, lg: 16.0, xl: 20.0, xxl: 24.0, xxxl: 32.0 },
             radius: RadiusTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0 },
-            stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5, xheavy: 5.0, rule: 3.0 },
+            stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5,  rule: 3.0 },
             alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, scrim: 140, solid: 200 },
             shadow: ShadowTokens { offset: 2.0, alpha: 60, spread: 4.0, gradient: [20, 12, 4] },
-            toolbar: ToolbarTokens { height: 36.0, height_compact: 28.0, btn_min_height: 24.0, btn_padding_x: 7.0, right_controls_width: 150.0 },
-            panel: PanelTokens { margin_x: 10.0, margin_top: 10.0, margin_bottom: 8.0, compact_margin_x: 8.0, compact_margin_top: 8.0, compact_margin_bottom: 6.0, width_sm: 240.0, width_md: 260.0, width_default: 280.0, width_lg: 300.0, width_xl: 320.0, order_width_compact: 230.0, order_width_advanced: 300.0, tooltip_width_sm: 160.0, tooltip_width_md: 220.0, content_width_lg: 520.0, content_width_xl: 680.0 },
-            dialog: DialogTokens { header_darken: 8, header_padding_x: 10.0, header_padding_y: 8.0, section_indent: 10.0 },
-            button: ButtonTokens { action_height: 24.0, trade_height: 30.0, small_height: 18.0, simple_height: 20.0, trade_brightness: 0.55, trade_hover_brightness: 0.7 },
-            card: CardTokens { margin_left: 9, margin_right: 6, margin_y: 5, radius: 4.0, stripe_width: 3.0, width_sm: 200.0, width_md: 240.0, height_sm: 48.0, height_md: 52.0, height_lg: 120.0 },
+            toolbar: ToolbarTokens { height: 36.0,    },
+            panel: PanelTokens {  margin_top: 10.0, margin_bottom: 8.0,  compact_margin_top: 8.0, compact_margin_bottom: 6.0,        tooltip_width_sm: 160.0, tooltip_width_md: 220.0, content_width_lg: 520.0, content_width_xl: 680.0 },
+            dialog: DialogTokens { header_darken: 8,   },
+            button: ButtonTokens {      },
+            card: CardTokens { margin_left: 9, margin_right: 6, margin_y: 5, radius: 4.0, stripe_width: 3.0,     },
             badge: BadgeTokens { font_size: 8.0, height: 16.0 },
-            tab: TabTokens { underline_thickness: 2.0, close_width: 14.0, padding_x: 10.0, add_width: 44.0 },
-            table: TableTokens { header_height: 12.0, row_height: 20.0, row_height_compact: 18.0, item_height: 36.0, interact_height: 22.0 },
-            chart: ChartTokens { right_pad_bars: 20, padding_bottom: 30.0, padding_top: 4.0, padding_right: 80.0, replay_height: 28.0, replay_progress_height: 6.0, pnl_strip_height: 60.0, pnl_header_height: 68.0, style_bar_width: 480.0 },
-            watchlist: WatchlistTokens { row_width: 236.0, strip_width: 50.0, strip_width_narrow: 14.0 },
-            order_entry: OrderEntryTokens { padding: 8.0, pill_width_sm: 90.0, pill_width_md: 130.0, pill_height: 22.0 },
-            pane_header: PaneHeaderTokens { height_compact: 28.0, height: 36.0 },
-            segmented: SegmentedTokens { trough_darken: 12, trough_expand_x: 4.0, btn_padding_x: 7.0, btn_min_height: 24.0 },
-            icon_button: IconButtonTokens { icon_padding: 5.0, min_size: 26.0 },
+            tab: TabTokens {    },
+            table: TableTokens { header_height: 12.0,    },
+            chart: ChartTokens { right_pad_bars: 20, padding_bottom: 30.0, padding_top: 4.0, padding_right: 80.0,  replay_progress_height: 6.0,   },
+            watchlist: WatchlistTokens {   },
+            order_entry: OrderEntryTokens { padding: 8.0,   },
+            pane_header: PaneHeaderTokens {  height: 36.0 },
+            segmented: SegmentedTokens { trough_darken: 12, trough_expand_x: 4.0,  },
+            icon_button: IconButtonTokens {  min_size: 26.0 },
             form: FormTokens { label_width: 80.0, row_height: 18.0 },
             split_divider: SplitDividerTokens { height: 6.0, dot_spacing: 8.0, dot_radius: 1.5, dot_count: 3, active_stroke: 2.0, inactive_stroke: 1.0, inset: 8.0 },
             tooltip: TooltipTokens { corner_radius: 8.0, padding: 8.0, stat_label_size: 8.0, stat_value_size: 10.0 },

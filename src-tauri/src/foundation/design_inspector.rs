@@ -906,7 +906,6 @@ let _ = ctx;
                 changed |= drag_f32(ui, "bold (1.5)", &mut tokens.stroke.bold, 0.0..=5.0);
                 changed |= drag_f32(ui, "thick (2.0)", &mut tokens.stroke.thick, 0.0..=8.0);
                 changed |= drag_f32(ui, "heavy (2.5)", &mut tokens.stroke.heavy, 0.0..=8.0);
-                changed |= drag_f32(ui, "xheavy (5.0)", &mut tokens.stroke.xheavy, 0.0..=10.0);
                 changed |= drag_f32(ui, "rule (3.0)", &mut tokens.stroke.rule, 0.0..=8.0);
             }
             Category::Alpha => {
@@ -968,39 +967,17 @@ let _ = ctx;
             }
             Category::Toolbar => {
                 changed |= drag_f32(ui, "height", &mut tokens.toolbar.height, 20.0..=60.0);
-                changed |= drag_f32(ui, "height_compact", &mut tokens.toolbar.height_compact, 16.0..=50.0);
-                changed |= drag_f32(ui, "btn_min_height", &mut tokens.toolbar.btn_min_height, 14.0..=40.0);
-                changed |= drag_f32(ui, "btn_padding_x", &mut tokens.toolbar.btn_padding_x, 0.0..=20.0);
-                changed |= drag_f32(ui, "right_controls_w", &mut tokens.toolbar.right_controls_width, 50.0..=300.0);
             }
             Category::Panel => {
-                changed |= drag_f32(ui, "margin_x", &mut tokens.panel.margin_x, 0.0..=30.0);
                 changed |= drag_f32(ui, "margin_top", &mut tokens.panel.margin_top, 0.0..=30.0);
                 changed |= drag_f32(ui, "margin_bottom", &mut tokens.panel.margin_bottom, 0.0..=30.0);
-                changed |= drag_f32(ui, "compact_margin_x", &mut tokens.panel.compact_margin_x, 0.0..=20.0);
                 ui.add_space(4.0);
                 ui.label(RichText::new("Widths").monospace().size(font_xs()).color(Color32::from_rgb(130, 130, 140)));
-                changed |= drag_f32(ui, "width_sm (240)", &mut tokens.panel.width_sm, 100.0..=500.0);
-                changed |= drag_f32(ui, "width_md (260)", &mut tokens.panel.width_md, 100.0..=500.0);
-                changed |= drag_f32(ui, "width_default (280)", &mut tokens.panel.width_default, 100.0..=500.0);
-                changed |= drag_f32(ui, "width_lg (300)", &mut tokens.panel.width_lg, 100.0..=500.0);
-                changed |= drag_f32(ui, "width_xl (320)", &mut tokens.panel.width_xl, 100.0..=500.0);
-                changed |= drag_f32(ui, "order_compact (230)", &mut tokens.panel.order_width_compact, 100.0..=500.0);
-                changed |= drag_f32(ui, "order_advanced (300)", &mut tokens.panel.order_width_advanced, 100.0..=500.0);
             }
             Category::Dialog => {
                 changed |= drag_u8_range(ui, "header_darken", &mut tokens.dialog.header_darken, 0..=30);
-                changed |= drag_f32(ui, "header_padding_x", &mut tokens.dialog.header_padding_x, 0.0..=30.0);
-                changed |= drag_f32(ui, "header_padding_y", &mut tokens.dialog.header_padding_y, 0.0..=30.0);
-                changed |= drag_f32(ui, "section_indent", &mut tokens.dialog.section_indent, 0.0..=30.0);
             }
             Category::Button => {
-                changed |= drag_f32(ui, "action_height (24)", &mut tokens.button.action_height, 14.0..=50.0);
-                changed |= drag_f32(ui, "trade_height (30)", &mut tokens.button.trade_height, 14.0..=50.0);
-                changed |= drag_f32(ui, "small_height (18)", &mut tokens.button.small_height, 10.0..=40.0);
-                changed |= drag_f32(ui, "simple_height (20)", &mut tokens.button.simple_height, 10.0..=40.0);
-                changed |= drag_f32(ui, "trade_brightness", &mut tokens.button.trade_brightness, 0.1..=1.0);
-                changed |= drag_f32(ui, "trade_hover_bright", &mut tokens.button.trade_hover_brightness, 0.1..=1.0);
             }
             Category::Card => {
                 changed |= drag_i8(ui, "margin_left", &mut tokens.card.margin_left);
@@ -1008,61 +985,34 @@ let _ = ctx;
                 changed |= drag_i8(ui, "margin_y", &mut tokens.card.margin_y);
                 changed |= drag_f32(ui, "radius", &mut tokens.card.radius, 0.0..=20.0);
                 changed |= drag_f32(ui, "stripe_width", &mut tokens.card.stripe_width, 0.0..=10.0);
-                changed |= drag_f32(ui, "width_sm (200)", &mut tokens.card.width_sm, 50.0..=400.0);
-                changed |= drag_f32(ui, "width_md (240)", &mut tokens.card.width_md, 50.0..=400.0);
-                changed |= drag_f32(ui, "height_sm (48)", &mut tokens.card.height_sm, 20.0..=200.0);
-                changed |= drag_f32(ui, "height_md (52)", &mut tokens.card.height_md, 20.0..=200.0);
-                changed |= drag_f32(ui, "height_lg (120)", &mut tokens.card.height_lg, 40.0..=300.0);
             }
             Category::Badge => {
                 changed |= drag_f32(ui, "font_size (8)", &mut tokens.badge.font_size, 4.0..=16.0);
                 changed |= drag_f32(ui, "height (16)", &mut tokens.badge.height, 8.0..=30.0);
             }
             Category::Tab => {
-                changed |= drag_f32(ui, "underline (2.0)", &mut tokens.tab.underline_thickness, 0.0..=6.0);
-                changed |= drag_f32(ui, "close_width (14)", &mut tokens.tab.close_width, 8.0..=30.0);
-                changed |= drag_f32(ui, "padding_x (10)", &mut tokens.tab.padding_x, 0.0..=30.0);
-                changed |= drag_f32(ui, "add_width (44)", &mut tokens.tab.add_width, 20.0..=80.0);
             }
             Category::Table => {
                 changed |= drag_f32(ui, "header_height (12)", &mut tokens.table.header_height, 8.0..=30.0);
-                changed |= drag_f32(ui, "row_height (20)", &mut tokens.table.row_height, 10.0..=50.0);
-                changed |= drag_f32(ui, "row_compact (18)", &mut tokens.table.row_height_compact, 10.0..=50.0);
-                changed |= drag_f32(ui, "item_height (36)", &mut tokens.table.item_height, 14.0..=60.0);
-                changed |= drag_f32(ui, "interact_height (22)", &mut tokens.table.interact_height, 10.0..=40.0);
             }
             Category::Chart => {
                 changed |= drag_f32(ui, "padding_top (4)", &mut tokens.chart.padding_top, 0.0..=30.0);
                 changed |= drag_f32(ui, "padding_bottom (30)", &mut tokens.chart.padding_bottom, 0.0..=60.0);
                 changed |= drag_f32(ui, "padding_right (80)", &mut tokens.chart.padding_right, 20.0..=200.0);
-                changed |= drag_f32(ui, "replay_height (28)", &mut tokens.chart.replay_height, 14.0..=50.0);
-                changed |= drag_f32(ui, "pnl_strip_h (60)", &mut tokens.chart.pnl_strip_height, 20.0..=120.0);
-                changed |= drag_f32(ui, "pnl_header_h (68)", &mut tokens.chart.pnl_header_height, 30.0..=120.0);
-                changed |= drag_f32(ui, "style_bar_w (480)", &mut tokens.chart.style_bar_width, 200.0..=800.0);
             }
             Category::Watchlist => {
-                changed |= drag_f32(ui, "row_width (236)", &mut tokens.watchlist.row_width, 100.0..=400.0);
-                changed |= drag_f32(ui, "strip_width (50)", &mut tokens.watchlist.strip_width, 20.0..=100.0);
-                changed |= drag_f32(ui, "strip_narrow (14)", &mut tokens.watchlist.strip_width_narrow, 4.0..=40.0);
             }
             Category::OrderEntry => {
                 changed |= drag_f32(ui, "padding (8)", &mut tokens.order_entry.padding, 0.0..=20.0);
-                changed |= drag_f32(ui, "pill_width_sm (90)", &mut tokens.order_entry.pill_width_sm, 40.0..=200.0);
-                changed |= drag_f32(ui, "pill_width_md (130)", &mut tokens.order_entry.pill_width_md, 60.0..=250.0);
-                changed |= drag_f32(ui, "pill_height (22)", &mut tokens.order_entry.pill_height, 14.0..=40.0);
             }
             Category::PaneHeader => {
                 changed |= drag_f32(ui, "height (36)", &mut tokens.pane_header.height, 20.0..=60.0);
-                changed |= drag_f32(ui, "height_compact (28)", &mut tokens.pane_header.height_compact, 16.0..=50.0);
             }
             Category::Segmented => {
                 changed |= drag_u8_range(ui, "trough_darken (12)", &mut tokens.segmented.trough_darken, 0..=30);
                 changed |= drag_f32(ui, "trough_expand_x (4)", &mut tokens.segmented.trough_expand_x, 0.0..=20.0);
-                changed |= drag_f32(ui, "btn_padding_x (7)", &mut tokens.segmented.btn_padding_x, 0.0..=20.0);
-                changed |= drag_f32(ui, "btn_min_height (24)", &mut tokens.segmented.btn_min_height, 14.0..=40.0);
             }
             Category::IconButton => {
-                changed |= drag_f32(ui, "icon_padding (5)", &mut tokens.icon_button.icon_padding, 0.0..=20.0);
                 changed |= drag_f32(ui, "min_size (26)", &mut tokens.icon_button.min_size, 14.0..=50.0);
             }
             Category::Form => {
@@ -1155,11 +1105,6 @@ let _ = ctx;
                     changed |= drag_f32(ui, "padding (8)", &mut tokens.tooltip.padding, 0.0..=20.0);
                     changed |= drag_f32(ui, "stat_label (8)", &mut tokens.tooltip.stat_label_size, 4.0..=16.0);
                     changed |= drag_f32(ui, "stat_value (10)", &mut tokens.tooltip.stat_value_size, 4.0..=16.0);
-                });
-
-                egui::CollapsingHeader::new(RichText::new("TAB").monospace().size(11.0).strong())
-                    .id_salt("comp_tab").default_open(false).show(ui, |ui| {
-                    changed |= drag_f32(ui, "underline (2.0)", &mut tokens.tab.underline_thickness, 0.0..=6.0);
                 });
 
                 egui::CollapsingHeader::new(RichText::new("TABLE").monospace().size(11.0).strong())

@@ -130,7 +130,11 @@ def main():
 
     print(f"inspector-slider gate: PASS ({len(dead)} dead of {len(sliders)}, ceiling {len(base)})")
     if fixed:
-        print(f"Newly wired ({len(fixed)}) — re-baseline to lock in:")
+        # "no longer dead" rather than "wired": a slider leaves this list either
+        # by gaining a consumer OR by being deleted, and those are very
+        # different outcomes. Saying "wired" would let a deletion read as a
+        # feature — the same flattery the gate exists to prevent.
+        print(f"No longer dead ({len(fixed)}) — wired or removed; re-baseline to lock in:")
         for p in fixed:
             print(f"   {p}")
     return 0
