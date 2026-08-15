@@ -2177,6 +2177,10 @@ pub struct StyleSettings {
     pub toolbar_height_scale: f32,
     /// Multiplier applied when scaling pane header height (1.0 = baseline, 1.1 = Meridien).
     pub header_height_scale: f32,
+    /// Per-style px adjustment for a COMPACT pane header. See
+    /// `Chrome::pane_header_compact_adjust` — it replaced a hardcoded match on
+    /// the style INDEX that was duplicated across two renderer functions.
+    pub pane_header_compact_adjust: f32,
     /// Hero numeric font size in pt (22 for Relay, 36 for Meridien).
     pub font_hero: f32,
     /// Paint full-height vertical divider lines between toolbar button clusters.
@@ -2507,7 +2511,7 @@ fn style_defaults_legacy(id: usize) -> StyleSettings {
             stroke_bold: 1.5, stroke_thick: 2.0,
             shadows_enabled: true, solid_active_fills: false, invert_active_fill: false,
             uppercase_section_labels: false, label_letter_spacing_px: 0.8,
-            toolbar_height_scale: 1.0, header_height_scale: 1.0,
+            toolbar_height_scale: 1.0, header_height_scale: 1.0, pane_header_compact_adjust: 0.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
@@ -2565,7 +2569,7 @@ fn style_defaults_legacy(id: usize) -> StyleSettings {
             stroke_bold: 1.0, stroke_thick: 1.4,
             shadows_enabled: false, solid_active_fills: true, invert_active_fill: false,
             uppercase_section_labels: true, label_letter_spacing_px: 0.0,
-            toolbar_height_scale: 1.0, header_height_scale: 1.0,
+            toolbar_height_scale: 1.0, header_height_scale: 1.0, pane_header_compact_adjust: 0.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
@@ -2623,7 +2627,7 @@ fn style_defaults_legacy(id: usize) -> StyleSettings {
             stroke_bold: 1.5, stroke_thick: 2.0,
             shadows_enabled: true, solid_active_fills: true, invert_active_fill: true,
             uppercase_section_labels: true, label_letter_spacing_px: 0.0,
-            toolbar_height_scale: 1.40, header_height_scale: 1.10,
+            toolbar_height_scale: 1.40, header_height_scale: 1.10, pane_header_compact_adjust: 0.0,
             font_hero: 36.0, vertical_group_dividers: true,
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
@@ -2785,6 +2789,7 @@ pub fn style_system_to_style_settings(
         // ── Chrome (geometry + finish) ───────────────────────────────────────
         toolbar_height_scale:          ss.chrome.toolbar_height_scale,
         header_height_scale:           ss.chrome.header_height_scale,
+        pane_header_compact_adjust:    ss.chrome.pane_header_compact_adjust,
         account_strip_height:          ss.chrome.account_strip_height,
         pane_border_width:             ss.chrome.pane_border_width,
         pane_gap:                      ss.chrome.pane_gap,

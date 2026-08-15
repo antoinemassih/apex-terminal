@@ -297,6 +297,7 @@ impl StyleSystem {
             "chrome": {
                 "toolbar_height_scale":          num!(ch.toolbar_height_scale),
                 "header_height_scale":           num!(ch.header_height_scale),
+                "pane_header_compact_adjust": num!(ch.pane_header_compact_adjust),
                 "account_strip_height":          dim!(ch.account_strip_height),
                 "pane_border_width":             dim!(ch.pane_border_width),
                 "pane_gap":                      dim!(ch.pane_gap),

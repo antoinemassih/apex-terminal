@@ -1190,6 +1190,15 @@
     },
     {
       "collection": "StyleSystem",
+      "name": "chrome/pane_header_compact_adjust",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
       "name": "chrome/panel_footer_card",
       "type": "BOOLEAN",
       "valuesByMode": {

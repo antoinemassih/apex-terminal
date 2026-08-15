@@ -594,6 +594,7 @@ impl StyleSystem {
         let chrome = Chrome {
             toolbar_height_scale:          read_f32_or(&ch_sec, "toolbar_height_scale",          "chrome", d_ch.toolbar_height_scale),
             header_height_scale:           read_f32_or(&ch_sec, "header_height_scale",           "chrome", d_ch.header_height_scale),
+            pane_header_compact_adjust: read_f32_or(&ch_sec, "pane_header_compact_adjust", "chrome", d_ch.pane_header_compact_adjust),
             account_strip_height:          read_f32_or(&ch_sec, "account_strip_height",          "chrome", d_ch.account_strip_height),
             pane_border_width:             read_f32_or(&ch_sec, "pane_border_width",             "chrome", d_ch.pane_border_width),
             pane_gap:                      read_f32_or(&ch_sec, "pane_gap",                      "chrome", d_ch.pane_gap),
@@ -957,7 +958,8 @@ mod tests {
                 panel_section_fill_alpha: 18,
                 panel_footer_card: true,
                 panel_footer_radius: 8.0,
-            },
+                    ..Chrome::default()
+                },
             numerals: None,
         };
 

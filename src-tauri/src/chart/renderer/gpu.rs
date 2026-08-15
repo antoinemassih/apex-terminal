@@ -312,16 +312,34 @@ pub(crate) fn style_id(wl: &Watchlist) -> u8 {
     if presets.iter().any(|(id, _)| *id == idx) { idx } else { 0 }
 }
 
+/// Apply the active style's compact-header adjustment to `base`.
+///
+/// AUDIT 2026-08 — the two pane-header height functions each carried an
+/// identical `match (style_id(wl), wl.pane_header_size)` with the tweaks keyed
+/// by style INDEX. Reordering the style list silently reassigned them, `1` and
+/// `2` meant nothing without looking them up, and a new style could not express
+/// the adjustment without editing both functions in the renderer.
+///
+/// The adjustment is now a token each style authors; only the FLOOR differs
+/// between the two headers, so it stays a parameter.
+fn compact_adjusted(base: f32, wl: &Watchlist, floor: f32) -> f32 {
+    use crate::chart_renderer::PaneHeaderSize;
+    if wl.pane_header_size != PaneHeaderSize::Compact {
+        return base;
+    }
+    let adj = super::ui::style::current().pane_header_compact_adjust;
+    if adj >= 0.0 { base + adj } else { (base + adj).max(floor) }
+}
+
 /// Style-aware non-tabs pane header height. Mirrors `PaneHeaderSize::header_h`
 /// but lets specific styles tweak vertical density.
 pub(crate) fn pane_header_h(wl: &Watchlist) -> f32 {
     use crate::chart_renderer::PaneHeaderSize;
     let base = wl.pane_header_size.header_h();
-    let style_adj = match (style_id(wl), wl.pane_header_size) {
-        (1, PaneHeaderSize::Compact) => base + 2.0,
-        (2, PaneHeaderSize::Compact) => (base - 2.0).max(16.0),
-        _ => base,
-    };
+    // Per-style compact adjustment comes from the STYLE, not from a match on
+    // its index — see `Chrome::pane_header_compact_adjust`. The floor stays
+    // here because it is this header mode's, not the style's.
+    let style_adj = compact_adjusted(base, wl, 16.0);
     // Multiply by current().header_height_scale so the design-mode slider has effect.
     (style_adj * super::ui::style::current().header_height_scale).max(12.0)
 }
@@ -459,11 +477,7 @@ fn paint_pane_card_frames(ctx: &egui::Context, panes: &[Chart], layout: Layout, 
 pub(crate) fn pane_tabs_header_h(wl: &Watchlist) -> f32 {
     use crate::chart_renderer::PaneHeaderSize;
     let base = wl.pane_header_size.tabs_header_h();
-    let style_adj = match (style_id(wl), wl.pane_header_size) {
-        (1, PaneHeaderSize::Compact) => base + 2.0,
-        (2, PaneHeaderSize::Compact) => (base - 2.0).max(20.0),
-        _ => base,
-    };
+    let style_adj = compact_adjusted(base, wl, 20.0);
     (style_adj * super::ui::style::current().header_height_scale).max(16.0)
 }
 

@@ -1187,6 +1187,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             footer_default_open: false,
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
             panel_footer_card: false, panel_footer_radius: 0.0,
+            ..Chrome::default()
         },
         numerals: None,
     };
@@ -1314,6 +1315,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             card_floating_shadow: false, shadows_enabled: true, animations_enabled: true,
         },
         chrome: Chrome {
+            // Was `(1, Compact) => base + 2.0` in two renderer functions.
+            pane_header_compact_adjust: 2.0,
             toolbar_height_scale: 1.0, header_height_scale: 1.0, account_strip_height: 26.0,
             pane_border_width: 1.0, pane_gap: 8.0, pane_gap_alpha: 0, pane_active_indicator: 2,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
@@ -1337,6 +1340,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             // Aperture side panels: filled header toggle + pinned P&L card.
             panel_header_treatment: 2, panel_section_fill_alpha: 0,
             panel_footer_card: true, panel_footer_radius: 10.0,
+            ..Chrome::default()
         },
         numerals: None,
     };
@@ -1452,6 +1456,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         icons: Icons::default(),
         line_heights: LineHeights::default(),
         chrome: Chrome {
+            // Was `(2, Compact) => base - 2.0` in two renderer functions.
+            pane_header_compact_adjust: -2.0,
             toolbar_height_scale: 1.0, header_height_scale: 1.0, account_strip_height: 26.0,
             pane_border_width: 1.0, pane_gap: 2.0, pane_gap_alpha: 15, pane_active_indicator: 3,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
@@ -1472,6 +1478,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             footer_default_open: true, // Octave is a dense desk style — ops footer on by default.
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
             panel_footer_card: false, panel_footer_radius: 0.0,
+            ..Chrome::default()
         },
         numerals: None,
     };

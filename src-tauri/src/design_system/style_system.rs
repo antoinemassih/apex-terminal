@@ -1080,6 +1080,25 @@ pub struct Chrome {
     pub toolbar_height_scale: f32,
     /// Multiplier on pane-header height.
     pub header_height_scale: f32,
+    /// Extra px added to the pane header when the user picks the COMPACT
+    /// header size. Per-style, because how much a compact header can give up
+    /// depends on what that style puts in it.
+    ///
+    /// AUDIT 2026-08 — this was a hardcoded index match, written twice:
+    ///
+    ///     match (style_id(wl), wl.pane_header_size) {
+    ///         (1, Compact) => base + 2.0,
+    ///         (2, Compact) => (base - 2.0).max(..),
+    ///         _ => base,
+    ///     }
+    ///
+    /// duplicated in `pane_header_h` and `pane_tabs_header_h`. `1` means
+    /// Aperture and `2` means Octave only if you go and look, reordering the
+    /// style list silently reassigns the tweaks, and a new style cannot express
+    /// this at all without editing two functions in the renderer. Per-style
+    /// behaviour belongs in the style.
+    #[serde(default)]
+    pub pane_header_compact_adjust: f32,
     /// Account strip panel height (px).
     pub account_strip_height: f32,
     /// Pane outline thickness (px).
@@ -1217,6 +1236,7 @@ impl Default for Chrome {
         Self {
             toolbar_height_scale: 1.0,
             header_height_scale: 1.0,
+            pane_header_compact_adjust: 0.0,
             account_strip_height: 26.0,
             pane_border_width: 1.0,
             pane_gap: 0.0,
