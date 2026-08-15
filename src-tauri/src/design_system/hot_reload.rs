@@ -91,6 +91,26 @@ fn install_override(style: StyleSystem) {
     }
 }
 
+/// Test-only door onto the override slot.
+///
+/// AUDIT 2026-08: the override path had no test coverage at all, which is how
+/// `begin_frame` came to consume 36 of the 71 fields the watcher parses without
+/// anything noticing. Reaching the slot required the filesystem watcher, so the
+/// behaviour was only reachable by hand — and a path only reachable by hand is a
+/// path nobody checks.
+#[cfg(test)]
+pub fn install_override_for_test(style: StyleSystem) {
+    install_override(style);
+}
+
+/// Clear the override slot. See [`install_override_for_test`].
+#[cfg(test)]
+pub fn clear_override_for_test() {
+    if let Ok(mut guard) = override_slot().write() {
+        *guard = None;
+    }
+}
+
 // ── Themes dir (cross-module access for the in-app TwoAxis editor) ───────────
 //
 // `start_theme_watcher` stashes the live themes directory here so the design-

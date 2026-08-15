@@ -83,7 +83,20 @@ pub fn begin_frame() {
     // Unauthored styles hold the serde-default ladder (= the previous hard
     // literals), so this wire-up is byte-identical until a style AUTHORS a
     // ladder — at which point the whitespace/type axes finally go live.
-    let ass = active_style_system();
+    // AUDIT 2026-08 — ONE EFFECTIVE STYLE SYSTEM PER FRAME.
+    //
+    // This used to be `active_style_system()` unconditionally, while the
+    // hot-reload override was consulted separately for radii and strokes only.
+    // The watcher parses a FULL `StyleSystem` off disk, but `begin_frame`
+    // consumed 36 of its 71 fields — so editing a theme JSON silently dropped
+    // density, treatments, the semantic type roles, bevels and the watchlist
+    // row geometry. The reload logged success either way.
+    //
+    // Both sides are `Arc<StyleSystem>`, so resolving the effective system once
+    // costs nothing and makes every `ass.*` read below honour the override
+    // automatically — including categories added later, which is the part that
+    // stops this drifting again.
+    let ass = override_style.clone().unwrap_or_else(active_style_system);
     let (sp, ty, al) = (&ass.spacing, &ass.typography, &ass.alphas);
 
     // Resolve radii — precedence order:
@@ -152,7 +165,7 @@ pub fn begin_frame() {
         radius_sm:     r_sm,
         radius_md:     r_md,
         radius_lg:     r_lg,
-        radius_pill:   current().r_pill as f32,
+        radius_pill:   st.r_pill as f32,
         // Strokes (already resolved with override + DesignTokens precedence above).
         stroke_hair,
         stroke_thin,
@@ -180,15 +193,15 @@ pub fn begin_frame() {
         shadow_spread: crate::dt_f32!(shadow.spread,  4.0),
         // P5b — style-preset knobs pushed into the snapshot so ui_kit
         // widgets (input focus ring, toast glassmorphic bg, simple_btn
-        // treatment) read them via frame_tokens() instead of current().
-        focus_ring_alpha: current().focus_ring_alpha,
-        focus_ring_width: current().focus_ring_width,
-        toast_bg_alpha:   current().toast_bg_alpha,
-        button_treatment: current().button_treatment,
+        // treatment) read them via frame_tokens() instead of st.
+        focus_ring_alpha: st.focus_ring_alpha,
+        focus_ring_width: st.focus_ring_width,
+        toast_bg_alpha:   st.toast_bg_alpha,
+        button_treatment: st.button_treatment,
         // Bevel — pushed from StyleSettings so ui_kit widgets read via frame_tokens().
-        surface_bevel:         current().surface_bevel,
-        bevel_highlight_alpha: current().bevel_highlight_alpha,
-        bevel_shadow_alpha:    current().bevel_shadow_alpha,
+        surface_bevel:         st.surface_bevel,
+        bevel_highlight_alpha: st.bevel_highlight_alpha,
+        bevel_shadow_alpha:    st.bevel_shadow_alpha,
         // M1 Change C: dimension-side defaults; `setup_theme` patches in the
         // ACTIVE PANE's authored tints right after (palette axis joins there).
         bevel_highlight_tint:  egui::Color32::WHITE,
@@ -213,11 +226,11 @@ pub fn begin_frame() {
         rail_medium:    ass.density.rail_medium,
         rail_wide:      ass.density.rail_wide,
         // Default tab treatment — Filled for Aperture/Cadence/Glass, Line for others.
-        panel_tab_treatment:   current().panel_tab_treatment,
+        panel_tab_treatment:   st.panel_tab_treatment,
         // List row shape — pill for Aperture/Glass, hairlines for Alto/Mariner/Relay.
-        wl_row_side_margin:    current().wl_row_side_margin,
-        wl_row_corner_radius:  current().wl_row_corner_radius,
-        wl_row_divider_alpha:  current().wl_row_divider_alpha,
+        wl_row_side_margin:    st.wl_row_side_margin,
+        wl_row_corner_radius:  st.wl_row_corner_radius,
+        wl_row_divider_alpha:  st.wl_row_divider_alpha,
     };
     // Push to the canonical ui_kit thread_local. ui_kit's
     // `frame_tokens()` reads this back for `radius_*` / `stroke_*` /
@@ -4176,6 +4189,45 @@ mod m1_ladder_tests {
 
         assert_eq!(snap.gap_md, 99.0, "authored gap_md must reach TokenSnapshot");
         assert_eq!(snap.font_sm, 33.0, "authored ui_sm must reach TokenSnapshot");
+    }
+
+    /// AUDIT 2026-08: the STRUCTURAL half of the same proof.
+    ///
+    /// The test above covers gap/type — the two ladders M1 wired. But
+    /// `begin_frame` sourced `ass` from `active_style_system()` while consulting
+    /// the hot-reload override only for radii and strokes, so a theme JSON
+    /// edited on disk moved 36 of 71 fields and silently dropped the rest:
+    /// density, treatments, semantic type roles, bevels, watchlist row
+    /// geometry. The watcher logged "reloaded StyleSystem" regardless.
+    ///
+    /// Density is the axis to assert on, because it is what the eye actually
+    /// reads as density and it was the largest inert block.
+    #[test]
+    fn hot_reload_override_reaches_the_structural_tokens() {
+        use crate::design_system::StyleSystem;
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut ov = StyleSystem::default();
+        ov.meta.name = "override-proof".into();
+        ov.density.row_dense = 41.0;
+        ov.density.splitter_width = 13.0;
+        ov.density.rail_wide = 517.0;
+        ov.density.control_md = 47.0;
+
+        crate::design_system::hot_reload::install_override_for_test(ov);
+        begin_frame();
+        let snap = crate::ui_kit::style::frame_tokens();
+
+        // Clear BEFORE asserting so a failure cannot poison sibling tests.
+        crate::design_system::hot_reload::clear_override_for_test();
+        begin_frame();
+
+        assert_eq!(snap.row_dense, 41.0,
+            "a hot-reloaded row height must reach the frame — density was the \
+             largest block the override silently dropped");
+        assert_eq!(snap.splitter_width, 13.0, "splitter width must follow the override");
+        assert_eq!(snap.rail_wide, 517.0, "rail width must follow the override");
+        assert_eq!(snap.control_md, 47.0, "control height must follow the override");
     }
 
     /// M5 — the frozen-chrome invariant, for EVERY style.
