@@ -7758,8 +7758,28 @@ impl GpuCtx {
                         }
                         // Full-window: pass an oversized rect; capture clamps to the client area.
                         let full = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1.0e5, 1.0e5));
+                        // AUDIT 2026-08: this was `Path::new("dev/screenshots")`,
+                        // resolved against the process CWD. Launch the app from
+                        // `src-tauri/` (which is where you are after `cargo
+                        // build`) and every capture lands in
+                        // `src-tauri/dev/screenshots/` while the harness — and
+                        // the caller — look in the repo's `dev/screenshots/`.
+                        //
+                        // The endpoint answered `{"ok":true}` either way, so the
+                        // symptom was "screenshot file never appeared" on a
+                        // successful capture: the single most misleading form a
+                        // dev tool can take, because it sends you to debug the
+                        // capture path when the capture worked.
+                        //
+                        // Anchored to the crate dir instead, so the location is
+                        // the same wherever the binary is started from.
+                        let shot_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .parent()
+                            .map(|repo| repo.join("dev").join("screenshots"))
+                            .unwrap_or_else(|| std::path::PathBuf::from("dev/screenshots"));
+                        let _ = std::fs::create_dir_all(&shot_dir);
                         for name in shots {
-                            let out = std::path::Path::new("dev/screenshots").join(format!("{name}.png"));
+                            let out = shot_dir.join(format!("{name}.png"));
                             if let Err(e) = crate::chart_renderer::bug_anchor::capture_window_region(
                                 hwnd, scale, full, &out,
                             ) {
