@@ -1799,6 +1799,51 @@ pub(crate) fn region_frame(t: &crate::chart_renderer::gpu::Theme, fill: Color32)
     }
 }
 
+/// Fill + stroke a region card at `card`, with all four corners rounded.
+///
+/// AUDIT 2026-08 — exists because `region_frame`'s rounded background cannot be
+/// trusted to keep its bottom corners inside a `TopBottomPanel`. Measured on
+/// the shipped app: the top two corners rounded correctly and the bottom two
+/// came out square on every tiled style, because the panel clips the frame's
+/// background at its own lower edge. The frame asks for
+/// `CornerRadius::same(region_radius)` and gets three-and-a-bit corners.
+///
+/// Painting the card ourselves removes the dependency on how a panel chooses
+/// to clip: the caller computes the rect, so the inset is exact and the
+/// rounding is symmetric. Flush styles (`region_gap == 0`) fill square, which
+/// is their design.
+pub(crate) fn paint_region_card_filled(
+    painter: &egui::Painter,
+    card: egui::Rect,
+    t: &crate::chart_renderer::gpu::Theme,
+    fill: Color32,
+) {
+    let st = current();
+    if !card.is_finite() || card.width() < 1.0 || card.height() < 1.0 { return; }
+    if st.region_gap <= 0.0 {
+        painter.rect_filled(card, egui::CornerRadius::ZERO, fill);
+        return;
+    }
+    let r = egui::CornerRadius::same(st.region_radius as u8);
+    painter.rect_filled(card, r, fill);
+    painter.rect_stroke(
+        card, r,
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, st.region_border_alpha)),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// The card rect for a full-width chrome row: the panel band inset by
+/// `region_gap` on the left and right. Vertical extent comes from the caller,
+/// which knows its own content box.
+pub(crate) fn region_card_rect(content: egui::Rect, screen_w: f32) -> egui::Rect {
+    let g = region_gap();
+    egui::Rect::from_min_max(
+        egui::pos2(g, content.top()),
+        egui::pos2((screen_w - g).max(g + 1.0), content.bottom()),
+    )
+}
+
 /// Paint a rounded region-card border over `rect` on the given painter. Used
 /// for the central workspace, which can't wrap itself in a Frame (its panel is
 /// drawn by the sacred core.rs). No-op when the style is flush.
@@ -3186,7 +3231,18 @@ pub fn account_strip_height() -> f32 {
     /// subtracted from the panel height before any text is laid out.
     const V_MARGIN: f32 = 4.0;
     let s = current();
-    s.account_strip_height.max(s.font_hero + V_MARGIN)
+    // AUDIT 2026-08 — the floor is the hero's LINE height, not its font size.
+    //
+    // This read `font_hero + V_MARGIN`, which is the third version of the same
+    // bug: the original pinned `account_strip_height` and clipped Meridien's
+    // NAV number, so it was made derived — but derived from the point size. A
+    // 36px face does not occupy 36px; it occupies size x leading, about 45px at
+    // 1.25. So the strip stayed ~9px short and the account value went on being
+    // clipped at the bottom, just less obviously than before.
+    //
+    // `line_heading()` is the leading token, so this now tracks a style that
+    // authors looser leading instead of needing a fourth correction.
+    s.account_strip_height.max(s.font_hero * crate::ui_kit::style::line_heading() + V_MARGIN)
 }
 
 /// Apply per-style egui::Style overrides (widget visuals, spacing, shadows)

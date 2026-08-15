@@ -34,15 +34,27 @@ pub(crate) fn render_toolnav(
     let h    = style::toolnav_resolved_height();
     let rgap = region_gap();
 
-    let frame = region_frame(t, t.toolbar_bg)
-        .inner_margin(Margin { left: (gap_xs() + rgap) as i8, right: rgap as i8, top: 0, bottom: 0 });
+    // Padding only; the card itself is painted inside `show`. See the same
+    // change on the "tb" panel in top_nav.rs.
+    let frame = egui::Frame::NONE.inner_margin(Margin {
+        left: (gap_xs() + rgap) as i8, right: rgap as i8,
+        top: rgap as i8, bottom: rgap as i8,
+    });
 
     egui::TopBottomPanel::top("toolnav")
         .frame(frame)
+        // The CARD height. `region_frame`'s `outer_margin` adds the surrounding
+        // `rgap` outside this box — adding it here too spent the gap twice.
+        // See the note on the "tb" panel in top_nav.rs.
         .exact_height(h + 2.0 * rgap)
         .show(ctx, |ui| {
             ui.style_mut().spacing.item_spacing.x = gap_sm();
             let tb_rect = ui.max_rect();
+            {
+                let sw = ctx.screen_rect().width();
+                let card = style::region_card_rect(tb_rect, sw);
+                style::paint_region_card_filled(ui.painter(), card, t, t.toolbar_bg);
+            }
             ui.horizontal_centered(|ui| {
                 // ── Left: chart controls (interval / drawing / object-tree /
                 //    indicators / widgets / alt-bar settings / magnet / hit). ──

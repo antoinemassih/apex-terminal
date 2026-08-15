@@ -60,9 +60,14 @@ impl ComponentTheme for Theme {
     fn section_header_mono(&self) -> bool {
         crate::chart_renderer::ui::style::current().section_header_mono
     }
-    // Cards float (rounded + shadow) only on tiled styles (region_gap > 0).
+    // Cards float (rounded + shadow) only on tiled styles.
+    //
+    // Delegates to `region_tiled()` rather than recomputing `region_gap > 0.0`.
+    // The chart layer already owned that predicate; stating the threshold in a
+    // second place means a future change to what counts as "tiled" has to be
+    // made twice, and the two are in different modules.
     fn cards_float(&self) -> bool {
-        crate::chart_renderer::ui::style::current().region_gap > 0.0
+        crate::chart_renderer::ui::style::region_tiled()
     }
     // Per-style row treatment — read the live StyleSystem `wl_row_*` tokens so
     // the generic PanelListRow matches the RowShell-based WatchlistRow on every

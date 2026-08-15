@@ -367,11 +367,17 @@ pub(crate) fn render(
     ///
     /// The `compact_mode` branch was dead: `compact_mode` appears nowhere else
     /// in this file, so it has not scaled the bar for some time.
-    fn toolbar_outer_height() -> f32 {
+    /// The CARD height — what the rounded region actually occupies.
+    fn toolbar_card_height() -> f32 {
         let tb_scale = style_current().toolbar_height_scale;
-        let rgap = crate::chart_renderer::ui::style::region_gap();
         (38.0 * tb_scale).max(crate::chart_renderer::ui::style::toolnav_min_height())
-            + 2.0 * rgap
+    }
+
+    /// The card plus the `region_gap` that surrounds it — the full band the
+    /// panel occupies on screen. Used for the auto-hide hit test, which must
+    /// measure the same bar the user sees.
+    fn toolbar_outer_height() -> f32 {
+        toolbar_card_height() + 2.0 * crate::chart_renderer::ui::style::region_gap()
     }
 
     // Auto-hide toolbar logic
@@ -408,8 +414,14 @@ pub(crate) fn render(
     // Shell region: floats as a rounded card with `region_gap` margin when the
     // active style is tiled (Aperture/Glass); flush flat fill otherwise.
     let rgap = crate::chart_renderer::ui::style::region_gap();
-    let tb_frame = crate::chart_renderer::ui::style::region_frame(t, t.toolbar_bg)
-        .inner_margin(egui::Margin { left: (gap_xs() + rgap) as i8, right: rgap as i8, top: 0, bottom: 0 });
+    // The card is painted inside `show`, not by the frame — see
+    // `paint_region_card_filled`. The frame supplies padding only: `rgap` top
+    // and bottom so the content sits inside the card, and the card's own inset
+    // on the sides.
+    let tb_frame = egui::Frame::NONE.inner_margin(egui::Margin {
+        left: (gap_xs() + rgap) as i8, right: rgap as i8,
+        top: rgap as i8, bottom: rgap as i8,
+    });
     // The dropdown menu buttons (workspace/indicators/widgets) do NOT scale with
     // tb_scale, so a toolbar shorter than they are clips them at the bottom.
     //
@@ -430,12 +442,30 @@ pub(crate) fn render(
     // height they had, so this raises the short rows without restyling the tall ones.
     // Resolved via `toolbar_outer_height()` (defined above) so the auto-hide
     // hit test measures the SAME bar this paints — they used to disagree.
-    // It already folds in the 2×rgap the outer margin insets top + bottom.
+    //
+    // AUDIT 2026-08 — `exact_height` gets the CARD height, not the outer band.
+    // It used to get `toolbar_outer_height()` under the comment "It already
+    // folds in the 2×rgap the outer margin insets top + bottom", and that claim
+    // is what pixel-measuring the shipped app disproved: `exact_height` sizes
+    // the frame's content box and `outer_margin` is added OUTSIDE it, so
+    // reserving 2×rgap here and then asking the frame for another 2×rgap spent
+    // the gap twice. Every tiled row cost `card + 4×rgap` — 32px of gap around
+    // a 40px card on Aperture, which is most of the negative space in the top
+    // chrome, and it pushed the card's rounded bottom past the panel so the
+    // lower corners were shaved square while the top two rounded correctly.
     egui::TopBottomPanel::top("tb")
         .frame(tb_frame)
-        .exact_height(toolbar_outer_height())
+        .exact_height(toolbar_card_height() + 2.0 * rgap)
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
+        // Paint the region card first, so every later widget draws on top of it.
+        {
+            let sw = ctx.screen_rect().width();
+            let card = crate::chart_renderer::ui::style::region_card_rect(tb_rect, sw);
+            crate::chart_renderer::ui::style::paint_region_card_filled(
+                ui.painter(), card, t, t.toolbar_bg,
+            );
+        }
         // Publish toolbar rect so tb_btn can read it for full-height hover/active column overlays.
         set_toolbar_rect(tb_rect);
         // Gradient + bevel for Alto/Mariner/Cadence (Raised bevel):
