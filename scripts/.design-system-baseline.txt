@@ -71,7 +71,7 @@
 2 src-tauri/src/ui_kit/widgets/skeleton.rs
 1 src-tauri/src/ui_kit/widgets/slider.rs
 1 src-tauri/src/ui_kit/widgets/sparkline.rs
-11 src-tauri/src/ui_kit/widgets/tabs.rs
+5 src-tauri/src/ui_kit/widgets/tabs.rs
 2 src-tauri/src/ui_kit/widgets/tag.rs
 10 src-tauri/src/ui_kit/widgets/theme_preview_card.rs
 1 src-tauri/src/ui_kit/widgets/toggle_row.rs

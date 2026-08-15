@@ -95,6 +95,17 @@ PATTERNS=(
 # The tokens already exist (gap_2xs..gap_3xl and the density ladder); these
 # call sites simply predate them. Anything computed FROM a token call does not
 # match, so migrating a site removes it from the count.
+#
+# HOW TO READ THE LAYOUT PORTION OF THIS NUMBER. Of 746 at the 2026-08 audit,
+# 443 (59%) are in chart PAINTING — core.rs, chart_widgets.rs, gpu.rs — where
+# `.left() + 6.0` is a candle body, a gauge tick or a sparkline vertex. That is
+# data geometry, not chrome layout, and running it through a flexbox solver
+# would be slower and wrong. Those are not a migration backlog.
+#
+# The layout engine addresses the other 303: panels and chrome (109), ui_kit
+# widgets (86), lists and inputs (43), toolbar (38), misc (27). Driving the
+# total to zero is not the goal and would mean mangling the chart renderer to
+# satisfy a lint.
 REGEX_PATTERNS=(
   "\.(left|right|top|bottom|center_x|center_y)\(\)[[:space:]]*[-+][[:space:]]*[0-9]+\.[0-9]+"
   "add_space\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"

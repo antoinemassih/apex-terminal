@@ -690,8 +690,12 @@ fn paint_tabs(
         for i in 1..n {
             let r = displaced_rects[i];
             ui.painter().line_segment(
-                [Pos2::new(r.left(), r.top() + 4.0),
-                 Pos2::new(r.left(), r.bottom() - 4.0)],
+                // Separator inset — the gap ladder, not a bare 4.0. The tab
+                // strip's own gutters already come from these tokens, so a
+                // literal here meant the separator stopped tracking the
+                // spacing it sits inside the moment a style re-pitched it.
+                [Pos2::new(r.left(), r.top() + st::gap_xs()),
+                 Pos2::new(r.left(), r.bottom() - st::gap_xs())],
                 stroke,
             );
         }
@@ -740,8 +744,12 @@ fn paint_tabs(
             if i == cur_active || i == cur_active + 1 { continue; }
             let r = displaced_rects[i];
             ui.painter().line_segment(
-                [Pos2::new(r.left(), r.top() + 4.0),
-                 Pos2::new(r.left(), r.bottom() - 4.0)],
+                // Separator inset — the gap ladder, not a bare 4.0. The tab
+                // strip's own gutters already come from these tokens, so a
+                // literal here meant the separator stopped tracking the
+                // spacing it sits inside the moment a style re-pitched it.
+                [Pos2::new(r.left(), r.top() + st::gap_xs()),
+                 Pos2::new(r.left(), r.bottom() - st::gap_xs())],
                 stroke,
             );
         }
@@ -755,8 +763,8 @@ fn paint_tabs(
         for i in 1..n {
             let r = displaced_rects[i];
             ui.painter().line_segment(
-                [Pos2::new(r.left(), r.top() + 6.0),
-                 Pos2::new(r.left(), r.bottom() - 6.0)],
+                [Pos2::new(r.left(), r.top() + st::gap_xs_mid()),
+                 Pos2::new(r.left(), r.bottom() - st::gap_xs_mid())],
                 stroke,
             );
         }
