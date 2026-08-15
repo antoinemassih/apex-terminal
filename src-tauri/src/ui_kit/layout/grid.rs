@@ -214,10 +214,17 @@ impl Grid {
 
     /// Solve against `ui`'s available space and render each cell through
     /// `render(ui, index)` inside its solved rect.
+    /// Render each cell into its solved rect.
+    ///
+    /// The callback takes `(index, ui)` — the same order as `Flex::show`. It
+    /// used to take `(ui, index)`, so the kit's two layout engines had mirrored
+    /// signatures for the same operation. Nothing outside this module called
+    /// it, which is how that survived: an inconsistency costs nothing until
+    /// someone uses both, and then it costs an afternoon.
     pub fn show<R>(
         self,
         ui: &mut Ui,
-        mut render: impl FnMut(&mut Ui, usize) -> R,
+        mut render: impl FnMut(usize, &mut Ui) -> R,
     ) -> Vec<R> {
         let avail = ui.available_size_before_wrap();
         let origin = ui.min_rect().min.to_vec2();
@@ -230,7 +237,7 @@ impl Grid {
                 r.size(),
             );
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(screen));
-            out.push(render(&mut child, i));
+            out.push(render(i, &mut child));
         }
         // Claim the space so siblings flow after the grid.
         let used = rects.iter().fold(0.0_f32, |acc, r| acc.max(r.max.y));
@@ -239,11 +246,108 @@ impl Grid {
     }
 }
 
+// ── Colocated children ───────────────────────────────────────────────────────
+//
+// The same addition `Flex` got, for the same reason: `show` hands back an
+// index, so cell content is matched by position and a conditional cell shifts
+// everything after it. A grid makes that worse than a row does, because spans
+// mean the index tells you nothing about WHERE a cell landed.
+
+/// A `Grid` whose cells each carry their own render closure.
+pub struct GridUi<'a> {
+    grid: Grid,
+    children: Vec<Box<dyn FnMut(&mut Ui) + 'a>>,
+}
+
+impl Grid {
+    /// Attach content to a cell, switching to the colocated builder.
+    pub fn child<'a>(self, item: GridItem, render: impl FnMut(&mut Ui) + 'a) -> GridUi<'a> {
+        GridUi { grid: self, children: Vec::new() }.child(item, render)
+    }
+
+    /// Conditional variant — see [`GridUi::child_if`].
+    pub fn child_if<'a>(
+        self, cond: bool, item: GridItem, render: impl FnMut(&mut Ui) + 'a,
+    ) -> GridUi<'a> {
+        GridUi { grid: self, children: Vec::new() }.child_if(cond, item, render)
+    }
+}
+
+impl<'a> GridUi<'a> {
+    /// Append a cell and the content that fills it.
+    pub fn child(mut self, item: GridItem, render: impl FnMut(&mut Ui) + 'a) -> Self {
+        self.grid = self.grid.item(item);
+        self.children.push(Box::new(render));
+        self
+    }
+
+    /// Append only when `cond` holds.
+    pub fn child_if(self, cond: bool, item: GridItem, render: impl FnMut(&mut Ui) + 'a) -> Self {
+        if cond { self.child(item, render) } else { self }
+    }
+
+    /// Solve and render each cell into its own rect.
+    pub fn show(self, ui: &mut Ui) {
+        let GridUi { grid, mut children } = self;
+        grid.show(ui, |idx, cell_ui| {
+            if let Some(f) = children.get_mut(idx) { f(cell_ui); }
+        });
+    }
+
+    /// The solved rects, without rendering.
+    pub fn solve(&self, available: Vec2) -> Vec<Rect> { self.grid.solve(available) }
+
+    /// How many cells were added.
+    pub fn len(&self) -> usize { self.children.len() }
+    /// True when no cells were added.
+    pub fn is_empty(&self) -> bool { self.children.is_empty() }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A conditional cell takes its content with it, and spans still land.
+    ///
+    /// Index-matching is worse in a grid than in a row. In a row, index N is
+    /// the Nth thing left-to-right, so a wrong match is at least adjacent. With
+    /// spans, index N could be anywhere — a 6-wide cell at index 0 puts index 1
+    /// on the same row, while a 12-wide one puts it on the next. So "which cell
+    /// is this?" cannot be answered from the index without re-deriving the
+    /// whole placement, which is what the caller was doing.
+    #[test]
+    fn conditional_cells_keep_their_content_and_spans_still_place() {
+        for hero in [false, true] {
+            let g = Grid::new()
+                .cols(Track::fr_repeat(12, 1.0))
+                .auto_rows(100.0)
+                .child_if(hero, GridItem::new().col_span(12), |_| {})
+                .child(GridItem::new().col_span(6), |_| {})
+                .child(GridItem::new().col_span(6), |_| {});
+
+            assert_eq!(g.len(), if hero { 3 } else { 2 },
+                "hero={hero}: the cell and its content appear together");
+
+            let r = g.solve(Vec2::new(1200.0, 400.0));
+            assert_eq!(r.len(), g.len(), "every cell solves to one rect");
+
+            let (a, b) = if hero { (r[1], r[2]) } else { (r[0], r[1]) };
+            assert!(
+                (a.width() - 600.0).abs() < 1.0 && (b.width() - 600.0).abs() < 1.0,
+                "the two 6-span cells split the row: {} and {}", a.width(), b.width(),
+            );
+            assert!(
+                (a.min.y - b.min.y).abs() < 1.0,
+                "and they share a row, whatever ran before them",
+            );
+            if hero {
+                assert!((r[0].width() - 1200.0).abs() < 1.0, "the 12-span hero fills the width");
+                assert!(r[0].max.y <= a.min.y + 1.0, "and sits on the row above");
+            }
+        }
+    }
 
     /// Aperture's signature mosaic, headlessly: 12 equal columns, 92px rows.
     /// This is the layout the audit called inexpressible — `PaneGrid`'s binary

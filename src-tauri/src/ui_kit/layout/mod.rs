@@ -13,4 +13,4 @@ pub use surface::{Surface, SurfaceResponse};
 /// editorial `300px / 1fr / 360px` dashboard, neither of which the binary-split
 /// `PaneGrid` or the uniform `dashboard_pane` tiler can express (no spans).
 pub mod grid;
-pub use grid::{Grid, GridItem, Track};
+pub use grid::{Grid, GridItem, GridUi, Track};
