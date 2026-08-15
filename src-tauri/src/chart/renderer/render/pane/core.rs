@@ -1168,7 +1168,7 @@ fn render_chart_pane(
                                 chart.pane_picker_save_name.clear();
                             }
                         });
-                        ui.add_space(4.0);
+                        ui.add_space(crate::ui_kit::style::gap_xs());
 
                         if !chart.pane_picker_option_mode {
                             // ── Stock body: ticker search + recents ──
@@ -1189,7 +1189,7 @@ fn render_chart_pane(
                             }
 
                             if chart.pane_picker_query.is_empty() {
-                                ui.add_space(4.0);
+                                ui.add_space(crate::ui_kit::style::gap_xs());
                                 ui.label(TextStyle::BodySm.as_rich_cascading("Recent", t.dim));
                                 let recents = chart.recent_symbols.clone();
                                 for (sym, name) in &recents {
@@ -1296,7 +1296,7 @@ fn render_chart_pane(
                             let cur_strike = chart.option_strike;
                             let cur_is_call = chart.option_type == "C";
                             if chart.is_option && cur_strike > 0.0 {
-                                ui.add_space(4.0);
+                                ui.add_space(crate::ui_kit::style::gap_xs());
                                 ui.horizontal(|ui| {
                                     let half_w = 150.0;
                                     let prev_btn = ui.add_sized(
@@ -1334,10 +1334,10 @@ fn render_chart_pane(
                                         }
                                     }
                                 });
-                                ui.add_space(4.0);
+                                ui.add_space(crate::ui_kit::style::gap_xs());
                             }
 
-                            ui.add_space(4.0);
+                            ui.add_space(crate::ui_kit::style::gap_xs());
                             ui.horizontal(|ui| {
                                 let cw = 110.0;
                                 ui.add_sized(egui::vec2(cw, 16.0), egui::Label::new(
@@ -1349,7 +1349,7 @@ fn render_chart_pane(
                             });
 
                             if calls.is_empty() && puts.is_empty() {
-                                ui.add_space(8.0);
+                                ui.add_space(crate::ui_kit::style::gap_sm());
                                 ui.vertical_centered(|ui| {
                                     ui.label(egui::RichText::new("Loading chain…")
                                         .monospace().size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
@@ -1486,7 +1486,7 @@ fn render_chart_pane(
                     }
                 }
 
-                ui.add_space(4.0);
+                ui.add_space(crate::ui_kit::style::gap_xs());
                 if ui.add(egui::Button::new(TextStyle::BodySm.as_rich_cascading("Close", t.dim))
                     .fill(egui::Color32::TRANSPARENT)
                 ).clicked() {
@@ -11156,28 +11156,28 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                         use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant as KitVariant, Size as KitSize}};
                         use crate::ui_kit::icons::Icon;
 
-                        ui.add_space(gap_md());
+                        ui.add_space(crate::ui_kit::style::gap_md());
                         ui.horizontal(|ui| {
-                            ui.add_space(gap_lg());
+                            ui.add_space(crate::ui_kit::style::gap_lg());
                             ui.label(TextStyle::Body.as_rich_cascading(Icon::SHIELD_WARNING, theme.warn));
-                            ui.add_space(gap_sm());
+                            ui.add_space(crate::ui_kit::style::gap_sm());
                             ui.label(egui::RichText::new("This order tripped a soft risk gate.")
                                 .monospace()
                                 .size(font_sm())
                                 .color(theme.text));
                         });
-                        ui.add_space(gap_sm());
+                        ui.add_space(crate::ui_kit::style::gap_sm());
                         // Reason — verbatim, monospace, dim, indented.
                         ui.horizontal_wrapped(|ui| {
-                            ui.add_space(gap_lg());
+                            ui.add_space(crate::ui_kit::style::gap_lg());
                             ui.label(egui::RichText::new(format!("Reason: {}", approval.reason))
                                 .monospace()
                                 .size(font_sm())
                                 .color(theme.dim));
                         });
-                        ui.add_space(gap_md());
+                        ui.add_space(crate::ui_kit::style::gap_md());
                         ui.horizontal(|ui| {
-                            ui.add_space(gap_lg());
+                            ui.add_space(crate::ui_kit::style::gap_lg());
                             // Symbol / side / qty / price recap so the operator
                             // can sanity-check what they're about to override.
                             let side_str = format!("{:?}", approval.intent.side).to_uppercase();
@@ -11190,10 +11190,10 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                                 .size(font_sm())
                                 .color(theme.accent));
                         });
-                        ui.add_space(gap_lg());
+                        ui.add_space(crate::ui_kit::style::gap_lg());
 
                         ui.horizontal(|ui| {
-                            ui.add_space(gap_lg());
+                            ui.add_space(crate::ui_kit::style::gap_lg());
                             if KitButton::new("Cancel")
                                 .variant(KitVariant::Ghost)
                                 .size(KitSize::Sm)
@@ -11202,7 +11202,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                             {
                                 dismissed = true;
                             }
-                            ui.add_space(gap_sm());
+                            ui.add_space(crate::ui_kit::style::gap_sm());
                             if KitButton::new("Override and submit")
                                 .variant(KitVariant::Danger)
                                 .size(KitSize::Sm)
@@ -11212,7 +11212,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                                 confirmed = true;
                             }
                         });
-                        ui.add_space(gap_md());
+                        ui.add_space(crate::ui_kit::style::gap_md());
                     });
 
                 if confirmed {

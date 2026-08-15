@@ -282,7 +282,7 @@ pub fn prompt(ctx: &egui::Context) {
             ui.set_width(480.0);
             ui.label(egui::RichText::new(format!("@anchor {key}")).strong().monospace().color(ACCENT));
             ui.label(egui::RichText::new(&src).monospace().size(10.5).color(DIM));
-            ui.add_space(8.0);
+            ui.add_space(crate::ui_kit::style::gap_sm());
 
             // ── Description ──────────────────────────────────────────────
             ui.label(egui::RichText::new("What's wrong / what should it do?").size(11.5).color(DIM));
@@ -364,7 +364,7 @@ pub fn prompt(ctx: &egui::Context) {
                 let _ = std::fs::remove_file(p); // best-effort: drop the staged file
             }
 
-            ui.add_space(4.0);
+            ui.add_space(crate::ui_kit::style::gap_xs());
             if draft.region_path.is_some() {
                 ui.checkbox(&mut draft.auto_shot, "Include the clicked-region screenshot");
             }
@@ -395,7 +395,7 @@ pub fn prompt(ctx: &egui::Context) {
             }
 
             // ── Footer ───────────────────────────────────────────────────
-            ui.add_space(12.0);
+            ui.add_space(crate::ui_kit::style::gap_md());
             ui.horizontal(|ui| {
                 if ui.add(egui::Button::new(egui::RichText::new("Log bug").color(Color32::WHITE).size(12.0)).fill(ACCENT)).clicked() {
                     save = true;
@@ -408,7 +408,7 @@ pub fn prompt(ctx: &egui::Context) {
                 });
             });
             if !draft.status.is_empty() {
-                ui.add_space(4.0);
+                ui.add_space(crate::ui_kit::style::gap_xs());
                 ui.label(egui::RichText::new(&draft.status).size(10.5).color(Color32::from_rgb(255, 180, 120)));
             }
         });

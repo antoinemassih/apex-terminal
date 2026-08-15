@@ -484,7 +484,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                             }
                         });
                     });
-                    ui.add_space(gap_xs());
+                    ui.add_space(crate::ui_kit::style::gap_xs());
                     egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
                         for &a in &items {
                             let accent = kind_color(a.kind, t);
@@ -499,7 +499,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                                 }
                                 ui.label(egui::RichText::new(&msg).monospace().size(font_sm()).color(tint(t, Tone::Dim, MSG_A)));
                             });
-                            ui.add_space(2.0);
+                            ui.add_space(crate::ui_kit::style::gap_2xs());
                         }
                     });
                 });

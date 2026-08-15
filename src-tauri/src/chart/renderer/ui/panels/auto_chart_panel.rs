@@ -65,7 +65,7 @@ pub(crate) fn draw(
             let mut cfg = crate::chart_renderer::gpu::auto_draw_config();
             let before = cfg.clone();
 
-            ui.add_space(6.0);
+            ui.add_space(crate::ui_kit::style::gap_xs_mid());
             let r = Checkbox::new(&mut cfg.enabled).label("Auto-charting ON").show(ui, t);
             rec_ctrl("auto_chart.enabled", "checkbox", "Auto-charting ON", &r, ui, cfg.enabled.to_string());
             // Section headers are `PanelSection`, not bare `ui.label` +

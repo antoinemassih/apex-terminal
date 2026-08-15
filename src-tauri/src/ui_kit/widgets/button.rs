@@ -1691,7 +1691,7 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
                 let _ = Button::new(sname).variant(v).size(s).show(ui, theme);
             }
         });
-        ui.add_space(4.0);
+        ui.add_space(crate::ui_kit::style::gap_xs());
     }
 
     ui.separator();
@@ -1703,26 +1703,26 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
         let _ = Button::new("Disabled").disabled(true).show(ui, theme);
         let _ = Button::new("Active").active(true).variant(Variant::Secondary).show(ui, theme);
     });
-    ui.add_space(4.0);
+    ui.add_space(crate::ui_kit::style::gap_xs());
 
     ui.label("Buy / Sell");
     ui.horizontal(|ui| {
         let _ = Button::buy("BUY").size(Size::Lg).show(ui, theme);
         let _ = Button::sell("SELL").size(Size::Lg).show(ui, theme);
     });
-    ui.add_space(4.0);
+    ui.add_space(crate::ui_kit::style::gap_xs());
 
     ui.label("Full width");
     let _ = Button::new("Submit Order").full_width(true).size(Size::Lg).show(ui, theme);
 
-    ui.add_space(4.0);
+    ui.add_space(crate::ui_kit::style::gap_xs());
     ui.label("With icons");
     ui.horizontal(|ui| {
         let _ = Button::new("Save").leading_icon(Icon::CHECK).variant(Variant::Primary).show(ui, theme);
         let _ = Button::new("Next").trailing_icon(Icon::CARET_RIGHT).variant(Variant::Secondary).show(ui, theme);
     });
 
-    ui.add_space(4.0);
+    ui.add_space(crate::ui_kit::style::gap_xs());
     ui.label("Escape hatches (legacy parity)");
     ui.horizontal(|ui| {
         // IconBtn parity: Ghost + glyph_color.

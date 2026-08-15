@@ -71,6 +71,34 @@ PATTERNS=(
   "Stroke::new(3.0,"
 )
 
+# ── Regex patterns (grep -E) ─────────────────────────────────────────────────
+#
+# SPACE. Every pattern above governs colour, type, radius or stroke weight.
+# Nothing governed layout — and a measurement during the 2026-08 audit found
+# 997 hardcoded spacing/positioning literals across 86 files. That is the
+# largest ungoverned surface left in the design system, and it is the one the
+# eye reads as "this screen was assembled rather than laid out": every gap is
+# individually plausible and no two agree.
+#
+# These need -E rather than -F because the offending number varies; as fixed
+# strings each would need one entry per literal.
+#
+#   .left() + 6.0        positioning by arithmetic on a rect edge
+#   add_space(8.0)       vertical rhythm chosen per call site
+#   .shrink(4.0)         inset chosen per call site
+#   Margin::same(6)      frame padding outside the token system
+#
+# The tokens already exist (gap_2xs..gap_3xl and the density ladder); these
+# call sites simply predate them. Anything computed FROM a token call does not
+# match, so migrating a site removes it from the count.
+REGEX_PATTERNS=(
+  "\.(left|right|top|bottom|center_x|center_y)\(\)[[:space:]]*[-+][[:space:]]*[0-9]+\.[0-9]+"
+  "add_space\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"
+  "\.(shrink|expand)2?\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"
+  "Margin::(same|symmetric)\([[:space:]]*[0-9]+"
+  "item_spacing[[:space:]]*=[[:space:]]*egui::vec2\([[:space:]]*[0-9]+\.[0-9]+"
+)
+
 # Files that DEFINE the design system (they must use raw primitives to build
 # the tokens everything else consumes) plus dev-only surfaces.
 ALLOWED_BASENAMES=(
@@ -137,13 +165,22 @@ drop_test_module_hits() {
 }
 
 collect() {
-  for pat in "${PATTERNS[@]}"; do
-    grep -rn \
-      "${EXCLUDE_DIR_ARGS[@]}" \
-      --include="*.rs" \
-      -F "$pat" \
-      "$SRC_DIR" 2>/dev/null || true
-  done \
+  {
+    for pat in "${PATTERNS[@]}"; do
+      grep -rn \
+        "${EXCLUDE_DIR_ARGS[@]}" \
+        --include="*.rs" \
+        -F "$pat" \
+        "$SRC_DIR" 2>/dev/null || true
+    done
+    for pat in "${REGEX_PATTERNS[@]}"; do
+      grep -rnE \
+        "${EXCLUDE_DIR_ARGS[@]}" \
+        --include="*.rs" \
+        "$pat" \
+        "$SRC_DIR" 2>/dev/null || true
+    done
+  } \
   | grep -v -E ':[0-9]+:[[:space:]]*//' \
   | drop_test_module_hits \
   | sed "s|^$REPO_ROOT/||" \
