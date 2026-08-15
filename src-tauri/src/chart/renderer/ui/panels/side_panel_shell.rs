@@ -380,7 +380,7 @@ impl<'a> SidePanelShell<'a> {
         // sharp corners via the normal PanelFrame.
         let st = crate::chart_renderer::ui::style::current();
         let region_gap = st.region_gap;
-        let region_radius = st.region_radius as u8;
+        let region_radius = crate::chart_renderer::ui::style::region_radius();
         let flush = region_gap <= 0.0;
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref())
             .frame(if flush {
@@ -560,7 +560,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
         // region_gap; other styles get a modest one so the card still reads.
         let rgap = crate::chart_renderer::ui::style::region_gap();
         let cgap = if rgap > 0.0 { rgap } else { gap_sm() };
-        let rr = if rgap > 0.0 { crate::chart_renderer::ui::style::current().region_radius } else { 10.0 };
+        let rr = if rgap > 0.0 { crate::chart_renderer::ui::style::region_radius() } else { 10 };
         frame = frame
             .outer_margin(egui::Margin { left: cgap as i8, right: cgap as i8, top: cgap as i8, bottom: cgap as i8 })
             .corner_radius(egui::CornerRadius::same(rr as u8))

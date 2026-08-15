@@ -95,7 +95,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
     let mut frame = egui::Frame::NONE.fill(t.panel_surface());
     let rgap = region_gap();
     if rgap > 0.0 {
-        let rr = style::current().region_radius as u8;
+        let rr = style::region_radius();
         frame = frame
             .outer_margin(egui::Margin { left: rgap as i8, right: rgap as i8, top: 0, bottom: rgap as i8 })
             .corner_radius(egui::CornerRadius::same(rr))

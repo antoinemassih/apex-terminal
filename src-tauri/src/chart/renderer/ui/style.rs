@@ -1646,6 +1646,18 @@ pub(crate) fn footer_visible() -> bool {
 /// The inter-region gap (px). 0 when the style is flush.
 #[inline]
 pub(crate) fn region_gap() -> f32 { current().region_gap }
+/// Region corner radius — the partner of [`region_gap`].
+///
+/// These two are always read together (a tiled style rounds its regions, a
+/// flush one squares them), but only `region_gap` had an accessor, so every
+/// call site paired a helper with a raw `current().region_radius`:
+///
+///     let rgap = style::region_gap();
+///     let rr   = if rgap > 0.0 { style::current().region_radius } else { 10.0 };
+///
+/// One half of a pair going through the front door and the other climbing in a
+/// window is how the two drift apart later.
+pub(crate) fn region_radius() -> u8 { current().region_radius as u8 }
 
 // ── Button-group enclosure ────────────────────────────────────────────────────
 // A toolbar "button group" is a run of related buttons (sidebar toggles, chart

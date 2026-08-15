@@ -393,9 +393,24 @@ impl<'a> WatchlistRow<'a> {
         let zones_body = zones.clone();
 
         // Per-style watchlist row treatment — read once before the body closure.
-        let wl_margin   = crate::chart_renderer::ui::style::current().wl_row_side_margin;
-        let wl_radius   = crate::chart_renderer::ui::style::current().wl_row_corner_radius;
-        let wl_divider  = crate::chart_renderer::ui::style::current().wl_row_divider_alpha;
+        //
+        // Through the `ComponentTheme` trait, not `style::current()` directly.
+        // `theme_impl.rs` already exposes these as `row_side_margin()` /
+        // `row_corner_radius()` / `row_divider_alpha()` under a comment reading
+        // "Single source of truth: the same tokens WatchlistRow reads" — while
+        // WatchlistRow was in fact reading them by a second route.
+        //
+        // They agreed, because both bottomed out in the same `StyleSettings`.
+        // That is the failure mode, not the reassurance: two paths that agree
+        // by construction diverge the moment anything sits between them — a
+        // `ThemeScope` override, or the generic `PanelListRow` being handed a
+        // different `ComponentTheme` impl than the concrete `Theme`. The
+        // generic row and this one would then style differently while both
+        // looked correct in isolation.
+        use crate::ui_kit::widgets::theme::ComponentTheme as _;
+        let wl_margin   = theme_ref.row_side_margin();
+        let wl_radius   = theme_ref.row_corner_radius();
+        let wl_divider  = theme_ref.row_divider_alpha();
 
         let resp = RowShell::new(theme_ref, "")
             .variant(RowVariant::Default)
