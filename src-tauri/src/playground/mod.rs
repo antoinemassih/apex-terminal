@@ -127,7 +127,6 @@ enum Story {
     Forms,
     Data,
     Specialty,
-    PaneGrid,
 }
 
 impl Story {
@@ -144,7 +143,6 @@ impl Story {
         Story::Forms,
         Story::Data,
         Story::Specialty,
-        Story::PaneGrid,
     ];
 
     fn label(self) -> &'static str {
@@ -161,7 +159,6 @@ impl Story {
             Story::Forms      => "Forms",
             Story::Data       => "Data",
             Story::Specialty  => "Specialty",
-            Story::PaneGrid   => "PaneGrid",
         }
     }
 }
@@ -330,7 +327,6 @@ impl eframe::App for Playground {
                             Story::Forms      => stories::forms::show(ui, &theme, &mut self.state.forms),
                             Story::Data       => stories::data::show(ui, &theme, &mut self.state.data),
                             Story::Specialty  => stories::specialty::show(ui, &theme, &mut self.state.specialty),
-                            Story::PaneGrid   => stories::panegrid::show(ui, &theme, &mut self.state.panegrid),
                         }
                     });
             });

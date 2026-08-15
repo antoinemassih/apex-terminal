@@ -1135,7 +1135,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             row_height_dense: 22.0,    // row_height_px = 22
             row_height_comfortable: 28.0,
             row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
-            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
+            row_spacious: 24.0, row_tall: 30.0, splitter_width: 8.0,
             rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
             // Control-height ladder: defaults = the former Size::height literals.
             control_xs: 18.0, control_sm: 22.0, control_md: 28.0, control_lg: 34.0, control_xl: 40.0,
@@ -1282,7 +1282,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             row_height_dense: 26.0,    // row_height_px = 26
             row_height_comfortable: 34.0,
             row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
-            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
+            row_spacious: 24.0, row_tall: 30.0, splitter_width: 8.0,
             rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
             // Control-height ladder: defaults = the former Size::height literals.
             control_xs: 18.0, control_sm: 22.0, control_md: 28.0, control_lg: 34.0, control_xl: 40.0,
@@ -1420,7 +1420,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             row_height_dense: 20.0,    // row_height_px = 20
             row_height_comfortable: 28.0,
             row_dense: 18.0, row_compact: 20.0, row_default: 22.0,
-            row_spacious: 24.0, row_tall: 30.0, splitter_width: 6.0,
+            row_spacious: 24.0, row_tall: 30.0, splitter_width: 8.0,
             rail_narrow: 240.0, rail_medium: 300.0, rail_wide: 400.0,
             // Control-height ladder: defaults = the former Size::height literals.
             control_xs: 18.0, control_sm: 22.0, control_md: 28.0, control_lg: 34.0, control_xl: 40.0,

@@ -169,7 +169,14 @@ impl PaneLayout {
         let mut drag_targets: Vec<(SplitId, Rect, Axis, f32, Rect)> = Vec::new();
         collect_split_handles(&self.state, full_rect, gap, &mut drag_targets);
 
-        let hit_band = 8.0_f32;
+        // AUDIT 2026-08 — this is the REAL splitter. `Density::splitter_width`
+        // was wired into `ui_kit::widgets::PaneGrid`, which no application code
+        // instantiates: the chart uses `PaneState` for topology through this
+        // adapter and never the widget (see the module note above). So the
+        // token had a call site, satisfied its consumer gate, and still could
+        // not move a pixel — a consumer inside unreachable code is not a
+        // consumer. This is the divider the user actually drags.
+        let hit_band = crate::ui_kit::style::splitter_width();
         let hl_band  = 3.0_f32;
         let stroke_w = crate::ui_kit::style::stroke_std();
         let border_col = theme.border();

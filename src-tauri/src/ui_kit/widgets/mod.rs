@@ -192,7 +192,7 @@ pub use risk_reward_bar::RiskRewardBar;
 pub use sparkline::{Sparkline, SparkStyle};
 pub use theme_preview_card::ThemePreviewCard;
 pub use selectable_row::SelectableRow;
-pub use pane_grid::{PaneGrid, PaneState, PaneId, SplitId, Axis as PaneAxis};
+pub use pane_grid::{PaneState, PaneId, SplitId, Axis as PaneAxis};
 
 use egui::{Ui, RichText};
 use super::icons::Icon;

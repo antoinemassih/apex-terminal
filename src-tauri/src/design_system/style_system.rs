@@ -709,7 +709,7 @@ impl Density {
     fn default_row_default()  -> f32 {  22.0 }
     fn default_row_spacious() -> f32 {  24.0 }
     fn default_row_tall()     -> f32 {  30.0 }
-    fn default_splitter()     -> f32 {   6.0 }
+    fn default_splitter()     -> f32 {   8.0 }
     fn default_rail_narrow()  -> f32 { 240.0 }
     fn default_rail_medium()  -> f32 { 300.0 }
     fn default_rail_wide()    -> f32 { 400.0 }

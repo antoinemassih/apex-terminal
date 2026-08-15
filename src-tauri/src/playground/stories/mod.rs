@@ -16,7 +16,6 @@ pub mod sliders;
 pub mod forms;
 pub mod data;
 pub mod specialty;
-pub mod panegrid;
 
 // ── Per-story mutable state ────────────────────────────────────────────────────
 
@@ -172,5 +171,4 @@ pub struct PlaygroundState {
     pub forms:      FormsState,
     pub data:       DataState,
     pub specialty:  SpecialtyState,
-    pub panegrid:   panegrid::PaneGridState,
 }

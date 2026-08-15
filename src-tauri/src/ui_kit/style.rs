@@ -263,7 +263,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     row_default:    22.0,
     row_spacious:   24.0,
     row_tall:       30.0,
-    splitter_width:  6.0,
+    splitter_width:  8.0,
     pane_gap:        8.0,
     control_xs: 18.0, control_sm: 22.0, control_md: 28.0, control_lg: 34.0, control_xl: 40.0,
     rail_narrow:   240.0,

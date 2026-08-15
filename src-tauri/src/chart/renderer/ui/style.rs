@@ -4376,6 +4376,52 @@ mod m1_ladder_tests {
             "authored icon scale did not reach the TokenSnapshot");
     }
 
+    /// The splitter token must reach the divider a user actually drags.
+    ///
+    /// This exists because the previous wiring LOOKED correct and was not.
+    /// `Density::splitter_width` was read by `ui_kit::widgets::PaneGrid`, a
+    /// widget no application code ever constructed — so the token had a call
+    /// site, the consumer gate passed, and the value still could not move a
+    /// pixel. A consumer inside unreachable code is not a consumer, and no
+    /// count-based check can tell the difference.
+    ///
+    /// The real divider is `chart_renderer::pane_layout`'s `hit_band`, which
+    /// was its own hardcoded 8.0. Hence both assertions: the default must be
+    /// the 8.0 that has always shipped (not the dead widget's 6.0), and an
+    /// authored value must actually track.
+    #[test]
+    fn splitter_token_reaches_the_real_divider() {
+        use crate::design_system::StyleSystem;
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
+
+        begin_frame();
+        assert_eq!(
+            crate::ui_kit::style::splitter_width(), 8.0,
+            "default splitter must equal the 8.0 `pane_layout::hit_band` has              always used — 6.0 here means it was defaulted to the dead              widget's value again"
+        );
+
+        let mut ss = StyleSystem::default();
+        ss.meta.name = "splitter-proof".into();
+        ss.density.splitter_width = 21.0;
+        let sys_id = add_style_system(ss);
+        // Keep the two index-aligned stores in step; see the note on
+        // `pane_gap_snapshot_matches_style_settings` for what happens otherwise.
+        let set_id = add_style_preset("splitter-proof", get_style_settings(0));
+        assert_eq!(sys_id, set_id, "stores must stay index-aligned");
+
+        set_active_style(set_id);
+        begin_frame();
+        let authored = crate::ui_kit::style::splitter_width();
+        set_active_style(prev_active);
+        begin_frame();
+
+        assert_eq!(
+            authored, 21.0,
+            "an authored splitter width must reach `splitter_width()`; 8.0              here means the token is pinned rather than cascading"
+        );
+    }
+
     /// AUDIT 2026-08: the STRUCTURAL half of the same proof.
     ///
     /// The test above covers gap/type — the two ladders M1 wired. But

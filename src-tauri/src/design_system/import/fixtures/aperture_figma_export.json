@@ -1472,8 +1472,8 @@
       "name": "density/splitter_width",
       "type": "FLOAT",
       "valuesByMode": {
-        "Aperture": 6.0,
-        "Meridien": 6.0
+        "Aperture": 8.0,
+        "Meridien": 8.0
       }
     },
     {
