@@ -92,15 +92,27 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
     let expanded = style::footer_visible();
 
     // Frame: panel surface; float as a rounded card when the active style tiles.
-    let mut frame = egui::Frame::NONE.fill(t.panel_surface());
+    // AUDIT 2026-08 — the dock LOST its bottom gap.
+    //
+    // Corners here were already fine (measured: rounded top and bottom, unlike
+    // the chrome rows). The defect was different: the card ran flush to the
+    // very bottom of the window — its `outer_margin.bottom` was consumed the
+    // same way the chrome rows' was, so a card that is inset on the left and
+    // right sat hard against the window edge below.
+    //
+    // `exact_height(content_h + rgap)` carried the comment "so the card keeps
+    // its height after the bottom outer margin", which is the author noticing
+    // the margin was being eaten and compensating for it by making the panel
+    // taller — restoring the height while leaving the gap gone.
+    //
+    // Painted explicitly like the chrome rows, so the inset is exact rather
+    // than dependent on how a panel bounds a frame's background.
     let rgap = region_gap();
-    if rgap > 0.0 {
-        let rr = style::region_radius();
-        frame = frame
-            .outer_margin(egui::Margin { left: rgap as i8, right: rgap as i8, top: 0, bottom: rgap as i8 })
-            .corner_radius(egui::CornerRadius::same(rr))
-            .stroke(egui::Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, 150)));
-    }
+    let frame = if rgap > 0.0 {
+        egui::Frame::NONE.inner_margin(egui::Margin::same(rgap as i8))
+    } else {
+        egui::Frame::NONE.fill(t.panel_surface())
+    };
 
     // Seed the split slots from the persisted primary tab on first use.
     BOTTOM_SLOTS.with(|s| {
@@ -116,9 +128,15 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
     let content_h = if expanded { h } else { DOCK_STRIP_H };
 
     egui::TopBottomPanel::bottom(egui::Id::new("apex_bottom_dock"))
-        .exact_height(content_h + rgap) // +rgap so the card keeps its height after the bottom outer margin.
+        // Card height plus the gap on BOTH sides (was `+ rgap`, one side only).
+        .exact_height(content_h + if rgap > 0.0 { 2.0 * rgap } else { 0.0 })
         .frame(frame)
         .show(ctx, |ui| {
+            if rgap > 0.0 {
+                let sw = ctx.screen_rect().width();
+                let card = style::region_card_rect(ui.max_rect(), sw);
+                style::paint_region_card_filled(ui.painter(), card, t, t.panel_surface());
+            }
             if expanded {
                 // ── Resize grip: thin drag strip at the top edge. ──
                 let full = ui.max_rect();
