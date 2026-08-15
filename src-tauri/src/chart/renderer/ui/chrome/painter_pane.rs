@@ -989,7 +989,10 @@ impl<'a> PainterPaneHeader<'a> {
                 header_divider_strong(&painter, cx + gap_xs(), rect, t);
                 cx += gap_sm();
             }
-            let plus_h = h - ICON_BTN_INSET_V;
+            // Same clamp as the icon cluster — see the note there.
+            let plus_h = (h - ICON_BTN_INSET_V)
+                .max(crate::ui_kit::style::MIN_PANE_CHROME_TARGET_PX)
+                .min(h);
             let plus_rect = Rect::from_min_size(
                 pos2(cx, rect.center().y - plus_h / 2.0),
                 Vec2::new(PLUS_TAB_W, plus_h),
@@ -1089,7 +1092,20 @@ impl<'a> PainterPaneHeader<'a> {
                 })
                 .collect();
 
-            let icon_h = h - ICON_BTN_INSET_V;
+            // AUDIT 2026-08 — inset, but never below the pane-chrome minimum.
+            //
+            // `h - INSET` alone means a density-compressed header produces
+            // chips under the minimum: Octave's 0.85x scale gave 20px targets.
+            // The obvious fix — floor the HEADER — grows chrome on every pane
+            // of a mosaic, which is the opposite of what a dense style is for.
+            //
+            // So the chip absorbs the inset instead of the header absorbing the
+            // chip: clamped to `h` so it can never overflow the header it sits
+            // in. On a roomy header nothing changes; on a tight one the chip
+            // sits closer to the edges rather than shrinking out of reach.
+            let icon_h = (h - ICON_BTN_INSET_V)
+                .max(crate::ui_kit::style::MIN_PANE_CHROME_TARGET_PX)
+                .min(h);
             let mut rx  = rect.right() - close_total - pane_ctrls_total - order_dom_total;
             let mut clicked_btn: Option<PaneBtn> = None;
 

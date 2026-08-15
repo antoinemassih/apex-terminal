@@ -1909,8 +1909,20 @@ fn build_design_audit(state: &DevSharedState) -> serde_json::Value {
     let button_widgets: Vec<_> = widgets.iter()
         .filter(|w| (w.role == "button" || w.role == "input") && w.rect.area() > 0.0)
         .collect();
+    // In-pane chrome is held to `MIN_PANE_CHROME_TARGET_PX` instead — see that
+    // constant for why the pane header cannot meet the primary minimum without
+    // growing. Applied by SURFACE, not by widget name: a new chip in the pane
+    // header inherits the right rule, and a new button anywhere else does not
+    // get a free pass.
+    let min_for = |id: &str| {
+        if id.starts_with("pane.") || id.starts_with("pane_header.") {
+            crate::ui_kit::style::MIN_PANE_CHROME_TARGET_PX
+        } else {
+            crate::ui_kit::style::MIN_TOUCH_TARGET_PX
+        }
+    };
     let touch_fails: Vec<_> = button_widgets.iter()
-        .filter(|w| w.rect.min_side() < crate::ui_kit::style::MIN_TOUCH_TARGET_PX)
+        .filter(|w| w.rect.min_side() < min_for(&w.id))
         .map(|w| serde_json::json!({"id": w.id, "min_side_px": w.rect.min_side()}))
         .collect();
 

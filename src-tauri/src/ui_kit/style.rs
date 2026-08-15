@@ -622,6 +622,23 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 /// 32 is untouched); a style asking for a shorter one is raised to this.
 pub const MIN_TOUCH_TARGET_PX: f32 = 28.0;
 
+/// Smallest side for controls inside a PANE HEADER, in px.
+///
+/// The pane header is 28px tall, so a chip meeting `MIN_TOUCH_TARGET_PX` fills
+/// it edge to edge with no padding. Meeting the primary minimum there requires
+/// a taller header — more chrome, less chart, on every pane of a mosaic — which
+/// is the opposite of what this chrome is for.
+///
+/// Declared HERE, next to the number it relaxes, rather than as a magic
+/// exemption inside the audit. Two thresholds is one more than ideal; two
+/// thresholds a reader can see side by side is much better than one threshold
+/// plus a list of widgets that quietly do not have to meet it.
+///
+/// This is a mouse-driven desktop terminal: 24px is a comfortable target under
+/// Fitts's law at pointer speed. If this app ever ships a touch surface, this
+/// constant is the thing to delete, and the pane header has to grow.
+pub const MIN_PANE_CHROME_TARGET_PX: f32 = 24.0;
+
 #[inline] pub fn control_h_xs()         -> f32 { frame_tokens().control_xs }
 #[inline] pub fn control_h_sm()         -> f32 { frame_tokens().control_sm }
 #[inline] pub fn control_h_md()         -> f32 { frame_tokens().control_md }
