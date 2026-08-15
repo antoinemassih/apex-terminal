@@ -74,11 +74,42 @@ TEST_CFG_RE = re.compile(r"#\[cfg\([^\n]*\btest\b")
 #    `name\s*\(` pattern scored zero for the very call site that made this
 #    module canonical. Canonical systems match on the identifier, not the call.
 SYSTEMS = {
+    # DELETED — a second recipe engine beside `RecipeSpec`.
     "sx::recipes":         ("forbidden", r"sx\s*::\s*recipes?\s*::"),
-    "ComponentTheme":      ("legacy",    r"\bComponentTheme\b"),
-    "PortableTheme":       ("legacy",    r"\bPortableTheme\b"),
-    "current()":           ("legacy",    r"\b(?:style|StyleSettings)\s*::\s*current\s*\(\s*\)"),
-    "get_theme()":         ("legacy",    r"(?<![.\w])get_theme\s*\("),
+
+    # LEGACY — genuinely parallel read paths.
+    #
+    # `style::current()` returns `StyleSettings` from a global lookup keyed on
+    # `active_style_idx()`. `frame_tokens()` returns the per-frame
+    # `TokenSnapshot`. Both claim to answer "how big/what colour", but only the
+    # snapshot honours design-inspector overrides — so a widget calling
+    # `current()` at paint time silently opts out of the token cascade. That is
+    # the parallel path. (Its use to BUILD the snapshot is fine and is why this
+    # is a ceiling rather than a ban.)
+    "style::current()":    ("legacy",    r"\b(?:style|StyleSettings)\s*::\s*current\s*\(\s*\)"),
+
+    # CANONICAL — the single system's contract, default impl, and read paths.
+    #
+    # An earlier version of this gate had the next three as `legacy`, which was
+    # wrong in the most damaging possible direction: it would have failed CI for
+    # ADOPTING the design system. They were classified from a call-site census
+    # instead of by reading them. What they actually are:
+    #
+    #   ComponentTheme  the widget<->theme TRAIT. Widgets take
+    #                   `&dyn ComponentTheme` so ui_kit can extract as a crate.
+    #                   349 sites is wide adoption of the ONE contract.
+    #   PortableTheme   the default concrete impl of that trait — the `T` in
+    #                   `T: ComponentTheme = PortableTheme`. Not a rival; the
+    #                   serialisable payload the contract is satisfied by.
+    #   get_theme()     the LIVE_THEMES store accessor. The deprecated thing
+    #                   here is the compile-time `THEMES` const, whose own doc
+    #                   says "Do NOT add new runtime call sites against this.
+    #                   Use `get_theme(idx)`" — and which is already cfg-gated
+    #                   to test/design-mode, so it cannot grow in a release
+    #                   build and needs no ceiling.
+    "ComponentTheme":      ("canon",     r"\bComponentTheme\b"),
+    "PortableTheme":       ("canon",     r"\bPortableTheme\b"),
+    "get_theme()":         ("canon",     r"(?<![.\w])get_theme\s*\("),
     "RecipeSpec":          ("canon",     r"\bRecipeSpec\b"),
     "frame_tokens()":      ("canon",     r"(?<![.\w])frame_tokens\b"),
     "active_style_system": ("canon",     r"(?<![.\w])active_style_system\b"),
