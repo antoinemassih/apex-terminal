@@ -112,3 +112,20 @@ jobs:
       - name: Run inspector-slider gate (controls that control nothing)
         if: ${{ !cancelled() }}
         run: python dev/inspector_slider_gate.py
+
+      # The HARDWIRE gate. `ui_kit::style` is the design system's public
+      # surface; an accessor there promises a theme can author that value. 27
+      # of them were bare literals — `pub fn icon_md() -> f32 { 18.0 }` — a
+      # literal wearing an accessor's clothes.
+      #
+      # It is the most durable kind of hardwire because every other check here
+      # passes it: the call-site lints see a proper accessor and are satisfied
+      # (the call site IS correct), token_consumer_gate only enumerates
+      # frame_tokens()-backed accessors so it never considers them, and
+      # ladder_gate compares multipliers across a ladder — one where every rung
+      # is hardcoded is perfectly consistent. So the system could report full
+      # compliance while icon scale, leading and display type were unauthorable
+      # by any theme. Budget is 0.
+      - name: Run hardwire gate (accessors that return literals)
+        if: ${{ !cancelled() }}
+        run: python dev/hardwire_gate.py

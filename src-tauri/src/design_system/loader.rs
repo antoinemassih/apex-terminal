@@ -443,6 +443,8 @@ impl StyleSystem {
         let al_sec = section("alphas");
         let alphas = Alphas {
             // u8 tiers
+            whisper:   read_u8_or(&al_sec, "whisper",   "alphas", d_al.whisper),
+            hint:      read_u8_or(&al_sec, "hint",      "alphas", d_al.hint),
             faint:     read_u8_or(&al_sec, "faint",     "alphas", d_al.faint),
             ghost:     read_u8_or(&al_sec, "ghost",     "alphas", d_al.ghost),
             soft_u8:   read_u8_or(&al_sec, "soft_u8",   "alphas", d_al.soft_u8),
@@ -859,6 +861,7 @@ mod tests {
                 faint: 8, ghost: 12, soft_u8: 18, subtle_u8: 35, tint: 45, muted_u8: 55,
                 dim: 55, line: 75, strong_u8: 75, active: 95, heavy_u8: 115, scrim: 130, solid: 190,
                 subtle: 0.03, soft: 0.10, muted: 0.22, mid: 0.45, strong: 0.70, opaque: 0.99, header_border: 0.15,
+                ..Alphas::default()
             },
             elevation: Elevation { l1: 1.08, l2: 0.92, l3: 0.85 },
             density: Density { factor: 0.9, row_height_dense: 20.0, row_height_comfortable: 30.0,

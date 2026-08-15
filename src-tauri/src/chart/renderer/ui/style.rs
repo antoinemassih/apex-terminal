@@ -178,6 +178,16 @@ pub fn begin_frame() {
         // `stroke.heavy` is 2.5 in DesignTokens and had a live inspector
         // slider that nothing consumed; `stroke_extra_thick()` hardcoded the
         // same 2.5. Same number, two homes — now one.
+        font_display_sm: ty.display_sm,
+        font_display_md: ty.display_md,
+        font_display_lg: ty.display_lg,
+        font_display_xl: ty.display_xl,
+        font_4xs:        ty.ui_4xs,
+        font_xs_plus:    ty.ui_xs_plus,
+        font_md_plus:    ty.ui_md_plus,
+        gap_2xs:           sp.gap_2xs,
+        alpha_whisper:     al.whisper,
+        alpha_hint:        al.hint,
         icon_xs:      ass.icons.xs,
         icon_sm:      ass.icons.sm,
         icon_md:      ass.icons.md,

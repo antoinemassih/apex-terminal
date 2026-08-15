@@ -69,6 +69,23 @@ pub struct TokenSnapshot {
     /// number, authored in one place and consumed from another.
     /// Icon glyph sizes. Were four hardcoded literals, so no theme could
     /// change icon scale — a primary axis of a UI's density and character.
+    /// Display type scale + the three in-between UI rungs. Seven more values
+    /// that were bare literals, so a style could author its whole UI ladder and
+    /// still not touch the sizes that set a screen's voice.
+    pub font_display_sm: f32,
+    pub font_display_md: f32,
+    pub font_display_lg: f32,
+    pub font_display_xl: f32,
+    pub font_4xs: f32,
+    pub font_xs_plus: f32,
+    pub font_md_plus: f32,
+    /// The 2px base of the gap ladder — `gap_2xs()` applied the spacing
+    /// override to a hardcoded 2.0, so the rung scaled but could not be
+    /// re-pitched by a style.
+    pub gap_2xs: f32,
+    /// The two alpha rungs between `ghost` (15) and `subtle` (40).
+    pub alpha_whisper: u8,
+    pub alpha_hint: u8,
     pub icon_xs: f32,
     pub icon_sm: f32,
     pub icon_md: f32,
@@ -211,6 +228,10 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     stroke_hair: 0.3, stroke_thin: 0.5, stroke_medium: 0.8,
     stroke_std: 1.0, stroke_bold: 1.5, stroke_thick: 2.0,
     stroke_extra_thick: 2.5, stroke_rule: 3.0,
+    font_display_sm: 28.0, font_display_md: 32.0,
+    font_display_lg: 42.0, font_display_xl: 56.0,
+    font_4xs: 6.0, font_xs_plus: 10.0, font_md_plus: 14.0,
+    gap_2xs: 2.0, alpha_whisper: 25, alpha_hint: 30,
     icon_xs: 14.0, icon_sm: 16.0, icon_md: 18.0, icon_lg: 20.0,
     line_tight: 1.20, line_heading: 1.25, line_dense: 1.30,
     line_compact: 1.35, line_normal: 1.40, line_loose: 1.50,
@@ -558,10 +579,10 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 #[inline] pub fn font_body() -> f32 { frame_tokens().font_body }
 #[inline] pub fn font_caption() -> f32 { frame_tokens().font_caption }
 #[inline] pub fn font_section_label() -> f32 { frame_tokens().font_section_label }
-#[inline] pub fn font_display_sm() -> f32 { 28.0 }
-#[inline] pub fn font_display_md() -> f32 { 32.0 }
-#[inline] pub fn font_display_lg() -> f32 { 42.0 }
-#[inline] pub fn font_display_xl() -> f32 { 56.0 }
+#[inline] pub fn font_display_sm() -> f32 { frame_tokens().font_display_sm }
+#[inline] pub fn font_display_md() -> f32 { frame_tokens().font_display_md }
+#[inline] pub fn font_display_lg() -> f32 { frame_tokens().font_display_lg }
+#[inline] pub fn font_display_xl() -> f32 { frame_tokens().font_display_xl }
 
 // ─── Icon control sizes ──────────────────────────────────────────────────────
 #[inline] pub fn icon_xs() -> f32 { frame_tokens().icon_xs }
@@ -596,15 +617,8 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 #[inline] pub fn rail_width_wide()      -> f32 { frame_tokens().rail_wide }
 
 // ─── Card padding ────────────────────────────────────────────────────────────
-#[inline] pub fn card_padding_compact()  -> f32 { 8.0 }
-#[inline] pub fn card_padding_default()  -> f32 { 12.0 }
-#[inline] pub fn card_padding_spacious() -> f32 { 16.0 }
 
 // ─── Divider insets ──────────────────────────────────────────────────────────
-#[inline] pub fn divider_inset_xs() -> f32 { 1.0 }
-#[inline] pub fn divider_inset_sm() -> f32 { 2.0 }
-#[inline] pub fn divider_inset_md() -> f32 { 3.0 }
-#[inline] pub fn divider_inset_lg() -> f32 { 5.0 }
 
 // ─── Uppercase alpha constants (compile-time fallbacks) ──────────────────────
 pub const ALPHA_FAINT:   u8 =  10;
@@ -662,17 +676,17 @@ pub fn shadow_color_alpha_of(shadow_color: Color32, alpha: u8) -> Color32 {
 // / `font_3xs` / `font_xs_plus` / `font_md_plus` stay as constants — the
 // DesignTokens font set doesn't expose those tiers (yet).
 
-#[inline] pub fn font_4xs()    -> f32 { 6.0 }
+#[inline] pub fn font_4xs()    -> f32 { frame_tokens().font_4xs }
 // 3xs sits one step under 2xs. It was pinned at 8.0 while `font_2xs` was ALSO
 // 8.0, so the two tiers were indistinguishable (a duplicate rung on the ladder).
 // Now derived: always exactly 1px under 2xs, with an 8px legibility floor.
 #[inline] pub fn font_3xs()    -> f32 { (font_2xs() - 1.0).max(8.0) }
 #[inline] pub fn font_2xs()    -> f32 { frame_tokens().font_2xs }
 #[inline] pub fn font_xs()     -> f32 { frame_tokens().font_xs }
-#[inline] pub fn font_xs_plus() -> f32 { 10.0 }
+#[inline] pub fn font_xs_plus() -> f32 { frame_tokens().font_xs_plus }
 #[inline] pub fn font_sm()     -> f32 { frame_tokens().font_sm }
 #[inline] pub fn font_md()     -> f32 { frame_tokens().font_md }
-#[inline] pub fn font_md_plus() -> f32 { 14.0 }
+#[inline] pub fn font_md_plus() -> f32 { frame_tokens().font_md_plus }
 #[inline] pub fn font_lg()     -> f32 { frame_tokens().font_lg }
 #[inline] pub fn font_xl()     -> f32 { frame_tokens().font_xl }
 
@@ -699,7 +713,7 @@ pub const FONT_XL:      f32 = 22.0;
 // Gap helpers apply the user's SpacingScale override (Tight 0.75× / Standard
 // 1.0× / Loose 1.25×). Standard = no-op; Tight condenses every gap, Loose
 // spreads them. Override defaults to Standard.
-#[inline] pub fn gap_2xs() -> f32 { 2.0 * spacing_scale_override().scale() }
+#[inline] pub fn gap_2xs() -> f32 { frame_tokens().gap_2xs * spacing_scale_override().scale() }
 #[inline] pub fn gap_xs()  -> f32 { frame_tokens().gap_xs  * spacing_scale_override().scale() }
 // The 6.0 rung between gap_xs and gap_sm. It was declared ~240 lines above the
 // rest of the ladder and was the ONLY rung without the scale multiplier, so
@@ -740,8 +754,8 @@ pub fn radius_pill() -> f32 { frame_tokens().radius_pill * corner_scale_override
 
 // ─── Alpha (0..=255) — pure constants ────────────────────────────────────────
 
-pub fn alpha_whisper() -> u8 { 25 }
-pub fn alpha_hint()    -> u8 { 30 }
+pub fn alpha_whisper() -> u8 { frame_tokens().alpha_whisper }
+pub fn alpha_hint()    -> u8 { frame_tokens().alpha_hint }
 
 // ─── Elevation factors (gamma multipliers over `bg()`) ───────────────────────
 //

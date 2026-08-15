@@ -221,6 +221,7 @@ pub fn baseline_style_system() -> StyleSystem {
             opaque:        1.0,
             // header_outer_border_alpha = 38 → 38/255 ≈ 0.1490
             header_border: 38.0 / 255.0,
+            ..Alphas::default()
         },
 
         // Elevation: no Meridien-specific overrides; use the perceptual constants from style.rs.

@@ -170,11 +170,36 @@ pub struct Typography {
     pub ui_md:  f32,   // 14
     #[serde(default = "Typography::default_ui_lg")]
     pub ui_lg:  f32,   // 16
+    // Display scale + the three in-between UI rungs. All seven were hardcoded
+    // literals in `ui_kit::style` (`font_display_lg()` = 42.0 and friends), so
+    // a style could author its whole UI type ladder and still not touch its
+    // display type — the sizes that set a screen's voice most.
+    #[serde(default = "Typography::default_display_sm")]
+    pub display_sm: f32,  // 28
+    #[serde(default = "Typography::default_display_md")]
+    pub display_md: f32,  // 32
+    #[serde(default = "Typography::default_display_lg")]
+    pub display_lg: f32,  // 42
+    #[serde(default = "Typography::default_display_xl")]
+    pub display_xl: f32,  // 56
+    #[serde(default = "Typography::default_ui_4xs")]
+    pub ui_4xs: f32,      //  6
+    #[serde(default = "Typography::default_ui_xs_plus")]
+    pub ui_xs_plus: f32,  // 10
+    #[serde(default = "Typography::default_ui_md_plus")]
+    pub ui_md_plus: f32,  // 14
     #[serde(default = "Typography::default_ui_xl")]
     pub ui_xl:  f32,   // 22
 }
 
 impl Typography {
+    fn default_display_sm() -> f32 { 28.0 }
+    fn default_display_md() -> f32 { 32.0 }
+    fn default_display_lg() -> f32 { 42.0 }
+    fn default_display_xl() -> f32 { 56.0 }
+    fn default_ui_4xs()     -> f32 {  6.0 }
+    fn default_ui_xs_plus() -> f32 { 10.0 }
+    fn default_ui_md_plus() -> f32 { 14.0 }
     fn default_ui_2xs() -> f32 {  9.0 }
     fn default_ui_xs()  -> f32 { 10.0 }
     fn default_ui_sm()  -> f32 { 12.0 }
@@ -211,6 +236,13 @@ impl Default for Typography {
             family_ui:      "Inter".to_owned(),
             family_mono:    "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
+            display_sm: Self::default_display_sm(),
+            display_md: Self::default_display_md(),
+            display_lg: Self::default_display_lg(),
+            display_xl: Self::default_display_xl(),
+            ui_4xs:     Self::default_ui_4xs(),
+            ui_xs_plus: Self::default_ui_xs_plus(),
+            ui_md_plus: Self::default_ui_md_plus(),
             ui_2xs: Self::default_ui_2xs(),
             ui_xs:  Self::default_ui_xs(),
             ui_sm:  Self::default_ui_sm(),
@@ -247,6 +279,10 @@ pub struct Spacing {
     #[serde(default = "Spacing::default_cta_padding_x")]
     pub cta_padding_x: f32,
     /// Standard button height (`button_height_px`).
+    // The 2px base of the gap ladder. `gap_2xs()` applied the spacing override
+    // to a hardcoded 2.0, so the rung scaled but a style could not re-pitch it.
+    #[serde(default = "Spacing::default_gap_2xs")]
+    pub gap_2xs: f32,           //  2
     #[serde(default = "Spacing::default_button_height")]
     pub button_height: f32,
     /// Standard button horizontal padding (`button_padding_x`).
@@ -284,6 +320,7 @@ pub struct Spacing {
 }
 
 impl Spacing {
+    fn default_gap_2xs()           -> f32 {  2.0 }
     fn default_cta_padding_x()   -> f32 { 12.0 }
     fn default_button_height()   -> f32 { 24.0 }
     fn default_button_padding_x()-> f32 { 10.0 }
@@ -303,6 +340,7 @@ impl Default for Spacing {
         // corrected to gap_xs..gap_2xl in ui_kit/style.rs (4/8/12/16/20/24).
         // The xs_mid 6.0 already matched and stays.
         Self {
+            gap_2xs:           Self::default_gap_2xs(),
             xs:         4.0,
             sm:         8.0,
             xs_mid:     6.0,
@@ -419,6 +457,12 @@ pub struct Alphas {
     pub soft_u8: u8,   // 20
     /// Subtle — low-emphasis overlay. Backs `alpha_subtle()` = 40.
     pub subtle_u8: u8, // 40
+    /// Whisper (25) and hint (30) — the two rungs between `ghost` (15) and
+    /// `subtle` (40). Both were hardcoded in `ui_kit::style`.
+    #[serde(default = "Alphas::default_whisper")]
+    pub whisper: u8,
+    #[serde(default = "Alphas::default_hint")]
+    pub hint: u8,
     /// Tint — icon/chip accent tint. Backs `alpha_tint()` = 48.
     pub tint:    u8,   // 48
     /// Muted — primary dimming value. Backs `alpha_muted()` = 60.
@@ -455,10 +499,17 @@ pub struct Alphas {
     pub header_border: f32, // 0.18
 }
 
+impl Alphas {
+    fn default_whisper() -> u8 { 25 }
+    fn default_hint()    -> u8 { 30 }
+}
+
 impl Default for Alphas {
     fn default() -> Self {
         Self {
             // u8 tiers — match DEFAULT_TOKEN_SNAPSHOT in style.rs
+            whisper:   Self::default_whisper(),
+            hint:      Self::default_hint(),
             faint:     10,
             ghost:     15,
             soft_u8:   20,

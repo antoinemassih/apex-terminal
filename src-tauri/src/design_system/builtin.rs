@@ -1126,7 +1126,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mid:           0.48,
             strong:        0.72,
             opaque:        1.0,
-            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38
+            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38,
+            ..Alphas::default()
         },
         elevation: Elevation::default(),
         density: Density {
@@ -1272,7 +1273,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mid:           0.48,
             strong:        0.72,
             opaque:        1.0,
-            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38
+            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38,
+            ..Alphas::default()
         },
         elevation: Elevation::default(),
         density: Density {
@@ -1409,7 +1411,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mid:           0.48,
             strong:        0.72,
             opaque:        1.0,
-            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38
+            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38,
+            ..Alphas::default()
         },
         elevation: Elevation::default(),
         density: Density {

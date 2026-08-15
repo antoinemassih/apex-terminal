@@ -69,6 +69,16 @@ ALLOWED_UNREAD = {
     # rather than given a token consumer nobody asked for, so it reads as
     # deliberately pending instead of forgotten.
     "line_loose",
+    # Top rung of the display scale. sm/md/lg have 4/5/3 consumers; xl has none
+    # yet, and its own doc names the intended one: "primary focal number
+    # (full-width banner widget)" — a widget that does not exist.
+    #
+    # Kept for the same reason as `line_loose`: a ladder whose other rungs are
+    # live, with a documented pending consumer. Note the trap it set — grepping
+    # `font_display_xl()` returns one hit, which is that comment. This gate
+    # strips comments precisely so documentation cannot satisfy a wiring check,
+    # and it was right where the grep was not.
+    "font_display_xl",
 }
 
 
