@@ -874,6 +874,7 @@ impl<'a> PainterPaneHeader<'a> {
             crate::dev_inspector::record(crate::dev_inspector::WidgetRecord {
                 id: format!("pane_header.symbol"),
                 role: "label".into(),
+                synthetic: false,
                 label: sym.to_string(),
                 value: Some(sym.to_string()),
                 rect: sym_label_rect.into(),

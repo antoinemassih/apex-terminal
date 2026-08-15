@@ -1922,6 +1922,7 @@ fn render_chart_pane(
         crate::dev_inspector::record(crate::dev_inspector::WidgetRecord {
             id: format!("pane.{pane_idx}.chart_body"),
             role: "canvas".into(),
+            synthetic: false,
             label: format!("{} {}", chart.symbol, chart.timeframe),
             value: None,
             rect: body_rect.into(),

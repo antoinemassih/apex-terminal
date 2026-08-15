@@ -77,6 +77,23 @@ pub struct WidgetRecord {
     /// the design — badges slide through one another's slots mid-animation.
     #[serde(default)]
     pub ticker: bool,
+    /// True for STATE-ONLY records: a value exposed to the harness (symbol,
+    /// timeframe, connection label) that paints nothing and therefore has no
+    /// rect.
+    ///
+    /// AUDIT 2026-08 — the design audit's empty-rect check excluded these by ID
+    /// SUBSTRING (`!id.contains(".symbol") && !id.contains(".timeframe")`),
+    /// which is a hardcoded list of two that had to be extended by hand every
+    /// time a state record was added. `pane.N.header` and
+    /// `status_bar.connection` were added and not added to it, so the audit
+    /// reported two permanent false failures and could never read clean —
+    /// which is how a check stops being read at all.
+    ///
+    /// A flag set by the constructor cannot fall out of date the way a name
+    /// list does, and it keeps the check honest: a REAL widget with zero area
+    /// is still a defect and is still reported.
+    #[serde(default)]
+    pub synthetic: bool,
 }
 
 impl WidgetRecord {
@@ -85,7 +102,7 @@ impl WidgetRecord {
             id: id.into(), role: role.into(), label: label.into(),
             value: None, rect: SerRect::zero(), clip_rect: SerRect::zero(),
             layer: 0, focused: false, hovered: false, enabled: true, is_clipped: false,
-            style_class: None, ticker: false,
+            style_class: None, ticker: false, synthetic: true,
         }
     }
     pub fn from_response(
@@ -107,6 +124,9 @@ impl WidgetRecord {
         );
         WidgetRecord {
             id: id.into(), role: role.into(), label: label.into(),
+            // A response-backed record describes something PAINTED, so a zero
+            // rect here is a real defect and must stay reportable.
+            synthetic: false,
             value: None,
             is_clipped,
             rect, clip_rect,

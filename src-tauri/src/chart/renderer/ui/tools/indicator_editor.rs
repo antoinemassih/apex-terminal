@@ -409,6 +409,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
         crate::dev_inspector::record(crate::dev_inspector::WidgetRecord {
             id: format!("dialog.indicator_editor.{ap}"),
             role: "dialog".into(),
+            synthetic: false,
             label: hdr_name.clone(),
             value: None,
             rect: drect.into(),

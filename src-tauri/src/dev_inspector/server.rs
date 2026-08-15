@@ -1920,9 +1920,11 @@ fn build_design_audit(state: &DevSharedState) -> serde_json::Value {
         .map(|w| serde_json::json!({"id": w.id, "role": w.role}))
         .collect();
 
-    // Empty rects: no widget with zero area (except synthetic state-only ones)
+    // Empty rects: no widget with zero area (except synthetic state-only ones,
+    // which are flagged by their constructor rather than matched by name — see
+    // `WidgetRecord::synthetic`).
     let empty_rects: Vec<_> = widgets.iter()
-        .filter(|w| w.rect.area() == 0.0 && !w.id.contains(".symbol") && !w.id.contains(".timeframe"))
+        .filter(|w| w.rect.area() == 0.0 && !w.synthetic)
         .map(|w| serde_json::json!({"id": w.id, "role": w.role}))
         .collect();
 
