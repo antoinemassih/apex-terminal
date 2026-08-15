@@ -998,6 +998,71 @@ mod tests {
         );
     }
 
+    // ── Composition ─────────────────────────────────────────────────────────
+
+    /// A flex nested inside a flex child lays out within THAT child's rect.
+    ///
+    /// This is the property that makes the engine compose the way React does:
+    /// a component lays out its own children without knowing where it sits.
+    /// It only holds if the `Ui` handed to a child reports the child's solved
+    /// rect as its available space — if it leaked the parent's width, every
+    /// nested row would size itself against the wrong container and overflow.
+    ///
+    /// The engine has no nested-container node; nesting happens at render time
+    /// by calling `Flex` again inside a child closure. So this is the test that
+    /// says that is a supported thing to do, rather than something that
+    /// happens to work today.
+    #[test]
+    fn a_nested_flex_lays_out_inside_its_parent_slot() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let outer_child_w: Rc<RefCell<f32>> = Rc::new(RefCell::new(0.0));
+        let inner_rects: Rc<RefCell<Vec<Rect>>> = Rc::new(RefCell::new(Vec::new()));
+        let (ow, ir) = (outer_child_w.clone(), inner_rects.clone());
+
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                // Pin the outer container so the numbers are deterministic.
+                let host = Rect::from_min_size(ui.max_rect().min, Vec2::new(400.0, 40.0));
+                let mut host_ui = ui.new_child(egui::UiBuilder::new().max_rect(host));
+
+                Flex::row()
+                    .child(Item::fixed(100.0), |_| {})
+                    .child(Item::fixed(300.0), |child_ui| {
+                        *ow.borrow_mut() = child_ui.available_size_before_wrap().x;
+                        // A whole second layout, inside the slot.
+                        let nested = Flex::row()
+                            .child(Item::grow(1.0), |_| {})
+                            .child(Item::fixed(50.0), |_| {});
+                        *ir.borrow_mut() =
+                            nested.solve(child_ui.available_size_before_wrap());
+                    })
+                    .show(&mut host_ui);
+            });
+        });
+
+        let w = *outer_child_w.borrow();
+        assert!(
+            (w - 300.0).abs() < 1.0,
+            "the child Ui must report ITS OWN width (300), not the parent's \
+             (400) — got {w}; a leak here makes every nested layout overflow",
+        );
+        let inner = inner_rects.borrow();
+        assert_eq!(inner.len(), 2, "the nested layout solved its own children");
+        assert!(
+            (inner[1].max.x - 300.0).abs() < 1.0,
+            "the nested row must fill its slot, ending at 300 — got {}",
+            inner[1].max.x,
+        );
+        assert!(
+            (inner[0].width() - 250.0).abs() < 1.0,
+            "grow inside the nest takes the slot's leftover (300-50), got {}",
+            inner[0].width(),
+        );
+    }
+
     /// Two slots may not share a key — that would make a lookup ambiguous.
     #[test]
     #[should_panic(expected = "duplicate flex slot key")]
