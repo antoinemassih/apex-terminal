@@ -67,6 +67,22 @@ pub struct TokenSnapshot {
     /// constants" block with 5 live call sites, while the design inspector
     /// carried a `stroke.heavy (2.5)` slider that nothing read — the same
     /// number, authored in one place and consumed from another.
+    /// Icon glyph sizes. Were four hardcoded literals, so no theme could
+    /// change icon scale — a primary axis of a UI's density and character.
+    pub icon_xs: f32,
+    pub icon_sm: f32,
+    pub icon_md: f32,
+    pub icon_lg: f32,
+    /// Line-height (leading) multipliers. Also hardcoded before this. Leading
+    /// is the biggest single lever on whether a dense trading UI reads as
+    /// tight/technical or open/editorial — the Meridien vs Aperture axis — and
+    /// it was the one thing a theme could not touch.
+    pub line_tight: f32,
+    pub line_heading: f32,
+    pub line_dense: f32,
+    pub line_compact: f32,
+    pub line_normal: f32,
+    pub line_loose: f32,
     pub stroke_extra_thick: f32,
     /// Decorative / accent rule, 3 px.
     ///
@@ -195,6 +211,9 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     stroke_hair: 0.3, stroke_thin: 0.5, stroke_medium: 0.8,
     stroke_std: 1.0, stroke_bold: 1.5, stroke_thick: 2.0,
     stroke_extra_thick: 2.5, stroke_rule: 3.0,
+    icon_xs: 14.0, icon_sm: 16.0, icon_md: 18.0, icon_lg: 20.0,
+    line_tight: 1.20, line_heading: 1.25, line_dense: 1.30,
+    line_compact: 1.35, line_normal: 1.40, line_loose: 1.50,
     // Alphas.
     alpha_faint: 10, alpha_ghost: 15, alpha_soft: 20, alpha_subtle: 40,
     alpha_tint: 48, alpha_muted: 60, alpha_dim: 60, alpha_line: 80,
@@ -545,10 +564,10 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 #[inline] pub fn font_display_xl() -> f32 { 56.0 }
 
 // ─── Icon control sizes ──────────────────────────────────────────────────────
-#[inline] pub fn icon_xs() -> f32 { 14.0 }
-#[inline] pub fn icon_sm() -> f32 { 16.0 }
-#[inline] pub fn icon_md() -> f32 { 18.0 }
-#[inline] pub fn icon_lg() -> f32 { 20.0 }
+#[inline] pub fn icon_xs() -> f32 { frame_tokens().icon_xs }
+#[inline] pub fn icon_sm() -> f32 { frame_tokens().icon_sm }
+#[inline] pub fn icon_md() -> f32 { frame_tokens().icon_md }
+#[inline] pub fn icon_lg() -> f32 { frame_tokens().icon_lg }
 
 // ─── Row heights ─────────────────────────────────────────────────────────────
 // M4.5: per-style now — sourced from the frame snapshot (which begin_frame
@@ -777,17 +796,17 @@ pub const ELEVATE_MODAL:         i16 = 38; // modal / dialog (highest Z)
 // and any per-call `RichText::new(..).size(s).line_height(s * 1.3)` patterns.
 
 /// 1.2 — display / hero text, tight stack.
-#[inline] pub fn line_tight()   -> f32 { 1.2  }
+#[inline] pub fn line_tight()   -> f32 { frame_tokens().line_tight }
 /// 1.25 — large heading.
-#[inline] pub fn line_heading() -> f32 { 1.25 }
+#[inline] pub fn line_heading() -> f32 { frame_tokens().line_heading }
 /// 1.3 — caption / label / mono.
-#[inline] pub fn line_dense()   -> f32 { 1.3  }
+#[inline] pub fn line_dense()   -> f32 { frame_tokens().line_dense }
 /// 1.35 — small body / small mono.
-#[inline] pub fn line_compact() -> f32 { 1.35 }
+#[inline] pub fn line_compact() -> f32 { frame_tokens().line_compact }
 /// 1.4 — body / readable copy. Default for paragraph text.
-#[inline] pub fn line_normal()  -> f32 { 1.4  }
+#[inline] pub fn line_normal()  -> f32 { frame_tokens().line_normal }
 /// 1.5 — loose / generously-spaced paragraph.
-#[inline] pub fn line_loose()   -> f32 { 1.5  }
+#[inline] pub fn line_loose()   -> f32 { frame_tokens().line_loose }
 
 // ─── Motion timing (P2.5) ────────────────────────────────────────────────────
 //

@@ -29,7 +29,7 @@ use std::fmt;
 use super::{
     color_scheme::{rgba, ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
-        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure,
+        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Icons, LineHeights,
         Archetype, DockStyle, NavStyle, PaneActiveIndicator, Radii, RailSide, Shadows, ShadowSpec, ShellSpec,
         Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
@@ -500,6 +500,31 @@ impl StyleSystem {
             control_xl:     read_f32_or(&den_sec, "control_xl",     "density", d_den.control_xl),
         };
 
+        // Icons and leading — parsed for the same reason the structural ladder
+        // above is: a token that survives export but not import is authorable
+        // in appearance only. Each falls back to its default when absent, so
+        // packs written before these groups existed still load unchanged.
+        let d_ico = Icons::default();
+        let ico_sec = section("icons");
+        let icons = Icons {
+            xs: read_f32_or(&ico_sec, "xs", "icons", d_ico.xs),
+            sm: read_f32_or(&ico_sec, "sm", "icons", d_ico.sm),
+            md: read_f32_or(&ico_sec, "md", "icons", d_ico.md),
+            lg: read_f32_or(&ico_sec, "lg", "icons", d_ico.lg),
+        };
+
+        let d_lh = LineHeights::default();
+        let lh_sec = section("line_heights");
+        let line_heights = LineHeights {
+            tight:   read_f32_or(&lh_sec, "tight",   "line_heights", d_lh.tight),
+            heading: read_f32_or(&lh_sec, "heading", "line_heights", d_lh.heading),
+            dense:   read_f32_or(&lh_sec, "dense",   "line_heights", d_lh.dense),
+            compact: read_f32_or(&lh_sec, "compact", "line_heights", d_lh.compact),
+            normal:  read_f32_or(&lh_sec, "normal",  "line_heights", d_lh.normal),
+            loose:   read_f32_or(&lh_sec, "loose",   "line_heights", d_lh.loose),
+        };
+
+
         let d_sh = Shadows::default();
         let sh_sec = section("shadows");
         let shadows = Shadows {
@@ -680,7 +705,7 @@ impl StyleSystem {
             }
         };
 
-        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome, numerals: None, shell })
+        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome, icons, line_heights, numerals: None, shell })
     }
 }
 
@@ -799,6 +824,13 @@ mod tests {
 
         let original = StyleSystem {
             meta: Meta::new("test-full", "Test Full", false),
+            // Deliberately DEFAULT, for the same reason as `shell` below:
+            // `icons` / `line_heights` are not written to or parsed from pack
+            // JSON yet, so a non-default value here would fail the round-trip
+            // — correctly. Change these when pack serialisation covers them,
+            // and this assertion becomes the proof they survive the trip.
+            icons: Icons::default(),
+            line_heights: LineHeights::default(),
             // DS-6.0: deliberately DEFAULT. `shell` is not parsed from pack
             // JSON yet (DS-6.1 wires the reserved `shell_profile` blob), so a
             // non-default value here would fail this round-trip — correctly.

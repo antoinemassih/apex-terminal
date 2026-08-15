@@ -59,7 +59,16 @@ TEST_CFG_RE = re.compile(r"#\[cfg\([^\n]*\btest\b")
 # Tokens allowed to have zero consumers, each with a reason. Keep this SHORT —
 # every entry is a token the design system cannot actually deliver.
 ALLOWED_UNREAD = {
-    # (none — add here only with a written justification)
+    # The leading ladder is tight/heading/dense/compact/normal/loose. Five of
+    # the six are assigned to a `TextStyle` tier in `ui_kit/text_style.rs`;
+    # `loose` is not, because no text tier calls for generous leading yet.
+    #
+    # Kept rather than deleted: it is a coherent rung of a ladder whose other
+    # rungs are live, and it is the axis the editorial (Aperture) target needs
+    # — deleting it would mean re-adding it to build that style. Listed here
+    # rather than given a token consumer nobody asked for, so it reads as
+    # deliberately pending instead of forgotten.
+    "line_loose",
 }
 
 

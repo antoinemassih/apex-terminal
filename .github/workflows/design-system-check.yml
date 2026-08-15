@@ -99,3 +99,16 @@ jobs:
       - name: Run ladder gate (rungs that do not scale together)
         if: ${{ !cancelled() }}
         run: python dev/ladder_gate.py
+
+      # The PROMISE gate. A slider is a promise that this number controls that
+      # pixel. 59 of the inspector's 123 `tokens.*` sliders had no `dt_*!`
+      # consumer at all — they moved, they saved, and nothing changed. That is
+      # worse than a missing control: a missing slider says the system doesn't
+      # support something, a dead one says it does and that you're holding it
+      # wrong. `stroke.heavy` shipped a live "heavy (2.5)" slider that nothing
+      # read, a few files from an accessor hardcoding that same 2.5.
+      #
+      # Ceiling only; it may fall, never rise.
+      - name: Run inspector-slider gate (controls that control nothing)
+        if: ${{ !cancelled() }}
+        run: python dev/inspector_slider_gate.py

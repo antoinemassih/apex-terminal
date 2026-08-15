@@ -43,7 +43,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
                     let ov_label = format!("{}{}", ov_sym, status);
                     ui.add(MonospaceCode::new(&ov_label).size_px(font_sm()).color(oc));
                     // Color cycle (click to cycle through colors)
-                    let (cr, cresp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+                    let (cr, cresp) = ui.allocate_exact_size(egui::vec2(icon_sm(), icon_sm()), egui::Sense::click());
                     ui.painter().circle_filled(cr.center(), 5.0, oc);
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &cresp);
                     cursor::focus_ring(ui, &cresp, t.accent);

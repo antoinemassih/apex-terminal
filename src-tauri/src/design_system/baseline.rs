@@ -22,7 +22,7 @@
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba},
     style_system::{
-        Alphas, Archetype, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
+        Alphas, Archetype, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, Icons, LineHeights, Radii, Shadows, ShadowSpec,
         ShellSpec, Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
@@ -283,6 +283,8 @@ pub fn baseline_style_system() -> StyleSystem {
             nav_buttons_label_only: true, nav_buttons_uppercase_labels: true, tab_underline_under_text: true,
             card_floating_shadow: true, shadows_enabled: true, animations_enabled: true,
         },
+        icons: Icons::default(),
+        line_heights: LineHeights::default(),
         chrome: Chrome {
             toolbar_height_scale: 1.40, header_height_scale: 1.10, account_strip_height: 36.0,
             pane_gap: 0.0, pane_active_indicator: 1, tab_underline_thickness: 2.0,

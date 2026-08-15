@@ -70,6 +70,8 @@ impl StyleSystem {
         let al  = &self.alphas;
         let el  = &self.elevation;
         let den = &self.density;
+        let ico = &self.icons;
+        let lh  = &self.line_heights;
         let sh  = &self.shadows;
         let tr  = &self.treatments;
         let ch  = &self.chrome;
@@ -221,6 +223,25 @@ impl StyleSystem {
                 "control_md":             dim!(den.control_md),
                 "control_lg":             dim!(den.control_lg),
                 "control_xl":             dim!(den.control_xl),
+            },
+            // Icons and leading. Added with the token groups themselves — a
+            // token that cannot survive an export/import round trip is only
+            // half-authorable, and the round-trip test caught exactly that:
+            // Aperture's authored 19/22 icons and 1.15..1.45 leading came back
+            // as the defaults.
+            "icons": {
+                "xs": dim!(ico.xs),
+                "sm": dim!(ico.sm),
+                "md": dim!(ico.md),
+                "lg": dim!(ico.lg),
+            },
+            "line_heights": {
+                "tight":   num!(lh.tight),
+                "heading": num!(lh.heading),
+                "dense":   num!(lh.dense),
+                "compact": num!(lh.compact),
+                "normal":  num!(lh.normal),
+                "loose":   num!(lh.loose),
             },
             "shadows": {
                 "card":     shadow_obj(&sh.card),

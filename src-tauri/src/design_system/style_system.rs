@@ -508,6 +508,81 @@ impl Default for Elevation {
     }
 }
 
+// ── Icons ────────────────────────────────────────────────────────────────────
+
+/// Icon glyph sizes.
+///
+/// These were four hardcoded literals in `ui_kit::style` — `icon_xs()` = 14.0
+/// and friends — so no theme could change icon scale at all. Icon size is a
+/// primary axis of a UI's density and character; a design system that cannot
+/// move it is not controlling the look, only the colours.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Icons {
+    #[serde(default = "Icons::default_xs")]
+    pub xs: f32, // 14
+    #[serde(default = "Icons::default_sm")]
+    pub sm: f32, // 16
+    #[serde(default = "Icons::default_md")]
+    pub md: f32, // 18
+    #[serde(default = "Icons::default_lg")]
+    pub lg: f32, // 20
+}
+
+impl Icons {
+    fn default_xs() -> f32 { 14.0 }
+    fn default_sm() -> f32 { 16.0 }
+    fn default_md() -> f32 { 18.0 }
+    fn default_lg() -> f32 { 20.0 }
+}
+
+impl Default for Icons {
+    fn default() -> Self {
+        Self { xs: Self::default_xs(), sm: Self::default_sm(),
+               md: Self::default_md(), lg: Self::default_lg() }
+    }
+}
+
+// ── Line heights ─────────────────────────────────────────────────────────────
+
+/// Line-height (leading) multipliers.
+///
+/// Also six hardcoded literals before this. Leading is the single biggest lever
+/// on whether a dense trading UI reads as tight and technical or open and
+/// editorial — exactly the difference between the Meridien and Aperture
+/// targets — and it was the one axis a theme could not touch.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LineHeights {
+    #[serde(default = "LineHeights::default_tight")]
+    pub tight: f32,   // 1.20
+    #[serde(default = "LineHeights::default_heading")]
+    pub heading: f32, // 1.25
+    #[serde(default = "LineHeights::default_dense")]
+    pub dense: f32,   // 1.30
+    #[serde(default = "LineHeights::default_compact")]
+    pub compact: f32, // 1.35
+    #[serde(default = "LineHeights::default_normal")]
+    pub normal: f32,  // 1.40
+    #[serde(default = "LineHeights::default_loose")]
+    pub loose: f32,   // 1.50
+}
+
+impl LineHeights {
+    fn default_tight()   -> f32 { 1.20 }
+    fn default_heading() -> f32 { 1.25 }
+    fn default_dense()   -> f32 { 1.30 }
+    fn default_compact() -> f32 { 1.35 }
+    fn default_normal()  -> f32 { 1.40 }
+    fn default_loose()   -> f32 { 1.50 }
+}
+
+impl Default for LineHeights {
+    fn default() -> Self {
+        Self { tight: Self::default_tight(), heading: Self::default_heading(),
+               dense: Self::default_dense(), compact: Self::default_compact(),
+               normal: Self::default_normal(), loose: Self::default_loose() }
+    }
+}
+
 // ── Density ──────────────────────────────────────────────────────────────────
 
 /// Layout density control — scales certain spacing / height tokens.
@@ -1171,6 +1246,10 @@ pub struct StyleSystem {
     /// Chrome geometry + finish tokens (toolbar/pane heights, dividers, focus ring…).
     #[serde(default)]
     pub chrome:     Chrome,
+    #[serde(default)]
+    pub icons:      Icons,
+    #[serde(default)]
+    pub line_heights: LineHeights,
 
     /// M1 Change D: display-numeral treatment. `None` = classic mono.
     #[serde(default)]
@@ -1344,6 +1423,8 @@ impl StyleSystem {
             // the variant that already exists, so this is a no-op at runtime.
             shell:      ShellSpec::default(),
             typography: Typography::default(),
+            icons:      Icons::default(),
+            line_heights: LineHeights::default(),
             spacing:    Spacing::default(),
             radii:      Radii::default(),
             strokes:    Strokes::default(),

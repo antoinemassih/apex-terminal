@@ -517,7 +517,7 @@ pub(crate) fn render(
             // ── Logo (with left edge margin so the glyph doesn't kiss the
             //         window border) ──
             ui.add_space(gap_sm());
-            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(crate::ui_kit::style::icon_md(), crate::ui_kit::style::icon_md()), egui::Sense::hover());
             draw_xolio_logo(ui.painter_at(logo_rect), logo_rect, t.accent);
 
             ui.add_space(gap_sm());
@@ -1039,7 +1039,7 @@ pub(crate) fn render(
                         ),
                     };
                     let _ = tip_label; // used in tooltip below
-                    let (dot_rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    let (dot_rect, resp) = ui.allocate_exact_size(egui::vec2(crate::ui_kit::style::icon_lg(), crate::ui_kit::style::icon_lg()), egui::Sense::click());
                     ui.painter().circle_filled(dot_rect.center(), 3.0, dot_color);
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                     crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);

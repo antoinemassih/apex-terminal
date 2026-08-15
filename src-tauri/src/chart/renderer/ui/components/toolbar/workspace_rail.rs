@@ -327,7 +327,7 @@ fn expanded_row(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> eg
     // Initials chip.
     let chip = egui::Rect::from_min_size(
         egui::pos2(rect.left() + gap_sm(), rect.center().y - 9.0),
-        egui::vec2(18.0, 18.0));
+        egui::vec2(crate::ui_kit::style::icon_md(), crate::ui_kit::style::icon_md()));
     ui.painter().rect_filled(chip, crate::ui_kit::style::r_sm_cr(),
         if is_active { t.accent } else { tint(t, Tone::Border, 70) });
     ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, initials(name),

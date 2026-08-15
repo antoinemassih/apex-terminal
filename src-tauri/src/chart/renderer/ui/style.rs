@@ -178,6 +178,16 @@ pub fn begin_frame() {
         // `stroke.heavy` is 2.5 in DesignTokens and had a live inspector
         // slider that nothing consumed; `stroke_extra_thick()` hardcoded the
         // same 2.5. Same number, two homes — now one.
+        icon_xs:      ass.icons.xs,
+        icon_sm:      ass.icons.sm,
+        icon_md:      ass.icons.md,
+        icon_lg:      ass.icons.lg,
+        line_tight:   ass.line_heights.tight,
+        line_heading: ass.line_heights.heading,
+        line_dense:   ass.line_heights.dense,
+        line_compact: ass.line_heights.compact,
+        line_normal:  ass.line_heights.normal,
+        line_loose:   ass.line_heights.loose,
         stroke_extra_thick: crate::dt_f32!(stroke.heavy, 2.5),
         stroke_rule:        crate::dt_f32!(stroke.rule, 3.0),
         stroke_std,
@@ -4299,6 +4309,61 @@ mod m1_ladder_tests {
             snap_wide, settings_wide,
             "pane_gap must TRACK the active style, not pin to one value"
         );
+    }
+
+    /// The two design TARGETS must actually differ on the two axes that were
+    /// hardcoded until now.
+    ///
+    /// Leading and icon scale lived as literals in `ui_kit::style`, so every
+    /// style got identical values no matter what it authored. That is a large
+    /// part of why the styles read as the same app in different colours: the
+    /// two axes the eye uses to tell "open and editorial" from "tight and
+    /// technical" were the two a style could not touch.
+    ///
+    /// This asserts the authored values reach `frame_tokens()` AND that the
+    /// two targets are actually distinct — a test that only checked "reaches
+    /// the snapshot" would pass just as happily if both styles were identical.
+    #[test]
+    fn meridien_and_aperture_differ_on_leading_and_icon_scale() {
+        use crate::design_system::builtin_style_systems;
+        let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let all = builtin_style_systems();
+        let find = |id: &str| all.iter()
+            .find(|s| s.meta.id == id)
+            .unwrap_or_else(|| panic!("builtin style `{id}` missing"))
+            .clone();
+        let (mer, ape) = (find("meridien"), find("aperture"));
+
+        assert!(
+            mer.line_heights.normal > ape.line_heights.normal,
+            "Meridien is the EDITORIAL archetype and must lead looser than the              dense Aperture mosaic (got {} vs {})",
+            mer.line_heights.normal, ape.line_heights.normal,
+        );
+        assert!(
+            ape.icons.lg > mer.icons.lg,
+            "Aperture leans on iconography for wayfinding at its density and              must size icons above Meridien (got {} vs {})",
+            ape.icons.lg, mer.icons.lg,
+        );
+
+        // ...and the authored values must survive the trip to the snapshot,
+        // which is the step that was impossible before these token groups
+        // existed.
+        let prev_active = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
+        let sys_id = add_style_system(mer.clone());
+        let set_id = add_style_preset("leading-proof", get_style_settings(0));
+        assert_eq!(sys_id, set_id, "stores must stay index-aligned");
+
+        set_active_style(set_id);
+        begin_frame();
+        let snap = crate::ui_kit::style::frame_tokens();
+        set_active_style(prev_active);
+        begin_frame();
+
+        assert_eq!(snap.line_normal, mer.line_heights.normal,
+            "authored leading did not reach the TokenSnapshot");
+        assert_eq!(snap.icon_lg, mer.icons.lg,
+            "authored icon scale did not reach the TokenSnapshot");
     }
 
     /// AUDIT 2026-08: the STRUCTURAL half of the same proof.

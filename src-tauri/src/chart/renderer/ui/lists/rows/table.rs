@@ -234,7 +234,7 @@ impl<'a, T> Table<'a, T> {
                             if select_col {
                                 let cb = egui::Rect::from_min_size(
                                     egui::pos2(row_rect.left() + 4.0, row_rect.center().y - 7.0),
-                                    egui::vec2(14.0, 14.0));
+                                    egui::vec2(icon_xs(), icon_xs()));
                                 ui.painter().rect_stroke(cb, radius_xs(),
                                     Stroke::new(stroke_thin(), dim), egui::StrokeKind::Inside);
                                 if is_sel {

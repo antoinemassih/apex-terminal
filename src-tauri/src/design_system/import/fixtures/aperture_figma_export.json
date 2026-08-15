@@ -936,22 +936,6 @@
     },
     {
       "collection": "StyleSystem",
-      "name": "card/padding",
-      "type": "FLOAT",
-      "valuesByMode": {
-        "Aperture": 16.0
-      }
-    },
-    {
-      "collection": "StyleSystem",
-      "name": "card/radius",
-      "type": "FLOAT",
-      "valuesByMode": {
-        "Aperture": 20.0
-      }
-    },
-    {
-      "collection": "StyleSystem",
       "name": "chrome/accent_emphasis",
       "type": "FLOAT",
       "valuesByMode": {
@@ -1341,11 +1325,110 @@
     },
     {
       "collection": "StyleSystem",
+      "name": "density/control_lg",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 34.0,
+        "Meridien": 34.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/control_md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 28.0,
+        "Meridien": 28.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/control_sm",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 22.0,
+        "Meridien": 22.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/control_xl",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 40.0,
+        "Meridien": 40.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/control_xs",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 18.0,
+        "Meridien": 18.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
       "name": "density/factor",
       "type": "FLOAT",
       "valuesByMode": {
         "Aperture": 1.2000000476837158,
         "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/rail_medium",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 300.0,
+        "Meridien": 300.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/rail_narrow",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 240.0,
+        "Meridien": 240.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/rail_wide",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 400.0,
+        "Meridien": 400.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/row_compact",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 20.0,
+        "Meridien": 20.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/row_default",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 22.0,
+        "Meridien": 22.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/row_dense",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 18.0,
+        "Meridien": 18.0
       }
     },
     {
@@ -1364,6 +1447,33 @@
       "valuesByMode": {
         "Aperture": 26.0,
         "Meridien": 22.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/row_spacious",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 24.0,
+        "Meridien": 24.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/row_tall",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 30.0,
+        "Meridien": 30.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/splitter_width",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 6.0,
+        "Meridien": 6.0
       }
     },
     {
@@ -1391,6 +1501,96 @@
       "valuesByMode": {
         "Aperture": 0.8799999952316284,
         "Meridien": 0.8799999952316284
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "icons/lg",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 22.0,
+        "Meridien": 20.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "icons/md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 19.0,
+        "Meridien": 18.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "icons/sm",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 16.0,
+        "Meridien": 16.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "icons/xs",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 14.0,
+        "Meridien": 14.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "line_heights/compact",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.2999999523162842,
+        "Meridien": 1.350000023841858
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "line_heights/dense",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.25,
+        "Meridien": 1.2999999523162842
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "line_heights/heading",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.2000000476837158,
+        "Meridien": 1.25
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "line_heights/loose",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.4500000476837158,
+        "Meridien": 1.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "line_heights/normal",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.350000023841858,
+        "Meridien": 1.399999976158142
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "line_heights/tight",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.149999976158142,
+        "Meridien": 1.2000000476837158
       }
     },
     {
@@ -1964,6 +2164,15 @@
     {
       "collection": "StyleSystem",
       "name": "treatments/nav_buttons_uppercase_labels",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/numbered_section_labels",
       "type": "BOOLEAN",
       "valuesByMode": {
         "Aperture": false,

@@ -34,7 +34,7 @@
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
-        Alphas, Archetype, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowLayer,
+        Alphas, Archetype, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Icons, LineHeights, Radii, Shadows, ShadowLayer,
         ShadowSpec, ShadowTint, ShellSpec, Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
@@ -1009,6 +1009,22 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // no drop shadows, standard density.
     let meridien = StyleSystem {
         meta: Meta::new("meridien", "Meridien", true),
+        // Leading and icon scale are AUTHORED here rather than inherited.
+        // Until these two token groups existed they were hardcoded literals in
+        // `ui_kit::style`, so every style — editorial or dense — got identical
+        // leading and identical icon sizes. That is most of why the styles all
+        // looked like the same app in different colours: the two axes the eye
+        // reads as "open and editorial" vs "tight and technical" were the two
+        // a style could not touch.
+        //
+        // Meridien is the Editorial archetype, so it opens the leading up and
+        // holds icons back a step; glyphs compete with text for attention and
+        // this style is about the text.
+        line_heights: LineHeights {
+            tight: 1.25, heading: 1.30, dense: 1.35,
+            compact: 1.40, normal: 1.50, loose: 1.65,
+        },
+        icons: Icons { xs: 13.0, sm: 15.0, md: 17.0, lg: 19.0 },
         // DS-6.0 D1: the theme's DEFAULT archetype. A workspace may
         // override it; see ShellSpec::resolve_archetype.
         shell: ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() },
@@ -1178,6 +1194,15 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // Soft-pill corners, full drop shadows, roomy density.
     let aperture = StyleSystem {
         meta: Meta::new("aperture", "Aperture", true),
+        // The opposite end of the same two axes (see Meridien). Aperture is
+        // the dense mosaic target: tighter leading so more rows fit a pane,
+        // and slightly larger icons because at this density iconography is
+        // doing more of the wayfinding than labels are.
+        line_heights: LineHeights {
+            tight: 1.15, heading: 1.20, dense: 1.25,
+            compact: 1.30, normal: 1.35, loose: 1.45,
+        },
+        icons: Icons { xs: 14.0, sm: 16.0, md: 19.0, lg: 22.0 },
         // DS-6.0 D1: the theme's DEFAULT archetype. A workspace may
         // override it; see ShellSpec::resolve_archetype.
         shell: ShellSpec { archetype: Archetype::Mosaic, ..ShellSpec::default() },
@@ -1421,6 +1446,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             nav_buttons_label_only: false, nav_buttons_uppercase_labels: false, tab_underline_under_text: false,
             card_floating_shadow: false, shadows_enabled: false, animations_enabled: true,
         },
+        icons: Icons::default(),
+        line_heights: LineHeights::default(),
         chrome: Chrome {
             toolbar_height_scale: 1.0, header_height_scale: 1.0, account_strip_height: 26.0,
             pane_border_width: 1.0, pane_gap: 2.0, pane_gap_alpha: 15, pane_active_indicator: 3,
@@ -1472,6 +1499,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_tab_treatment: 2, wl_row_divider_alpha: 0,
             ..Treatments::default()
         },
+        icons: Icons::default(),
+        line_heights: LineHeights::default(),
         chrome: Chrome {
             pane_gap: 0.0, pane_gap_alpha: 0, pane_active_indicator: 2,
             tab_underline_thickness: 3.0, accent_emphasis: 1.1,
@@ -1513,6 +1542,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_tab_treatment: 0,
             ..Treatments::default()
         },
+        icons: Icons::default(),
+        line_heights: LineHeights::default(),
         chrome: Chrome {
             pane_gap: 0.0, pane_active_indicator: 2, tab_underline_thickness: 2.0,
             ..Chrome::default()
@@ -1535,6 +1566,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_tab_treatment: 0,
             ..Treatments::default()
         },
+        icons: Icons::default(),
+        line_heights: LineHeights::default(),
         chrome: Chrome {
             // Nautical instrument: denser chrome + steel-blue top stripe on active pane.
             toolbar_height_scale: 0.9, header_height_scale: 0.95,
@@ -1572,6 +1605,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             wl_row_divider_alpha: 12, panel_tab_treatment: 0, shadows_enabled: false,
             ..Treatments::default()
         },
+        icons: Icons::default(),
+        line_heights: LineHeights::default(),
         chrome: Chrome {
             pane_gap: 0.0, pane_active_indicator: 1, tab_underline_thickness: 0.0,
             // Lucid: sharp editorial outline — thin border, no fill, near-square corners.
@@ -1605,6 +1640,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             panel_tab_treatment: 0,
             ..Treatments::default()
         },
+        icons: Icons::default(),
+        line_heights: LineHeights::default(),
         chrome: Chrome {
             toolbar_height_scale: 1.20, header_height_scale: 1.05,
             pane_active_indicator: 1, tab_underline_thickness: 2.0,
@@ -1633,6 +1670,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             wl_row_side_margin: 4.0, wl_row_corner_radius: 10, panel_tab_treatment: 2,
             ..Treatments::default()
         },
+        icons: Icons::default(),
+        line_heights: LineHeights::default(),
         chrome: Chrome {
             toolbar_height_scale: 1.05, pane_gap: 0.0, pane_gap_alpha: 0,
             pane_active_indicator: 2, tab_underline_thickness: 0.0, accent_emphasis: 1.2,
