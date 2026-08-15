@@ -2434,7 +2434,7 @@ fn draw_correlation(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
     // Background track
     draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
-        Stroke::new(stroke_heavy(), tint(t, Tone::Border, alpha_muted())), 40);
+        Stroke::new(stroke_rule(), tint(t, Tone::Border, alpha_muted())), 40);
 
     // Colored zones: red left, green right
     draw_arc(p, egui::pos2(cx, gauge_cy), r, PI * 0.5, PI,
@@ -3097,7 +3097,7 @@ fn draw_conviction_meter(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
     let gauge_cy = body.top() + 38.0;
     let r = 28.0;
     draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
-        Stroke::new(stroke_heavy(), tint(t, Tone::Border, alpha_muted())), 40);
+        Stroke::new(stroke_rule(), tint(t, Tone::Border, alpha_muted())), 40);
     let sweep = (score / 100.0) * PI;
     draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI, Stroke::new(3.5, color), 30); // TODO: off-token
 

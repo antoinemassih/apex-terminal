@@ -175,6 +175,11 @@ pub fn begin_frame() {
         stroke_hair,
         stroke_thin,
         stroke_medium: crate::dt_f32!(stroke.medium, 0.8),
+        // `stroke.heavy` is 2.5 in DesignTokens and had a live inspector
+        // slider that nothing consumed; `stroke_extra_thick()` hardcoded the
+        // same 2.5. Same number, two homes — now one.
+        stroke_extra_thick: crate::dt_f32!(stroke.heavy, 2.5),
+        stroke_rule:        crate::dt_f32!(stroke.rule, 3.0),
         stroke_std,
         stroke_bold,
         stroke_thick,
@@ -559,12 +564,12 @@ pub mod cursor {
 //   stroke_std()    = 1.0  — default UI border (buttons, inputs, panels)
 //   stroke_bold()   = 1.5  — emphasis border (active selection, focus ring)
 //   stroke_thick()  = 2.0  — strong visual separator
-//   stroke_heavy()  = 3.0  — decorative / accent rule
+//   stroke_rule()   = 3.0  — decorative / accent rule (was `stroke_heavy`)
 //
 // Use `stroke_medium()` when `stroke_thin()` feels too ghost-like and
 // `stroke_std()` is heavier than desired for the context.
 // stroke_hair/thin/medium/std/bold/thick moved to `crate::ui_kit::style`.
-// `stroke_extra_thick` / `stroke_heavy` now in `crate::ui_kit::style`.
+// `stroke_extra_thick` / `stroke_rule` now in `crate::ui_kit::style`.
 
 
 // ─── Semantic alpha tokens ────────────────────────────────────────────────────

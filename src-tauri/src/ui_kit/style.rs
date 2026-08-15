@@ -63,6 +63,19 @@ pub struct TokenSnapshot {
     pub stroke_std:    f32,
     pub stroke_bold:   f32,
     pub stroke_thick:  f32,
+    /// Extra-thick 2.5 px stroke. Was a hardcoded `2.5` in the "pure
+    /// constants" block with 5 live call sites, while the design inspector
+    /// carried a `stroke.heavy (2.5)` slider that nothing read — the same
+    /// number, authored in one place and consumed from another.
+    pub stroke_extra_thick: f32,
+    /// Decorative / accent rule, 3 px.
+    ///
+    /// Named `rule`, not `heavy`, on purpose. There were already three
+    /// unrelated "heavy"s with three different values: `DesignTokens.stroke.
+    /// heavy` = 2.5, `StyleSystem.Strokes.heavy` = 2.0 (a legacy alias for
+    /// `thick`), and `ui_kit::style::stroke_heavy()` = 3.0. Reusing the name a
+    /// fourth time is how that happened in the first place.
+    pub stroke_rule: f32,
     // Alphas.
     pub alpha_faint:  u8,
     pub alpha_ghost:  u8,
@@ -181,6 +194,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     // Strokes.
     stroke_hair: 0.3, stroke_thin: 0.5, stroke_medium: 0.8,
     stroke_std: 1.0, stroke_bold: 1.5, stroke_thick: 2.0,
+    stroke_extra_thick: 2.5, stroke_rule: 3.0,
     // Alphas.
     alpha_faint: 10, alpha_ghost: 15, alpha_soft: 20, alpha_subtle: 40,
     alpha_tint: 48, alpha_muted: 60, alpha_dim: 60, alpha_line: 80,
@@ -437,6 +451,10 @@ pub fn frame_tokens() -> TokenSnapshot {
 #[inline] pub fn stroke_std()    -> f32 { frame_tokens().stroke_std    * border_weight_override().scale() }
 #[inline] pub fn stroke_bold()   -> f32 { frame_tokens().stroke_bold   * border_weight_override().scale() }
 #[inline] pub fn stroke_thick()  -> f32 { frame_tokens().stroke_thick  * border_weight_override().scale() }
+#[inline] pub fn stroke_extra_thick() -> f32 { frame_tokens().stroke_extra_thick * border_weight_override().scale() }
+/// Decorative / accent rule (3 px). Formerly `stroke_heavy()`, renamed to stop
+/// colliding with the two other unrelated "heavy" stroke values.
+#[inline] pub fn stroke_rule()   -> f32 { frame_tokens().stroke_rule   * border_weight_override().scale() }
 
 #[inline] pub fn alpha_faint()   -> u8 { frame_tokens().alpha_faint }
 #[inline] pub fn alpha_ghost()   -> u8 { frame_tokens().alpha_ghost }
@@ -689,8 +707,8 @@ pub const GAP_3XL:    f32 = 32.0;
 
 // ─── Stroke widths (px) — pure constants ─────────────────────────────────────
 
-pub fn stroke_extra_thick() -> f32 { 2.5 }
-pub fn stroke_heavy()       -> f32 { 3.0 }
+// (`stroke_extra_thick` / `stroke_rule` are token-backed accessors now and
+// live with the rest of the stroke ladder above.)
 
 // ─── Radii (px) — pure constants ─────────────────────────────────────────────
 
@@ -1412,6 +1430,8 @@ mod ladder_ordering_tests {
                 ("stroke_std", stroke_std()),
                 ("stroke_bold", stroke_bold()),
                 ("stroke_thick", stroke_thick()),
+                ("stroke_extra_thick", stroke_extra_thick()),
+                ("stroke_rule", stroke_rule()),
             ];
             assert_strictly_increasing_at("stroke", name, &rungs);
         }

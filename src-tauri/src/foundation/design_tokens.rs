@@ -69,7 +69,23 @@ pub struct SpacingTokens { pub xs: f32, pub xs_mid: f32, pub sm: f32, pub md: f3
 pub struct RadiusTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StrokeTokens { pub hair: f32, pub thin: f32, pub medium: f32, pub std: f32, pub bold: f32, pub thick: f32, pub heavy: f32, pub xheavy: f32 }
+pub struct StrokeTokens {
+    pub hair: f32, pub thin: f32, pub medium: f32, pub std: f32,
+    pub bold: f32, pub thick: f32, pub heavy: f32, pub xheavy: f32,
+    /// Decorative / accent rule (3 px). Backs `ui_kit::style::stroke_rule()`.
+    ///
+    /// Added because that accessor was a hardcoded `3.0` with 3 live call
+    /// sites — no theme could author it and the border-weight override could
+    /// not reach it. `serde(default)` so themes saved before this field exists
+    /// still load.
+    #[serde(default = "StrokeTokens::default_rule")]
+    pub rule: f32,
+}
+
+#[cfg(feature = "design-mode")]
+impl StrokeTokens {
+    fn default_rule() -> f32 { 3.0 }
+}
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlphaTokens { pub faint: u8, pub ghost: u8, pub soft: u8, pub subtle: u8, pub tint: u8, pub muted: u8, pub line: u8, pub dim: u8, pub strong: u8, pub active: u8, pub heavy: u8, pub scrim: u8, pub solid: u8 }
@@ -312,7 +328,7 @@ impl Default for DesignTokens {
             font: FontTokens { xxs: 8.0, xs: 9.0, sm_tight: 10.0, sm: 11.0, md: 13.0, input: 13.0, lg: 16.0, xl: 22.0, xxl: 28.0, display: 32.0, display_lg: 42.0 },
             spacing: SpacingTokens { xs: 4.0, xs_mid: 6.0, sm: 8.0, md: 12.0, lg: 16.0, xl: 20.0, xxl: 24.0, xxxl: 32.0 },
             radius: RadiusTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0 },
-            stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5, xheavy: 5.0 },
+            stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5, xheavy: 5.0, rule: 3.0 },
             alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, scrim: 140, solid: 200 },
             shadow: ShadowTokens { offset: 2.0, alpha: 60, spread: 4.0, gradient: [20, 12, 4] },
             toolbar: ToolbarTokens { height: 36.0, height_compact: 28.0, btn_min_height: 24.0, btn_padding_x: 7.0, right_controls_width: 150.0 },

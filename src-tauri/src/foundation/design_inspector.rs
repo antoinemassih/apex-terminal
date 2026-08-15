@@ -907,6 +907,7 @@ let _ = ctx;
                 changed |= drag_f32(ui, "thick (2.0)", &mut tokens.stroke.thick, 0.0..=8.0);
                 changed |= drag_f32(ui, "heavy (2.5)", &mut tokens.stroke.heavy, 0.0..=8.0);
                 changed |= drag_f32(ui, "xheavy (5.0)", &mut tokens.stroke.xheavy, 0.0..=10.0);
+                changed |= drag_f32(ui, "rule (3.0)", &mut tokens.stroke.rule, 0.0..=8.0);
             }
             Category::Alpha => {
                 changed |= drag_u8(ui, "faint (10)", &mut tokens.alpha.faint);

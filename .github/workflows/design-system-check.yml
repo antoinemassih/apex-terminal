@@ -87,3 +87,15 @@ jobs:
       - name: Run single-system gate (parallel styling systems)
         if: ${{ !cancelled() }}
         run: python dev/single_system_gate.py
+
+      # The RELATIONSHIP-WITHIN-A-LADDER gate. control_size_lint asks whether a
+      # height is a token; this asks whether all rungs of one ladder scale
+      # together. A rung that forgets its override multiplier is a legal token,
+      # renders identically at every default (Standard is 1.0x everywhere), and
+      # breaks away only when a user changes the setting — at which point it can
+      # land on top of its neighbour. `gap_xs_mid` did exactly that at Tight
+      # (3.0 / 6.0 / 6.0), and `stroke_extra_thick`/`stroke_heavy` were not
+      # tokens at all, just literals in a "pure constants" block with 8 callers.
+      - name: Run ladder gate (rungs that do not scale together)
+        if: ${{ !cancelled() }}
+        run: python dev/ladder_gate.py

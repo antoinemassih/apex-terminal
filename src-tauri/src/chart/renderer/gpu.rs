@@ -5677,7 +5677,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
                 p.line_segment([
                     egui::pos2(cx + r_sz * a.cos(), cy + r_sz * a.sin()),
                     egui::pos2(cx + r_sz * a2.cos(), cy + r_sz * a2.sin())],
-                    egui::Stroke::new(style::stroke_heavy(), col));
+                    egui::Stroke::new(style::stroke_rule(), col));
             }
         }
         // Concentric rings
