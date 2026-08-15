@@ -5,7 +5,7 @@
 //! arithmetic. It computes GEOMETRY ONLY: all colour, type, radius and
 //! per-style treatment continues to come from the design system.
 pub mod flex;
-pub use flex::{Align, Flex, Item, Justify, Pad, Size};
+pub use flex::{Align, Flex, FlexSlots, FlexUi, Item, Justify, Pad, Size, SolvedSlots};
 pub mod surface;
 pub use surface::{Surface, SurfaceResponse};
 /// M4.4: CSS-grid layout. Taffy's `grid` feature was already compiled in and

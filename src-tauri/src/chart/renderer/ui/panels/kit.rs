@@ -180,7 +180,18 @@ fn next_section_ordinal(ctx: &egui::Context) -> u32 {
     })
 }
 
-/// Solve [`header_flex`] inside `rect` and hand back absolute slot rects.
+/// Solve the header strip inside `rect` and hand back absolute slot rects.
+///
+/// AUDIT 2026-08 — named slots, not positional `next()` calls.
+///
+/// This used to build the row in `header_flex` and then read it back here with
+/// a matching sequence of `it.next()`s, each conditional mirroring a condition
+/// in the builder. Two lists that had to agree on order AND on which branches
+/// ran, with nothing checking that they did: insert a slot in the builder and
+/// forget it here, and every rect after it shifts by one. The geometry stays
+/// valid, so the tests pass and the panel just looks wrong.
+///
+/// Asking for "title" and getting the title removes the coupling entirely.
 pub(crate) fn solve_header_strip(
     rect: Rect,
     icon_w: Option<f32>,
@@ -188,21 +199,31 @@ pub(crate) fn solve_header_strip(
     meta_w: Option<f32>,
     closable: bool,
 ) -> HeaderStrip {
-    let solved = header_flex(icon_w, title_w, meta_w, closable).solve(rect.size());
-    let off = rect.min.to_vec2();
-    let mut it = solved.into_iter().map(|r| r.translate(off));
-    let icon = if icon_w.is_some() { it.next() } else { None };
-    let title = it.next().unwrap_or(Rect::NOTHING);
-    let actions = it.next().unwrap_or(Rect::NOTHING);
-    let meta = if meta_w.is_some() { it.next() } else { None };
-    // The close SLOT is full-height; the button itself is a centred square,
-    // exactly as the old `Rect::from_center_size(.., splat(HEADER_CLOSE_SIZE))`.
-    let close = if closable {
-        it.next().map(|s| Rect::from_center_size(s.center(), Vec2::splat(HEADER_CLOSE_SIZE)))
-    } else {
-        None
-    };
-    HeaderStrip { icon, title, actions, meta, close }
+    let title_margin = if icon_w.is_some() { gap_sm() } else { 0.0 };
+    let solved = Flex::row()
+        // Strip inset — the same `gap_sm` the cursor arithmetic used.
+        .padding_sides(gap_sm(), gap_sm(), 0.0, 0.0)
+        // Every slot spans the full strip height so painting at `slot.center().y`
+        // is identical to the old `rect.center().y` vertical centring.
+        .align(FlexAlign::Stretch)
+        .slot_if("icon", icon_w.is_some(), Item::fixed(icon_w.unwrap_or(0.0)))
+        // The title yields (shrinks) rather than shoving the close button off
+        // the strip when a panel is narrower than its own title.
+        .slot("title", Item::fixed(title_w).shrink(1.0).margin_start(title_margin))
+        .slot("actions", Item::grow(1.0).margin_start(gap_md()))
+        .slot_if("meta", meta_w.is_some(), Item::fixed(meta_w.unwrap_or(0.0)).margin_start(gap_md()))
+        .slot_if("close", closable, Item::fixed(HEADER_CLOSE_SIZE).margin_start(gap_sm()))
+        .solve_in(rect);
+
+    HeaderStrip {
+        icon:    solved.get("icon"),
+        title:   solved.rect("title"),
+        actions: solved.rect("actions"),
+        meta:    solved.get("meta"),
+        // The close SLOT is full-height; the button itself is a centred square,
+        // exactly as the old `Rect::from_center_size(.., splat(..))`.
+        close:   solved.square("close", HEADER_CLOSE_SIZE),
+    }
 }
 
 /// Solved slots of the tab-driven header strip.
@@ -219,23 +240,16 @@ pub(crate) struct HeaderTabsStrip {
 /// their own overflow-to-`»`-menu rule, which is a different problem from
 /// distributing a fixed set of slots.
 pub(crate) fn solve_header_tabs_strip(rect: Rect, closable: bool) -> HeaderTabsStrip {
-    let mut f = Flex::row()
+    let solved = Flex::row()
         .padding_sides(gap_sm(), gap_sm(), 0.0, 0.0)
         .align(FlexAlign::Stretch)
-        .item(Item::grow(1.0));
-    if closable {
-        f = f.item(Item::fixed(HEADER_CLOSE_SIZE).margin_start(gap_sm()));
+        .slot("strip", Item::grow(1.0))
+        .slot_if("close", closable, Item::fixed(HEADER_CLOSE_SIZE).margin_start(gap_sm()))
+        .solve_in(rect);
+    HeaderTabsStrip {
+        strip: solved.rect("strip"),
+        close: solved.square("close", HEADER_CLOSE_SIZE),
     }
-    let solved = f.solve(rect.size());
-    let off = rect.min.to_vec2();
-    let strip = solved.first().map(|r| r.translate(off)).unwrap_or(Rect::NOTHING);
-    let close = if closable {
-        solved.get(1)
-            .map(|s| Rect::from_center_size(s.translate(off).center(), Vec2::splat(HEADER_CLOSE_SIZE)))
-    } else {
-        None
-    };
-    HeaderTabsStrip { strip, close }
 }
 
 /// Panel-header edge.

@@ -593,6 +593,265 @@ fn to_justify(j: Justify) -> JustifyContent {
     }
 }
 
+// ─── Colocated children (the CSS/JSX shape) ─────────────────────────────────
+//
+// `Flex::show` hands back an INDEX and expects the caller to match on it:
+//
+//     let mut f = Flex::row();
+//     if let Some(w) = icon_w { f = f.item(Item::fixed(w)); }
+//     f = f.item(Item::fixed(title_w)).item(Item::grow(1.0));
+//     if closable { f = f.item(Item::fixed(24.0)); }
+//     f.show(ui, |idx, ui| match idx { 0 => .., 1 => .., _ => .. });
+//
+// That is the real reason this engine sat at ~20 call sites while the app kept
+// hand-computing rects. The declaration and the content live apart, and every
+// conditional item shifts the meaning of every index after it — so `0` means
+// "icon" or "title" depending on a branch several lines up. It is the layout
+// equivalent of positional arguments, and it is fragile in the way that never
+// shows up in review: reorder two rows and the content silently swaps slots
+// while every test still passes, because the geometry is still correct.
+//
+// `child()` attaches the content to the item, which is what JSX does:
+//
+//     Flex::row().gap(gap_sm()).align(Align::Center)
+//         .child_if(icon_w.is_some(), Item::fixed(icon_w.unwrap_or(0.0)),
+//                   |ui| draw_icon(ui))
+//         .child(Item::fixed(title_w).shrink(1.0), |ui| draw_title(ui))
+//         .child(Item::grow(1.0),                  |_| {})
+//         .show(ui);
+//
+// `Flex` itself stays untouched and pure, so `solve()` remains headlessly
+// testable — this is a rendering shell over it, not a replacement.
+
+/// A `Flex` whose items each carry their own render closure.
+///
+/// Built by calling [`Flex::child`] / [`Flex::child_if`]. Cannot be
+/// constructed directly, so the item list and the closure list are always the
+/// same length by construction.
+pub struct FlexUi<'a> {
+    flex: Flex,
+    children: Vec<Box<dyn FnMut(&mut Ui) + 'a>>,
+}
+
+impl Flex {
+    /// Attach content to an item, switching to the colocated builder.
+    pub fn child<'a>(self, item: Item, render: impl FnMut(&mut Ui) + 'a) -> FlexUi<'a> {
+        FlexUi { flex: self, children: Vec::new() }.child(item, render)
+    }
+
+    /// Conditional variant — see [`FlexUi::child_if`].
+    pub fn child_if<'a>(
+        self,
+        cond: bool,
+        item: Item,
+        render: impl FnMut(&mut Ui) + 'a,
+    ) -> FlexUi<'a> {
+        FlexUi { flex: self, children: Vec::new() }.child_if(cond, item, render)
+    }
+}
+
+impl<'a> FlexUi<'a> {
+    /// Append an item and the content that fills it.
+    pub fn child(mut self, item: Item, render: impl FnMut(&mut Ui) + 'a) -> Self {
+        self.flex = self.flex.item(item);
+        self.children.push(Box::new(render));
+        self
+    }
+
+    /// Append only when `cond` holds.
+    ///
+    /// This is the case the index API handled worst: an omitted item shifts
+    /// every later index by one, so the caller's `match` has to know which
+    /// branches ran. Here the slot and its content disappear together.
+    pub fn child_if(self, cond: bool, item: Item, render: impl FnMut(&mut Ui) + 'a) -> Self {
+        if cond { self.child(item, render) } else { self }
+    }
+
+    /// Append a flexible empty slot — the `<div style="flex:1"/>` spacer that
+    /// pushes what follows to the far edge.
+    pub fn spacer(self, grow: f32) -> Self {
+        self.child(Item::grow(grow), |_| {})
+    }
+
+    /// Solve and render. Each child is drawn into its own solved rect.
+    pub fn show(self, ui: &mut Ui) {
+        let FlexUi { flex, mut children } = self;
+        flex.show(ui, |idx, child_ui| {
+            if let Some(f) = children.get_mut(idx) {
+                f(child_ui);
+            }
+        });
+    }
+
+    /// The solved rects, without rendering — for callers that need geometry
+    /// before painting (overlays, hit regions, measurement in tests).
+    pub fn solve(&self, available: Vec2) -> Vec<Rect> {
+        self.flex.solve(available)
+    }
+
+    /// How many children were added. Mostly for tests asserting that a
+    /// conditional chain produced the slot count it should.
+    pub fn len(&self) -> usize { self.children.len() }
+
+    /// True when no children were added.
+    pub fn is_empty(&self) -> bool { self.children.is_empty() }
+}
+
+// ─── Named slots (the grid-areas shape) ─────────────────────────────────────
+//
+// `child()` above solves colocation for callers that RENDER. Callers that only
+// want geometry — solve the strip, hand back rects, paint later — have the same
+// problem in a worse form, because the sequence ends up written twice:
+//
+//     // in one function:
+//     if icon.is_some() { f = f.item(Item::fixed(w)); }
+//     f = f.item(title).item(actions);
+//     if closable { f = f.item(close); }
+//
+//     // in another, matching it by position:
+//     let icon  = if icon_w.is_some() { it.next() } else { None };
+//     let title = it.next().unwrap_or(Rect::NOTHING);
+//     let close = if closable { it.next() } else { None };
+//
+// Both lists must agree on order AND on which conditions ran. Nothing checks
+// that they do; a slot inserted in the builder and not in the reader silently
+// shifts every rect after it, and the result is still valid geometry, so tests
+// pass and the panel just looks wrong.
+//
+// Naming the slots removes the coupling — the reader asks for "title" and gets
+// the title, whatever ran before it. This is what CSS grid-areas are for.
+
+/// A `Flex` whose items are addressed by KEY rather than position.
+///
+/// Generic over the key so both idioms in this codebase are served by one API:
+/// a `&'static str` reads like a CSS grid-area, and a small `enum` gets the
+/// compiler to reject typos. `panel_section` had already invented the second
+/// form locally as a `Vec<(Slot, Item)>` resolved back through the index —
+/// this is that idea promoted into the layout engine so there is one of it.
+///
+/// Slots are `Option<K>`: spacing carries no key. `panel_section`'s local
+/// version had to invent a `Slot::Gap` variant and repeat it, which put
+/// duplicates into what should be a unique namespace and made "is this key
+/// already taken?" unanswerable. Spacing is CSS `margin`, not a grid area.
+pub struct FlexSlots<K> {
+    flex: Flex,
+    keys: Vec<Option<K>>,
+}
+
+/// Solved [`FlexSlots`] — look slots up by the key they were declared with.
+pub struct SolvedSlots<K> {
+    keys: Vec<Option<K>>,
+    rects: Vec<Rect>,
+}
+
+impl Flex {
+    /// Begin a keyed-slot layout.
+    pub fn slot<K: PartialEq + Clone + std::fmt::Debug>(
+        self, key: K, item: Item,
+    ) -> FlexSlots<K> {
+        FlexSlots { flex: self, keys: Vec::new() }.slot(key, item)
+    }
+    /// Begin a keyed-slot layout with a conditional first slot.
+    pub fn slot_if<K: PartialEq + Clone + std::fmt::Debug>(
+        self, key: K, cond: bool, item: Item,
+    ) -> FlexSlots<K> {
+        FlexSlots { flex: self, keys: Vec::new() }.slot_if(key, cond, item)
+    }
+}
+
+impl<K: PartialEq + Clone + std::fmt::Debug> FlexSlots<K> {
+    /// Append a keyed slot.
+    pub fn slot(mut self, key: K, item: Item) -> Self {
+        debug_assert!(
+            !self.keys.iter().flatten().any(|k| *k == key),
+            "duplicate flex slot key {key:?} — lookups would be ambiguous",
+        );
+        self.flex = self.flex.item(item);
+        self.keys.push(Some(key));
+        self
+    }
+
+    /// Append a keyed slot only when `cond` holds. An absent slot simply has
+    /// no rect; nothing after it shifts, because nothing is addressed by index.
+    pub fn slot_if(self, key: K, cond: bool, item: Item) -> Self {
+        if cond { self.slot(key, item) } else { self }
+    }
+
+    /// A fixed anonymous gap — CSS `margin`, not a grid area.
+    pub fn pad(mut self, px: f32) -> Self {
+        self.flex = self.flex.item(Item::fixed(px));
+        self.keys.push(None);
+        self
+    }
+
+    /// `pad` only when `cond` holds.
+    pub fn pad_if(self, cond: bool, px: f32) -> Self {
+        if cond { self.pad(px) } else { self }
+    }
+
+    /// The elastic middle — `<div style="flex:1"/>`. Pushes what follows to
+    /// the far edge and is never looked up.
+    pub fn spacer(mut self, grow: f32) -> Self {
+        self.flex = self.flex.item(Item::grow(grow));
+        self.keys.push(None);
+        self
+    }
+
+    /// Solve within `rect`, returning rects in ABSOLUTE coordinates.
+    pub fn solve_in(&self, rect: Rect) -> SolvedSlots<K> {
+        let off = rect.min.to_vec2();
+        SolvedSlots {
+            keys: self.keys.clone(),
+            rects: self.flex.solve(rect.size()).into_iter().map(|r| r.translate(off)).collect(),
+        }
+    }
+
+    /// Solve relative to the container origin.
+    pub fn solve(&self, available: Vec2) -> SolvedSlots<K> {
+        SolvedSlots { keys: self.keys.clone(), rects: self.flex.solve(available) }
+    }
+
+    /// Render each slot into its solved rect. The closure receives the KEY, so
+    /// the caller matches on a name rather than a position. Anonymous spacing
+    /// is skipped — it renders nothing by definition.
+    pub fn show(self, ui: &mut Ui, mut add: impl FnMut(&K, &mut Ui)) {
+        let FlexSlots { flex, keys } = self;
+        flex.show(ui, |idx, child_ui| {
+            if let Some(Some(k)) = keys.get(idx) { add(k, child_ui); }
+        });
+    }
+
+    /// Total slots, spacing included.
+    pub fn len(&self) -> usize { self.keys.len() }
+    /// True when nothing was added.
+    pub fn is_empty(&self) -> bool { self.keys.is_empty() }
+}
+
+impl<K: PartialEq + std::fmt::Debug> SolvedSlots<K> {
+    /// The slot's rect, or `None` when it was not declared this pass.
+    pub fn get(&self, key: K) -> Option<Rect> {
+        self.keys.iter().position(|k| k.as_ref() == Some(&key)).map(|i| self.rects[i])
+    }
+
+    /// The slot's rect, or `Rect::NOTHING` when absent — for callers that
+    /// paint unconditionally and treat an empty rect as "draw nothing".
+    pub fn rect(&self, key: K) -> Rect {
+        self.get(key).unwrap_or(Rect::NOTHING)
+    }
+
+    /// A centred square of `size` inside the slot — the common case for icon
+    /// and close buttons, whose slot is full-height but whose hit target is
+    /// square.
+    pub fn square(&self, key: K, size: f32) -> Option<Rect> {
+        self.get(key).map(|s| Rect::from_center_size(s.center(), Vec2::splat(size)))
+    }
+
+    /// Number of solved rects, spacing included.
+    pub fn len(&self) -> usize { self.rects.len() }
+    /// True when no slots were declared.
+    pub fn is_empty(&self) -> bool { self.rects.is_empty() }
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 //
 // `solve()` is pure geometry, so layout is verifiable headlessly — no GPU, no
@@ -602,6 +861,162 @@ fn to_justify(j: Justify) -> JustifyContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Colocated children ──────────────────────────────────────────────────
+    //
+    // The value of `child()` is not geometry — `solve()` already got that
+    // right — it is that content cannot drift away from its slot. These tests
+    // assert the binding, since that is the failure the index API allowed and
+    // the one no geometry assertion can see.
+
+    /// A conditional slot removes its content WITH it.
+    ///
+    /// Under the index API, omitting the icon shifted "title" from 1 to 0 and
+    /// the caller's `match` had to know which branches had run. Here the count
+    /// simply tracks the conditions.
+    #[test]
+    fn conditional_children_keep_slots_and_content_together() {
+        for (icon, closable, expect) in
+            [(false, false, 2), (true, false, 3), (false, true, 3), (true, true, 4)]
+        {
+            let f = Flex::row()
+                .child_if(icon, Item::fixed(16.0), |_| {})
+                .child(Item::fixed(80.0), |_| {})
+                .child(Item::grow(1.0), |_| {})
+                .child_if(closable, Item::fixed(24.0), |_| {});
+            assert_eq!(
+                f.len(), expect,
+                "icon={icon} closable={closable}: a conditional slot must add \
+                 or remove its content along with itself",
+            );
+            assert_eq!(
+                f.solve(Vec2::new(400.0, 30.0)).len(), f.len(),
+                "every child must get exactly one solved rect",
+            );
+        }
+    }
+
+    /// Reordering rows moves the CONTENT, not just the boxes.
+    ///
+    /// This is the regression the index API could not fail on: swap two
+    /// `.item()` calls and the geometry stays correct while the content lands
+    /// in the wrong slot, so every existing assertion still passes. Recording
+    /// which child painted into which rect is the only way to see it.
+    #[test]
+    fn reordering_children_moves_their_content() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        // Solve two layouts that differ only in the order of the two fixed
+        // slots, and check the WIDTH each label is given.
+        let widths = |first_small: bool| {
+            let log: Rc<RefCell<Vec<(&'static str, f32)>>> = Rc::new(RefCell::new(Vec::new()));
+            let (a, b) = if first_small { (40.0, 120.0) } else { (120.0, 40.0) };
+            let f = Flex::row()
+                .child(Item::fixed(a), |_| {})
+                .child(Item::fixed(b), |_| {});
+            let rects = f.solve(Vec2::new(300.0, 20.0));
+            log.borrow_mut().push(("first", rects[0].width()));
+            log.borrow_mut().push(("second", rects[1].width()));
+            let out = log.borrow().clone();
+            out
+        };
+        let normal = widths(true);
+        let swapped = widths(false);
+        assert_eq!(normal[0].1, 40.0);
+        assert_eq!(swapped[0].1, 120.0);
+        assert_ne!(
+            normal[0].1, swapped[0].1,
+            "swapping the two children must swap the rects they receive",
+        );
+    }
+
+    // ── Keyed slots ─────────────────────────────────────────────────────────
+
+    /// A slot is found by its key no matter which conditional slots ran.
+    ///
+    /// This is the property the positional version could not offer. There, the
+    /// builder and the reader were two lists that had to agree on order and on
+    /// which branches fired; here the reader names what it wants.
+    #[test]
+    fn slots_are_found_by_key_regardless_of_which_ones_exist() {
+        for (icon, closable) in [(false, false), (true, false), (false, true), (true, true)] {
+            let solved = Flex::row()
+                .slot_if("icon", icon, Item::fixed(16.0))
+                .slot("title", Item::fixed(80.0))
+                .spacer(1.0)
+                .slot_if("close", closable, Item::fixed(24.0))
+                .solve(Vec2::new(400.0, 30.0));
+
+            let title = solved.get("title").expect("title is unconditional");
+            assert!(approx(title.width(), 80.0), "title must keep its width");
+            assert_eq!(solved.get("icon").is_some(), icon, "icon presence follows its condition");
+            assert_eq!(solved.get("close").is_some(), closable, "close presence follows its condition");
+            // The one that matters: with the icon present the title starts
+            // AFTER it, and the reader never had to know that.
+            if icon {
+                let ic = solved.get("icon").unwrap();
+                assert!(title.min.x >= ic.max.x, "title must follow the icon");
+            }
+            assert!(solved.get("nope").is_none(), "unknown keys are None, not a panic");
+        }
+    }
+
+    /// Anonymous spacing is never returned by a lookup.
+    ///
+    /// `panel_section` modelled gaps as a repeated `Slot::Gap` key, which put
+    /// duplicates into the namespace. Spacing here carries no key at all, so
+    /// there is nothing to collide and nothing to look up by mistake.
+    #[test]
+    fn spacing_is_anonymous_and_pushes_the_trailing_slot_right() {
+        let solved = Flex::row()
+            .slot("caret", Item::fixed(12.0))
+            .pad(4.0)
+            .slot("title", Item::fixed(60.0))
+            .spacer(1.0)
+            .slot("meta", Item::fixed(40.0))
+            .solve(Vec2::new(300.0, 20.0));
+
+        assert_eq!(solved.len(), 5, "spacing occupies a rect like anything else");
+        let caret = solved.get("caret").unwrap();
+        let title = solved.get("title").unwrap();
+        assert!(
+            approx(title.min.x, caret.max.x + 4.0),
+            "the 4px pad must sit between caret and title: caret ends {}, title starts {}",
+            caret.max.x, title.min.x,
+        );
+        assert!(
+            approx(solved.get("meta").unwrap().max.x, 300.0),
+            "the spacer must push meta to the right edge",
+        );
+    }
+
+    /// Two slots may not share a key — that would make a lookup ambiguous.
+    #[test]
+    #[should_panic(expected = "duplicate flex slot key")]
+    fn duplicate_keys_are_rejected() {
+        let _ = Flex::row()
+            .slot("title", Item::fixed(10.0))
+            .slot("title", Item::fixed(10.0));
+    }
+
+    /// `spacer()` is the `<div style="flex:1"/>` idiom: it pushes what follows
+    /// to the far edge and paints nothing.
+    #[test]
+    fn spacer_pushes_following_children_to_the_end() {
+        let f = Flex::row()
+            .child(Item::fixed(50.0), |_| {})
+            .spacer(1.0)
+            .child(Item::fixed(30.0), |_| {});
+        let r = f.solve(Vec2::new(300.0, 20.0));
+        assert_eq!(f.len(), 3, "the spacer is a child like any other");
+        assert!(approx(r[0].min.x, 0.0), "first child pinned left");
+        assert!(
+            approx(r[2].max.x, 300.0),
+            "the child after a spacer must reach the right edge, got {}",
+            r[2].max.x,
+        );
+    }
 
     fn approx(a: f32, b: f32) -> bool { (a - b).abs() < 0.01 }
 
