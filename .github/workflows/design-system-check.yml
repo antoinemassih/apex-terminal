@@ -67,6 +67,10 @@ jobs:
       # defending the literal; `row_height_comfortable` had none for four days
       # after its milestone was marked complete. No compiler or test can see
       # that. Only a call-site count can.
+      # Covers TWO layers: `ui_kit::style` accessors, and `StyleSystem` fields —
+      # the layer a theme author actually edits. A field there can be authored,
+      # exported, re-imported and round-trip asserted while nothing reads it;
+      # the round-trip proves the value SURVIVES, not that it does anything.
       - name: Run token-consumer gate (authorable but unread tokens)
         if: ${{ !cancelled() }}
         run: python dev/token_consumer_gate.py

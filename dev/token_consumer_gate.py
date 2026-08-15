@@ -88,9 +88,23 @@ SS_ALLOWED_UNREAD = {
     # a roadmap sitting in data. Kept so the intent survives, listed so nobody
     # believes authoring them does something.
     "nav", "dock", "rail",
-    # Elevation: the whole group. `chart/renderer/ui/style.rs` carries a TODO
-    # reading "Phase B3 promotes these to StyleSystem.elevation" — the promotion
-    # never happened, so the group has never had a reader.
+    # Elevation: the whole group, and it is NOT a simple oversight — the code
+    # argues both sides in one comment block. `chart/renderer/ui/style.rs` says
+    #
+    #   "These do NOT use design tokens — the gamma values are perceptual
+    #    constants, not tweakable style decisions."
+    #
+    # eight lines above
+    #
+    #   "Phase B3 promotes these to `StyleSystem.elevation` so a style system
+    #    can override the ramp."
+    #
+    # So the struct exists because of the second sentence and is unread because
+    # of the first. Wiring it would contradict a deliberate decision; deleting
+    # it would discard a planned one. Left inert and listed HERE rather than
+    # resolved by whoever next runs this gate, because the question is a design
+    # call — is surface depth a perceptual constant or a style axis? — and not
+    # a wiring bug. Whoever answers it should delete this entry either way.
     "elevation", "l1", "l2", "l3",
     # Typography: superseded by the M1 `ui_*` ladder, which is what
     # `begin_frame` reads. These are the pre-M1 names, kept for theme-pack
