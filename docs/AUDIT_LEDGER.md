@@ -289,3 +289,38 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [x] **AT-135** `P3` `W` `STATE` — ORDERS_SNAPSHOT publish-after-unlock has no ordering guard — the order ledger and on-chart order lines can go permanently stale
 - [ ] **AT-136** `P3` `C` `STATE` — Per-pane and per-window UI state parked in single-slot process globals — the options-chain seat set is cleared by whichever surface renders last
 - [ ] **AT-141** `P3` `C` `UX` — Seasonality month attribution drifts across leap-year boundaries, misfiling early-January bars as December
+- [ ] **AT-148** `P2` `C` `UX` — Toolbar buttons have TWO sizing authorities; 7 of 9 styles render two different button heights in one row
+
+  Found by running the app's own `/design-audit` across all nine styles, which
+  had presumably been reporting it for a while. Aperture is clean; the other
+  eight each report six `toolbar_height_consistency` failures.
+
+  On Meridien the toolbar contains buttons at 24px and at 28px simultaneously:
+
+      expected 24, got 28   layout_picker, settings_btn, search_btn,
+                            toolnav_toggle, watchlist_toggle, timeframe_picker
+
+  `toolbar_btn()` applies `.min_size(vec2(0, toolbar_control_h()))` AND, for
+  icon-only labels, `.placement(IconPlacement::Toolbar)`. `Button::placement`
+  documents itself as driving "glyph size and hit-target size (overriding
+  `min_size` / `glyph_size`)". So icon buttons size from the placement and text
+  chips from the token — two authorities in one row. They coincide on Aperture
+  and diverge everywhere else, which is why this looks style-specific and is
+  not.
+
+  `IconPlacement::Toolbar.hit_px()` is additionally a hardcoded `24.0`, below
+  the 28px touch minimum the same audit enforces — as are the other seven
+  placements (PanelHeader 20, ListRow 16, TabClose 14).
+
+  NOT FIXED DELIBERATELY. The obvious change — resolve `hit_px()` from the
+  control ladder — alters icon-button sizing at 9 `Toolbar` call sites and 84
+  more across the other placements, on every style. It also does not clearly
+  explain the measurement: `hit_px()` reports 24 while the button measures 28,
+  so the final height involves padding I have not traced. Making an app-wide
+  sizing change on a model I cannot yet state precisely is how the two
+  competing authorities got here in the first place.
+
+  Needs: trace `Button`'s height resolution end to end, then pick ONE authority
+  for toolbar control height and delete the other. Verify with
+  `/design-audit` across all nine styles (cheap — it is a loop over
+  `SetStyleIdx`) plus a screenshot, since the failure mode is visual.
