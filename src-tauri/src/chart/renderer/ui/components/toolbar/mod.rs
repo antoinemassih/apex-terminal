@@ -76,10 +76,18 @@ pub fn toolbar_btn(
     // egui's button padding, so the filled broker pill sat visibly taller than
     // the outlined chips next to it. `toolbar_control_h()` is the themed,
     // density-aware source they now share.
-    btn = btn.min_size(egui::vec2(
-        0.0,
-        crate::chart_renderer::ui::style::toolbar_control_h(),
-    ));
+    // EXACT height, not a floor.  is a floor in the paint path and an
+    // override in the menu path, so this line used to produce one height for
+    // menu triggers and another for icon buttons whenever the style control
+    // height fell below Size::Md — 24px beside 28px on seven of nine styles.
+    btn = btn.height(crate::chart_renderer::ui::style::toolbar_control_h());
+    // ...and a WIDTH floor at the same minimum. `min_side` is the smaller of
+    // the two dimensions, so a 28px-tall icon button only 24px wide still fails
+    // the touch check — which is exactly what Octave's toolbar did once the
+    // heights were fixed. `min_size` is a floor in the paint path, which is the
+    // right tool for this now that height has its own exact mechanism; the two
+    // uses stopped fighting once they stopped being the same call.
+    btn = btn.min_size(egui::vec2(crate::ui_kit::style::MIN_TOUCH_TARGET_PX, 0.0));
 
     if active {
         btn = btn.fg(t.accent);

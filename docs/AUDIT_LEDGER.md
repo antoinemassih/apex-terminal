@@ -289,7 +289,7 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
 - [x] **AT-135** `P3` `W` `STATE` — ORDERS_SNAPSHOT publish-after-unlock has no ordering guard — the order ledger and on-chart order lines can go permanently stale
 - [ ] **AT-136** `P3` `C` `STATE` — Per-pane and per-window UI state parked in single-slot process globals — the options-chain seat set is cleared by whichever surface renders last
 - [ ] **AT-141** `P3` `C` `UX` — Seasonality month attribution drifts across leap-year boundaries, misfiling early-January bars as December
-- [ ] **AT-148** `P2` `C` `UX` — Toolbar buttons have TWO sizing authorities; 7 of 9 styles render two different button heights in one row
+- [x] **AT-148** `P2` `C` `UX` — Toolbar buttons have TWO sizing authorities; 7 of 9 styles render two different button heights in one row
 
   Found by running the app's own `/design-audit` across all nine styles, which
   had presumably been reporting it for a while. Aperture is clean; the other
@@ -320,7 +320,36 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   sizing change on a model I cannot yet state precisely is how the two
   competing authorities got here in the first place.
 
-  Needs: trace `Button`'s height resolution end to end, then pick ONE authority
-  for toolbar control height and delete the other. Verify with
-  `/design-audit` across all nine styles (cheap — it is a loop over
-  `SetStyleIdx`) plus a screenshot, since the failure mode is visual.
+  FIXED. Traced end to end: `paint_button` sets `desired.y = size.height()`
+  (28 for `Size::Md`) and then applies placement's `hit_px` and `min_size` as
+  FLOORS via `max()`. So `toolbar_btn`'s `min_size(0, toolbar_control_h())`
+  did nothing whenever the style's control height was below 28 — while the
+  MENU path treats the same field as an override (`min_size.or_else(placement)
+  .unwrap_or(size.height())`) and shrank to it. One field, two semantics, and
+  the row rendered both.
+
+  My earlier note that `hit_px()` reports 24 where the button measures 28 was
+  the clue I could not place: placement drives the GLYPH, not the height.
+
+  * `Button::height(px)` — an EXACT height that wins over the size token, the
+    placement hit target and the `min_size` floor. `toolbar_btn` uses it, so
+    there is one authority for the row.
+  * `MIN_TOUCH_TARGET_PX` in `ui_kit::style` — the touch minimum was hardcoded
+    in the audit while the control ladder had no floor at all, so a style could
+    author 24px controls and the app would render them and then report itself
+    non-compliant every frame. One constant now floors `toolbar_control_h()`
+    AND backs the check, so the threshold and the layout cannot drift.
+  * A width floor too: `min_side` is the smaller dimension, so 28-tall buttons
+    24px wide still failed (Octave). `min_size` is the right tool for that now
+    that height has its own mechanism — the two uses stopped fighting once they
+    stopped being the same call.
+  * Badge height floored AFTER density: Octave's 0.85x scale turned 28 into
+    23.8, the same failure the old raw 26.0 had, reached from the other side.
+    Density may compress a control; it may not compress it out of reach.
+
+  Verified by `/design-audit` across all nine styles: toolbar height
+  consistency 6 -> 0 everywhere, touch targets 8-20 -> 4 everywhere. The
+  remaining 4 are the pane-header chips (24px in a 28px header) — meeting the
+  minimum there needs a TALLER header, which is a product density decision and
+  is deliberately not taken here. Screenshot of Meridien confirms one uniform
+  row.

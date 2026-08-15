@@ -152,7 +152,13 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     // is 28 and is the token every other interactive control in the chrome
     // resolves from, so the badges now scale with density like their
     // neighbours instead of staying pinned two pixels short.
-    let badge_h: f32 = crate::ui_kit::style::control_h_md();
+    let badge_h: f32 = crate::ui_kit::style::control_h_md()
+        // Floor AFTER density. `control_h_md()` is the ladder rung times the
+        // effective density scale, so a compact style (Octave, 0.85x) turned 28
+        // into 23.8 and put the badges back under the minimum — the same
+        // failure the raw 26.0 had, arrived at from the other direction.
+        // Density may compress a control; it may not compress it out of reach.
+        .max(crate::ui_kit::style::MIN_TOUCH_TARGET_PX);
     const ACCENT_W:    f32   = 3.0;
     const PAD_L:       f32   = 8.0;
     const PAD_R:       f32   = 6.0;

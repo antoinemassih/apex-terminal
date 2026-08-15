@@ -54,6 +54,8 @@ pub struct Button<'a> {
     hover_fill_override: Option<Color32>,
     stroke_override: Option<Stroke>,
     min_size_override: Option<Vec2>,
+    /// Exact painted height. See [`Button::height`].
+    exact_h: Option<f32>,
     /// Hard ceiling on the painted width. See [`Button::max_width`].
     max_width: Option<f32>,
     frameless: bool,
@@ -111,6 +113,7 @@ impl<'a> Button<'a> {
             hover_fill_override: None,
             stroke_override: None,
             min_size_override: None,
+            exact_h: None,
             max_width: None,
             frameless: false,
             honor_style_treatment: true,
@@ -382,6 +385,25 @@ impl<'a> Button<'a> {
     /// Minimum size (replaces auto-computed from Size enum).
     pub fn min_size(mut self, sz: Vec2) -> Self { self.min_size_override = Some(sz); self }
 
+    /// EXACT painted height — not a floor.
+    ///
+    /// AUDIT 2026-08. `min_size` cannot express "every control in this row is
+    /// the same height", and that is what a toolbar needs. It is a floor in the
+    /// paint path (`desired.y = desired.y.max(ms.y)`) but an override in the
+    /// menu path (`min_size_override ... .or_else(placement) ...`), so the same
+    /// call meant two things depending on which kind of button received it.
+    ///
+    /// `toolbar_btn` set `min_size(vec2(0, toolbar_control_h()))` intending one
+    /// shared height. On a style whose control height exceeds `Size::Md` that
+    /// worked; on one below it the floor did nothing, menu triggers took the
+    /// override branch and shrank to it, and the row rendered two heights at
+    /// once — 24px and 28px side by side on seven of nine styles.
+    ///
+    /// This wins over the size token, the placement hit target and the
+    /// `min_size` floor, because a caller asking for an exact height is
+    /// describing the row, not expressing a preference.
+    pub fn height(mut self, px: f32) -> Self { self.exact_h = Some(px.max(1.0)); self }
+
     /// Hard CEILING on the painted width — the counterpart to [`min_size`],
     /// which is only a floor.
     ///
@@ -580,8 +602,8 @@ impl<'a> Button<'a> {
         // trigger into a row's shared control height. Then placement, then the
         // size token.
         let target_h = self
-            .min_size_override
-            .map(|v| v.y)
+            .exact_h
+            .or_else(|| self.min_size_override.map(|v| v.y))
             .filter(|h| *h > 0.0)
             .or_else(|| self.placement.map(|p| p.hit_px()).filter(|h| *h > 0.0))
             .unwrap_or_else(|| self.size.height());
@@ -778,6 +800,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
         hover_fill_override,
         stroke_override,
         min_size_override,
+        exact_h,
         frameless,
         recipe_key_override,
         ..
@@ -896,6 +919,10 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
     if let Some(ms) = min_size_override {
         desired.x = desired.x.max(ms.x);
         desired.y = desired.y.max(ms.y);
+    }
+    // Exact height wins over every floor above — see `Button::height`.
+    if let Some(hh) = exact_h {
+        desired.y = hh;
     }
     // The ceiling is applied LAST, so it wins over both floors above. A caller
     // that hands us a fixed slot is stating a fact about the layout, not a

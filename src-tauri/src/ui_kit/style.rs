@@ -607,6 +607,21 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 /// bottom of the cascade and skips the inspector / hot-reload layers above it.
 #[inline] pub fn pane_gap()             -> f32 { frame_tokens().pane_gap }
 /// Side-rail width presets (per-style).
+/// Smallest side any interactive control may present, in px.
+///
+/// AUDIT 2026-08 — ONE number, two users. The dev-inspector's `/design-audit`
+/// hardcoded `28.0` in its touch-target check while `toolbar_control_h()` had
+/// no floor at all, so a style could author a 24px control height and the app
+/// would render it and then report itself non-compliant every frame. An
+/// enforcement threshold and the layout it governs cannot be two separate
+/// literals: whoever changes one silently puts the app in violation of the
+/// other.
+///
+/// Applied as a FLOOR only, the same shape as `toolnav_min_height()`: a style
+/// asking for a TALLER control keeps exactly the height it authored (Aperture's
+/// 32 is untouched); a style asking for a shorter one is raised to this.
+pub const MIN_TOUCH_TARGET_PX: f32 = 28.0;
+
 #[inline] pub fn control_h_xs()         -> f32 { frame_tokens().control_xs }
 #[inline] pub fn control_h_sm()         -> f32 { frame_tokens().control_sm }
 #[inline] pub fn control_h_md()         -> f32 { frame_tokens().control_md }

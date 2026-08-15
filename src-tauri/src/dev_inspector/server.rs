@@ -1903,12 +1903,14 @@ fn handle_sse(stream: &mut TcpStream, shared: &Arc<Mutex<DevSharedState>>) {
 fn build_design_audit(state: &DevSharedState) -> serde_json::Value {
     let widgets = &state.widget_tree;
 
-    // Touch targets: all button/input widgets must have min side >= 28px
+    // Touch targets: all button/input widgets must have min side >=
+    // `MIN_TOUCH_TARGET_PX` — the SAME constant the control ladder is floored
+    // at, so the check and the layout cannot drift apart.
     let button_widgets: Vec<_> = widgets.iter()
         .filter(|w| (w.role == "button" || w.role == "input") && w.rect.area() > 0.0)
         .collect();
     let touch_fails: Vec<_> = button_widgets.iter()
-        .filter(|w| w.rect.min_side() < 28.0)
+        .filter(|w| w.rect.min_side() < crate::ui_kit::style::MIN_TOUCH_TARGET_PX)
         .map(|w| serde_json::json!({"id": w.id, "min_side_px": w.rect.min_side()}))
         .collect();
 

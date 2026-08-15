@@ -3106,7 +3106,13 @@ pub fn style_button_height() -> f32 {
 /// This finally gives `style_button_height()` a consumer — the geometry sweep
 /// found it authored, exposed, and read by nothing.
 pub fn toolbar_control_h() -> f32 {
-    style_button_height().round()
+    // Floored at the touch minimum. Without it, a style authoring a 24px
+    // control height rendered a toolbar the app's own design audit then
+    // reported as non-compliant — every frame, on seven of nine styles.
+    // Floor only: Aperture authors 32 and keeps it.
+    style_button_height()
+        .max(crate::ui_kit::style::MIN_TOUCH_TARGET_PX)
+        .round()
 }
 /// Density-aware tab height. Reads `tab_height` then scales by effective density.
 pub fn style_tab_height() -> f32 {
