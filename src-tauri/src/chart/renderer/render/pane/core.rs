@@ -4143,8 +4143,7 @@ fn render_chart_pane(
                         dashed_line(&painter, egui::pos2(rect.left(),y), egui::pos2(rect.left()+cw,y), sc, ls);
                     }
                     if is_sel {
-                        let hsel_st = style::current();
-                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), (hsel_st.r_xs as f32 + 3.0).max(4.0), t.accent);
+                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), (style::radius_xs() + 3.0).max(4.0), t.accent);
                     }
                 }
             }
@@ -4209,9 +4208,8 @@ fn render_chart_pane(
                         dashed_line(&painter, clamp_pt(draw_a), clamp_pt(draw_b), sc, ls);
                     }
                     if is_sel {
-                        let sel_st = style::current();
-                        let handle_r = (sel_st.r_xs as f32 + 3.0).max(4.0);
-                        let handle_stroke = egui::Stroke::new(sel_st.stroke_std, contrast_fg(t.accent));
+                        let handle_r = (style::radius_xs() + 3.0).max(4.0);
+                        let handle_stroke = egui::Stroke::new(style::stroke_std(), contrast_fg(t.accent));
                         painter.circle_filled(clamp_pt(p0), handle_r, t.accent);
                         painter.circle_stroke(clamp_pt(p0), handle_r, handle_stroke);
                         painter.circle_filled(clamp_pt(p1), handle_r, t.accent);
@@ -4226,7 +4224,7 @@ fn render_chart_pane(
                         let info = format!("{:+.2} ({:+.1}%) {} bars", dp, pct, bars);
                         let ig = painter.layout_no_wrap(info.clone(), mono_xs(), color_alpha(t.text,180));
                         let info_rect = egui::Rect::from_center_size(mid - egui::vec2(0.0, 12.0), ig.size() + egui::vec2(8.0, 4.0));
-                        painter.rect_filled(info_rect, sel_st.r_xs as f32, color_alpha(t.toolbar_bg, 210));
+                        painter.rect_filled(info_rect, style::radius_xs(), color_alpha(t.toolbar_bg, 210));
                         painter.text(mid - egui::vec2(0.0, 12.0), egui::Align2::CENTER_CENTER, &info, mono_xs(), color_alpha(t.text,180));
                     }
                 }
@@ -4273,8 +4271,7 @@ fn render_chart_pane(
                         dashed_line(&painter, egui::pos2(rect.left(),y1), egui::pos2(rect.left()+cw,y1), sc, ls);
                     }
                     if is_sel {
-                        let hsel_st = style::current();
-                        let hzone_hr = (hsel_st.r_xs as f32 + 3.0).max(4.0);
+                        let hzone_hr = (style::radius_xs() + 3.0).max(4.0);
                         painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y0), hzone_hr, t.accent);
                         painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y1), hzone_hr, t.accent);
                     }
@@ -7193,9 +7190,11 @@ fn render_chart_pane(
                 painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(ch_line_w,color_alpha(t.text,50)));
                 let hp = min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
                 chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.2}", hp);
-                let ch_st = style::current();
-                let ch_badge_cr = ch_st.r_xs as f32;
-                let ch_badge_stroke_w = if ch_st.hairline_borders { ch_st.stroke_std } else { style::stroke_thin() };
+                // `hairline_borders` is the one field here with no token
+                // accessor, so the binding survives for it alone.
+                let ch_hairline = style::current().hairline_borders;
+                let ch_badge_cr = style::radius_xs();
+                let ch_badge_stroke_w = if ch_hairline { style::stroke_std() } else { style::stroke_thin() };
                 let cf = mono_lg();
                 // U1-3: theme foreground (was hardcoded WHITE, which failed
                 // contrast on the light theme's toolbar_bg fill below).
@@ -7260,9 +7259,9 @@ fn render_chart_pane(
                     // Big floating box near cursor
                     let mx = pos.x + 20.0;
                     let my = pos.y;
-                    let meas_st = style::current();
-                    let meas_cr = meas_st.r_sm as f32;
-                    let meas_stroke_w = if meas_st.hairline_borders { meas_st.stroke_std } else { style::stroke_thin() };
+                    let meas_hairline = style::current().hairline_borders;
+                    let meas_cr = style::radius_sm();
+                    let meas_stroke_w = if meas_hairline { style::stroke_std() } else { style::stroke_thin() };
                     let pct_galley = painter.layout_no_wrap(m_pct_text.clone(), mono_md(), dist_col);
                     let price_galley = painter.layout_no_wrap(m_price_text.clone(), mono_sm(), color_alpha(dist_col, 160));
                     let box_w = pct_galley.size().x.max(price_galley.size().x) + 16.0;
