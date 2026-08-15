@@ -325,6 +325,14 @@ pub const FONT_NAMES: &[&str] = &[
     "Space Grotesk",    // 3 — geometric wide sans
     "DM Sans",          // 4 — clean dashboard sans
     "Geist",            // 5 — Vercel's app font
+    // AUDIT 2026-08 — index 6 was missing HERE while existing everywhere else.
+    // `font_idx_to_family_name(6)` returns "IBM Plex Sans", the registry
+    // registers it, the TTFs are bundled, and Alto/Mariner select it — but the
+    // picker list stopped at 5, so the one font two shipped styles use could
+    // not be chosen by a user, and `font_idx.min(len - 1)` displayed "Geist"
+    // for anyone whose index was 6. Three components disagreeing about what
+    // fonts exist; this is the one that was wrong.
+    "IBM Plex Sans",    // 6 — Alto / Mariner instrument-panel sans
 ];
 
 /// Initialize fonts.

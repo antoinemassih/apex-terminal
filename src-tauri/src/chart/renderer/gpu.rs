@@ -285,13 +285,19 @@ pub(crate) const STYLE_NAMES: &[&str] = &[
 
 /// Per-theme preferred **proportional** font, ported from the React mockup's
 /// `--ds-font-ui` per `[data-ds]` block. Returns an index into the font table
-/// used by `init_fonts` (0=JetBrains, 1=Inter, 2=PlusJakarta, 3=SpaceGrotesk,
-/// 4=DM Sans, 5=Geist). `None` = no per-theme preference (use the user picker).
+/// used by `init_fonts` (see `ui_kit::icons::FONT_NAMES` for the list — do not
+/// restate it here, the copy in this comment had already drifted). `None` = no
+/// per-theme preference (use the user picker).
 ///
 /// NOTE: monospace stays pinned to JetBrains Mono regardless (tabular-digit
-/// policy in `init_fonts`). Alto/Mariner specify IBM Plex Sans in React, which
-/// is NOT bundled here — they fall back to Geist (closest neutral technical
-/// face). Bundle IBM Plex Sans/Mono TTFs for true Alto/Mariner fidelity.
+/// policy in `init_fonts`).
+///
+/// CORRECTED 2026-08: this said IBM Plex Sans "is NOT bundled here — they fall
+/// back to Geist", and asked for the TTFs to be bundled. They ARE bundled
+/// (`IBMPlexSans-Regular.ttf` / `-SemiBold.ttf`), the registry registers the
+/// family, and `font_idx_to_family_name(6)` resolves it — so Alto and Mariner
+/// have been rendering in IBM Plex Sans, not Geist, and the note was asking for
+/// work that was already done.
 pub(crate) fn style_preferred_font(style_id: u8) -> Option<usize> {
     match style_id {
         1 => Some(1), // Aperture → Inter (React: Inter Tight)
