@@ -611,6 +611,39 @@ bite by deleting the export line.
 
 ---
 
+## AT-158 — `ticker_strip` is built, styled, and never rendered — RECORDED
+
+Found by migrating it. `chart/renderer/ui/components/toolbar/ticker_strip.rs`
+describes itself as *"the signature element of the toolnav (second chrome row)
+in the ApertureJune reference"*, and its entire public surface — `ticker_strip`,
+`TickerEntry`, `TickerStripResponse` — has **zero references** outside its own
+file. The only external mention is `pub mod ticker_strip;`.
+
+That is the `sx::recipes` shape again: a complete component whose only tie to
+the app is its module declaration. A census of `ui_kit/widgets`,
+`toolbar` and `overlays` says it is the sole module in that state — the other
+eight hits are internal helpers exposed `pub` for their own tests
+(`solve_header_row`, `key_value_row_flex`), which is a different thing.
+
+**Not wired, and not deleted.** Wiring it puts a new visible element into a
+trading toolbar and needs a live quote source; that is a product decision, not a
+design-system fix, and it is not mine to make. Deleting it discards work that
+was clearly intended. It is recorded here for that decision.
+
+**What was done:** its cursor walk was migrated to `Flex` anyway, which removed
+a real defect in code that would ship the moment it is wired —
+`if cx > rect.right() - 40.0 { break }` was a fixed guess unrelated to the quote
+about to be drawn, so a quote wider than 40 px started inside the strip and ran
+past its edge, where `painter_at` clipped it mid-glyph. The strip now measures
+each quote and stops when one would not fit.
+
+Two tests in `flex.rs` guard the measurement, because it relies on solving into
+an INFINITE available width: one asserts that returns finite rects summing to
+the content, the other that measuring and then placing agree — if they diverged,
+every quote would paint at an offset from the box its click handler uses.
+
+---
+
 ## AT-157 — four scale ladders were authorable but never cascaded — FIXED
 
 `cascade_gate.py` reported 48 of 91 snapshot fields cascading. The other 43 sat

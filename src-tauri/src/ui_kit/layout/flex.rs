@@ -1498,3 +1498,54 @@ mod m46_measure_tests {
             "rigid() must hold its measured width, got {}", rigid[0].width());
     }
 }
+
+#[cfg(test)]
+mod intrinsic_width_tests {
+    use super::{Flex, Item};
+    use egui::{Rect, Vec2};
+
+    /// Solving into an INFINITE available width must yield finite rects.
+    ///
+    /// `ticker_strip` measures a quote by solving it unconstrained and reading
+    /// the right edge of its last slot, so that it can decide whether the quote
+    /// FITS before painting a single glyph. If Taffy returned an infinite or
+    /// NaN rect here the comparison `cx + quote_w > rect.right()` would be
+    /// meaningless — it would either never break or always break, and the strip
+    /// would silently draw nothing or overflow exactly as it did before.
+    #[test]
+    fn an_unconstrained_row_measures_to_its_content() {
+        let row = Flex::row()
+            .slot("a", Item::content(30.0))
+            .slot("b", Item::content(20.0).margin_start(8.0))
+            .slot("c", Item::content(10.0).margin_start(8.0));
+
+        let solved = row.solve_in(Rect::from_min_size(
+            egui::pos2(0.0, 0.0),
+            Vec2::new(f32::INFINITY, 20.0),
+        ));
+        let w = solved.rect("c").right();
+        assert!(w.is_finite(), "unconstrained solve produced {w}");
+        // 30 + 8 + 20 + 8 + 10
+        assert!((w - 76.0).abs() < 0.5, "expected ~76, got {w}");
+    }
+
+    /// The same row solved into its own measured width must not shift.
+    ///
+    /// The strip measures once unconstrained, then solves again inside the rect
+    /// it just sized. If those two disagreed, every quote would be painted at
+    /// an offset from the box the click handler uses.
+    #[test]
+    fn measuring_then_placing_agrees_with_itself() {
+        let row = || Flex::row()
+            .slot("a", Item::content(30.0))
+            .slot("b", Item::content(20.0).margin_start(8.0));
+
+        let w = row()
+            .solve_in(Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(f32::INFINITY, 20.0)))
+            .rect("b").right();
+        let placed = row().solve_in(Rect::from_min_size(egui::pos2(100.0, 0.0), Vec2::new(w, 20.0)));
+        assert!((placed.rect("a").left() - 100.0).abs() < 0.5);
+        assert!((placed.rect("b").right() - (100.0 + w)).abs() < 0.5,
+            "placement disagreed with measurement: {} vs {}", placed.rect("b").right(), 100.0 + w);
+    }
+}
