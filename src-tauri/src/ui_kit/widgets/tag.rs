@@ -245,7 +245,7 @@ impl<'a> Tag<'a> {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     st::color_alpha(tone_col, 255)
                 } else {
-                    st::color_alpha(tone_col, 200)
+                    st::color_alpha(tone_col, crate::ui_kit::style::alpha_solid())
                 };
                 painter.text(
                     close_center,
@@ -295,7 +295,7 @@ pub fn paint_pill(
     let r = rect.height() * 0.5;
     match style {
         PillStyle::Soft    => Sx::new().rounded(r).bg_color(st::color_alpha(color, 32)).paint_box_at(p, rect, t),
-        PillStyle::Subtle  => Sx::new().rounded(r).bg_color(st::color_alpha(color, 20)).paint_box_at(p, rect, t),
+        PillStyle::Subtle  => Sx::new().rounded(r).bg_color(st::color_alpha(color, crate::ui_kit::style::alpha_soft())).paint_box_at(p, rect, t),
         PillStyle::Solid   => Sx::new().rounded(r).bg_color(color).paint_box_at(p, rect, t),
         PillStyle::Outline => Sx::new().rounded(r).border_color(color, st::stroke_std()).paint_box_at(p, rect, t),
     }

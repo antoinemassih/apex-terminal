@@ -120,7 +120,7 @@ fn paint_slider<T: egui::emath::Numeric>(
                 egui::Align2::LEFT_TOP,
                 text,
                 crate::ui_kit::style::prop_at(label_font),
-                st::color_alpha(palette_ct(theme).base(Tone::Text), 180),
+                st::color_alpha(palette_ct(theme).base(Tone::Text), crate::ui_kit::style::alpha_near_solid()),
             );
             // Allocate the label space.
             // layout-only: only `.rect.width()/.height()` is read.
@@ -212,7 +212,7 @@ fn paint_slider<T: egui::emath::Numeric>(
                 let ty = track_rect.bottom() + 2.0;
                 painter.line_segment(
                     [Pos2::new(tx, ty), Pos2::new(tx, ty + 4.0)],
-                    Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Dim), 100)),
+                    Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_active())),
                 );
             }
 

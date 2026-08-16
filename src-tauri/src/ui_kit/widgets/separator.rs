@@ -72,7 +72,7 @@ impl<'a> Separator<'a> {
         let pal = palette_ct(theme);
         let mut color = pal.base(Tone::Border);
         if self.faint {
-            color = st::color_alpha(color, 80);
+            color = st::color_alpha(color, crate::ui_kit::style::alpha_strong());
         }
 
         let pad = self.spacing.unwrap_or_else(st::gap_xs);

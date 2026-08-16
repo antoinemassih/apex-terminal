@@ -518,7 +518,7 @@ fn paint_select<'a, T: 'a>(
 
     // Render trigger label / multi tags / placeholder.
     let n = display.len();
-    let muted_ph = st::color_alpha(palette_ct(theme).base(Tone::Dim), 160);
+    let muted_ph = st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_dense());
     let text_col = if disabled {
         st::color_alpha(palette_ct(theme).base(Tone::Text), 128)
     } else {
@@ -891,7 +891,7 @@ fn render_panel<'a, T>(
                 painter.rect_filled(
                     s_rect,
                     st::r_sm_cr(),
-                    st::color_alpha(palette_ct(theme).base(Tone::Bg), 200),
+                    st::color_alpha(palette_ct(theme).base(Tone::Bg), crate::ui_kit::style::alpha_solid()),
                 );
                 painter.rect_stroke(
                     s_rect,
@@ -993,7 +993,7 @@ fn render_panel<'a, T>(
                 let div_y = ui.cursor().min.y;
                 ui.painter().line_segment(
                     [Pos2::new(ui.min_rect().left(), div_y), Pos2::new(ui.min_rect().left() + width, div_y)],
-                    Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Border), 120)),
+                    Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Border), crate::ui_kit::style::alpha_heavy())),
                 );
                 ui.add_space(st::gap_2xs());
                 let selected = is_selected(mode, i);

@@ -133,7 +133,7 @@ impl<'a> Popover<'a> {
                         spread: 1,
                         color: {
                             let s = theme.shadow_color();
-                            crate::ui_kit::style::color_alpha(s, 80)
+                            crate::ui_kit::style::color_alpha(s, crate::ui_kit::style::alpha_strong())
                         },
                     });
                 let inner = frame.show(ui, |ui| add_contents(ui));

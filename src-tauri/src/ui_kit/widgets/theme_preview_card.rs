@@ -168,7 +168,7 @@ impl<'a> ThemePreviewCard<'a> {
                     let x1 = (x0 + frac * inner_w).min(inner_right);
                     let color = if accent { preview_theme.accent() } else { preview_theme.text() };
                     // Slightly muted so the preview doesn't scream.
-                    let color = crate::ui_kit::style::color_alpha(color, 200);
+                    let color = crate::ui_kit::style::color_alpha(color, crate::ui_kit::style::alpha_solid());
                     let lr = Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1, y + line_h));
                     painter.rect_filled(lr, CornerRadius::same(1), color); // TODO: off-token
                     y += line_h + line_gap;

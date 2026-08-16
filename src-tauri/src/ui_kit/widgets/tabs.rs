@@ -507,7 +507,7 @@ fn paint_tabs(
         ui.painter().rect_filled(
             total_rect,
             crate::ui_kit::style::r_md_cr(),
-            st::color_alpha(palette_ct(theme).base(Tone::Surface), 200),
+            st::color_alpha(palette_ct(theme).base(Tone::Surface), crate::ui_kit::style::alpha_solid()),
         );
     }
 
@@ -662,7 +662,7 @@ fn paint_tabs(
             plus_resp.hovered(), motion::FAST);
         let bg = motion::lerp_color(
             Color32::TRANSPARENT,
-            st::color_alpha(palette_ct(theme).base(Tone::Surface), 200),
+            st::color_alpha(palette_ct(theme).base(Tone::Surface), crate::ui_kit::style::alpha_solid()),
             hover_t,
         );
         ui.painter().rect_filled(plus_rect, crate::ui_kit::style::r_sm_cr(), bg);
@@ -725,7 +725,7 @@ fn paint_tabs(
     // stroke_thin, inset 4px from top and bottom. NO bottom rule under the
     // strip — chart panes don't draw one (content sits flush below).
     if matches!(treatment, TabTreatment::Pane) && n > 1 {
-        let sep_color = st::color_alpha(theme.border_variant(), 200);
+        let sep_color = st::color_alpha(theme.border_variant(), crate::ui_kit::style::alpha_solid());
         let stroke = Stroke::new(st::stroke_thin(), sep_color);
         for i in 1..n {
             // Skip the two gaps that touch the ACTIVE tab.
@@ -758,7 +758,7 @@ fn paint_tabs(
     // ── Line treatment: 1px vertical hairline between adjacent tabs ──
     // Zed parity. Only between tabs (not before first / after last).
     if matches!(treatment, TabTreatment::Line) && n > 1 {
-        let sep_color = st::color_alpha(palette_ct(theme).base(Tone::Dim), 60);
+        let sep_color = st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_dim());
         let stroke = Stroke::new(st::stroke_std(), sep_color);
         for i in 1..n {
             let r = displaced_rects[i];
@@ -1003,7 +1003,7 @@ fn paint_one_tab_painter(
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(pal.base(Tone::Bg), 100),
+                    st::color_alpha(pal.base(Tone::Bg), crate::ui_kit::style::alpha_active()),
                     hover_t,
                 );
                 painter.rect_filled(rect.shrink2(Vec2::new(2.0, 2.0)), pill_cr, alpha(bg));
@@ -1017,7 +1017,7 @@ fn paint_one_tab_painter(
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(pal.base(Tone::Surface), 120),
+                    st::color_alpha(pal.base(Tone::Surface), crate::ui_kit::style::alpha_heavy()),
                     hover_t,
                 );
                 painter.rect_filled(rect, pill_cr, alpha(bg));
@@ -1040,7 +1040,7 @@ fn paint_one_tab_painter(
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(pal.base(Tone::Border), 40),
+                    st::color_alpha(pal.base(Tone::Border), crate::ui_kit::style::alpha_subtle()),
                     hover_t,
                 );
                 painter.rect_filled(rect, corners, alpha(bg));
@@ -1091,7 +1091,7 @@ fn paint_one_tab_painter(
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(palette_ct(theme).base(Tone::Surface), 100),
+                    st::color_alpha(palette_ct(theme).base(Tone::Surface), crate::ui_kit::style::alpha_active()),
                     hover_t,
                 );
                 painter.rect_filled(rect, CornerRadius::ZERO, alpha(bg));
@@ -1103,7 +1103,7 @@ fn paint_one_tab_painter(
     // Zed parity: for Line treatment, hover snaps (no fade). Other treatments
     // keep the existing eased lerp for visual continuity.
     let label_col = if item.disabled {
-        st::color_alpha(palette_ct(theme).base(Tone::Dim), 120)
+        st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_heavy())
     } else if is_active {
         palette_ct(theme).base(Tone::Text)
     } else if matches!(treatment, TabTreatment::Line) {
@@ -1193,7 +1193,7 @@ fn paint_one_tab_painter(
         painter.rect_stroke(
             rect,
             pill_cr,
-            Stroke::new(st::stroke_std(), alpha(st::color_alpha(palette_ct(theme).base(Tone::Border), 180))),
+            Stroke::new(st::stroke_std(), alpha(st::color_alpha(palette_ct(theme).base(Tone::Border), crate::ui_kit::style::alpha_near_solid()))),
             StrokeKind::Inside,
         );
     }

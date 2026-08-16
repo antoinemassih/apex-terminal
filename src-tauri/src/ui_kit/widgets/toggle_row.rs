@@ -191,7 +191,7 @@ fn paint_toggle_row<'a>(
 
     let alpha = if disabled { 0.5 } else { 1.0 };
     let label_color = scale_alpha(palette_ct(theme).base(Tone::Text), alpha);
-    let desc_color = scale_alpha(st::color_alpha(palette_ct(theme).base(Tone::Dim), 200), alpha);
+    let desc_color = scale_alpha(st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_solid()), alpha);
 
     let painter = ui.painter_at(rect);
 

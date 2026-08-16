@@ -1161,12 +1161,12 @@ impl ApertureOrderTicket {
                     .show(ui, s.order_tif_idx);
                 ui.add_space(gap_md());
                 let rth_amber = COLOR_AMBER;
-                let rth_fg = if *s.order_outside_rth { rth_amber } else { color_alpha(self.dim, 40) };
-                let rth_bg = if *s.order_outside_rth { color_alpha(rth_amber, 30) } else { egui::Color32::TRANSPARENT };
+                let rth_fg = if *s.order_outside_rth { rth_amber } else { color_alpha(self.dim, crate::ui_kit::style::alpha_subtle()) };
+                let rth_bg = if *s.order_outside_rth { color_alpha(rth_amber, crate::ui_kit::style::alpha_hint()) } else { egui::Color32::TRANSPARENT };
                 let rth_stroke = Stroke::new(stroke_thin(), if *s.order_outside_rth {
-                    color_alpha(rth_amber, 80)
+                    color_alpha(rth_amber, crate::ui_kit::style::alpha_strong())
                 } else {
-                    color_alpha(self.toolbar_border, 40)
+                    color_alpha(self.toolbar_border, crate::ui_kit::style::alpha_subtle())
                 });
                 let r = Button::new("EXT")
                     .variant(Variant::Toggle)
@@ -1207,7 +1207,7 @@ impl ApertureOrderTicket {
                 } else { 0 };
                 if qty > 0 { *s.order_qty = qty as u32; }
                 ui.label(egui::RichText::new(format!("= {} @ {:.2}", qty, premium))
-                    .monospace().size(font_sm()).color(color_alpha(self.dim, 60)));
+                    .monospace().size(font_sm()).color(color_alpha(self.dim, crate::ui_kit::style::alpha_dim())));
             }
         });
         ui.add_space(gap_xs());
@@ -1290,7 +1290,7 @@ impl ApertureOrderTicket {
                     });
             } else {
                 ui.label(egui::RichText::new(format!("Last {:.2}", last))
-                    .monospace().size(font_sm()).color(color_alpha(self.dim, 60)));
+                    .monospace().size(font_sm()).color(color_alpha(self.dim, crate::ui_kit::style::alpha_dim())));
             }
         });
 

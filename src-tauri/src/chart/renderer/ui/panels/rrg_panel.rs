@@ -613,7 +613,7 @@ fn draw_rrg_content(
             label_align,
             &sector.symbol,
             mono_sm(),
-            crate::ui_kit::style::color_alpha(color, 200),
+            crate::ui_kit::style::color_alpha(color, crate::ui_kit::style::alpha_solid()),
         );
     }
 

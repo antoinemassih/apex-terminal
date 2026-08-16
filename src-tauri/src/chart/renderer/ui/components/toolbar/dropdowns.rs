@@ -246,7 +246,7 @@ pub(crate) fn render_layout_dropdown(
                 let mini = ly.pane_rects(gr, ly.max_panes(), 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5);
                 for mr in &mini {
                     let s = egui::Rect::from_min_max(egui::pos2(mr.left() + 0.5, mr.top() + 0.5), egui::pos2(mr.right() - 0.5, mr.bottom() - 0.5));
-                    ui.painter().rect_filled(s, radius_xs(), color_alpha(gc, 80));
+                    ui.painter().rect_filled(s, radius_xs(), color_alpha(gc, crate::ui_kit::style::alpha_strong()));
                     ui.painter().rect_stroke(s, radius_xs(), egui::Stroke::new(stroke_thin(), color_alpha(gc, 150)), egui::StrokeKind::Outside);
                 }
 

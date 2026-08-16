@@ -281,7 +281,7 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             }
 
             // Label
-            let fg_idle   = st::color_alpha(pal.base(Tone::Dim), 200);
+            let fg_idle   = st::color_alpha(pal.base(Tone::Dim), crate::ui_kit::style::alpha_solid());
             let fg_active = accent;
             let fg_t = if is_active { 1.0_f32 } else { hover_t * 0.4 };
             let mut fg = motion::lerp_color(fg_idle, fg_active, active_t);

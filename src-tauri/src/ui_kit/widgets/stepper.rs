@@ -72,7 +72,7 @@ impl<'a> Stepper<'a> {
         let dim = palette_ct(theme).base(Tone::Dim);
         let text = palette_ct(theme).base(Tone::Text);
         let line_completed = accent;
-        let line_future = st::color_alpha(dim, 80);
+        let line_future = st::color_alpha(dim, crate::ui_kit::style::alpha_strong());
 
         if vertical {
             paint_vertical(ui, theme, steps, current, show_labels, circle_d, label_font, num_font,
@@ -243,7 +243,7 @@ fn paint_circle(
     } else if idx == current {
         // Current: filled accent, white number, slightly larger ring.
         painter.circle_filled(center, r, accent);
-        painter.circle_stroke(center, r + 1.5, Stroke::new(st::stroke_bold(), st::color_alpha(accent, 120)));
+        painter.circle_stroke(center, r + 1.5, Stroke::new(st::stroke_bold(), st::color_alpha(accent, crate::ui_kit::style::alpha_heavy())));
         painter.text(
             center,
             egui::Align2::CENTER_CENTER,

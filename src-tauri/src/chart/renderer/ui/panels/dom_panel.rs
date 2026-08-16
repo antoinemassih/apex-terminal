@@ -829,7 +829,7 @@ pub(crate) fn draw(
         // Low alpha so the row's size/vol/delta numbers still read through it.
         if let Some(l) = lv {
             if l.absorbed {
-                lp.rect_filled(rr, 0.0, color_alpha(t.gold, 30));
+                lp.rect_filled(rr, 0.0, color_alpha(t.gold, crate::ui_kit::style::alpha_hint()));
             } else if l.pulled {
                 lp.rect_filled(rr, 0.0, color_alpha(t.accent, 22));
             }
@@ -852,11 +852,11 @@ pub(crate) fn draw(
                 let bwid = aw * (l.buy_vol as f32 / split_tot as f32);
                 lp.rect_filled(
                     egui::Rect::from_min_size(egui::pos2(rr.left(), bar_y), egui::vec2(bwid, 2.0)),
-                    0.0, color_alpha(t.bull, 200),
+                    0.0, color_alpha(t.bull, crate::ui_kit::style::alpha_solid()),
                 );
                 lp.rect_filled(
                     egui::Rect::from_min_size(egui::pos2(rr.left() + bwid, bar_y), egui::vec2(aw - bwid, 2.0)),
-                    0.0, color_alpha(t.bear, 200),
+                    0.0, color_alpha(t.bear, crate::ui_kit::style::alpha_solid()),
                 );
             }
         }

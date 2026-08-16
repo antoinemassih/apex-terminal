@@ -45,7 +45,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
             .fixed_size(egui::vec2(pill_w, 24.0))
             .title_bar(false)
             .frame(PopupFrame::new()
-                .colors(color_alpha(c.t.toolbar_bg, 235), color_alpha(c.t.toolbar_border, 100))
+                .colors(color_alpha(c.t.toolbar_bg, 235), color_alpha(c.t.toolbar_border, crate::ui_kit::style::alpha_active()))
                 .ctx(c.ctx)
                 .inner_margin(egui::Margin::symmetric(gap_lg() as i8, gap_sm() as i8))
                 .corner_radius(radius_lg())

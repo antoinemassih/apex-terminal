@@ -94,7 +94,7 @@ impl PanelCard {
         let pad = self.padding as i8;
         // Refined per-style edge: a subtle text-alpha hairline. Slightly stronger
         // than before so the card reads as a distinct raised surface.
-        let border = crate::ui_kit::style::color_alpha(t.text(), 20);
+        let border = crate::ui_kit::style::color_alpha(t.text(), crate::ui_kit::style::alpha_soft());
         // Outer margin so cards breathe from the panel edges and from each other
         // (stacked cards) instead of sitting flush against the borders.
         let om = crate::ui_kit::style::gap_sm() as i8;

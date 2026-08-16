@@ -158,7 +158,7 @@ pub fn paint_dom_action(
     match tier {
         QtyStepper => {
             let fill = if ctx.is_light {
-                if hover { color_alpha(ctx.dark_ink, 60) } else { color_alpha(ctx.dark_ink, 30) }
+                if hover { color_alpha(ctx.dark_ink, crate::ui_kit::style::alpha_dim()) } else { color_alpha(ctx.dark_ink, crate::ui_kit::style::alpha_hint()) }
             } else if hover { tint(t, Tone::Border, alpha_dim()) }
               else { tint(t, Tone::Border, alpha_soft()) };
             painter.rect_filled(rect, r_xs, fill);

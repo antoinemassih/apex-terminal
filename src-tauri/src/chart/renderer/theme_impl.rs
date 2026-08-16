@@ -93,7 +93,7 @@ impl ComponentTheme for Theme {
     fn element_hover(&self)    -> Color32 { color_alpha(self.text,   crate::ui_kit::style::alpha_faint()) }
     fn element_active(&self)   -> Color32 { color_alpha(self.text,   crate::ui_kit::style::alpha_whisper()) }
     fn element_selected(&self) -> Color32 { color_alpha(self.accent, crate::ui_kit::style::alpha_whisper()) }
-    fn element_disabled(&self) -> Color32 { color_alpha(self.dim,    80) }
+    fn element_disabled(&self) -> Color32 { color_alpha(self.dim, crate::ui_kit::style::alpha_strong()) }
     fn ghost_hover(&self)      -> Color32 { color_alpha(self.text,    6) }
     fn ghost_active(&self)     -> Color32 { color_alpha(self.text,   crate::ui_kit::style::alpha_faint()) }
     fn icon(&self)             -> Color32 { self.text }
@@ -148,7 +148,7 @@ pub fn theme_to_portable(t: &Theme) -> PortableTheme {
         element_hover:    color_alpha(t.text,   crate::ui_kit::style::alpha_faint()),
         element_active:   color_alpha(t.text,   crate::ui_kit::style::alpha_whisper()),
         element_selected: color_alpha(t.accent, crate::ui_kit::style::alpha_whisper()),
-        element_disabled: color_alpha(t.dim,    80),
+        element_disabled: color_alpha(t.dim, crate::ui_kit::style::alpha_strong()),
         ghost_hover:      color_alpha(t.text,    6),
         ghost_active:     color_alpha(t.text,   crate::ui_kit::style::alpha_faint()),
         icon:             t.text,

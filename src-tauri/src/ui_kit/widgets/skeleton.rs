@@ -84,7 +84,7 @@ fn paint_rect(ui: &mut Ui, theme: &dyn ComponentTheme, w: f32, h: f32, radius: f
     let cr = CornerRadius::same(radius as u8);
 
     // Base.
-    painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Dim), 40));
+    painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_subtle()));
 
     // Shimmer band, ~1.4s cycle.
     let time = ui.input(|i| i.time);
@@ -132,7 +132,7 @@ fn paint_lines(ui: &mut Ui, theme: &dyn ComponentTheme, count: u32, w: f32, radi
         let rect = egui::Rect::from_min_size(Pos2::new(outer.left(), y), Vec2::new(line_w, line_h));
         let painter = ui.painter_at(rect);
         let cr = CornerRadius::same(radius as u8);
-        painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Dim), 40));
+        painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_subtle()));
 
         let time = ui.input(|i| i.time);
         let phase = ((time / 1.4) % 1.0) as f32;

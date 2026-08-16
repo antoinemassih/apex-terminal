@@ -771,7 +771,7 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
 
             // Inter-tab vertical hairline divider (painter_pane.rs:609-616).
             if ti + 1 < self.tabs.len() {
-                let div_col = color_alpha(t.border_variant, 200);
+                let div_col = color_alpha(t.border_variant, crate::ui_kit::style::alpha_solid());
                 painter.line_segment(
                     [Pos2::new(tab_rect.right() + 0.5, tab_rect.top() + 4.0),
                      Pos2::new(tab_rect.right() + 0.5, tab_rect.bottom() - 4.0)],

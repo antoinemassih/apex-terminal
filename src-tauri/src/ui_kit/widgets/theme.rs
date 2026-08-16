@@ -172,7 +172,7 @@ pub trait ComponentTheme {
             offset: [0, 2],
             blur: 4,
             spread: 0,
-            color: crate::ui_kit::style::color_alpha(s, 60),
+            color: crate::ui_kit::style::color_alpha(s, crate::ui_kit::style::alpha_dim()),
         }
     }
 

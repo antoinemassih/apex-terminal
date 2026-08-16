@@ -26,7 +26,7 @@
 //! - Caret: `Icon::CARET_RIGHT` (collapsed) / `Icon::CARET_DOWN` (expanded),
 //!   proportional 12px, painted in `palette_ct(t).base(Tone::Dim)`.
 //! - Title: `font_xs()` monospace, strong, uppercase, `palette_ct(t).base(Tone::Dim)`.
-//! - Count chip: monospace `font_xs()` strong in `color_alpha(palette_ct(t).base(Tone::Dim), 200)`,
+//! - Count chip: monospace `font_xs()` strong in `color_alpha(palette_ct(t).base(Tone::Dim), crate::ui_kit::style::alpha_solid())`,
 //!   same treatment as `PanelSection::count`.
 //! - Click anywhere on the header row toggles `*expanded`.
 //! - Hover: very subtle `color_alpha(palette_ct(t).base(Tone::Text), 8)` background, `radius_sm()`.
@@ -318,7 +318,7 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
             f.layout_no_wrap(title.to_uppercase(), TextStyle::MonoSm.font_id_in(ui), title_color)
         });
         // Count chip — same treatment as PanelSection.count.
-        let count_color = color_alpha(palette_ct(t).base(Tone::Dim), 200);
+        let count_color = color_alpha(palette_ct(t).base(Tone::Dim), crate::ui_kit::style::alpha_solid());
         let count_galley = count.map(|n| {
             ui.fonts(|f| {
                 f.layout_no_wrap(format!("{}", n), TextStyle::MonoSm.font_id_in(ui), count_color)
@@ -382,7 +382,7 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
             // rule delimits it just as clearly, without the boxed-in look.
             painter.line_segment(
                 [Pos2::new(rect.left(), rect.bottom() - 0.5), Pos2::new(rect.right(), rect.bottom() - 0.5)],
-                Stroke::new(stroke_thin(), color_alpha(t.text(), 20)),
+                Stroke::new(stroke_thin(), color_alpha(t.text(), crate::ui_kit::style::alpha_soft())),
             );
         }
 

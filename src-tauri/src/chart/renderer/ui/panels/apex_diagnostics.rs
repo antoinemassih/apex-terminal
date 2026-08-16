@@ -316,7 +316,7 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
         ui.horizontal(|ui| {
             ui.add_space(gap_md());
             let (pill_rect, _) = ui.allocate_exact_size(egui::vec2(62.0, 14.0), egui::Sense::hover());
-            ui.painter().rect_filled(pill_rect, crate::ui_kit::style::radius_sm(), color_alpha(color, 40));
+            ui.painter().rect_filled(pill_rect, crate::ui_kit::style::radius_sm(), color_alpha(color, crate::ui_kit::style::alpha_subtle()));
             ui.painter().text(pill_rect.center(), egui::Align2::CENTER_CENTER,
                 &label, crate::ui_kit::style::mono_xs(), color);
             ui.add_space(gap_sm());

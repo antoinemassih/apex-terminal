@@ -120,8 +120,28 @@ fn draw_book(
         let has_positions = !ib_positions.is_empty();
         let pos_count = ib_positions.len();
 
+        // Right-aligned muted caption — the Meridien source's signature panel
+        // device. Its bespoke app writes `sub="7 open · long-short"`, so the
+        // GRAMMAR is copied but every value is computed from the positions
+        // actually on screen. A hardcoded caption would be fabricated data.
+        //
+        // (Our own MERIDIEN.md quoted "3 OPEN" for this, which came from
+        // `normalized.html` — the token harness SOURCES.md says cannot answer
+        // composition questions. The bespoke app is the authority here.)
+        let pos_meta = (pos_count > 0).then(|| {
+            let longs  = ib_positions.iter().filter(|p| p.qty > 0).count();
+            let shorts = ib_positions.iter().filter(|p| p.qty < 0).count();
+            let mix = match (longs, shorts) {
+                (0, _) => "short",
+                (_, 0) => "long",
+                _      => "long-short",
+            };
+            format!("{pos_count} open · {mix}")
+        });
+
         let resp = PanelSection::new("POSITIONS")
             .count(pos_count)
+            .meta(pos_meta.unwrap_or_default())
             .action("Close All", PanelTone::Bear)
             .show(ui, t, |ui, t| {
                 if has_positions {
@@ -242,6 +262,13 @@ fn draw_book(
 
     PanelSection::new("ORDERS")
         .count(active_count)
+        .meta(if draft_count > 0 {
+            format!("{active_count} working · {draft_count} draft")
+        } else if active_count > 0 {
+            format!("{active_count} working")
+        } else {
+            String::new()
+        })
         .show(ui, t, |ui, t| {
             // Drafts / active badges row (preserves "{n}d {n}a" semantics).
             if active_count > 0 || draft_count > 0 {
@@ -430,6 +457,10 @@ fn draw_book(
     if !ib_orders.is_empty() {
         PanelSection::new("IB ORDERS")
             .count(ib_orders.len())
+            .meta(match ib_orders.len() {
+                0 => String::new(),
+                n => format!("{n} live"),
+            })
             .show(ui, t, |ui, t| {
                 for o in &ib_orders {
                     let is_fill = o.status == "filled";

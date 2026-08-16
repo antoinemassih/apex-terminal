@@ -366,8 +366,21 @@ impl<'a> PanelSection<'a> {
         self
     }
 
+    /// Test hook: whether the caption slot will be omitted.
+    #[cfg(test)]
+    pub(crate) fn meta_is_none(&self) -> bool { self.meta.is_none() }
+
+    /// Right-aligned muted caption.
+    ///
+    /// An empty or whitespace-only string is treated as **absent**, not as an
+    /// empty caption. Callers compute these conditionally — "3 open · long" but
+    /// nothing at all when flat — and `Some("")` would still claim a slot and
+    /// its gap, leaving a header that is subtly wider with no glyph to show for
+    /// it. Making the widget decide means every call site can pass a computed
+    /// `String` without each one re-deriving the same guard.
     pub fn meta(mut self, m: impl Into<String>) -> Self {
-        self.meta = Some(m.into());
+        let m = m.into();
+        self.meta = (!m.trim().is_empty()).then_some(m);
         self
     }
 
@@ -577,7 +590,7 @@ impl<'a> PanelSection<'a> {
                                 label_exact(
                                     ui,
                                     TextStyle::MonoXs
-                                        .as_rich_cascading(s, color_alpha(title_color, 200))
+                                        .as_rich_cascading(s, color_alpha(title_color, crate::ui_kit::style::alpha_solid()))
                                         .strong(),
                                 );
                             }
@@ -587,14 +600,14 @@ impl<'a> PanelSection<'a> {
                                 label_exact(
                                     ui,
                                     TextStyle::MonoXs
-                                        .as_rich_cascading(m, color_alpha(palette_ct(t).base(SxTone::Dim), 160)),
+                                        .as_rich_cascading(m, color_alpha(palette_ct(t).base(SxTone::Dim), crate::ui_kit::style::alpha_dense())),
                                 );
                             }
                         }
                         Slot::Delete => {
                             if section_delete_button(
                                 ui,
-                                color_alpha(palette_ct(t).base(SxTone::Dim), 200),
+                                color_alpha(palette_ct(t).base(SxTone::Dim), crate::ui_kit::style::alpha_solid()),
                             ) {
                                 delete_clicked = true;
                             }
@@ -1661,4 +1674,22 @@ mod section_group_layout_tests {
             assert!(rect.height() >= 0.0);
         }
     }
+
+#[cfg(test)]
+mod meta_slot_tests {
+    use super::PanelSection;
+
+    /// An empty caption must not claim a slot.
+    ///
+    /// Panels compute these from live state — "3 open · long" when there are
+    /// positions, nothing when flat — so `String::new()` reaches this builder
+    /// on every quiet frame. Storing `Some("")` would reserve the slot and its
+    /// gap, making the header quietly wider with nothing drawn in it.
+    #[test]
+    fn an_empty_meta_is_absent_not_empty() {
+        assert!(PanelSection::new("X").meta(String::new()).meta_is_none());
+        assert!(PanelSection::new("X").meta("   ").meta_is_none());
+        assert!(!PanelSection::new("X").meta("3 open").meta_is_none());
+    }
+}
 }

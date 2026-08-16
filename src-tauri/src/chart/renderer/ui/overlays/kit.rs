@@ -144,7 +144,7 @@ pub(crate) fn metric_row(
 ) {
     p.text(egui::pos2(rect.left(), rect.top()), egui::Align2::LEFT_TOP,
         label, crate::ui_kit::style::mono_at(FONT_2XS),
-        crate::ui_kit::style::color_alpha(color, 120));
+        crate::ui_kit::style::color_alpha(color, crate::ui_kit::style::alpha_heavy()));
     p.text(egui::pos2(rect.right(), rect.top()), egui::Align2::RIGHT_TOP,
         value, crate::ui_kit::style::mono_at(FONT_SM), color);
     let bar_y = rect.top() + 11.0;
@@ -171,9 +171,9 @@ pub(crate) fn overlay_card_frame(
 ) {
     // Drop shadow — two stacked soft rects offset downward.
     p.rect_filled(card.translate(egui::vec2(0.0, 3.0)).expand(2.0),
-        r_lg_cr(), color_alpha(t.shadow_color, 20));
+        r_lg_cr(), color_alpha(t.shadow_color, crate::ui_kit::style::alpha_soft()));
     p.rect_filled(card.translate(egui::vec2(0.0, 1.5)).expand(1.0),
-        r_lg_cr(), color_alpha(t.shadow_color, 10));
+        r_lg_cr(), color_alpha(t.shadow_color, crate::ui_kit::style::alpha_faint()));
 
     // Sentiment-driven background tint — pastel on light themes, a faint shift of
     // the toolbar surface on dark themes so the card reads against the chart.

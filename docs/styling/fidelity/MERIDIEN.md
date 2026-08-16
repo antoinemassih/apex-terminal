@@ -137,15 +137,42 @@ would have sent us optimising the wrong axis.
   have none of it" about a shipped feature, and it is the document someone would
   read to decide what to build next. A stale gap list does not just fail to
   help — it actively schedules work that is already done.
-- **Right-aligned panel meta.** Each header carries a muted right-side caption
-  (`MEGACAPS`, `LVL 2 · 14 DEEP`, `3 OPEN`, `INTRADAY`). We have counts, not
-  captions.
+- **Right-aligned panel meta.** **PARTIALLY DONE — and the captions this file
+  quoted were from the wrong artefact.**
 
-  **Still open, but it is CONTENT, not system.** The header already has a `meta`
-  slot — `PanelSection`'s keyed layout carries `Slot::Meta`, solved and painted
-  right-aligned, and panels such as `alerts_panel` pass one. Closing this means
-  each panel passing the source's caption instead of a count. No design-system
-  work is required, which also means no gate will ever tell you it is missing.
+  This section said the source captions are `MEGACAPS`, `LVL 2 · 14 DEEP`,
+  `3 OPEN`, `INTRADAY`. Two of those are not Meridien's. `MEGACAPS` and
+  `3 OPEN` appear only in `faithful/*/normalized.html` — the token harness
+  [SOURCES.md](SOURCES.md) says cannot answer composition questions, and which
+  renders the same markup for every style. **Meridien's bespoke app** writes:
+
+  | panel | `sub=` |
+  |---|---|
+  | Watchlist | `Top 12` |
+  | Order Book | `Lvl 2 · 14 deep` |
+  | Positions | `7 open · long-short` |
+  | News | `Live` |
+  | Sector Heatmap | `S&P 500 · today` |
+  | Options Chain | `May 15 · ATM ±5` |
+
+  So this is the *sixth* time the harness has been read as a composition
+  reference, and the first time it happened inside this file rather than in the
+  code. SOURCES.md exists because of the first five.
+
+  **What is implemented:** the `POSITIONS`, `ORDERS` and `IB ORDERS` headers now
+  carry captions in the source's grammar with values computed from live state —
+  `3 open · long-short` counts the actual positions and their direction mix,
+  never a fixed string. Copying `7 open · long-short` verbatim would be
+  fabricated data, which this repo forbids.
+
+  **Still open:** the remaining 106 of 113 `PanelSection` headers. It is content
+  work, one panel at a time, and no gate will report it — the slot exists and is
+  painted, so nothing is structurally wrong.
+
+  `PanelSection::meta` now treats an empty string as absent, so a panel can pass
+  a conditionally-built caption without reserving a slot and its gap on frames
+  where there is nothing to say.
+
 - ~~**Outlined panel cards.**~~ **WITHDRAWN — not a gap.** This came from
   `normalized.html` (see [SOURCES.md](SOURCES.md)). The bespoke apps use grid
   RULES, not outlined cards: `.panel` carries `border-right` + `border-bottom`

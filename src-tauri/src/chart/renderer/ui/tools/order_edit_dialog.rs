@@ -89,7 +89,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                             .monospace().size(font_xs()).color(color_muted(c.t.dim)));
                     });
                     ui.add_space(gap_md());
-                    dialog_separator_shadow(ui, m, color_alpha(c.t.toolbar_border, 40));
+                    dialog_separator_shadow(ui, m, color_alpha(c.t.toolbar_border, crate::ui_kit::style::alpha_subtle()));
                     ui.add_space(gap_xs());
                 }
             }
@@ -156,7 +156,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                     let current_qty = c.edit_qty.parse::<u32>().unwrap_or(0);
                     let sel = current_qty == preset;
                     let fg = if sel { c.t.accent } else { color_half(c.t.dim) };
-                    let bg = if sel { color_alpha(c.t.accent, 25) } else { egui::Color32::TRANSPARENT };
+                    let bg = if sel { color_alpha(c.t.accent, crate::ui_kit::style::alpha_whisper()) } else { egui::Color32::TRANSPARENT };
                     let preset_lbl = format!("{}", preset);
                     if KitButton::toggle(preset_lbl.as_str(), sel).size(KitSize::Xs)
                         .show(ui, c.t).clicked() {
@@ -167,7 +167,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
             });
 
             ui.add_space(gap_sm());
-            dialog_separator_shadow(ui, m, color_alpha(c.t.toolbar_border, 40));
+            dialog_separator_shadow(ui, m, color_alpha(c.t.toolbar_border, crate::ui_kit::style::alpha_subtle()));
             ui.add_space(gap_sm());
             ui.horizontal(|ui| {
                 ui.add_space(m);

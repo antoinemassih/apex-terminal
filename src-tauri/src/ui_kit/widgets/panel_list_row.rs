@@ -713,7 +713,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             let y = rect.bottom() - 0.5;
             painter.line_segment(
                 [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-                egui::Stroke::new(crate::ui_kit::tokens::stroke_thin(), color_alpha(t.surface_border(), 60)),
+                egui::Stroke::new(crate::ui_kit::tokens::stroke_thin(), color_alpha(t.surface_border(), crate::ui_kit::style::alpha_dim())),
             );
         }
 

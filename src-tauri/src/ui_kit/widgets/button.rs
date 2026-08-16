@@ -1182,7 +1182,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
         if stacked {
             // Stacked vertical: icon (top) → label (mid) → sublabel (bot).
             let label_color = if active { palette_ct(theme).base(Tone::Accent) } else { fg };
-            let sub_color = st::color_alpha(palette_ct(theme).base(Tone::Dim), 200);
+            let sub_color = st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_solid());
             let icon_h = stacked_icon_size;
             let lbl_h = st::font_xs();
             let sub_h = st::font_2xs();
@@ -1283,7 +1283,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
             }
             if let Some(kt) = kbd_text.as_ref() {
                 x += st::gap_md();
-                let kbd_color = st::color_alpha(palette_ct(theme).base(Tone::Text), 160);
+                let kbd_color = st::color_alpha(palette_ct(theme).base(Tone::Text), crate::ui_kit::style::alpha_dense());
                 painter.text(
                     Pos2::new(x, cy),
                     egui::Align2::LEFT_CENTER,

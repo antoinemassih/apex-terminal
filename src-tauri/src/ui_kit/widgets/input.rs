@@ -505,7 +505,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                     egui::Align2::LEFT_CENTER,
                     ph,
                     font_id.clone(),
-                    st::color_alpha(palette_ct(theme).base(Tone::Dim), 160),
+                    st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_dense()),
                 );
             }
         }

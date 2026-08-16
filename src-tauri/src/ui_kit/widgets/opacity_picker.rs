@@ -118,7 +118,7 @@ impl<'a> OpacityPicker<'a> {
                 let a = self.levels[i];
                 crate::ui_kit::style::color_alpha(accent, (a * 220.0) as u8)
             } else {
-                crate::ui_kit::style::color_alpha(dim, 40)
+                crate::ui_kit::style::color_alpha(dim, crate::ui_kit::style::alpha_subtle())
             };
             painter.rect_filled(seg_rect, st::radius_xs(), col);
 

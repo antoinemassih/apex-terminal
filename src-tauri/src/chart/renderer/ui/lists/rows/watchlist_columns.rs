@@ -151,7 +151,7 @@ fn render_ext_hours(c: &mut ColumnCtx) {
         egui::Align2::LEFT_CENTER,
         &s,
         crate::ui_kit::style::prop_at(c.font_size - 1.0),
-        color_alpha(col, 200),
+        color_alpha(col, crate::ui_kit::style::alpha_solid()),
     );
 }
 
@@ -166,7 +166,7 @@ fn render_sparkline(c: &mut ColumnCtx) {
         egui::vec2(sw, sh),
     );
     crate::ui_kit::widgets::Sparkline::new(s)
-        .color(color_alpha(chg_col, 120))
+        .color(color_alpha(chg_col, crate::ui_kit::style::alpha_heavy()))
         .size(sw, sh)
         .paint(c.painter, spark_rect);
 }

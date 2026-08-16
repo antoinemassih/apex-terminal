@@ -328,7 +328,7 @@ fn header_divider_inline(painter: &egui::Painter, cx: f32, rect: Rect, theme: &T
 /// the tab strip and the right cluster. Higher visibility than
 /// `header_divider`/`header_divider_inline` per trading-terminal density needs.
 fn header_divider_strong(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
-    let col = color_alpha(theme.border_variant, 200);
+    let col = color_alpha(theme.border_variant, crate::ui_kit::style::alpha_solid());
     painter.line_segment(
         [pos2(cx, rect.top() + 3.0), pos2(cx, rect.bottom() - 3.0)],
         Stroke::new(stroke_thin(), col),
@@ -739,7 +739,7 @@ impl<'a> PainterPaneHeader<'a> {
                 // Aperture: active tab on orange header = dark pill ("cream pill, orange text")
                 // Normal: active tab = darkened bg.
                 let active_bg = if accent_header {
-                    color_alpha(h_text, 200) // ~dark semi-opaque fill
+                    color_alpha(h_text, crate::ui_kit::style::alpha_solid()) // ~dark semi-opaque fill
                 } else {
                     color_dim(t.bg)
                 };
@@ -763,7 +763,7 @@ impl<'a> PainterPaneHeader<'a> {
                 // paints for every adjacent pair (active included). Drawn at
                 // the right edge of the current tab inside the inter-tab gap.
                 if ti + 1 < self.tabs.len() {
-                    let div_col = color_alpha(t.border_variant, 200);
+                    let div_col = color_alpha(t.border_variant, crate::ui_kit::style::alpha_solid());
                     painter.line_segment(
                         [pos2(tab_rect.right() + 0.5, tab_rect.top() + 4.0),
                          pos2(tab_rect.right() + 0.5, tab_rect.bottom() - 4.0)],

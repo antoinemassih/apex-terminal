@@ -171,7 +171,7 @@ impl<'a> Tooltip<'a> {
                     shadow_rect,
                     super::ShadowPaint::sm_themed(theme).color({
                         let s = theme.shadow_color();
-                        crate::ui_kit::style::color_alpha(s, 48)
+                        crate::ui_kit::style::color_alpha(s, crate::ui_kit::style::alpha_tint())
                     }),
                 );
                 let frame = egui::Frame::popup(ui.style())
@@ -185,7 +185,7 @@ impl<'a> Tooltip<'a> {
                         spread: 0,
                         color: {
                             let s = theme.shadow_color();
-                            crate::ui_kit::style::color_alpha(s, 60)
+                            crate::ui_kit::style::color_alpha(s, crate::ui_kit::style::alpha_dim())
                         },
                     });
                 frame.show(ui, |ui| {

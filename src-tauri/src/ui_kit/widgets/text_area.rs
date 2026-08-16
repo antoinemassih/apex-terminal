@@ -233,7 +233,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
                 egui::Align2::LEFT_TOP,
                 placeholder,
                 crate::ui_kit::style::prop_at(font_size),
-                st::color_alpha(palette_ct(theme).base(Tone::Dim), 160),
+                st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_dense()),
             );
         }
 

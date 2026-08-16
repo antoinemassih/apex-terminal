@@ -135,7 +135,7 @@ impl<'a> ToolPopover<'a> {
                         offset: [0, 4],
                         blur: 14,
                         spread: 0,
-                        color: color_alpha(theme.shadow_color(), 80),
+                        color: color_alpha(theme.shadow_color(), crate::ui_kit::style::alpha_strong()),
                     })
                     .inner_margin(egui::Margin::ZERO)
                     .show(ui, |ui| {

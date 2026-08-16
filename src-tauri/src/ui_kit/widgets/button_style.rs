@@ -492,7 +492,7 @@ impl<'a> ButtonStyle for AccentEmphasisStyle<'a> {
         // Contrast fg over the accent fill; disabled fades it (alpha-of-contrast,
         // so it stays a one-line post-transform rather than a Col case).
         let base = resolve(Contrast(Tone::Accent), self.theme);
-        if matches!(s, Disabled | Loading) { st::color_alpha(base, 120) } else { base }
+        if matches!(s, Disabled | Loading) { st::color_alpha(base, crate::ui_kit::style::alpha_heavy()) } else { base }
     }
     fn bg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(accent_bg(v, s), self.theme) }
     fn border(&self, _v: Variant, _s: ButtonState) -> Color32 { Color32::TRANSPARENT }

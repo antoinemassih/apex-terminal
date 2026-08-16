@@ -127,7 +127,7 @@ impl<'a> PanelKeyValueRow<'a> {
 
         // Measure the meta galley (the only intrinsically-sized column) so the
         // flex engine can reserve it; label and value stay unmeasured.
-        let meta_color = color_alpha(palette_ct(t).base(SxTone::Dim), 140);
+        let meta_color = color_alpha(palette_ct(t).base(SxTone::Dim), crate::ui_kit::style::alpha_scrim());
         let meta_font = TextStyle::MonoXs.font_id_in(ui);
         let meta_w = self.meta.as_ref().map(|m| {
             ui.fonts(|f| f.layout_no_wrap(m.clone(), meta_font.clone(), meta_color))

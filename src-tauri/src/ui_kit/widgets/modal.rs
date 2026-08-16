@@ -589,7 +589,7 @@ fn dialog_window_frame(
     border_color: Option<Color32>,
     shadow_tint: Color32,
 ) -> egui::Frame {
-    let border = border_color.unwrap_or(color_alpha(toolbar_border, 80));
+    let border = border_color.unwrap_or(color_alpha(toolbar_border, crate::ui_kit::style::alpha_strong()));
     egui::Frame::popup(&ctx.style())
         .fill(toolbar_bg)
         .inner_margin(0.0)
