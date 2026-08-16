@@ -526,7 +526,7 @@ fn draw_rrg_content(
     let quad_alpha = 40u8;
     // Leading (top-right)
     painter.text(
-        egui::pos2(plot_rect.right() - 4.0, plot_rect.top() + 4.0),
+        egui::pos2(plot_rect.right() - crate::ui_kit::style::gap_xs(), plot_rect.top() + crate::ui_kit::style::gap_xs()),
         egui::Align2::RIGHT_TOP,
         "LEADING",
         quad_font.clone(),
@@ -534,7 +534,7 @@ fn draw_rrg_content(
     );
     // Weakening (bottom-right)
     painter.text(
-        egui::pos2(plot_rect.right() - 4.0, plot_rect.bottom() - 4.0),
+        egui::pos2(plot_rect.right() - crate::ui_kit::style::gap_xs(), plot_rect.bottom() - crate::ui_kit::style::gap_xs()),
         egui::Align2::RIGHT_BOTTOM,
         "WEAKENING",
         quad_font.clone(),
@@ -542,7 +542,7 @@ fn draw_rrg_content(
     );
     // Lagging (bottom-left)
     painter.text(
-        egui::pos2(plot_rect.left() + 4.0, plot_rect.bottom() - 4.0),
+        egui::pos2(plot_rect.left() + crate::ui_kit::style::gap_xs(), plot_rect.bottom() - crate::ui_kit::style::gap_xs()),
         egui::Align2::LEFT_BOTTOM,
         "LAGGING",
         quad_font.clone(),
@@ -550,7 +550,7 @@ fn draw_rrg_content(
     );
     // Improving (top-left)
     painter.text(
-        egui::pos2(plot_rect.left() + 4.0, plot_rect.top() + 4.0),
+        egui::pos2(plot_rect.left() + crate::ui_kit::style::gap_xs(), plot_rect.top() + crate::ui_kit::style::gap_xs()),
         egui::Align2::LEFT_TOP,
         "IMPROVING",
         quad_font,

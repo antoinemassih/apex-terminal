@@ -209,7 +209,7 @@ fn paint_slider<T: egui::emath::Numeric>(
             for &t in ticks.iter() {
                 let tnorm = ((t - r_min) / r_span).clamp(0.0, 1.0) as f32;
                 let tx = track_rect.left() + tnorm * track_rect.width();
-                let ty = track_rect.bottom() + 2.0;
+                let ty = track_rect.bottom() + crate::ui_kit::style::gap_2xs();
                 painter.line_segment(
                     [Pos2::new(tx, ty), Pos2::new(tx, ty + 4.0)],
                     Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Dim), crate::ui_kit::style::alpha_active())),

@@ -221,7 +221,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     let area_right = bell_rect.left() - gapx;
     let area_w = (AREA_SLOTS * slot_pitch - gapx).min((avail - BELL_W - gapx).max(slot_pitch));
     let area_left = (area_right - area_w).max(frame_rect.left());
-    let badge_clip = Rect::from_min_max(pos2(area_left, frame_rect.top() - 2.0), pos2(area_right, frame_rect.bottom() + 2.0));
+    let badge_clip = Rect::from_min_max(pos2(area_left, frame_rect.top() - crate::ui_kit::style::gap_2xs()), pos2(area_right, frame_rect.bottom() + crate::ui_kit::style::gap_2xs()));
 
     // Freeze the running order while a badge is expanded so nothing shifts.
     let freeze = active_prev.map_or(false, |id| by_id.contains_key(&id));
@@ -476,7 +476,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let screen = ctx.screen_rect();
         const POP_W: f32 = 340.0;
         let left = (bell_rect.right() - POP_W).clamp(8.0, (screen.right() - POP_W - 8.0).max(8.0));
-        let top  = bell_rect.bottom() + 6.0;
+        let top  = bell_rect.bottom() + crate::ui_kit::style::gap_xs_mid();
         let frame = egui::Frame::popup(&ctx.style())
             .fill(tint(t, Tone::Surface, 255))
             .stroke(Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, 150)))

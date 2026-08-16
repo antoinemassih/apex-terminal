@@ -63,7 +63,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             let title_rect = Rect::from_min_size(Pos2::new(screen.left(), y), Vec2::new(screen.width(), title_h));
             painter.rect_filled(title_rect, 0.0, XL_TITLEBAR_BG);
             painter.text(
-                Pos2::new(screen.left() + 8.0, y + title_h * 0.5),
+                Pos2::new(screen.left() + crate::ui_kit::style::gap_sm(), y + title_h * 0.5),
                 Align2::LEFT_CENTER,
                 "Microsoft Excel — TPS_Report_FY24_Q3.xlsx",
                 f(11.5),
@@ -105,7 +105,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             let menu_rect = Rect::from_min_size(Pos2::new(screen.left(), y), Vec2::new(screen.width(), menu_h));
             painter.rect_filled(menu_rect, 0.0, XL_MENUBAR_BG);
             let menu_items = ["File", "Edit", "View", "Insert", "Format", "Tools", "Data", "Window", "Help"];
-            let mut mx = screen.left() + 8.0;
+            let mut mx = screen.left() + crate::ui_kit::style::gap_sm();
             for item in &menu_items {
                 let w = item.len() as f32 * 6.5 + 10.0;
                 painter.text(Pos2::new(mx, y + menu_h * 0.5), Align2::LEFT_CENTER, *item, f(11.0), XL_TEXT);
@@ -122,7 +122,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             let formula_rect = Rect::from_min_size(Pos2::new(screen.left(), y), Vec2::new(screen.width(), formula_h));
             painter.rect_filled(formula_rect, 0.0, XL_MENUBAR_BG);
             // Name box
-            let name_box = Rect::from_min_size(Pos2::new(screen.left() + 4.0, y + 3.0), Vec2::new(52.0, 16.0));
+            let name_box = Rect::from_min_size(Pos2::new(screen.left() + crate::ui_kit::style::gap_xs(), y + 3.0), Vec2::new(52.0, 16.0));
             painter.rect_stroke(name_box, 2.0, Stroke::new(stroke_std(), XL_GRIDLINE), egui::StrokeKind::Outside);
             painter.text(name_box.center(), Align2::CENTER_CENTER, "A1", f(10.5), XL_TEXT);
             // fx label
@@ -131,7 +131,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             let fi_rect = Rect::from_min_size(Pos2::new(screen.left() + 78.0, y + 3.0), Vec2::new(screen.width() - 84.0, 16.0));
             painter.rect_stroke(fi_rect, 0.0, Stroke::new(stroke_std(), XL_GRIDLINE), egui::StrokeKind::Outside);
             painter.text(
-                Pos2::new(fi_rect.left() + 4.0, y + formula_h * 0.5),
+                Pos2::new(fi_rect.left() + crate::ui_kit::style::gap_xs(), y + formula_h * 0.5),
                 Align2::LEFT_CENTER,
                 "TPS REPORT — TEST PROCEDURE SPECIFICATION",
                 f(10.5),
@@ -336,7 +336,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
                 0.0, XL_SHEET_INACT,
             );
             let tabs = [("TPS Reports", true), ("Cover Sheets", false), ("Q3 Summary", false), ("Sheet4", false)];
-            let mut tx2 = screen.left() + 4.0;
+            let mut tx2 = screen.left() + crate::ui_kit::style::gap_xs();
             for &(label, active) in &tabs {
                 let tw = label.len() as f32 * 6.5 + 16.0;
                 let tab_rect = Rect::from_min_size(Pos2::new(tx2, tabs_y + 2.0), Vec2::new(tw, tab_h - 2.0));

@@ -69,7 +69,7 @@ pub(crate) fn render_timeframe_dropdown(
                         ui.add_space(gap_xs());
                         let y = ui.cursor().min.y;
                         ui.painter().line_segment(
-                            [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
+                            [egui::pos2(ui.min_rect().left() + crate::ui_kit::style::gap_sm(), y), egui::pos2(ui.min_rect().left() + 236.0, y)],
                             egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, crate::ui_kit::style::alpha_tint())));
                         ui.add_space(gap_sm());
                     }
@@ -201,7 +201,7 @@ pub(crate) fn render_layout_dropdown(
                         ui.add_space(gap_xs());
                         let y = ui.cursor().min.y;
                         ui.painter().line_segment(
-                            [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
+                            [egui::pos2(ui.min_rect().left() + crate::ui_kit::style::gap_sm(), y), egui::pos2(ui.min_rect().left() + 236.0, y)],
                             egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, crate::ui_kit::style::alpha_tint())));
                         ui.add_space(gap_sm());
                     }
@@ -280,7 +280,7 @@ pub(crate) fn render_layout_dropdown(
                 ui.add_space(gap_xs());
                 let y = ui.cursor().min.y;
                 ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
+                    [egui::pos2(ui.min_rect().left() + crate::ui_kit::style::gap_sm(), y), egui::pos2(ui.min_rect().left() + 236.0, y)],
                     egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, crate::ui_kit::style::alpha_tint())));
                 ui.add_space(gap_sm());
                 ui.horizontal(|ui| {
@@ -297,7 +297,7 @@ pub(crate) fn render_layout_dropdown(
                         ui.painter().rect_filled(row_rect, radius_sm(), tint(t, Tone::Border, crate::ui_kit::style::alpha_hint()));
                     }
                     let lc = if row_hover { t.text } else { t.dim };
-                    ui.painter().text(egui::pos2(row_rect.left() + 8.0, row_rect.center().y), egui::Align2::LEFT_CENTER, tpl_name.as_str(), mono_sm(), lc);
+                    ui.painter().text(egui::pos2(row_rect.left() + crate::ui_kit::style::gap_sm(), row_rect.center().y), egui::Align2::LEFT_CENTER, tpl_name.as_str(), mono_sm(), lc);
                     let apply_w = 42.0;
                     let apply_rect = egui::Rect::from_min_size(
                         egui::pos2(row_rect.right() - apply_w - 4.0, row_rect.center().y - 10.0),
@@ -323,7 +323,7 @@ pub(crate) fn render_layout_dropdown(
                 ui.add_space(gap_xs());
                 let y = ui.cursor().min.y;
                 ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
+                    [egui::pos2(ui.min_rect().left() + crate::ui_kit::style::gap_sm(), y), egui::pos2(ui.min_rect().left() + 236.0, y)],
                     egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, crate::ui_kit::style::alpha_tint())));
                 ui.add_space(gap_sm());
                 ui.horizontal(|ui| {

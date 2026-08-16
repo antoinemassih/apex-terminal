@@ -97,8 +97,8 @@ pub(crate) fn render(
 
     if let Some(b) = breadth.as_ref() {
         let strip_rect = egui::Rect::from_min_max(
-            egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
-            egui::pos2(rect.right() - 8.0, rect.top() + header_h + extra_h + BREADTH_STRIP_H),
+            egui::pos2(rect.left() + crate::ui_kit::style::gap_sm(), rect.top() + header_h + extra_h),
+            egui::pos2(rect.right() - crate::ui_kit::style::gap_sm(), rect.top() + header_h + extra_h + BREADTH_STRIP_H),
         );
         painter.rect_filled(strip_rect, radius_xs(), tint(t, Tone::Surface, alpha_muted()));
         let txt = format!(
@@ -107,7 +107,7 @@ pub(crate) fn render(
             b.pct_above_sma50, b.pct_above_sma200,
         );
         painter.text(
-            egui::pos2(strip_rect.left() + 6.0, strip_rect.center().y),
+            egui::pos2(strip_rect.left() + crate::ui_kit::style::gap_xs_mid(), strip_rect.center().y),
             egui::Align2::LEFT_CENTER, txt,
             crate::ui_kit::style::mono_at(font_xs_plus()), t.text,
         );
@@ -116,8 +116,8 @@ pub(crate) fn render(
 
     if let Some(r) = rotation.as_ref() {
         let row_rect = egui::Rect::from_min_max(
-            egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
-            egui::pos2(rect.right() - 8.0, rect.top() + header_h + extra_h + sector_row_h),
+            egui::pos2(rect.left() + crate::ui_kit::style::gap_sm(), rect.top() + header_h + extra_h),
+            egui::pos2(rect.right() - crate::ui_kit::style::gap_sm(), rect.top() + header_h + extra_h + sector_row_h),
         );
         let rows = &r.rows;
         if !rows.is_empty() {
@@ -156,8 +156,8 @@ pub(crate) fn render(
     // Simple treemap layout — squarified algorithm simplified.
     // Top edge slides down by `extra_h` to accommodate the additive rows above.
     let map_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
-        egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0));
+        egui::pos2(rect.left() + crate::ui_kit::style::gap_sm(), rect.top() + header_h + extra_h),
+        egui::pos2(rect.right() - crate::ui_kit::style::gap_sm(), rect.bottom() - crate::ui_kit::style::gap_sm()));
     let total_cap: f64 = cells.iter().map(|c| c.weight).sum();
     let map_area = map_rect.width() * map_rect.height();
 

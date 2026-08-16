@@ -586,7 +586,7 @@ fn draw_provenance_popup(
     use egui::{Area, Order};
 
     let popup_id = ui.id().with(format!("prov_popup_{sym}"));
-    let anchor = Pos2::new(row_rect.left() + gap_sm(), row_rect.bottom() + 2.0);
+    let anchor = Pos2::new(row_rect.left() + gap_sm(), row_rect.bottom() + crate::ui_kit::style::gap_2xs());
 
     Area::new(popup_id)
         .order(Order::Foreground)

@@ -102,7 +102,7 @@ pub(crate) fn draw_content(
                     if is_current { color } else { color_muted(color) });
 
                 let month_col = if is_current { t.accent } else { color_half(t.dim) };
-                p.text(egui::pos2(cx, chart_rect.bottom() - 6.0), egui::Align2::CENTER_CENTER,
+                p.text(egui::pos2(cx, chart_rect.bottom() - crate::ui_kit::style::gap_xs_mid()), egui::Align2::CENTER_CENTER,
                     month_labels[i], mono_sm(), month_col);
             }
 

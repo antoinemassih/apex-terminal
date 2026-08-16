@@ -460,7 +460,7 @@ if is_spawn || watchlist.open {
 
                     if watchlist.filter_open {
                         let popup_id = egui::Id::new("wl_filter_popup");
-                        let popup_pos = egui::pos2(filter_btn_rect.left(), filter_btn_rect.bottom() + 2.0);
+                        let popup_pos = egui::pos2(filter_btn_rect.left(), filter_btn_rect.bottom() + crate::ui_kit::style::gap_2xs());
                         egui::Area::new(popup_id)
                             .fixed_pos(popup_pos)
                             .order(egui::Order::Foreground)
@@ -1488,7 +1488,7 @@ if is_spawn || watchlist.open {
                                         let badge = if is_call { "C" } else { "P" };
                                         let y_c = rect.center().y;
                                         // C/P badge
-                                        painter.text(egui::pos2(rect.left() + 6.0, y_c), egui::Align2::LEFT_CENTER,
+                                        painter.text(egui::pos2(rect.left() + crate::ui_kit::style::gap_xs_mid(), y_c), egui::Align2::LEFT_CENTER,
                                             badge, TextStyle::MonoMd.font_id_in(ui), color);
                                         // Contract name
                                         painter.text(egui::pos2(rect.left() + 22.0, y_c), egui::Align2::LEFT_CENTER,
@@ -1496,13 +1496,13 @@ if is_spawn || watchlist.open {
                                             mono_lg(), t.text);
                                         // Bid x Ask (right-aligned)
                                         if item_bid > 0.0 || item_ask > 0.0 {
-                                            painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
+                                            painter.text(egui::pos2(rect.right() - crate::ui_kit::style::gap_xs_mid(), y_c), egui::Align2::RIGHT_CENTER,
                                                 &format!("{:.2} x {:.2}", item_bid, item_ask),
                                                 mono_lg(), color_subtle(color));
                                         }
                                         // Faint separator
                                         painter.line_segment(
-                                            [egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
+                                            [egui::pos2(rect.left() + crate::ui_kit::style::gap_lg(), rect.bottom() - 0.5), egui::pos2(rect.right() - crate::ui_kit::style::gap_xs(), rect.bottom() - 0.5)],
                                             egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
 
                                         if resp.clicked() {
@@ -1510,7 +1510,7 @@ if is_spawn || watchlist.open {
                                         }
 
                                         // X button to remove
-                                        let x_rect = egui::Rect::from_min_size(egui::pos2(rect.right() - 16.0, rect.top()), egui::vec2(16.0, 22.0));
+                                        let x_rect = egui::Rect::from_min_size(egui::pos2(rect.right() - crate::ui_kit::style::gap_lg(), rect.top()), egui::vec2(16.0, 22.0));
                                         if resp.hovered() {
                                             let x_resp = ui.interact(x_rect, egui::Id::new(("opt_x", si, ii, "opt_item")), egui::Sense::click());
                                             crate::chart_renderer::ui::style::cursor::clickable(ui, &x_resp);
@@ -1711,7 +1711,7 @@ if is_spawn || watchlist.open {
                         if !has_focus {
                             let display_text = if watchlist.chain.sym_input.is_empty() { &watchlist.chain.symbol } else { &watchlist.chain.sym_input };
                             let r = sym_resp.response.rect;
-                            ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
+                            ui.painter().text(egui::pos2(r.left() + crate::ui_kit::style::gap_xs_mid(), r.center().y), egui::Align2::LEFT_CENTER,
                                 display_text, mono_lg(), t.accent);
                         }
                         // Price display
@@ -1917,7 +1917,7 @@ if is_spawn || watchlist.open {
 
                         // Faint row separator
                         painter.line_segment(
-                            [egui::pos2(rect.left() + 4.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
+                            [egui::pos2(rect.left() + crate::ui_kit::style::gap_xs(), rect.bottom() - 0.5), egui::pos2(rect.right() - crate::ui_kit::style::gap_xs(), rect.bottom() - 0.5)],
                             egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_tint())));
 
                         // Click handling
@@ -2078,10 +2078,10 @@ if is_spawn || watchlist.open {
                             let center_x = r.left() + r.width() / 2.0;
                             // Lines on either side of the badge
                             ui.painter().line_segment(
-                                [egui::pos2(r.left() + 4.0, y + 10.0), egui::pos2(center_x - badge_w / 2.0 - 4.0, y + 10.0)],
+                                [egui::pos2(r.left() + crate::ui_kit::style::gap_xs(), y + 10.0), egui::pos2(center_x - badge_w / 2.0 - 4.0, y + 10.0)],
                                 egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())));
                             ui.painter().line_segment(
-                                [egui::pos2(center_x + badge_w / 2.0 + 4.0, y + 10.0), egui::pos2(r.right() - 4.0, y + 10.0)],
+                                [egui::pos2(center_x + badge_w / 2.0 + 4.0, y + 10.0), egui::pos2(r.right() - crate::ui_kit::style::gap_xs(), y + 10.0)],
                                 egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())));
                             // Badge background
                             let badge_rect = egui::Rect::from_center_size(egui::pos2(center_x, y + 10.0), egui::vec2(badge_w, 18.0));
@@ -2183,7 +2183,7 @@ if is_spawn || watchlist.open {
                         ui.add_space(gap_md());
                         let sep_r = ui.available_rect_before_wrap();
                         ui.painter().line_segment(
-                            [egui::pos2(sep_r.left() + 4.0, ui.cursor().min.y), egui::pos2(sep_r.right() - 4.0, ui.cursor().min.y)],
+                            [egui::pos2(sep_r.left() + crate::ui_kit::style::gap_xs(), ui.cursor().min.y), egui::pos2(sep_r.right() - crate::ui_kit::style::gap_xs(), ui.cursor().min.y)],
                             egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())));
                         ui.add_space(gap_sm());
 

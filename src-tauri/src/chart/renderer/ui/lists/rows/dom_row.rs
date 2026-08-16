@@ -661,10 +661,10 @@ impl<'a> DomRow<'a> {
             let ord_hovered = drag_resp.hovered() && !currently_dragging_this;
             if ord_hovered {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                let xr = Rect::from_min_size(egui::pos2(br.right() - 12.0, br.top()), egui::vec2(12.0, br.height()));
+                let xr = Rect::from_min_size(egui::pos2(br.right() - crate::ui_kit::style::gap_md(), br.top()), egui::vec2(12.0, br.height()));
                 painter.rect_filled(xr, radius_xs(), color_alpha(bear, alpha_dim()));
                 painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", font_sm.clone(), contrast_fg(bear));
-                let label_rect = Rect::from_min_max(br.min, egui::pos2(br.right() - 12.0, br.max.y));
+                let label_rect = Rect::from_min_max(br.min, egui::pos2(br.right() - crate::ui_kit::style::gap_md(), br.max.y));
                 draw_order_chip_label(painter, label_rect, side_ch, qty, theme_ref.overlay_text);
                 if drag_resp.clicked() {
                     let ptr = ui.input(|i| i.pointer.hover_pos()).unwrap_or_default();
@@ -708,8 +708,8 @@ fn draw_order_chip_label(painter: &Painter, rect: Rect, side: char, qty: u32, te
     let qty_font = mono_sm();
     // high-contrast label on colored chip (caller passes theme.overlay_text)
     let s = side.to_string();
-    painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, &s, side_font, text_col);
-    painter.text(egui::pos2(rect.left() + 8.0 + (rect.width() - 8.0) * 0.5, rect.center().y), egui::Align2::CENTER_CENTER, &qty_str, qty_font, text_col);
+    painter.text(egui::pos2(rect.left() + crate::ui_kit::style::gap_sm(), rect.center().y), egui::Align2::CENTER_CENTER, &s, side_font, text_col);
+    painter.text(egui::pos2(rect.left() + crate::ui_kit::style::gap_sm() + (rect.width() - 8.0) * 0.5, rect.center().y), egui::Align2::CENTER_CENTER, &qty_str, qty_font, text_col);
 }
 
 #[derive(Default)]

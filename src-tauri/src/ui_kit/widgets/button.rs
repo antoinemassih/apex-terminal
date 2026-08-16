@@ -1170,7 +1170,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
                 fg.r(), fg.g(), fg.b(),
                 ((fg.a() as f32) * hover_t).round() as u8,
             );
-            let y = rect.bottom() - 2.0;
+            let y = rect.bottom() - crate::ui_kit::style::gap_2xs();
             let x0 = rect.left() + pad_x * 0.5;
             let x1 = rect.right() - pad_x * 0.5;
             painter.line_segment([Pos2::new(x0, y), Pos2::new(x1, y)], Stroke::new(st::stroke_std(), underline));

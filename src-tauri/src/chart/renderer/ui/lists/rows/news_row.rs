@@ -117,11 +117,11 @@ impl<'a> NewsRow<'a> {
                 painter.text(sym_rect.center(), egui::Align2::CENTER_CENTER,
                     symbol, f.clone(), accent);
 
-                let mut chip_x = sym_rect.right() + 4.0;
+                let mut chip_x = sym_rect.right() + crate::ui_kit::style::gap_xs();
                 for tag in tags.iter() {
                     let tw = (tag.len() as f32) * 5.0 + 8.0;
                     let tr = egui::Rect::from_min_size(egui::pos2(chip_x, meta_y), egui::vec2(tw, 14.0));
-                    if tr.right() > rect.right() - 16.0 { break; }
+                    if tr.right() > rect.right() - crate::ui_kit::style::gap_lg() { break; }
                     painter.rect_filled(tr, radius_xs(), color_alpha(dim, alpha_ghost()));
                     painter.text(tr.center(), egui::Align2::CENTER_CENTER,
                         tag, f.clone(), dim);

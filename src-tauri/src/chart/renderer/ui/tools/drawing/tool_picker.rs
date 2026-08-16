@@ -232,7 +232,7 @@ pub fn show_drawing_tool_picker(
                             if is_hovered_cat { t.accent } else { color_subtle(t.text) },
                         );
                         ui.painter().text(
-                            egui::pos2(row_rect.right() - 8.0, row_rect.center().y),
+                            egui::pos2(row_rect.right() - crate::ui_kit::style::gap_sm(), row_rect.center().y),
                             egui::Align2::RIGHT_CENTER,
                             Icon::CARET_RIGHT,
                             crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()),
@@ -251,7 +251,7 @@ pub fn show_drawing_tool_picker(
     if let Some(cat) = chart.draw_picker.hover_cat.clone() {
         if let Some(&(_, tools)) = DRAW_CATEGORIES.iter().find(|&&(c, _)| c == cat) {
             let fpos = egui::pos2(
-                area_resp.response.rect.right() + 2.0,
+                area_resp.response.rect.right() + crate::ui_kit::style::gap_2xs(),
                 chart.draw_picker.hover_cat_y - 6.0,
             );
             let flyout_id = egui::Id::new(("draw_picker_flyout", pane_idx));
@@ -295,7 +295,7 @@ pub fn show_drawing_tool_picker(
                                 ui.painter().rect_filled(row_rect, radius_sm(), bg);
                                 let star_size = 18.0;
                                 let star_rect = egui::Rect::from_min_size(
-                                    egui::pos2(row_rect.left() + 2.0, row_rect.top() + 2.0),
+                                    egui::pos2(row_rect.left() + crate::ui_kit::style::gap_2xs(), row_rect.top() + crate::ui_kit::style::gap_2xs()),
                                     egui::vec2(star_size, row_rect.height() - 4.0),
                                 );
                                 let star_resp = ui.allocate_rect(star_rect, egui::Sense::click());

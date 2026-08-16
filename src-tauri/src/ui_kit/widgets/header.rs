@@ -386,7 +386,7 @@ impl<'a> Header<'a> {
         // ── Trailing: caller content, then close button (RTL) ──
         if let Some(slot) = slots.close {
             let close_rect = egui::Rect::from_min_size(
-                egui::pos2(slot.left() + 2.0, rect.top() + (h - 18.0) / 2.0),
+                egui::pos2(slot.left() + crate::ui_kit::style::gap_2xs(), rect.top() + (h - 18.0) / 2.0),
                 Vec2::new(18.0, 18.0),
             );
             let close_resp = super::button::Button::close()

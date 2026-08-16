@@ -557,13 +557,13 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                             let type_label = if is_mono[i.min(is_mono.len()-1)] { "mono" } else { "sans" };
                             let type_col = color_dim(t.dim);
                             ui.painter().text(
-                                egui::pos2(r.left() + 8.0, r.bottom() - 12.0),
+                                egui::pos2(r.left() + crate::ui_kit::style::gap_sm(), r.bottom() - crate::ui_kit::style::gap_md()),
                                 egui::Align2::LEFT_CENTER,
                                 type_label, mono_sm(), type_col);
 
                             let sample_col = if sel { t.text } else { color_subtle(t.dim) };
                             ui.painter().text(
-                                egui::pos2(r.right() - 8.0, r.bottom() - 12.0),
+                                egui::pos2(r.right() - crate::ui_kit::style::gap_sm(), r.bottom() - crate::ui_kit::style::gap_md()),
                                 egui::Align2::RIGHT_CENTER,
                                 "0123 AAPL $9.50", mono_xs(), sample_col);
 

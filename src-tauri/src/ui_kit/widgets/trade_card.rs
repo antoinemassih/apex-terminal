@@ -103,8 +103,8 @@ impl<'a> TradeCard<'a> {
             ),
             st::radius_pill(), pnl_col);
 
-        let cx = card_rect.left() + 8.0;
-        let mut cy = card_rect.top() + 8.0;
+        let cx = card_rect.left() + crate::ui_kit::style::gap_sm();
+        let mut cy = card_rect.top() + crate::ui_kit::style::gap_sm();
 
         // Row 1: symbol · side · P&L
         p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
@@ -112,7 +112,7 @@ impl<'a> TradeCard<'a> {
         p.text(egui::pos2(cx + 50.0, cy + 4.0), egui::Align2::LEFT_CENTER,
             entry.side, f_mono_xs.clone(), dir_col);
         let sign = if entry.pnl >= 0.0 { "+" } else { "" };
-        p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
+        p.text(egui::pos2(card_rect.right() - crate::ui_kit::style::gap_sm(), cy + 4.0), egui::Align2::RIGHT_CENTER,
             &format!("{}${:.0} ({:+.1}%)", sign, entry.pnl, entry.pnl_pct),
             f_mono_sm.clone(), pnl_col);
         cy += 16.0;
@@ -138,7 +138,7 @@ impl<'a> TradeCard<'a> {
         p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
             &format!("{:.2} \u{2192} {:.2}", entry.entry_price, entry.exit_price),
             f_mono_sm.clone(), color_dim(pal.base(Tone::Dim)));
-        p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
+        p.text(egui::pos2(card_rect.right() - crate::ui_kit::style::gap_sm(), cy + 4.0), egui::Align2::RIGHT_CENTER,
             entry.timeframe, f_mono_sm.clone(), color_dim(pal.base(Tone::Dim)));
 
         // Optional notes row

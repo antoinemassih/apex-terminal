@@ -307,7 +307,7 @@ fn header_divider(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
     let alpha = current().header_divider_alpha;
     let col = tint(theme, Tone::Border, alpha);
     painter.line_segment(
-        [pos2(cx, rect.top() + 4.0), pos2(cx, rect.bottom() - 4.0)],
+        [pos2(cx, rect.top() + crate::ui_kit::style::gap_xs()), pos2(cx, rect.bottom() - crate::ui_kit::style::gap_xs())],
         Stroke::new(stroke_hair(), col),
     );
 }
@@ -765,8 +765,8 @@ impl<'a> PainterPaneHeader<'a> {
                 if ti + 1 < self.tabs.len() {
                     let div_col = color_alpha(t.border_variant, crate::ui_kit::style::alpha_solid());
                     painter.line_segment(
-                        [pos2(tab_rect.right() + 0.5, tab_rect.top() + 4.0),
-                         pos2(tab_rect.right() + 0.5, tab_rect.bottom() - 4.0)],
+                        [pos2(tab_rect.right() + 0.5, tab_rect.top() + crate::ui_kit::style::gap_xs()),
+                         pos2(tab_rect.right() + 0.5, tab_rect.bottom() - crate::ui_kit::style::gap_xs())],
                         Stroke::new(stroke_thin(), div_col),
                     );
                 }

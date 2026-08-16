@@ -114,7 +114,7 @@ impl<'a> AlertRow<'a> {
                 } else {
                     (Icon::DOT, dim)
                 };
-                painter.text(egui::pos2(rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
+                painter.text(egui::pos2(rect.left() + crate::ui_kit::style::gap_sm(), cy), egui::Align2::LEFT_CENTER,
                     glyph, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xl()), gcol);
 
                 painter.text(egui::pos2(rect.left() + 22.0, cy), egui::Align2::LEFT_CENTER,

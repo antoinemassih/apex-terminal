@@ -151,7 +151,7 @@ pub(crate) fn render(
                 Tooltip::new("Timeframe picker").show(ui, &tf_dd_btn, t);
                 if tf_dd_btn.clicked() {
                     watchlist.timeframe.dropdown_open = !watchlist.timeframe.dropdown_open;
-                    watchlist.timeframe.dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
+                    watchlist.timeframe.dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + crate::ui_kit::style::gap_2xs());
                 }
                 // Dev Inspector — record the active timeframe and its dropdown trigger.
                 #[cfg(debug_assertions)]
@@ -524,7 +524,7 @@ fn grp_drawing(
             if draw_count > 0 {
                 let painter = ui.painter();
                 let r = tree_resp.rect;
-                let badge_center = egui::pos2(r.right() - 2.0, r.top() + 3.0);
+                let badge_center = egui::pos2(r.right() - crate::ui_kit::style::gap_2xs(), r.top() + 3.0);
                 let badge_r = 5.0_f32;
                 painter.circle_filled(badge_center, badge_r, t.accent);
                 painter.text(
@@ -1117,7 +1117,7 @@ fn grp_widgets(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
                     }
 
                     let preview_rect = egui::Rect::from_min_size(
-                        egui::pos2(r.left() + 4.0, r.top() + 4.0), egui::vec2(28.0, 28.0));
+                        egui::pos2(r.left() + crate::ui_kit::style::gap_xs(), r.top() + crate::ui_kit::style::gap_xs()), egui::vec2(28.0, 28.0));
                     let preview_bg = tint(t, Tone::Border, alpha_faint());
                     p.rect_filled(preview_rect, radius_sm(), preview_bg);
                     paint_widget_preview(p, preview_rect, kind, t, is_active);
@@ -1132,7 +1132,7 @@ fn grp_widgets(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
                         desc, mono_sm(), color_dim(t.dim));
 
                     if is_active {
-                        p.text(egui::pos2(r.right() - 12.0, r.center().y),
+                        p.text(egui::pos2(r.right() - crate::ui_kit::style::gap_md(), r.center().y),
                             egui::Align2::CENTER_CENTER, "\u{2713}",
                             crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), t.accent);
                     }

@@ -203,7 +203,7 @@ pub(crate) fn draw(
     // Derived from the tier the badge is painted in (MonoSm) + its 2px padding
     // + a gap, so the band tracks the type scale.
     let badge_band = TextStyle::MonoSm.font_id_in(ui).size + 4.0 + 3.0;
-    let hy = inner.top() + 2.0 + badge_band;
+    let hy = inner.top() + crate::ui_kit::style::gap_2xs() + badge_band;
     let label_y = hy + header_h * 0.5;
     let hf = TextStyle::MonoMd.font_id_in(ui);
     let hc = color_muted(t.dim);
@@ -350,7 +350,7 @@ pub(crate) fn draw(
         // column headers (see `badge_band`) — not inside the header strip,
         // which is what made SIMULATED overwrite PRICE and ASK.
         let bx = inner.left() + (aw - bw) * 0.5;
-        let band_top = inner.top() + 2.0;
+        let band_top = inner.top() + crate::ui_kit::style::gap_2xs();
         let badge_rect = egui::Rect::from_min_size(
             egui::pos2(bx, band_top + (badge_band - bh) * 0.5),
             egui::vec2(bw, bh),
@@ -848,7 +848,7 @@ pub(crate) fn draw(
             // hitting the bid). At-a-glance who won the trading at each price.
             let split_tot = l.buy_vol + l.sell_vol;
             if split_tot > 0 {
-                let bar_y = rr.bottom() - 2.0;
+                let bar_y = rr.bottom() - crate::ui_kit::style::gap_2xs();
                 let bwid = aw * (l.buy_vol as f32 / split_tot as f32);
                 lp.rect_filled(
                     egui::Rect::from_min_size(egui::pos2(rr.left(), bar_y), egui::vec2(bwid, 2.0)),
@@ -888,7 +888,7 @@ pub(crate) fn draw(
                 if pnl.abs() >= 1.0 {
                     let pc = if pnl >= 0.0 { t.bull } else { t.bear };
                     lp.text(
-                        egui::pos2(rr.right() - 4.0, ry + ROW_H * 0.5),
+                        egui::pos2(rr.right() - crate::ui_kit::style::gap_xs(), ry + ROW_H * 0.5),
                         egui::Align2::RIGHT_CENTER,
                         &format!("{:+.0}", pnl), f_pnl.clone(), color_alpha(pc, 205),
                     );
@@ -951,7 +951,7 @@ pub(crate) fn draw(
         let hy_ts = ts_top + tape_row_h * 0.5 + 1.0;
         // Three-zone header: label (left) · session CVD (center) · speed (right).
         painter.text(
-            egui::pos2(inner.left() + 4.0, hy_ts),
+            egui::pos2(inner.left() + crate::ui_kit::style::gap_xs(), hy_ts),
             egui::Align2::LEFT_CENTER, "T&S", tsf.clone(), color_muted(t.dim),
         );
         // Session cumulative delta (Σ) — whole-session order-flow bias, green
@@ -968,7 +968,7 @@ pub(crate) fn draw(
         // momentum). Hidden when the rate is unknown (0, e.g. a clockless feed).
         if dom_tape_speed > 0.0 {
             painter.text(
-                egui::pos2(inner.right() - 4.0, hy_ts),
+                egui::pos2(inner.right() - crate::ui_kit::style::gap_xs(), hy_ts),
                 egui::Align2::RIGHT_CENTER,
                 &format!("{:.0}/s", dom_tape_speed), tsf.clone(), color_muted(t.accent),
             );
@@ -981,11 +981,11 @@ pub(crate) fn draw(
                 0.0, color_alpha(sidc, 14),
             );
             painter.text(
-                egui::pos2(inner.left() + 4.0, ry + tape_row_h * 0.5),
+                egui::pos2(inner.left() + crate::ui_kit::style::gap_xs(), ry + tape_row_h * 0.5),
                 egui::Align2::LEFT_CENTER, &format!("{:.2}", px), tsf.clone(), sidc,
             );
             painter.text(
-                egui::pos2(inner.right() - 4.0, ry + tape_row_h * 0.5),
+                egui::pos2(inner.right() - crate::ui_kit::style::gap_xs(), ry + tape_row_h * 0.5),
                 egui::Align2::RIGHT_CENTER, &fmt_size(sz as u32), tsf.clone(), color_muted(t.text),
             );
         }
@@ -1003,7 +1003,7 @@ fn draw_order_label(painter: &egui::Painter, rect: egui::Rect, side: &str, qty: 
     let qty_font = mono_sm();
     let text_col = _color; // high contrast against colored badge (caller provides)
     // Side letter on the left
-    painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, side, side_font, text_col);
+    painter.text(egui::pos2(rect.left() + crate::ui_kit::style::gap_sm(), rect.center().y), egui::Align2::CENTER_CENTER, side, side_font, text_col);
     // Qty number, large and bold, centered in remaining space
-    painter.text(egui::pos2(rect.left() + 8.0 + (rect.width() - 8.0) * 0.5, rect.center().y), egui::Align2::CENTER_CENTER, &qty_str, qty_font, text_col);
+    painter.text(egui::pos2(rect.left() + crate::ui_kit::style::gap_sm() + (rect.width() - 8.0) * 0.5, rect.center().y), egui::Align2::CENTER_CENTER, &qty_str, qty_font, text_col);
 }

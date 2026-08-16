@@ -361,7 +361,7 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
 
         // ── Label ──────────────────────────────────────────────────────────
         painter.text(
-            egui::pos2(area.left() + 2.0, mid_y),
+            egui::pos2(area.left() + crate::ui_kit::style::gap_2xs(), mid_y),
             egui::Align2::LEFT_CENTER,
             &abs.symbol,
             mono_sm(),
@@ -370,8 +370,8 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
 
         // ── Central axis (0% = center of bar) ─────────────────────────────
         painter.line_segment(
-            [egui::pos2(bar_center_x, row_rect.top() + 2.0),
-             egui::pos2(bar_center_x, row_rect.bottom() - 2.0)],
+            [egui::pos2(bar_center_x, row_rect.top() + crate::ui_kit::style::gap_2xs()),
+             egui::pos2(bar_center_x, row_rect.bottom() - crate::ui_kit::style::gap_2xs())],
             egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, alpha_subtle())),
         );
 
@@ -462,7 +462,7 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         // cross-symbol invalidation indicator.  (A proper price-axis mapping
         // across different symbols would need a unified price scale, which is
         // out of scope for a side panel.)
-        let iv_y = area.top() + 2.0;
+        let iv_y = area.top() + crate::ui_kit::style::gap_2xs();
         let dash  = 6.0_f32;
         let mut x = area.left();
         while x < area.right() {
@@ -474,7 +474,7 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
             x += dash * 2.0;
         }
         painter.text(
-            egui::pos2(area.right() - 2.0, iv_y + 1.0),
+            egui::pos2(area.right() - crate::ui_kit::style::gap_2xs(), iv_y + 1.0),
             egui::Align2::RIGHT_TOP,
             format!("inval ${:.1}", sc.invalidation),
             mono_sm(),

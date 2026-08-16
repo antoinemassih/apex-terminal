@@ -214,8 +214,8 @@ pub fn draw(ctx: &egui::Context, screen_rect: egui::Rect) {
     const TOAST_W: f32 = 280.0;
     const TOAST_H: f32 = 120.0;
     const PAD: f32 = 8.0;
-    let right = screen_rect.right() - 16.0;
-    let mut y = screen_rect.top() + 16.0;
+    let right = screen_rect.right() - crate::ui_kit::style::gap_lg();
+    let mut y = screen_rect.top() + crate::ui_kit::style::gap_lg();
 
     let mut dismissed_now: Vec<String> = Vec::new();
     let mut jump_now: Option<(String, i64)> = None;

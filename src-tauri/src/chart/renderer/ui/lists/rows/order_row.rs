@@ -103,14 +103,14 @@ impl<'a> OrderRow<'a> {
 
                 // Side pill.
                 let pill = egui::Rect::from_min_size(
-                    egui::pos2(rect.left() + 6.0, cy - 7.0),
+                    egui::pos2(rect.left() + crate::ui_kit::style::gap_xs_mid(), cy - 7.0),
                     egui::vec2(icon_xs(), icon_xs()));
                 painter.rect_filled(pill, radius_xs(), color_alpha(side_col, alpha_subtle()));
                 painter.text(pill.center(), egui::Align2::CENTER_CENTER,
                     side_lbl, f_txt.clone(), side_col);
 
                 // Symbol — clip to prevent long option tickers bleeding into qty@price column.
-                let sym_x = pill.right() + 6.0;
+                let sym_x = pill.right() + crate::ui_kit::style::gap_xs_mid();
                 painter.with_clip_rect(painter.clip_rect().intersect(
                     egui::Rect::from_x_y_ranges(sym_x..=(rect.center().x - 4.0), rect.y_range())
                 )).text(egui::pos2(sym_x, cy), egui::Align2::LEFT_CENTER, symbol, f_txt.clone(), fg);
@@ -151,7 +151,7 @@ impl<'a> OrderRow<'a> {
                     status, f_txt.clone(), dim);
 
                 if let Some(a) = age {
-                    let x = if show_cancel { rect.right() - 28.0 } else { rect.right() - 6.0 };
+                    let x = if show_cancel { rect.right() - 28.0 } else { rect.right() - crate::ui_kit::style::gap_xs_mid() };
                     ui.painter().text(egui::pos2(x, cy), egui::Align2::RIGHT_CENTER,
                         a, f_txt.clone(), color_subtle(dim));
                 }

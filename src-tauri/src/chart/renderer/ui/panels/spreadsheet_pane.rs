@@ -524,7 +524,7 @@ pub(crate) fn render(
         let p = ui.painter_at(fbar_rect);
         p.rect_filled(fbar_rect, 0.0, tint(t, Tone::Border, alpha_tint()));
         // "fx" tag
-        p.text(egui::pos2(fbar_rect.left() + 6.0, fbar_rect.center().y),
+        p.text(egui::pos2(fbar_rect.left() + crate::ui_kit::style::gap_xs_mid(), fbar_rect.center().y),
             egui::Align2::LEFT_CENTER, "fx",
             mono_xs(), t.accent);
     }
@@ -539,7 +539,7 @@ pub(crate) fn render(
     {
         let edit_rect = egui::Rect::from_min_max(
             egui::pos2(fbar_rect.left() + 28.0, fbar_rect.top() + 1.0),
-            egui::pos2(fbar_rect.right() - 4.0, fbar_rect.bottom() - 1.0));
+            egui::pos2(fbar_rect.right() - crate::ui_kit::style::gap_xs(), fbar_rect.bottom() - 1.0));
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(edit_rect));
         let resp = Input::new(&mut state.formula_buf)
             .font_size(font_sm())
@@ -743,7 +743,7 @@ pub(crate) fn render(
                         if !val.is_empty() {
                             let pp = ui.painter_at(cell_rect);
                             pp.text(
-                                egui::pos2(cell_rect.left() + 4.0, cell_rect.center().y),
+                                egui::pos2(cell_rect.left() + crate::ui_kit::style::gap_xs(), cell_rect.center().y),
                                 egui::Align2::LEFT_CENTER, &val,
                                 mono_sm(),
                                 t.text);

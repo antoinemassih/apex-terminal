@@ -134,10 +134,10 @@ impl<'a> GuildAvatarGrid<'a> {
 
             // Selection/hover dot under icon
             if selected {
-                let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + 4.0);
+                let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + crate::ui_kit::style::gap_xs());
                 ui.painter().circle_filled(dot_center, 2.5, discord_blurple);
             } else if hovered {
-                let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + 4.0);
+                let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + crate::ui_kit::style::gap_xs());
                 // Hover dot follows theme.dim() so it scales with palette;
                 // was hardcoded gray-120.
                 ui.painter().circle_filled(dot_center, 1.5, palette_ct(theme).base(Tone::Dim));

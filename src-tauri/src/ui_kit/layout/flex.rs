@@ -8,7 +8,7 @@
 //! been written as arithmetic at the call site:
 //!
 //! ```ignore
-//! let x = rect.left() + 16.0;
+//! let x = rect.left() + crate::ui_kit::style::gap_lg();
 //! let w = (rect.width() - 16.0 * 2.0 - 8.0) * 0.5;
 //! painter.text(egui::pos2(x, cy - galley.height() * 0.5), ..);
 //! ```

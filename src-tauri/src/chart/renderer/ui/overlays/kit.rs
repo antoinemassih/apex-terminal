@@ -229,10 +229,10 @@ pub(crate) fn overlay_card_header(
         egui::CornerRadius { nw: hdr_r, ne: hdr_r, sw: 0, se: 0 },
         crate::ui_kit::style::color_alpha(t.toolbar_bg, 230));
     p.line_segment(
-        [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
+        [egui::pos2(hdr.left() + crate::ui_kit::style::gap_xs(), hdr.bottom()), egui::pos2(hdr.right() - crate::ui_kit::style::gap_xs(), hdr.bottom())],
         Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
     // Icon + label (+ lock glyph).
-    p.text(egui::pos2(hdr.left() + 8.0, hdr.center().y),
+    p.text(egui::pos2(hdr.left() + crate::ui_kit::style::gap_sm(), hdr.center().y),
         egui::Align2::LEFT_CENTER, icon, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()), t.accent);
     p.text(egui::pos2(hdr.left() + 24.0, hdr.center().y),
         egui::Align2::LEFT_CENTER, label, crate::ui_kit::style::mono_xs(), t.text);

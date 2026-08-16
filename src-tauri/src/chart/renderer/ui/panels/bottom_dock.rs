@@ -203,7 +203,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
                     }
                     // "expand" hint chevron on the right.
                     ui.painter().text(
-                        egui::pos2(strip_rect.right() - 8.0, strip_rect.center().y),
+                        egui::pos2(strip_rect.right() - crate::ui_kit::style::gap_sm(), strip_rect.center().y),
                         egui::Align2::RIGHT_CENTER, "▴",
                         crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xs()), tint(t, Tone::Dim, 150),
                     );

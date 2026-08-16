@@ -672,8 +672,8 @@ impl<'a> WatchlistRow<'a> {
                 if separator_on {
                     painter.line_segment(
                         [
-                            egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5),
-                            egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5),
+                            egui::pos2(rect.left() + crate::ui_kit::style::gap_lg(), rect.bottom() - 0.5),
+                            egui::pos2(rect.right() - crate::ui_kit::style::gap_xs(), rect.bottom() - 0.5),
                         ],
                         Stroke::new(crate::ui_kit::style::stroke_thin(), color_alpha(border, alpha_muted())),
                     );
@@ -683,7 +683,7 @@ impl<'a> WatchlistRow<'a> {
                 if pre_hovered && !drag_confirmed {
                     if self_show_x_on_hover {
                         painter.text(
-                            egui::pos2(rect.right() - 8.0, cy),
+                            egui::pos2(rect.right() - crate::ui_kit::style::gap_sm(), cy),
                             egui::Align2::CENTER_CENTER,
                             icon_set.x,
                             crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()),
@@ -694,7 +694,7 @@ impl<'a> WatchlistRow<'a> {
 
                 // Reserve right-edge X click zone (caller paints the X on hover).
                 zones_body.borrow_mut().x = Some(egui::Rect::from_min_max(
-                    egui::pos2(rect.right() - 16.0, rect.top()),
+                    egui::pos2(rect.right() - crate::ui_kit::style::gap_lg(), rect.top()),
                     egui::pos2(rect.right(), rect.bottom()),
                 ));
             })

@@ -110,11 +110,11 @@ impl<'a> OptionChainRow<'a> {
                 let painter = ui.painter();
                 let cy = rect.center().y;
 
-                painter.text(egui::pos2(call_rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
+                painter.text(egui::pos2(call_rect.left() + crate::ui_kit::style::gap_sm(), cy), egui::Align2::LEFT_CENTER,
                     &format!("{:.2}", call.bid), f.clone(), bull);
                 painter.text(egui::pos2(call_rect.left() + call_rect.width() * 0.4, cy),
                     egui::Align2::CENTER_CENTER, &format!("{:.2}", call.ask), f.clone(), fg);
-                painter.text(egui::pos2(call_rect.right() - 8.0, cy), egui::Align2::RIGHT_CENTER,
+                painter.text(egui::pos2(call_rect.right() - crate::ui_kit::style::gap_sm(), cy), egui::Align2::RIGHT_CENTER,
                     &format!("{}", call.volume), f.clone(), dim);
 
                 let strike_x = rect.center().x;
@@ -122,15 +122,15 @@ impl<'a> OptionChainRow<'a> {
                     &format!("{:.2}", strike),
                     f.clone(), accent);
 
-                painter.text(egui::pos2(put_rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
+                painter.text(egui::pos2(put_rect.left() + crate::ui_kit::style::gap_sm(), cy), egui::Align2::LEFT_CENTER,
                     &format!("{}", put.volume), f.clone(), dim);
                 painter.text(egui::pos2(put_rect.left() + put_rect.width() * 0.6, cy),
                     egui::Align2::CENTER_CENTER, &format!("{:.2}", put.bid), f.clone(), fg);
-                painter.text(egui::pos2(put_rect.right() - 8.0, cy), egui::Align2::RIGHT_CENTER,
+                painter.text(egui::pos2(put_rect.right() - crate::ui_kit::style::gap_sm(), cy), egui::Align2::RIGHT_CENTER,
                     &format!("{:.2}", put.ask), f.clone(), bear);
 
                 if show_greeks {
-                    painter.text(egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0),
+                    painter.text(egui::pos2(rect.right() - crate::ui_kit::style::gap_xs(), rect.bottom() - crate::ui_kit::style::gap_xs()),
                         egui::Align2::RIGHT_BOTTOM,
                         &format!("Δ{:+.2}", call.delta),
                         f.clone(), dim);

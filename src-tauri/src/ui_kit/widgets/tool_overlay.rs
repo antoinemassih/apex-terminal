@@ -368,8 +368,8 @@ impl<'a> ToolOverlay<'a> {
             if let Some(lh) = header_leading.take() {
                 let leading_x = text_x + title_galley.size().x + st::gap_sm();
                 let leading_rect = Rect::from_min_max(
-                    egui::pos2(leading_x, header_rect.top() + 2.0),
-                    egui::pos2(header_rect.right() - 28.0, header_rect.bottom() - 2.0),
+                    egui::pos2(leading_x, header_rect.top() + crate::ui_kit::style::gap_2xs()),
+                    egui::pos2(header_rect.right() - 28.0, header_rect.bottom() - crate::ui_kit::style::gap_2xs()),
                 );
                 let mut lh_ui = ui.new_child(
                     egui::UiBuilder::new()
@@ -387,8 +387,8 @@ impl<'a> ToolOverlay<'a> {
                 let trailing_right = header_rect.right() - close_slot_w;
                 let trailing_left  = trailing_right - 140.0; // up to 140 px reserved
                 let trailing_rect = Rect::from_min_max(
-                    egui::pos2(trailing_left.max(header_rect.left() + 80.0), header_rect.top() + 2.0),
-                    egui::pos2(trailing_right, header_rect.bottom() - 2.0),
+                    egui::pos2(trailing_left.max(header_rect.left() + 80.0), header_rect.top() + crate::ui_kit::style::gap_2xs()),
+                    egui::pos2(trailing_right, header_rect.bottom() - crate::ui_kit::style::gap_2xs()),
                 );
                 let mut th_ui = ui.new_child(
                     egui::UiBuilder::new()

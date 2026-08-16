@@ -48,8 +48,8 @@ pub(crate) fn render(
     const BREADTH_WIDGET_H: f32 = 26.0;
     if let Some(b) = crate::apex_data::live_state::get_breadth("us") {
         let strip_rect = egui::Rect::from_min_max(
-            egui::pos2(rect.left() + 6.0, header_bottom + 2.0),
-            egui::pos2(rect.right() - 6.0, header_bottom + 2.0 + BREADTH_WIDGET_H),
+            egui::pos2(rect.left() + crate::ui_kit::style::gap_xs_mid(), header_bottom + 2.0),
+            egui::pos2(rect.right() - crate::ui_kit::style::gap_xs_mid(), header_bottom + 2.0 + BREADTH_WIDGET_H),
         );
         let p = ui.painter_at(strip_rect);
         p.rect_filled(strip_rect, st::radius_sm(), t.toolbar_bg);
@@ -59,7 +59,7 @@ pub(crate) fn render(
         // Left half: adv/dec totals
         let s1 = format!("Adv {}  Dec {}", b.advancers, b.decliners);
         p.text(
-            egui::pos2(strip_rect.left() + 8.0, strip_rect.center().y),
+            egui::pos2(strip_rect.left() + crate::ui_kit::style::gap_sm(), strip_rect.center().y),
             egui::Align2::LEFT_CENTER, s1,
             st::mono_xs_plus(),
             if bull_pct >= 0.5 { t.bull } else { t.bear },
@@ -74,7 +74,7 @@ pub(crate) fn render(
         // Right: % above SMA200
         let s3 = format!("{:.0}% > SMA200", b.pct_above_sma200);
         p.text(
-            egui::pos2(strip_rect.right() - 8.0, strip_rect.center().y),
+            egui::pos2(strip_rect.right() - crate::ui_kit::style::gap_sm(), strip_rect.center().y),
             egui::Align2::RIGHT_CENTER, s3,
             st::mono_xs_plus(), t.dim,
         );

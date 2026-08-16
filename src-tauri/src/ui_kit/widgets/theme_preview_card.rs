@@ -206,8 +206,8 @@ impl<'a> ThemePreviewCard<'a> {
                 );
                 painter.line_segment(
                     [
-                        Pos2::new(card_rect.left() + 4.0, axis_y),
-                        Pos2::new(card_rect.right() - 4.0, axis_y),
+                        Pos2::new(card_rect.left() + crate::ui_kit::style::gap_xs(), axis_y),
+                        Pos2::new(card_rect.right() - crate::ui_kit::style::gap_xs(), axis_y),
                     ],
                     Stroke::new(st::stroke_std(), axis_color),
                 );
@@ -243,8 +243,8 @@ impl<'a> ThemePreviewCard<'a> {
                 let accent_y = inner_top + 0.42 * inner_h;
                 painter.line_segment(
                     [
-                        Pos2::new(card_rect.left() + 4.0, accent_y),
-                        Pos2::new(card_rect.right() - 4.0, accent_y),
+                        Pos2::new(card_rect.left() + crate::ui_kit::style::gap_xs(), accent_y),
+                        Pos2::new(card_rect.right() - crate::ui_kit::style::gap_xs(), accent_y),
                     ],
                     Stroke::new(st::stroke_std(), preview_theme.accent()),
                 );

@@ -611,6 +611,41 @@ bite by deleting the export line.
 
 ---
 
+## AT-160 — 136 edge insets were per-site literals — FIXED
+
+The largest remaining chrome pattern, and the one AT-159 unblocked once the
+"scale coupling" objection turned out to be based on a wrong model.
+
+`rect.left() + 8.0`, `rect.bottom() - 2.0` and friends: 136 sites where a
+padding inset from a rect edge was written as a number. Each is now the spacing
+rung it already equalled — `gap_2xs` / `gap_xs` / `gap_xs_mid` / `gap_sm` /
+`gap_md` / `gap_lg`.
+
+**Only EDGE insets moved.** `.left()/.right()/.top()/.bottom() ± N` is padding
+from an edge. Centring — `rect.center().y - 8.0`, which is half an icon — is not
+padding, and a value that happens to equal a spacing rung there is coincidence.
+Migrating those would have been a semantic error wearing a correct-looking
+number, so the pattern was restricted to the four edges. (As it turned out the
+codebase uses `.center().y` rather than `.center_y()`, so none were at risk —
+but the rule is the reason, not the outcome.)
+
+Off-rung values were left alone: 35 × `0.5` (pixel-grid alignment, which must
+NOT scale — see the `panel_section` hairline fix in AT-154), 29 × `1.0`,
+21 × `3.0`, and one-off widths like `236.0`.
+
+**Verified byte-identical.** At Standard spacing every rung equals the literal it
+replaced, so nothing should move — and a pixel diff of the running app across
+four static chrome regions (timeframe row, top-nav, left rail, bottom tabs)
+shows **0 differing pixels of 186,000**. The whole-window diff is 3%, entirely
+live market data: chart bars, quotes and the alert feed.
+
+What changes now is that a user on Tight or Loose spacing gets insets that
+actually respond, which is what that setting was always supposed to mean.
+
+Ratchet 1162 → **1066**.
+
+---
+
 ## AT-159 — the two scale settings do NOT break containment — investigated, no defect
 
 I reported the remaining geometry-nudge migration as blocked by "scale

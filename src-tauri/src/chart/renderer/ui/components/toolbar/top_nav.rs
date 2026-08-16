@@ -594,8 +594,8 @@ pub(crate) fn render(
                     let col = tint(t, Tone::Border, crate::ui_kit::style::alpha_strong());
                     let btn_rect = acct_resp.rect;
                     let col_rect = egui::Rect::from_min_max(
-                        egui::pos2(btn_rect.left() - 2.0, tb_rect.top()),
-                        egui::pos2(btn_rect.right() + 2.0, tb_rect.bottom()),
+                        egui::pos2(btn_rect.left() - crate::ui_kit::style::gap_2xs(), tb_rect.top()),
+                        egui::pos2(btn_rect.right() + crate::ui_kit::style::gap_2xs(), tb_rect.bottom()),
                     );
                     ui.painter().rect_filled(col_rect, egui::CornerRadius::ZERO, col);
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -966,7 +966,7 @@ pub(crate) fn render(
                     .show(ui, &dd_btn, t);
                 if dd_btn.clicked() {
                     watchlist.layout_dropdown_open = !watchlist.layout_dropdown_open;
-                    watchlist.layout_dropdown_pos = egui::pos2(dd_btn.rect.left(), dd_btn.rect.bottom() + 2.0);
+                    watchlist.layout_dropdown_pos = egui::pos2(dd_btn.rect.left(), dd_btn.rect.bottom() + crate::ui_kit::style::gap_2xs());
                 }
             }
             // (Layout dropdown rendered after toolbar — see below)
@@ -1291,7 +1291,7 @@ pub(crate) fn render(
                         sidebar_rect = Some(sidebar_rect.map_or($resp.rect, |r: egui::Rect| r.union($resp.rect)));
                         // Enclosed styles draw the box instead of per-button dividers.
                         if !bg_enclosed {
-                            let x = ($resp.rect.left() - 4.0).round() + 0.5;
+                            let x = ($resp.rect.left() - crate::ui_kit::style::gap_xs()).round() + 0.5;
                             let col = tint(t, Tone::Dim, alpha_dim());
                             let painter = $ui.ctx().layer_painter(egui::LayerId::new(
                                 egui::Order::Foreground,

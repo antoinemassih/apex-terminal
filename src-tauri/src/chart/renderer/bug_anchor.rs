@@ -203,7 +203,7 @@ pub fn resolve_frame(ctx: &egui::Context, note_open: bool) {
     let origin = if above {
         egui::pos2(hit.rect.left(), hit.rect.top() - box_size.y - 4.0)
     } else {
-        egui::pos2(hit.rect.left(), hit.rect.bottom() + 4.0)
+        egui::pos2(hit.rect.left(), hit.rect.bottom() + crate::ui_kit::style::gap_xs())
     };
     let bg = Rect::from_min_size(origin, box_size);
     painter.rect_filled(bg, 3.0, PANEL_BG);

@@ -216,7 +216,7 @@ impl PanelCard {
             let r = resp.response.rect;
             let stripe_rect = Rect::from_min_max(
                 Pos2::new(r.left(), r.top()),
-                Pos2::new(r.left() + 2.0, r.bottom()),
+                Pos2::new(r.left() + crate::ui_kit::style::gap_2xs(), r.bottom()),
             );
             ui.painter().rect_filled(
                 stripe_rect,
