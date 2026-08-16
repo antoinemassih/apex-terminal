@@ -35,7 +35,25 @@ BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "cascade_adoption_baseline.json")
 
 # Data geometry, not chrome. See the module docstring.
-CHART = ("/render/", "chart_widgets", "gpu.rs", "/indicators/")
+#
+# `tps_overlay` is here for a different reason and it is worth stating: it is a
+# deliberate pastiche of Excel's chrome for the boss-key overlay. Its literals
+# are Excel's, not ours, and its own comment says so — "kept as literal because
+# no token tier matches". Migrating it to this design system would make it a
+# worse imitation, so the ceiling must not demand it.
+#
+# `spreadsheet_pane` was exempted here too, on the argument that walking
+# user-resizable column widths is data geometry. That was MY call and it was
+# overruled: the rule is that the chart ENGINE is sacred and everything else in
+# the UI is for migration. A spreadsheet pane is UI. It stays in the count as
+# pending work.
+CHART = (
+    "/render/",
+    "chart_widgets",
+    "gpu.rs",
+    "/indicators/",
+    "tps_overlay.rs",
+)
 
 PATTERNS = {
     "el_nodes":      r"\bEl::(?:row|column|text|spacer|button|slot)\(",

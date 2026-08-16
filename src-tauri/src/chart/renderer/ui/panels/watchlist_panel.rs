@@ -1803,6 +1803,30 @@ if is_spawn || watchlist.open {
                     // control row between the header and the data it labelled.
                     // A column header that is not adjacent to its column is
                     // only marginally better than one that is misaligned.
+                    // ONE solved column set, shared by the header and the rows.
+                    //
+                    // Both walked the same five widths independently — the
+                    // header as `hx += cw + gap`, the row as `x += col_chk +
+                    // gap`, `x += col_stk + gap`, and so on. The comment below
+                    // says header and column should "share one rule rather than
+                    // two conventions that have to be kept in sync"; that was
+                    // true of the ALIGNMENT and not of the geometry, which was
+                    // still stated twice and could drift silently.
+                    let col_ws = [col_chk, col_stk, col_bid, col_ask, col_oi];
+                    let col_at = |left: f32, i: usize| -> egui::Rect {
+                        use crate::ui_kit::layout::{Flex, Item};
+                        let mut f = Flex::row().gap(gap);
+                        for w in col_ws {
+                            f = f.item(Item::fixed(w));
+                        }
+                        let span: f32 = col_ws.iter().sum::<f32>() + gap * 4.0;
+                        let r = f.solve(egui::vec2(span, 1.0))[i];
+                        egui::Rect::from_min_size(
+                            egui::pos2(left + r.min.x, 0.0),
+                            egui::vec2(r.width(), 1.0),
+                        )
+                    };
+
                     let paint_col_hdr = |ui: &mut egui::Ui| {
                         let hdr_h = font_sm() + 2.0;
                         let (hdr_rect, _) =
@@ -1810,22 +1834,18 @@ if is_spawn || watchlist.open {
                         let hp = ui.painter_at(hdr_rect);
                         let hdr_color = color_dim(t.dim);
                         let hy = hdr_rect.center().y;
-                        let mut hx = hdr_rect.left() + col_chk + gap;
-                        for (label, cw) in [
-                            ("STK", col_stk), ("BID", col_bid),
-                            ("ASK", col_ask), ("OI", col_oi),
-                        ] {
+                        for (i, label) in [(1, "STK"), (2, "BID"), (3, "ASK"), (4, "OI")] {
+                            let c = col_at(hdr_rect.left(), i);
                             // RIGHT-aligned to the same edge the data uses, so
                             // header and column share one rule rather than two
                             // conventions that have to be kept in sync.
                             hp.text(
-                                egui::pos2(hx + cw, hy),
+                                egui::pos2(c.right(), hy),
                                 egui::Align2::RIGHT_CENTER,
                                 label,
                                 mono_sm(),
                                 hdr_color,
                             );
-                            hx += cw + gap;
                         }
                     };
 
@@ -1855,7 +1875,6 @@ if is_spawn || watchlist.open {
                         if row_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                         cursor::focus_ring(ui, &row_resp, t.accent);
 
-                        let mut x = rect.left();
                         let y_center = rect.center().y;
                         let painter = ui.painter();
                         // Reuse one scratch buffer across all per-row format calls (alloc reduction).
@@ -1863,10 +1882,9 @@ if is_spawn || watchlist.open {
 
                         // Check mark
                         if is_saved {
-                            painter.text(egui::pos2(x + col_chk * 0.5, y_center), egui::Align2::CENTER_CENTER,
+                            painter.text(egui::pos2(col_at(rect.left(), 0).center().x, y_center), egui::Align2::CENTER_CENTER,
                                 Icon::CHECK, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), t.accent);
                         }
-                        x += col_chk + gap;
 
                         // Strike — RIGHT-aligned, like every numeric column
                         // below. Decimal points and digit places line up down
@@ -1874,29 +1892,26 @@ if is_spawn || watchlist.open {
                         // tables right-align: it lets the eye compare
                         // magnitude vertically without reading each value.
                         s.clear(); let _ = write!(s, "{:.0}", row.strike);
-                        painter.text(egui::pos2(x + col_stk, y_center), egui::Align2::RIGHT_CENTER,
+                        painter.text(egui::pos2(col_at(rect.left(), 1).right(), y_center), egui::Align2::RIGHT_CENTER,
                             &s, mono_lg(), t.text);
-                        x += col_stk + gap;
 
                         // Bid
                         s.clear(); let _ = write!(s, "{:.2}", row.bid);
-                        painter.text(egui::pos2(x + col_bid, y_center), egui::Align2::RIGHT_CENTER,
+                        painter.text(egui::pos2(col_at(rect.left(), 2).right(), y_center), egui::Align2::RIGHT_CENTER,
                             &s, mono_lg(), color);
-                        x += col_bid + gap;
 
                         // Ask
                         s.clear(); let _ = write!(s, "{:.2}", row.ask);
-                        painter.text(egui::pos2(x + col_ask, y_center), egui::Align2::RIGHT_CENTER,
+                        painter.text(egui::pos2(col_at(rect.left(), 3).right(), y_center), egui::Align2::RIGHT_CENTER,
                             &s, mono_lg(), t.dim);
-                        x += col_ask + gap;
 
                         // OI
                         s.clear();
                         if row.oi >= 1_000_000 { let _ = write!(s, "{:.1}M", row.oi as f32 / 1_000_000.0); }
                         else if row.oi >= 1_000 { let _ = write!(s, "{},{:03}", row.oi / 1000, row.oi % 1000); }
                         else { let _ = write!(s, "{}", row.oi); }
-                        let oi_x = x;
-                        painter.text(egui::pos2(x + col_oi, y_center), egui::Align2::RIGHT_CENTER,
+                        let oi_x = col_at(rect.left(), 4).left();
+                        painter.text(egui::pos2(col_at(rect.left(), 4).right(), y_center), egui::Align2::RIGHT_CENTER,
                             &s, TextStyle::MonoSm.font_id_in(ui), color_half(t.dim));
 
                         // IV indicator — left edge strip on the row

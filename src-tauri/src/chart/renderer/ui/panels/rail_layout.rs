@@ -103,28 +103,56 @@ pub fn compute_rail_rects(
     gap: f32,
     rail_height: f32,
 ) -> (Vec<RailPanelRect>, f32 /* total rail width */) {
+    use crate::ui_kit::layout::{Flex, Item};
+
     let cols = pack_columns(heights);
     let mut out = Vec::with_capacity(heights.len());
-    let mut x = origin.x;
-    for col in &cols {
+
+    // Columns across, panels down — both SOLVED.
+    //
+    // Was `x += col_width + gap` around `y += h + gap`, with the rail's total
+    // width recovered afterwards as `x - origin.x - gap` — the trailing gap
+    // subtracted back off because the walk had added one gap too many. That
+    // correction is the tell: a cursor that has to be un-advanced at the end is
+    // describing a layout it does not model.
+    let col_rects = {
+        let mut f = Flex::row().gap(gap);
+        for _ in &cols {
+            f = f.item(Item::fixed(col_width));
+        }
+        let span = col_width * cols.len() as f32
+            + gap * (cols.len().saturating_sub(1)) as f32;
+        f.solve(egui::vec2(span, rail_height))
+    };
+
+    for (col, crect) in cols.iter().zip(col_rects.iter()) {
         // Heights are ABSOLUTE fractions of the column (Full = 1, Half = ½),
         // NOT normalized to the column's contents — so a lone Half genuinely
         // occupies the top half and leaves the bottom half open (clear visual
         // feedback that the panel is split, and room for a second instance).
         let inner_h = (rail_height - gap * (col.members.len().saturating_sub(1)) as f32).max(0.0);
-        let mut y = origin.y;
-        for &i in &col.members {
-            let frac = heights[i].units() as f32 / COLUMN_UNITS as f32;
-            let h = (inner_h * frac).max(0.0);
+        let panel_rects = {
+            let mut f = Flex::column().gap(gap);
+            for &i in &col.members {
+                let frac = heights[i].units() as f32 / COLUMN_UNITS as f32;
+                f = f.item(Item::fixed((inner_h * frac).max(0.0)));
+            }
+            f.solve(egui::vec2(col_width, rail_height))
+        };
+        for (&i, pr) in col.members.iter().zip(panel_rects.iter()) {
             out.push(RailPanelRect {
                 panel: i,
-                rect: egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(col_width, h)),
+                rect: egui::Rect::from_min_size(
+                    egui::pos2(origin.x + crect.min.x, origin.y + pr.min.y),
+                    egui::vec2(col_width, pr.height()),
+                ),
             });
-            y += h + gap;
         }
-        x += col_width + gap;
     }
-    let total_w = if cols.is_empty() { 0.0 } else { x - origin.x - gap };
+
+    // The rail's extent is now the last column's right edge — stated, rather
+    // than reconstructed by undoing the final gap.
+    let total_w = col_rects.last().map_or(0.0, |r| r.max.x);
     (out, total_w.max(0.0))
 }
 

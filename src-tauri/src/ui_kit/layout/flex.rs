@@ -1630,3 +1630,57 @@ mod flex_basis_tests {
         assert!(total <= 200.5, "row overflowed its container: {total}");
     }
 }
+
+#[cfg(test)]
+mod walk_equivalence_tests {
+    use super::{Flex, Item};
+    use egui::Vec2;
+
+    /// A row of fixed items with a uniform gap lands EXACTLY where a cumulative
+    /// `x += w + gap` walk lands.
+    ///
+    /// This is the property every column-table migration in this codebase rests
+    /// on — the option chain, `panel_list_row`, the pane-header clusters. Those
+    /// surfaces are hard to photograph (they need live data, the right tab, and
+    /// nothing overlapping them), so asserting the arithmetic is both stronger
+    /// evidence and permanent: a screenshot proves one frame, this proves the
+    /// rule.
+    #[test]
+    fn fixed_columns_match_a_cumulative_walk() {
+        let widths = [14.0_f32, 44.0, 56.0, 56.0, 56.0]; // the option chain's
+        let gap = 6.0_f32;
+
+        let mut f = Flex::row().gap(gap);
+        for w in widths {
+            f = f.item(Item::fixed(w));
+        }
+        let span: f32 = widths.iter().sum::<f32>() + gap * (widths.len() - 1) as f32;
+        let solved = f.solve(Vec2::new(span, 20.0));
+
+        let mut x = 0.0_f32;
+        for (i, w) in widths.iter().enumerate() {
+            assert!((solved[i].min.x - x).abs() < 0.01,
+                "column {i} left: solved {} vs walk {x}", solved[i].min.x);
+            assert!((solved[i].width() - w).abs() < 0.01,
+                "column {i} width: solved {} vs {w}", solved[i].width());
+            x += w + gap;
+        }
+    }
+
+    /// The trailing gap is NOT part of the row's extent.
+    ///
+    /// `rail_layout` had to subtract it back off (`x - origin.x - gap`) because
+    /// its walk added one gap too many. A cursor that must be un-advanced at the
+    /// end is describing a layout it does not model.
+    #[test]
+    fn the_row_extent_excludes_a_trailing_gap() {
+        let gap = 8.0_f32;
+        let solved = Flex::row()
+            .gap(gap)
+            .item(Item::fixed(30.0))
+            .item(Item::fixed(30.0))
+            .solve(Vec2::new(68.0, 20.0));
+        assert!((solved.last().unwrap().max.x - 68.0).abs() < 0.01,
+            "extent was {}", solved.last().unwrap().max.x);
+    }
+}
