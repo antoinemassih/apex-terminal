@@ -44,7 +44,7 @@
 
 use std::collections::HashMap;
 
-use egui::{Rect, Response, Ui, Vec2};
+use egui::{Align, Rect, Response, Ui, Vec2};
 
 use super::context::{self, Inherited};
 use crate::ui_kit::layout::{Flex, Item};
@@ -223,11 +223,20 @@ impl El {
                 let Some(ui) = ui else { return 0.0 };
                 let t = tier.or(here.text_style).unwrap_or(TextStyle::Body);
                 let font = t.font_id_in(ui);
-                ui.fonts(|f| {
+                let base = ui.fonts(|f| {
                     f.layout_no_wrap(text.clone(), font, egui::Color32::PLACEHOLDER)
                         .size()
                         .x
-                })
+                });
+                // Tracking widens the node. Measuring without it would size the
+                // slot for untracked text and then paint tracked text into it —
+                // a right-aligned or centred sibling would be placed wrong, and
+                // an overflowing one would clip. Layout and paint have to read
+                // the same declaration.
+                match here.letter_spacing {
+                    Some(px) if !text.is_empty() => base + px * (text.chars().count() - 1) as f32,
+                    _ => base,
+                }
             }
             Kind::Spacer { .. } => 0.0,
             Kind::Button { label, .. } => {
@@ -386,13 +395,59 @@ fn paint(
             let t = tier.or(here.text_style).unwrap_or(TextStyle::Body);
             let col = here.color_or(crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Text));
             let font = t.font_id_in(ui);
-            ui.painter().text(
-                egui::pos2(rect.left(), rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                text,
-                font,
-                col,
-            );
+
+            // `text_align` and `letter_spacing` are honoured HERE, and until
+            // recently they were not honoured anywhere.
+            //
+            // Both sat in `Inherited` with builders (`.align()`,
+            // `.letter_spacing()`), a docstring explaining that CSS inherits
+            // them, and a test asserting they exist — and no consumer. A caller
+            // could declare a right-aligned subtree and get left-aligned text
+            // with no error, no warning and no failing test. That is worse than
+            // a missing feature: a declaration that silently does nothing is
+            // the "familiar API that lies" this module's own docs warn about.
+            let (anchor_x, align) = match here.text_align {
+                Some(Align::Center) => (rect.center().x, egui::Align2::CENTER_CENTER),
+                Some(Align::Max) => (rect.right(), egui::Align2::RIGHT_CENTER),
+                // `Align::Min` and absent both mean left — absent is "the
+                // widget's own default", and a text node's own default is left.
+                _ => (rect.left(), egui::Align2::LEFT_CENTER),
+            };
+            let pos = egui::pos2(anchor_x, rect.center().y);
+
+            match here.letter_spacing {
+                // The common path: no tracking declared, so lay the text out
+                // the cheap way rather than building a `LayoutJob` per node.
+                None => {
+                    ui.painter().text(pos, align, text, font, col);
+                }
+                Some(px) => {
+                    let mut job = egui::text::LayoutJob::single_section(
+                        text,
+                        egui::TextFormat {
+                            font_id: font,
+                            color: col,
+                            extra_letter_spacing: px,
+                            ..Default::default()
+                        },
+                    );
+                    job.wrap.max_width = f32::INFINITY;
+                    let galley = ui.fonts(|f| f.layout_job(job));
+                    let size = galley.size();
+                    // `painter.galley` takes a TOP-LEFT corner, so the anchor
+                    // has to be resolved by hand here — `Align2` does that for
+                    // `painter.text` and there is no equivalent for a galley.
+                    let origin = egui::pos2(
+                        match align {
+                            egui::Align2::CENTER_CENTER => pos.x - size.x * 0.5,
+                            egui::Align2::RIGHT_CENTER => pos.x - size.x,
+                            _ => pos.x,
+                        },
+                        pos.y - size.y * 0.5,
+                    );
+                    ui.painter().galley(origin, galley, col);
+                }
+            }
         }
         Kind::Spacer { .. } => {}
         Kind::Button { id, label } => {
@@ -418,13 +473,33 @@ mod tests {
     /// `__run_test_ui` with the tiers installed — the same harness
     /// `panel_section` uses. Without `TextStyle::install` the raw test context
     /// has no entry for our named tiers and text layout panics inside egui.
-    fn run(f: impl FnOnce(&mut Ui)) {
+    /// A test `Ui` with a WORKING font atlas.
+    ///
+    /// `egui::__run_test_ui` runs a single frame, and on a context's first
+    /// frame the font atlas has not been built — `layout_no_wrap` returns width
+    /// 0 for every string. A probe confirmed it: `raw_layout_width=0` for
+    /// "WIDE TEXT" under the old harness.
+    ///
+    /// That is not a harmless detail. Every assertion in this file that
+    /// depends on how wide text IS was comparing zeros, so a row of text nodes
+    /// laid out as if all its children were empty and the test agreed. It is
+    /// the render-blind failure in miniature: green, and measuring nothing.
+    ///
+    /// `label.rs::truncate_tests` already had the fix — run one throwaway
+    /// frame, then measure in the next. Hoisted here so the element tree gets
+    /// the same guarantee.
+    pub(super) fn run(f: impl FnOnce(&mut Ui)) {
+        let ctx = egui::Context::default();
+        // Frame 1: builds the font atlas. Deliberately does nothing else.
+        let _ = ctx.run(Default::default(), |_| {});
         let f = Cell::new(Some(f));
-        egui::__run_test_ui(|ui| {
-            TextStyle::install(ui.style_mut());
-            if let Some(f) = f.take() {
-                f(ui);
-            }
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                TextStyle::install(ui.style_mut());
+                if let Some(f) = f.take() {
+                    f(ui);
+                }
+            });
         });
     }
 
@@ -589,5 +664,166 @@ fn solve(el: El, ui: Option<&Ui>, rect: Rect, inherited: Inherited, out: &mut Re
             out.rects.insert(id, rect);
         }
         Kind::Text { .. } | Kind::Spacer { .. } => {}
+    }
+}
+
+#[cfg(test)]
+mod inert_declaration_tests {
+    //! Guards against a declaration that compiles, reads well, and does
+    //! nothing.
+    //!
+    //! `text_align` and `letter_spacing` shipped in `Inherited` with builders,
+    //! a docstring citing CSS, and a test asserting the fields existed — and no
+    //! consumer anywhere. Every test passed. The only way to notice was to grep
+    //! for readers and find none.
+    //!
+    //! So these assert on OBSERVABLE output, not on the fields: each declares a
+    //! property and checks that what the tree produced actually moved.
+    use super::*;
+    use crate::ui_kit::cascade::{context, Inherited};
+    use crate::ui_kit::widgets::theme::PortableTheme;
+    use std::cell::{Cell, RefCell};
+
+    /// See `tests::run` — one throwaway frame first, so the font atlas exists
+    /// and text measures its real width instead of 0.
+    fn run(f: impl FnOnce(&mut Ui)) {
+        super::tests::run(f)
+    }
+
+    /// The intrinsic width of a text node, read as where its next sibling
+    /// starts. A zero-width trailing slot is the probe.
+    fn text_width(ui: &mut Ui, delta: Inherited, text: &str) -> f32 {
+        context::reset_for_frame();
+        context::scope(delta, || {
+            El::row()
+                .child(El::text(text))
+                .child(El::slot("after", Vec2::ZERO))
+                .solve_in(
+                    ui,
+                    Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(600.0, 20.0)),
+                )
+                .rect("after")
+                .left()
+        })
+    }
+
+    /// Tracking must WIDEN the measured node.
+    ///
+    /// If `intrinsic()` ignored the declaration, every tracked node would be
+    /// measured for untracked text: a right-aligned sibling would be placed
+    /// wrong and an overflowing one would clip. Layout and paint have to read
+    /// the same declaration, so this asserts the layout half.
+    #[test]
+    fn letter_spacing_widens_the_measured_node() {
+        let out = RefCell::new((0.0_f32, 0.0_f32));
+        run(|ui| {
+            let plain = text_width(ui, Inherited::default(), "WIDE TEXT");
+            let tracked = text_width(ui, Inherited::default().letter_spacing(4.0), "WIDE TEXT");
+            *out.borrow_mut() = (plain, tracked);
+        });
+        let (p, t) = out.into_inner();
+        // 9 characters at +4px = +32px of tracking (n-1 gaps).
+        assert!(
+            t > p + 24.0,
+            "letter_spacing must widen the measured node: plain={p}, tracked={t}.              Equal means `intrinsic()` is ignoring the declaration."
+        );
+    }
+
+    /// The harness itself, under test.
+    ///
+    /// Text measured 0 px wide for the entire life of this file, because
+    /// `egui::__run_test_ui` runs ONE frame and a context has no font atlas on
+    /// its first. Nothing failed — a row of text nodes was laid out as if every
+    /// child were empty, and the assertions agreed, because they were comparing
+    /// zeros to zeros.
+    ///
+    /// This guards the fix rather than any feature. If someone restores the
+    /// single-frame harness, every width-dependent assertion in this file goes
+    /// quietly vacuous again, and only this test says so.
+    #[test]
+    fn the_harness_can_actually_measure_text() {
+        let out = RefCell::new((0.0_f32, 0.0_f32));
+        run(|ui| {
+            let f = TextStyle::Body.font_id_in(ui);
+            let raw = ui.fonts(|fo| {
+                fo.layout_no_wrap("WIDE TEXT".to_string(), f, egui::Color32::WHITE).size().x
+            });
+            *out.borrow_mut() = (raw, text_width(ui, Inherited::default(), "WIDE TEXT"));
+        });
+        let (raw, via_tree) = out.into_inner();
+        assert!(
+            raw > 20.0,
+            "the test font atlas is not built — text measures {raw} px. Every              width assertion in this file is vacuous until this passes."
+        );
+        assert!(
+            (raw - via_tree).abs() < 0.01,
+            "the tree must measure text the same way egui does: raw={raw}, tree={via_tree}"
+        );
+    }
+
+    /// Absent tracking must measure exactly as before — the property is opt-in.
+    #[test]
+    fn no_tracking_declared_leaves_the_measurement_alone() {
+        let out = RefCell::new((0.0_f32, 0.0_f32));
+        run(|ui| {
+            let unscoped = text_width(ui, Inherited::default(), "WIDE TEXT");
+            let zero = text_width(ui, Inherited::default().letter_spacing(0.0), "WIDE TEXT");
+            *out.borrow_mut() = (unscoped, zero);
+        });
+        let (u, z) = out.into_inner();
+        assert!((u - z).abs() < 0.01, "0px tracking must equal no tracking: {u} vs {z}");
+    }
+
+    /// Alignment must move the PAINTED anchor.
+    ///
+    /// Asserted on the paint path, because alignment is not a layout property
+    /// here: the slot is the same rect either way and only the glyph origin
+    /// inside it changes. A test on rects would pass whether or not `paint`
+    /// honoured the property — which is exactly how this went unnoticed.
+    #[test]
+    fn text_align_changes_the_painted_anchor() {
+        fn anchor_x(align: Option<Align>) -> f32 {
+            let got = RefCell::new(f32::NAN);
+            let a = Cell::new(align);
+            egui::__run_test_ui(|ui| {
+                TextStyle::install(ui.style_mut());
+                let theme = PortableTheme::dark();
+                let mut delta = Inherited::default();
+                if let Some(a) = a.get() {
+                    delta = delta.align(a);
+                }
+                context::reset_for_frame();
+                context::scope(delta, || {
+                    El::row().child(El::text("ABC").grow(1.0)).show_in(
+                        ui,
+                        &theme,
+                        Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(300.0, 20.0)),
+                    );
+                });
+                let layer = ui.layer_id();
+                let x = ui.ctx().graphics(|g| {
+                    g.get(layer).and_then(|l| {
+                        l.all_entries()
+                            .filter_map(|cs| match &cs.shape {
+                                egui::Shape::Text(ts) => Some(ts.pos.x),
+                                _ => None,
+                            })
+                            .last()
+                    })
+                });
+                *got.borrow_mut() = x.unwrap_or(f32::NAN);
+            });
+            got.into_inner()
+        }
+
+        let l = anchor_x(None);
+        let c = anchor_x(Some(Align::Center));
+        let r = anchor_x(Some(Align::Max));
+        assert!(l.is_finite() && c.is_finite() && r.is_finite(),
+            "no text shape was painted: left={l}, center={c}, right={r}");
+        assert!(
+            l < c && c < r,
+            "align must move the painted anchor: left={l}, center={c}, right={r}.              All three equal means `paint` is ignoring `text_align` again."
+        );
     }
 }

@@ -1212,3 +1212,62 @@ times, the containment model, now the dead-code ratchet. A number that agrees
 with you is the one to re-derive.
 
 ---
+
+## AT-166 — two declarations that did nothing, and a harness that measured nothing
+
+Three findings, each one found by asking a question the passing tests could not
+answer.
+
+**1. The element tree does not paint anything.** The adoption floor read
+"El 99" and looked healthy. Broken down by node kind: 73 `slot`, 17 `row`,
+9 `column`, and **0 `text`, 0 `button`, 0 `spacer`**. Zero production trees call
+`show`/`show_in`. The tree is being used as a layout solver — which is real
+work, and is not what it was built to be. Its component half (`El::text`,
+`El::button`, `El::spacer`, and the entire `paint()` function) has no consumer
+outside tests.
+
+That is `sx::recipes` again, and the adoption gate cannot see it because it
+counts `El::slot` identically to `El::text`. A floor that any node satisfies is
+a floor against abandonment, not against hollowness.
+
+**2. `text_align` and `letter_spacing` were inert.** Both sit in `Inherited`
+with builders (`.align()`, `.letter_spacing()`), a module docstring explaining
+that CSS inherits them, and a test asserting the fields exist. Neither was read
+anywhere. A caller could declare a right-aligned subtree and get left-aligned
+text with no error, no warning and no failing test — the "familiar API that
+lies" that `context.rs`'s own docs warn against, shipped in the file that warns
+about it.
+
+`paint` now honours both, and `intrinsic()` accounts for tracking (measuring
+without it would size a slot for untracked text and then paint tracked text
+into it, misplacing every right-aligned sibling). Guarded by tests that assert
+on OUTPUT — painted anchor x, measured width — because a test on the fields
+would have passed the whole time. Both were mutation-checked: reverting either
+consumer fails them.
+
+**3. The test harness measured all text as 0 px wide.** `egui::__run_test_ui`
+runs one frame, and a context has no font atlas on its first, so
+`layout_no_wrap` returned width 0 for every string. Probed directly:
+`raw_layout_width=0` for "WIDE TEXT". Every width-dependent assertion in
+`element.rs` was comparing zeros to zeros — a row of text nodes laid out as if
+all its children were empty, and the tests agreed.
+
+`label.rs::truncate_tests` already had the fix and had had it for a long time:
+run one throwaway frame, then measure in the next. Hoisted into
+`cascade::element::tests::run` and `panel_section`'s harness. Text now measures
+53.875 px where it measured 0.
+
+**Nothing failed when the harness was fixed** — all 1163 tests still pass. The
+assertions were weaker than they looked rather than wrong, which is the
+uncomfortable version: there was no failure to find, and no failure to warn
+anyone. `the_harness_can_actually_measure_text` now asserts the atlas exists,
+so a revert to the single-frame harness fails loudly instead of going quiet.
+
+**The pattern, third entry running.** AT-164: local gate runs were complete
+against a list derived from one workflow. AT-165: the dead-code ratchet counted
+prose. AT-166: the adoption floor counts placeholder nodes, and the harness
+measured nothing. Every instrument built this session has erred toward
+flattering the work, and every one was caught by measuring the instrument
+rather than reading its output.
+
+---

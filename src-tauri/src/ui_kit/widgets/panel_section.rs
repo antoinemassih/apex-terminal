@@ -1127,15 +1127,27 @@ mod tests {
     /// `as_rich_cascading` (used by the header's count/meta labels) resolves
     /// a `Name` text-style that is missing from the raw test context's table
     /// and panics inside egui.
+    /// Two frames, not one.
+    ///
+    /// `egui::__run_test_ui` runs a single frame, and a context has no font
+    /// atlas on its first — every string measures 0 px wide. These particular
+    /// tests are behavioural (does the body run, does the chevron toggle) so
+    /// nothing here was wrong, but the next width assertion added to this
+    /// module would have been silently vacuous. Same fix as
+    /// `cascade::element::tests::run`, where it WAS masking something.
     fn run_test_ui(f: impl FnOnce(&mut Ui)) {
-        // `__run_test_ui` wants `impl Fn`; hand the FnOnce through a Cell so
-        // the (single) invocation stays compatible.
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |_| {});
+        // `run` wants `impl FnMut`; hand the FnOnce through a Cell so the
+        // (single) invocation stays compatible.
         let f = Cell::new(Some(f));
-        egui::__run_test_ui(|ui| {
-            TextStyle::install(ui.style_mut());
-            if let Some(f) = f.take() {
-                f(ui);
-            }
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                TextStyle::install(ui.style_mut());
+                if let Some(f) = f.take() {
+                    f(ui);
+                }
+            });
         });
     }
 
