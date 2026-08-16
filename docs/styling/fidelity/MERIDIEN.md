@@ -118,13 +118,34 @@ would have sent us optimising the wrong axis.
 
 ## 3. Signature devices we do not implement
 
-- **Numbered section headers.** The source labels every panel `01 WATCHLIST`,
-  `02 ORDER BOOK`, `03 POSITIONS`, `04 ORDER TICKET` — accent numeral +
-  uppercase mono title. It is the most recognisable thing about the layout. We
-  have none of it.
+- ~~**Numbered section headers.**~~ **DONE — verified 2026-08-16.** The source
+  labels every panel `01 WATCHLIST`, `02 ORDER BOOK` — accent numeral +
+  uppercase mono title, the most recognisable thing about the layout.
+  Implemented since this section was written: `PanelSection` emits
+  `format!("{:02}", next_section_ordinal(ctx))` in the header's lead slot, in
+  `ordinal_font` and accent colour, gated on `style_numbers_sections()` which
+  reads `Treatments.numbered_section_labels`.
+
+  Four styles number (meridien, lucid, alto, mariner) and two do not (aperture,
+  cadence), which matches the bespoke apps — see the correction note below about
+  `normalized.html` claiming all six.
+
+  Screenshot evidence: `ref/meridien-numbered-sections-2026-08-16.png` shows
+  `01 APEX SCRIPT` rendering with the terracotta ordinal.
+
+  Left stale for a while, and worth noting why that matters: this file said "We
+  have none of it" about a shipped feature, and it is the document someone would
+  read to decide what to build next. A stale gap list does not just fail to
+  help — it actively schedules work that is already done.
 - **Right-aligned panel meta.** Each header carries a muted right-side caption
   (`MEGACAPS`, `LVL 2 · 14 DEEP`, `3 OPEN`, `INTRADAY`). We have counts, not
   captions.
+
+  **Still open, but it is CONTENT, not system.** The header already has a `meta`
+  slot — `PanelSection`'s keyed layout carries `Slot::Meta`, solved and painted
+  right-aligned, and panels such as `alerts_panel` pass one. Closing this means
+  each panel passing the source's caption instead of a count. No design-system
+  work is required, which also means no gate will ever tell you it is missing.
 - ~~**Outlined panel cards.**~~ **WITHDRAWN — not a gap.** This came from
   `normalized.html` (see [SOURCES.md](SOURCES.md)). The bespoke apps use grid
   RULES, not outlined cards: `.panel` carries `border-right` + `border-bottom`
