@@ -202,12 +202,8 @@ pub struct ShadowPreset {
 pub struct ShadowPresetTokens {
     /// Resting card / panel — subtle lift.
     pub card: ShadowPreset,
-    /// Modal dialog — tall, soft.
-    pub modal: ShadowPreset,
     /// Tooltip — small, crisp.
     pub tooltip: ShadowPreset,
-    /// Dropdown / popover — medium drop.
-    pub dropdown: ShadowPreset,
 }
 
 #[cfg(feature = "design-mode")]
@@ -216,12 +212,8 @@ impl Default for ShadowPresetTokens {
         Self {
             // Mirrors components/frames.rs card_frame defaults (offset 2, blur 4, alpha 60).
             card:     ShadowPreset { offset: [0, 2],  blur: 4,  spread: 0, alpha: 60 },
-            // Mirrors components/frames.rs dialog_frame (offset 0,8 / blur 28 / spread 2 / a 80).
-            modal:    ShadowPreset { offset: [0, 8],  blur: 28, spread: 2, alpha: 80 },
             // Mirrors style.rs paint_tooltip_shadow (offset+offset, alpha 60).
             tooltip:  ShadowPreset { offset: [0, 2],  blur: 0,  spread: 0, alpha: 60 },
-            // Mirrors components/frames.rs themed_popup_frame (offset 0,8 / blur 24 / spread 1 / a 40).
-            dropdown: ShadowPreset { offset: [0, 8],  blur: 24, spread: 1, alpha: 40 },
         }
     }
 }

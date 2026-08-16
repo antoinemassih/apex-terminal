@@ -291,7 +291,7 @@ impl<'a> ToolOverlay<'a> {
                 .interactable(false)
                 .show(ctx, |ui| {
                     ui.set_opacity(appear);
-                    super::paint_shadow_gpu(ui.painter(), r, super::ShadowSpec::md_themed(theme));
+                    super::paint_shadow_gpu(ui.painter(), r, super::ShadowPaint::md_themed(theme));
                 });
         }
 

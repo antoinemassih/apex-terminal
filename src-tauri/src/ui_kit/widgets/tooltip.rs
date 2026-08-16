@@ -169,7 +169,7 @@ impl<'a> Tooltip<'a> {
                 super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
-                    super::ShadowSpec::sm_themed(theme).color({
+                    super::ShadowPaint::sm_themed(theme).color({
                         let s = theme.shadow_color();
                         crate::ui_kit::style::color_alpha(s, 48)
                     }),

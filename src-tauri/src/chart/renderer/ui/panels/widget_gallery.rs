@@ -16,7 +16,7 @@ use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::widgets::{
     paint_shadow, Alert, Badge, Button, Checkbox, ContextMenu, HoverCard, Input, Kbd, Label,
     Modal, Pagination, PolishedFontWeight, PolishedLabel, Popover, Progress,
-    Select, Separator, ShadowSpec, Skeleton, Slider, Spinner, Stepper, Switch, TabItem,
+    Select, Separator, ShadowPaint, Skeleton, Slider, Spinner, Stepper, Switch, TabItem,
     TabTreatment, Tabs, Tag, TagTone, Tooltip,
 };
 
@@ -467,11 +467,11 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
 
     // 15. Shadow showcase
     section(ui, theme, "15. Shadow showcase");
-    let presets: [(&str, ShadowSpec); 4] = [
-        ("sm", ShadowSpec::sm_themed(theme)),
-        ("md", ShadowSpec::md_themed(theme)),
-        ("lg", ShadowSpec::lg_themed(theme)),
-        ("xl", ShadowSpec::xl_themed(theme)),
+    let presets: [(&str, ShadowPaint); 4] = [
+        ("sm", ShadowPaint::sm_themed(theme)),
+        ("md", ShadowPaint::md_themed(theme)),
+        ("lg", ShadowPaint::lg_themed(theme)),
+        ("xl", ShadowPaint::xl_themed(theme)),
     ];
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 32.0;

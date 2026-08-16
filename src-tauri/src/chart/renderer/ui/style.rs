@@ -213,6 +213,11 @@ pub fn begin_frame() {
         stroke_std,
         stroke_bold,
         stroke_thick,
+        // Elevation ladder — uniformly direct, see the TokenSnapshot comment.
+        elev_sm: ass.shadows.tiers.sm,
+        elev_md: ass.shadows.tiers.md,
+        elev_lg: ass.shadows.tiers.lg,
+        elev_xl: ass.shadows.tiers.xl,
         // Alphas.
         alpha_faint:   if let Some(ref ov) = override_style { ov.alphas.faint     } else { crate::dt_u8!(alpha.faint,  al.faint)     },
         alpha_ghost:   if let Some(ref ov) = override_style { ov.alphas.ghost     } else { crate::dt_u8!(alpha.ghost,  al.ghost)     },
@@ -707,26 +712,6 @@ pub fn shadow_card_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow 
     shadow_from_preset_themed(t, [0, 2], 4, 0, 60)
 }
 
-/// Modal dialog — tall, soft. Defaults: offset (0,8), blur 28, spread 2, alpha 80.
-pub fn shadow_modal() -> egui::epaint::Shadow {
-    #[cfg(feature = "design-mode")]
-    if let Some(t) = crate::design_tokens::get() {
-        let p = t.shadow_preset.modal;
-        return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
-    }
-    shadow_from_preset([0, 8], 28, 2, 80)
-}
-
-/// Modal dialog — theme-aware. Use this in new code.
-pub fn shadow_modal_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
-    #[cfg(feature = "design-mode")]
-    if let Some(dt) = crate::design_tokens::get() {
-        let p = dt.shadow_preset.modal;
-        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
-    }
-    shadow_from_preset_themed(t, [0, 8], 28, 2, 80)
-}
-
 /// Tooltip — small, crisp. Used for hover bubbles.
 pub fn shadow_tooltip() -> egui::epaint::Shadow {
     #[cfg(feature = "design-mode")]
@@ -745,26 +730,6 @@ pub fn shadow_tooltip_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shad
         return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
     }
     shadow_from_preset_themed(t, [0, 2], 0, 0, 60)
-}
-
-/// Dropdown / popover. Defaults: offset (0,8), blur 24, spread 1, alpha 40.
-pub fn shadow_dropdown() -> egui::epaint::Shadow {
-    #[cfg(feature = "design-mode")]
-    if let Some(t) = crate::design_tokens::get() {
-        let p = t.shadow_preset.dropdown;
-        return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
-    }
-    shadow_from_preset([0, 8], 24, 1, 40)
-}
-
-/// Dropdown / popover — theme-aware. Use this in new code.
-pub fn shadow_dropdown_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
-    #[cfg(feature = "design-mode")]
-    if let Some(dt) = crate::design_tokens::get() {
-        let p = dt.shadow_preset.dropdown;
-        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
-    }
-    shadow_from_preset_themed(t, [0, 8], 24, 1, 40)
 }
 
 // ─── Elevation tints ─────────────────────────────────────────────────────────

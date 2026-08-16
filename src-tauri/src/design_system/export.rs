@@ -113,6 +113,16 @@ impl StyleSystem {
             })
         };
 
+        // One rung of the elevation ladder. `radius` is Gaussian sigma, not a
+        // corner radius — deliberately a different shape from `shadow_obj`.
+        let tier_obj = |t: &super::style_system::ShadowTier| -> Value {
+            json!({
+                "radius":   { "$type": "dimension", "$value": t.radius },
+                "offset_y": { "$type": "dimension", "$value": t.offset_y },
+                "alpha":    { "$type": "number",    "$value": t.alpha },
+            })
+        };
+
         let root = json!({
             "meta": {
                 "id":      self.meta.id,
@@ -249,7 +259,16 @@ impl StyleSystem {
                 "card":     shadow_obj(&sh.card),
                 "modal":    shadow_obj(&sh.modal),
                 "tooltip":  shadow_obj(&sh.tooltip),
-                "dropdown": shadow_obj(&sh.dropdown),
+                // The elevation ladder. A pack that omits this still loads with
+                // the ladder it was authored against — but one that TUNES it
+                // must round-trip, and the export link is the one this chain
+                // has silently dropped three separate times.
+                "tiers": {
+                    "sm": tier_obj(&sh.tiers.sm),
+                    "md": tier_obj(&sh.tiers.md),
+                    "lg": tier_obj(&sh.tiers.lg),
+                    "xl": tier_obj(&sh.tiers.xl),
+                },
             },
             "treatments": {
                 "solid_active_fills":         bool_tok!(tr.solid_active_fills),

@@ -3,7 +3,7 @@
 //! ### NOTE: foundation primitive, not a widget
 //! This module is a paint primitive consumed by widgets (Modal, Popover,
 //! Sheet, ContextMenu, Tooltip). It exposes a free `paint()` function and
-//! `ShadowSpec` presets — there is no builder + `show(ui, theme)` because
+//! `ShadowPaint` presets — there is no builder + `show(ui, theme)` because
 //! shadows are painted *underneath* a widget's own rect, not as a
 //! standalone interactive element. The "Builder + show()" rule in
 //! `CLAUDE.md` does not apply here.
@@ -19,13 +19,13 @@
 //! indistinguishable from a true Gaussian blur up to ~24px radii.
 //!
 //! Public API:
-//!   shadow::paint(painter, rect, ShadowSpec { radius, offset, color });
+//!   shadow::paint(painter, rect, ShadowPaint { radius, offset, color });
 //!
-//! ShadowSpec presets:
-//!   ShadowSpec::sm()  // 8px radius, 0,2 offset  — tooltips
-//!   ShadowSpec::md()  // 16px radius, 0,4 offset — popovers, context menus
-//!   ShadowSpec::lg()  // 24px radius, 0,8 offset — modals
-//!   ShadowSpec::xl()  // 32px radius, 0,12 offset — sheets
+//! ShadowPaint presets:
+//!   ShadowPaint::sm()  // 8px radius, 0,2 offset  — tooltips
+//!   ShadowPaint::md()  // 16px radius, 0,4 offset — popovers, context menus
+//!   ShadowPaint::lg()  // 24px radius, 0,8 offset — modals
+//!   ShadowPaint::xl()  // 32px radius, 0,12 offset — sheets
 //
 // FUTURE: replace with a true two-pass separable Gaussian via
 // `egui_wgpu::CallbackTrait` for radii > 24px. The stacked-rect path
@@ -39,9 +39,17 @@ use egui::{Color32, Painter, Rect, Vec2};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::sx::{palette_ct, Tone};
 
-/// Specification for a soft drop shadow.
+/// What the shadow painter consumes.
+///
+/// Named `ShadowPaint`, not `ShadowSpec`, because `design_system::style_system`
+/// has its own `ShadowSpec` and the two are NOT the same shape: that one is a
+/// role's authored geometry (`blur`/`spread`/`offset_x`/`offset_y` + a 0.0–1.0
+/// alpha multiplier); this one is paint input (Gaussian `radius`, a `Vec2`
+/// offset, and a resolved `Color32`). Two different records under one name in
+/// one crate is how three mechanisms ended up describing the same four
+/// elevations with different numbers — see `ShadowTiers`.
 #[derive(Clone, Copy, Debug)]
-pub struct ShadowSpec {
+pub struct ShadowPaint {
     /// Gaussian-equivalent sigma in pixels. Clamped to [2, 32] at paint time.
     pub radius: f32,
     /// Translation of the shadow relative to the target rect (typically downward).
@@ -54,7 +62,7 @@ pub struct ShadowSpec {
     pub spread: f32,
 }
 
-impl ShadowSpec {
+impl ShadowPaint {
     /// Build a themed-color shadow from a base spec.
     #[inline]
     fn themed_color(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme, alpha: u8) -> Color32 {
@@ -67,42 +75,42 @@ impl ShadowSpec {
     // All callers had already migrated to the `*_themed(theme)` variants
     // below (audit confirmed 0 non-doc call sites remain).
 
-    /// Tooltips — short, low-rise, subtle. Themed tint.
+    /// Tooltips, resting cards — short, low-rise. Themed tint.
     pub fn sm_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {
-        Self {
-            radius: 8.0,
-            offset: Vec2::new(0.0, 2.0),
-            color: Self::themed_color(t, 64), // ~25% alpha
-            spread: 0.0,
-        }
+        Self::from_tier(t, crate::ui_kit::style::elev_sm())
     }
 
-    /// Popovers, context menus. Themed tint.
+    /// Popovers, context menus, dropdowns. Themed tint.
     pub fn md_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {
-        Self {
-            radius: 16.0,
-            offset: Vec2::new(0.0, 4.0),
-            color: Self::themed_color(t, 77), // ~30% alpha
-            spread: 0.0,
-        }
+        Self::from_tier(t, crate::ui_kit::style::elev_md())
     }
 
     /// Modals. Themed tint.
     pub fn lg_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {
-        Self {
-            radius: 24.0,
-            offset: Vec2::new(0.0, 8.0),
-            color: Self::themed_color(t, 89), // ~35% alpha
-            spread: 0.0,
-        }
+        Self::from_tier(t, crate::ui_kit::style::elev_lg())
     }
 
     /// Sheets, full-window overlays. Themed tint.
     pub fn xl_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {
+        Self::from_tier(t, crate::ui_kit::style::elev_xl())
+    }
+
+    /// Build a spec from an authored rung.
+    ///
+    /// The four constructors above used to hold `radius: 8.0`, `Vec2::new(0.0,
+    /// 2.0)` and `64` as bare literals. That made the elevation ladder the one
+    /// part of the design system no theme could touch — and it was ALSO
+    /// described, differently, by `StyleSystem.shadows` roles and by the
+    /// `shadow_preset` tokens, so three mechanisms disagreed about how deep a
+    /// modal sits. One ladder now, authored in `shadows.tiers`.
+    fn from_tier(
+        t: &dyn crate::ui_kit::widgets::theme::ComponentTheme,
+        tier: crate::design_system::style_system::ShadowTier,
+    ) -> Self {
         Self {
-            radius: 32.0,
-            offset: Vec2::new(0.0, 12.0),
-            color: Self::themed_color(t, 102), // ~40% alpha
+            radius: tier.radius,
+            offset: Vec2::new(0.0, tier.offset_y),
+            color: Self::themed_color(t, tier.alpha),
             spread: 0.0,
         }
     }
@@ -136,7 +144,7 @@ impl ShadowSpec {
 /// Implementation: N expanded rounded rects with decreasing alpha
 /// following a cubic ease-out curve. This approximates a Gaussian
 /// blur visually at small-to-medium radii.
-pub fn paint(painter: &Painter, target_rect: Rect, spec: ShadowSpec) {
+pub fn paint(painter: &Painter, target_rect: Rect, spec: ShadowPaint) {
     let radius = spec.radius.clamp(2.0, 32.0);
     let n_steps = radius.round() as i32;
     if n_steps <= 0 {
@@ -185,7 +193,7 @@ pub fn paint(painter: &Painter, target_rect: Rect, spec: ShadowSpec) {
 /// chart renderer hasn't published the surface format), this also falls
 /// back to the stacked-rect path. So callers can always use this function
 /// safely.
-pub fn paint_gpu(painter: &Painter, target_rect: Rect, spec: ShadowSpec) {
+pub fn paint_gpu(painter: &Painter, target_rect: Rect, spec: ShadowPaint) {
     let radius = spec.radius.clamp(2.0, 64.0);
     if radius <= 16.0 || !crate::ui_kit::widgets::shadow_pipeline::is_available() {
         return paint(painter, target_rect, spec);
@@ -237,11 +245,11 @@ pub fn show_shadow_gallery(
     ui: &mut egui::Ui,
     theme: &dyn crate::ui_kit::widgets::theme::ComponentTheme,
 ) {
-    let presets: [(&str, ShadowSpec); 4] = [
-        ("sm", ShadowSpec::sm_themed(theme)),
-        ("md", ShadowSpec::md_themed(theme)),
-        ("lg", ShadowSpec::lg_themed(theme)),
-        ("xl", ShadowSpec::xl_themed(theme)),
+    let presets: [(&str, ShadowPaint); 4] = [
+        ("sm", ShadowPaint::sm_themed(theme)),
+        ("md", ShadowPaint::md_themed(theme)),
+        ("lg", ShadowPaint::lg_themed(theme)),
+        ("xl", ShadowPaint::xl_themed(theme)),
     ];
 
     let tile_size = Vec2::new(120.0, 80.0);
@@ -265,4 +273,46 @@ pub fn show_shadow_gallery(
             );
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::design_system::style_system::{ShadowTier, ShadowTiers};
+
+    /// The four rungs must be strictly ordered on every axis.
+    ///
+    /// A ladder whose rungs are not monotonic is not a ladder — a modal would
+    /// sit shallower than a tooltip and no call site could tell, because each
+    /// constructor reads only its own rung. The three mechanisms this replaced
+    /// were each internally plausible and mutually inconsistent; ordering is
+    /// the property that makes one ladder checkable.
+    #[test]
+    fn the_elevation_ladder_is_strictly_ordered() {
+        let t = ShadowTiers::default();
+        let rungs = [("sm", t.sm), ("md", t.md), ("lg", t.lg), ("xl", t.xl)];
+        for w in rungs.windows(2) {
+            let (lo_name, lo) = w[0];
+            let (hi_name, hi) = w[1];
+            assert!(hi.radius > lo.radius, "{hi_name}.radius must exceed {lo_name}");
+            assert!(hi.offset_y > lo.offset_y, "{hi_name}.offset_y must exceed {lo_name}");
+            assert!(hi.alpha > lo.alpha, "{hi_name}.alpha must exceed {lo_name}");
+        }
+    }
+
+    /// `from_tier` must carry the authored rung through unchanged.
+    ///
+    /// This is the seam where the literals used to live. If a constructor
+    /// silently kept its old hardcoded 8.0/2.0/64, everything would still
+    /// compile, render identically at the default ladder, and ignore every
+    /// theme that authored its own depth — the same failure the cascade gate
+    /// exists to catch one layer up.
+    #[test]
+    fn from_tier_uses_the_authored_rung_not_a_literal() {
+        let theme = crate::ui_kit::widgets::theme::PortableTheme::dark();
+        let tier = ShadowTier { radius: 41.0, offset_y: 13.0, alpha: 200 };
+        let spec = super::ShadowPaint::from_tier(&theme, tier);
+        assert_eq!(spec.radius, 41.0);
+        assert_eq!(spec.offset.y, 13.0);
+        assert_eq!(spec.color.a(), 200, "authored alpha must reach the paint spec");
+    }
 }

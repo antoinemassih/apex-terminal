@@ -1448,9 +1448,21 @@ fn two_axis_style_editor(ui: &mut egui::Ui, s: &mut StyleSystem) {
         ui.label(RichText::new("tooltip").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
         two_axis_f32(ui, "  blur",     &mut s.shadows.tooltip.blur,     0.0..=32.0);
         two_axis_f32(ui, "  alpha",    &mut s.shadows.tooltip.alpha,    0.0..=1.0);
-        ui.label(RichText::new("dropdown").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
-        two_axis_f32(ui, "  blur",     &mut s.shadows.dropdown.blur,     0.0..=32.0);
-        two_axis_f32(ui, "  alpha",    &mut s.shadows.dropdown.alpha,    0.0..=1.0);
+        // The elevation ladder — the single authored source of shadow depth.
+        // Replaces the `dropdown` role sliders, which edited a field nothing
+        // read: dropdowns render from tier `md` via `ShadowPaint::md_themed`.
+        ui.label(RichText::new("tiers (elevation ladder)").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        for (name, tier) in [
+            ("sm", &mut s.shadows.tiers.sm),
+            ("md", &mut s.shadows.tiers.md),
+            ("lg", &mut s.shadows.tiers.lg),
+            ("xl", &mut s.shadows.tiers.xl),
+        ] {
+            ui.label(RichText::new(format!("  {name}")).monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+            two_axis_f32(ui, "    radius",   &mut tier.radius,   0.0..=64.0);
+            two_axis_f32(ui, "    offset_y", &mut tier.offset_y, -20.0..=20.0);
+            two_axis_u8(ui,  "    alpha",    &mut tier.alpha);
+        }
     });
 
     // ── Treatments ────────────────────────────────────────────────────────────
@@ -1555,6 +1567,21 @@ fn two_axis_f32(
             .color(Color32::from_rgb(170, 170, 180)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add(egui::DragValue::new(value).range(range).speed(0.05).max_decimals(2));
+        });
+    });
+}
+
+/// Same row as [`two_axis_f32`] for a 0–255 channel. The elevation ladder
+/// stores alpha as `u8` (the value handed to `color_alpha`) rather than the
+/// 0.0–1.0 multiplier the role specs use — one of the small mismatches that
+/// let the three shadow mechanisms drift apart.
+fn two_axis_u8(ui: &mut egui::Ui, label: &str, value: &mut u8) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.label(RichText::new(label).monospace().size(font_xs())
+            .color(Color32::from_rgb(170, 170, 180)));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add(egui::DragValue::new(value).range(0..=255).speed(1.0));
         });
     });
 }

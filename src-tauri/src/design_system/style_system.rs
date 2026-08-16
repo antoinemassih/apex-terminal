@@ -762,6 +762,57 @@ impl Default for Density {
 
 // ── Shadows ──────────────────────────────────────────────────────────────────
 
+/// One rung of the elevation ladder.
+///
+/// `radius` is Gaussian-equivalent sigma, not a corner radius — the shadow
+/// painter's own vocabulary. Kept separate from [`ShadowSpec`] (the role-shaped
+/// blur/spread/offset_x/offset_y/alpha record) because they are measured
+/// differently and conflating them is how the two disagreed for so long.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShadowTier {
+    pub radius: f32,
+    pub offset_y: f32,
+    pub alpha: u8,
+}
+
+/// The elevation ladder — the SINGLE authored source for drop-shadow depth.
+///
+/// Three mechanisms used to describe the same four elevations and disagree on
+/// every one of them:
+///
+/// | role     | `Shadows` (this file) | `shadow_preset` tokens | `ui_kit` tier |
+/// |----------|-----------------------|------------------------|---------------|
+/// | card     | blur 8, y2, a77       | blur 4, y2, a60        | sm r8 y2 a64  |
+/// | modal    | blur 24, y8, a128     | blur 28, y8, a80       | lg r24 y8 a89 |
+/// | tooltip  | blur 6, y2, a102      | blur 0, y2, a60        | sm r8 y2 a64  |
+/// | dropdown | blur 12, y4, a102     | blur 24, y8, a40       | md r16 y4 a77 |
+///
+/// Whichever path happened to render won. Tiers win by decision: roles are
+/// aliases onto this ladder, and the `ui_kit` tier constructors — which held
+/// these numbers as bare literals, unauthorable by any theme — now read it.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShadowTiers {
+    /// Tooltips, resting cards — short, low-rise.
+    pub sm: ShadowTier,
+    /// Popovers, context menus, dropdowns.
+    pub md: ShadowTier,
+    /// Modals.
+    pub lg: ShadowTier,
+    /// Sheets, full-window overlays.
+    pub xl: ShadowTier,
+}
+
+impl Default for ShadowTiers {
+    fn default() -> Self {
+        Self {
+            sm: ShadowTier { radius:  8.0, offset_y:  2.0, alpha:  64 },
+            md: ShadowTier { radius: 16.0, offset_y:  4.0, alpha:  77 },
+            lg: ShadowTier { radius: 24.0, offset_y:  8.0, alpha:  89 },
+            xl: ShadowTier { radius: 32.0, offset_y: 12.0, alpha: 102 },
+        }
+    }
+}
+
 /// A single shadow layer's geometry. No colour — colour comes from
 /// `ColorScheme.shadow` combined with `Alphas` at the resolver.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -848,8 +899,6 @@ pub struct Shadows {
     pub modal:   ShadowSpec,
     /// Tooltip shadow.
     pub tooltip: ShadowSpec,
-    /// Dropdown menu shadow.
-    pub dropdown: ShadowSpec,
 
     // M1 Change E: authored stacks. Empty = derive from the legacy spec
     // above (byte-identical). A DS authors e.g. Alto's 4-layer card bevel.
@@ -857,6 +906,10 @@ pub struct Shadows {
     pub card_layers: Vec<ShadowLayer>,
     #[serde(default)]
     pub modal_layers: Vec<ShadowLayer>,
+
+    /// The elevation ladder. Roles above are aliases onto it.
+    #[serde(default)]
+    pub tiers: ShadowTiers,
 }
 
 impl Default for Shadows {
@@ -865,9 +918,9 @@ impl Default for Shadows {
             card:     ShadowSpec { blur: 8.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 0.3 },
             modal:    ShadowSpec { blur: 24.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 0.5 },
             tooltip:  ShadowSpec { blur: 6.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 0.4 },
-            dropdown: ShadowSpec { blur: 12.0, spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 0.4 },
             card_layers: Vec::new(),
             modal_layers: Vec::new(),
+            tiers: ShadowTiers::default(),
         }
     }
 }

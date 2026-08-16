@@ -132,7 +132,7 @@ impl ContextMenu {
                 super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
-                    super::ShadowSpec {
+                    super::ShadowPaint {
                         radius: 16.0,
                         offset: egui::Vec2::new(0.0, 4.0),
                         color: color_alpha(theme.shadow_color(), 77),

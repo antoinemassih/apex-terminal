@@ -123,6 +123,19 @@ pub struct TokenSnapshot {
     pub alpha_heavy:  u8,
     /// Scrim alpha (140). Between heavy (120) and solid (200) — for
     /// command-palette / modal-backdrop scrims (dim but don't blank).
+    /// The elevation ladder, carried whole. Each rung is `{radius, offset_y,
+    /// alpha}` — `radius` is Gaussian sigma, not a corner radius.
+    ///
+    /// These are a `shadow_tier`-shaped group deliberately named `elev_*`: the
+    /// `shadow_*` fields above traverse the DesignTokens cascade and these do
+    /// not (yet), and `cascade_gate.py` reads a split group as an unfinished
+    /// migration. Keeping them a separate, uniformly-direct group states the
+    /// truth — theme-authorable, not yet inspector-tunable — instead of hiding
+    /// a split inside one name.
+    pub elev_sm: crate::design_system::style_system::ShadowTier,
+    pub elev_md: crate::design_system::style_system::ShadowTier,
+    pub elev_lg: crate::design_system::style_system::ShadowTier,
+    pub elev_xl: crate::design_system::style_system::ShadowTier,
     pub alpha_scrim:  u8,
     /// Borders and fills at full presence, one rung below `near_solid`.
     pub alpha_dense: u8,
@@ -248,7 +261,11 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     // Alphas.
     alpha_faint: 10, alpha_ghost: 15, alpha_soft: 20, alpha_subtle: 40,
     alpha_tint: 48, alpha_muted: 60, alpha_dim: 60, alpha_line: 80,
-    alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, alpha_scrim: 140, alpha_dense: 160, alpha_near_solid: 180, alpha_solid: 200,
+    alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, elev_sm: crate::design_system::style_system::ShadowTier { radius:  8.0, offset_y:  2.0, alpha:  64 },
+    elev_md: crate::design_system::style_system::ShadowTier { radius: 16.0, offset_y:  4.0, alpha:  77 },
+    elev_lg: crate::design_system::style_system::ShadowTier { radius: 24.0, offset_y:  8.0, alpha:  89 },
+    elev_xl: crate::design_system::style_system::ShadowTier { radius: 32.0, offset_y: 12.0, alpha: 102 },
+    alpha_scrim: 140, alpha_dense: 160, alpha_near_solid: 180, alpha_solid: 200,
     // Shadows.
     shadow_offset: 2.0, shadow_alpha: 60, shadow_spread: 4.0,
     // Style-preset knobs (P5b): defaults match Aperture (the default preset).
@@ -520,6 +537,13 @@ pub fn frame_tokens() -> TokenSnapshot {
 #[inline] pub fn alpha_heavy()   -> u8 { frame_tokens().alpha_heavy }
 #[inline] pub fn alpha_scrim()   -> u8 { frame_tokens().alpha_scrim }
 #[inline] pub fn alpha_dense()      -> u8 { frame_tokens().alpha_dense }
+
+/// The elevation ladder. `ui_kit::widgets::shadow`'s tier constructors held
+/// these as bare literals, so no theme could author its own depth.
+#[inline] pub fn elev_sm() -> crate::design_system::style_system::ShadowTier { frame_tokens().elev_sm }
+#[inline] pub fn elev_md() -> crate::design_system::style_system::ShadowTier { frame_tokens().elev_md }
+#[inline] pub fn elev_lg() -> crate::design_system::style_system::ShadowTier { frame_tokens().elev_lg }
+#[inline] pub fn elev_xl() -> crate::design_system::style_system::ShadowTier { frame_tokens().elev_xl }
 #[inline] pub fn alpha_near_solid() -> u8 { frame_tokens().alpha_near_solid }
 #[inline] pub fn alpha_solid()   -> u8 { frame_tokens().alpha_solid }
 

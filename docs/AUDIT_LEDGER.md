@@ -532,6 +532,50 @@ not yet triaged. A first pass counting only `dt_*!` reads said 48 — 34 of thos
 turned out to be read by direct field access, so the honest number is 14.
 
 ---
+## AT-151 — three shadow systems — CLOSED
+
+Not "three systems that overlap" — three systems that **disagreed about the same
+four elevations**:
+
+| role     | `Shadows` (StyleSystem) | `shadow_preset` tokens | `ui_kit` tier |
+|----------|-------------------------|------------------------|---------------|
+| card     | blur 8, y2, a77         | blur 4, y2, a60        | sm r8 y2 a64  |
+| modal    | blur 24, y8, a128       | blur 28, y8, sp2, a80  | lg r24 y8 a89 |
+| tooltip  | blur 6, y2, a102        | blur 0, y2, a60        | sm r8 y2 a64  |
+| dropdown | blur 12, y4, a102       | blur 24, y8, sp1, a40  | md r16 y4 a77 |
+
+Whichever path happened to render won. The fourth instance of the
+"two mechanisms disagree" class in this codebase.
+
+**Resolved per the decision — tiers win, roles alias onto them:**
+
+- `ShadowTiers { sm, md, lg, xl }` in `StyleSystem.shadows.tiers` is now the
+  single authored source of depth, carried through `TokenSnapshot` as `elev_*`
+  and read by `ShadowPaint::{sm,md,lg,xl}_themed`. Those constructors held
+  `radius: 8.0` / `offset 0,2` / `alpha 64` as bare literals, so the elevation
+  ladder was the one part of the design system no theme could author. The
+  hardwire gate never saw it because it only scans `ui_kit/style.rs`.
+- `shadow_modal`, `shadow_modal_themed`, `shadow_dropdown`,
+  `shadow_dropdown_themed` deleted — zero call sites each. Modals and dropdowns
+  already rendered from tiers (`md_themed` alone has 9 call sites), which is
+  what settled the decision on evidence rather than taste.
+- `shadow_preset.modal` / `.dropdown` tokens and `Shadows.dropdown` deleted with
+  them; the token-consumer gate flagged `dropdown` the moment its last reader
+  went, which is the gate working as intended.
+- The Two-Axis editor's dead `dropdown` sliders became tier sliders, so the
+  ladder is editable where it is authored.
+- `ui_kit`'s `ShadowSpec` renamed `ShadowPaint`. Two different records under one
+  name in one crate is a large part of how the three drifted: one is a role's
+  authored geometry (blur/spread/offset_x/offset_y + 0.0–1.0 multiplier), the
+  other is paint input (Gaussian radius, Vec2 offset, resolved Color32).
+
+Guarded by: a monotonicity test (a ladder whose rungs are not ordered is not a
+ladder), a `from_tier` test that fails if a constructor quietly keeps a literal,
+and a round-trip assertion using an OFF-default fixture ladder — verified to
+bite by deleting the export line.
+
+---
+
 ## AT-153 — header titles overlap their own action buttons — FIXED
 
 Found by looking at a screenshot rather than by a gate. The design inspector's

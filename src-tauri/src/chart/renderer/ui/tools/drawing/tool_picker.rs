@@ -158,7 +158,7 @@ pub fn show_drawing_tool_picker(
             crate::ui_kit::widgets::paint_shadow_gpu(
                 ui.painter(),
                 shadow_rect,
-                crate::ui_kit::widgets::ShadowSpec::md_themed(t),
+                crate::ui_kit::widgets::ShadowPaint::md_themed(t),
             );
             PopupFrame::new().theme(t).ctx(ctx).build()
                 .show(ui, |ui| {
@@ -267,7 +267,7 @@ pub fn show_drawing_tool_picker(
                     crate::ui_kit::widgets::paint_shadow_gpu(
                         ui.painter(),
                         shadow_rect,
-                        crate::ui_kit::widgets::ShadowSpec::md_themed(t),
+                        crate::ui_kit::widgets::ShadowPaint::md_themed(t),
                     );
                     PopupFrame::new().theme(t).ctx(ctx).build()
                         .show(ui, |ui| {

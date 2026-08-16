@@ -30,7 +30,7 @@ use super::{
     color_scheme::{rgba, ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
         Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Icons, LineHeights,
-        Archetype, DockStyle, NavStyle, PaneActiveIndicator, Radii, RailSide, Shadows, ShadowSpec, ShellSpec,
+        Archetype, DockStyle, NavStyle, PaneActiveIndicator, Radii, RailSide, Shadows, ShadowSpec, ShadowTier, ShadowTiers, ShellSpec,
         Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
@@ -535,8 +535,18 @@ impl StyleSystem {
             card:     parse_shadow_spec(sh_sec.get("card"),     "shadows.card",     &d_sh.card),
             modal:    parse_shadow_spec(sh_sec.get("modal"),    "shadows.modal",    &d_sh.modal),
             tooltip:  parse_shadow_spec(sh_sec.get("tooltip"),  "shadows.tooltip",  &d_sh.tooltip),
-            dropdown: parse_shadow_spec(sh_sec.get("dropdown"), "shadows.dropdown", &d_sh.dropdown),
             card_layers: Vec::new(), modal_layers: Vec::new(),
+            tiers: {
+                let t_sec = sh_sec.get("tiers").cloned()
+                    .unwrap_or(Value::Object(Default::default()));
+                let d = d_sh.tiers;
+                ShadowTiers {
+                    sm: parse_shadow_tier(t_sec.get("sm"), "shadows.tiers.sm", &d.sm),
+                    md: parse_shadow_tier(t_sec.get("md"), "shadows.tiers.md", &d.md),
+                    lg: parse_shadow_tier(t_sec.get("lg"), "shadows.tiers.lg", &d.lg),
+                    xl: parse_shadow_tier(t_sec.get("xl"), "shadows.tiers.xl", &d.xl),
+                }
+            },
         };
 
         let d_tr = Treatments::default();
@@ -714,6 +724,24 @@ impl StyleSystem {
     }
 }
 
+/// One rung of the elevation ladder, read from a `[shadows.tiers.<name>]`
+/// table. Absent keys fall back to the default ladder — a theme that predates
+/// tiers loads with the same elevations it always had.
+fn parse_shadow_tier(
+    node: Option<&Value>,
+    ctx: &str,
+    d: &crate::design_system::style_system::ShadowTier,
+) -> ShadowTier {
+    match node {
+        None => *d,
+        Some(n) => ShadowTier {
+            radius:   read_f32_or(n, "radius",   ctx, d.radius),
+            offset_y: read_f32_or(n, "offset_y", ctx, d.offset_y),
+            alpha:    read_u8_or(n,  "alpha",    ctx, d.alpha),
+        },
+    }
+}
+
 fn parse_shadow_spec(node: Option<&Value>, ctx: &str, default: &ShadowSpec) -> ShadowSpec {
     match node {
         None => default.clone(),
@@ -883,8 +911,17 @@ mod tests {
                 card:     ShadowSpec { blur: 6.0,  spread: 1.0, offset_x: 1.0, offset_y: 3.0, alpha: 0.25 },
                 modal:    ShadowSpec { blur: 20.0, spread: 2.0, offset_x: 0.0, offset_y: 6.0, alpha: 0.45 },
                 tooltip:  ShadowSpec { blur: 5.0,  spread: 0.0, offset_x: 0.0, offset_y: 1.5, alpha: 0.35 },
-                dropdown: ShadowSpec { blur: 10.0, spread: 0.0, offset_x: 0.0, offset_y: 3.0, alpha: 0.38 },
                 card_layers: Vec::new(), modal_layers: Vec::new(),
+                // Deliberately OFF the default ladder. A fixture that reuses
+                // the defaults cannot tell "round-tripped correctly" from
+                // "silently fell back to Default", which is exactly how an
+                // export gap hides.
+                tiers: ShadowTiers {
+                    sm: ShadowTier { radius:  7.0, offset_y: 1.0, alpha:  61 },
+                    md: ShadowTier { radius: 15.0, offset_y: 3.0, alpha:  71 },
+                    lg: ShadowTier { radius: 23.0, offset_y: 7.0, alpha:  81 },
+                    xl: ShadowTier { radius: 31.0, offset_y: 11.0, alpha: 91 },
+                },
             },
             treatments: Treatments {
                 solid_active_fills: true,
@@ -995,6 +1032,15 @@ mod tests {
 
         // Alphas (including scrim)
         assert_eq!(parsed.alphas.scrim, original.alphas.scrim);
+
+        // The elevation ladder must survive a pack. Asserting a rung that is
+        // OFF the default ladder is the point: an omitted export line would
+        // deserialise back to Default and every equality against a default
+        // value would still pass.
+        assert_eq!(parsed.shadows.tiers, original.shadows.tiers,
+            "elevation ladder did not survive the round trip");
+        assert_ne!(parsed.shadows.tiers, ShadowTiers::default(),
+            "fixture must differ from the default ladder or this proves nothing");
         assert_eq!(parsed.alphas.faint, original.alphas.faint);
         assert_eq!(parsed.alphas.header_border, original.alphas.header_border);
 

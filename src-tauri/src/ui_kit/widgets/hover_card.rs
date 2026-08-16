@@ -127,7 +127,7 @@ impl HoverCard {
                 super::paint_shadow(
                     ui.painter(),
                     shadow_rect,
-                    super::ShadowSpec::md_themed(theme),
+                    super::ShadowPaint::md_themed(theme),
                 );
                 let frame = egui::Frame::popup(ui.style())
                     .fill(bg)

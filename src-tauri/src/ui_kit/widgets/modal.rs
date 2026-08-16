@@ -475,7 +475,7 @@ impl<'a> Modal<'a> {
                             super::paint_shadow_gpu(
                                 ui.painter(),
                                 sr,
-                                super::ShadowSpec::md_themed(t),
+                                super::ShadowPaint::md_themed(t),
                             );
                         });
                 }
@@ -537,7 +537,7 @@ impl<'a> Modal<'a> {
                             super::paint_shadow_gpu(
                                 ui.painter(),
                                 r,
-                                super::ShadowSpec::md_themed(t),
+                                super::ShadowPaint::md_themed(t),
                             );
                         }
                         let resp = frame.show(ui, |ui| {
