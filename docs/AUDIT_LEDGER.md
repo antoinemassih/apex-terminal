@@ -638,11 +638,30 @@ to `MIN_PANE_CHROME_TARGET_PX` (24), everything else to `MIN_TOUCH_TARGET_PX`
 known-good widgets as defects, which is precisely how a check stops being read
 (see AT-154, AT-161).
 
-They land in `touch_targets_unattributed` — counted, listed, outside `clean`.
-Sizes cluster at 9.0 (×2), 18.0 (×6), 20.7 (×2), 24.0 (×9) and 25.3 (×16); the
-24.0 group is very likely legitimate pane chrome and the 9.0 pair very likely
-is not a button at all. That list is the work queue for per-surface attribution,
-and it exists where before there was nothing to see.
+**Attribution solved, and the queue is now specific.** `#[track_caller]` on
+`Button::show` (and on the `ToolbarButton` wrapper, since attribution stops at
+the first hop in a chain that lacks it) puts the CALLING FILE into the id:
+`auto.<surface>/button/<slug>`. `Location::caller()` resolves at compile time,
+so this costs nothing at runtime. The audit's pane-chrome exemption is a
+statement about a surface, and the caller's file is the surface.
+
+**Triage — 35 records, all heights below the 28 px floor:**
+
+| height | count | surfaces |
+|---|---|---|
+| 18.0 | 6 | auto_chart_panel, plays_panel, button, mod |
+| 20.7 | 2 | button, plays_panel |
+| 24.0 | 8 | workspace_rail, toolbar_button |
+| 25.3 | 19 | top_nav, auto_chart_panel, plays_panel, toolbar_button, button |
+
+`min_side` conflated width and height; splitting them shows every one of these
+is a **height** failure, not a narrow-button one. `toolbar_control_h()` already
+floors itself at the touch minimum — these call sites are simply not using it.
+
+Not fixed here, deliberately: raising 35 button heights across six surfaces is a
+visible layout change and the 24.0 group may be legitimate chrome. It is a
+follow-on pass with its own before/after, not a tail-end edit. What changed is
+that it is now a specific, sized, attributed list instead of a blind spot.
 
 ---
 

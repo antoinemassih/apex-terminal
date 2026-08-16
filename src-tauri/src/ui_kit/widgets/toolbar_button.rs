@@ -57,6 +57,10 @@ impl<'a> ToolBarButton<'a> {
         self
     }
 
+    /// `#[track_caller]` so the auto-instrumented record attributes to the
+    /// SURFACE that called this wrapper, not to the wrapper. Attribution stops
+    /// at the first hop in the chain that lacks it.
+    #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         // Build the ctx from the UI so it carries the AMBIENT RecipeSet.
         // `StyleCtx::from_theme` would hand this widget an empty set — see

@@ -498,8 +498,20 @@ impl<'a> Button<'a> {
     /// Internally constructs a [`StyleCtx`] from the theme (reading the
     /// current frame's `TokenSnapshot`) and delegates to
     /// [`Button::show_ctx`], so all paint logic is shared.
+    /// `#[track_caller]` so auto-instrumentation can attribute this button to
+    /// the SURFACE that created it.
+    ///
+    /// The audit picks a touch-target floor from a widget's id prefix — pane
+    /// chrome is held to 24 px, everything else to 28. A record emitted by the
+    /// primitive has no surface in its id, so 35 of them could be counted but
+    /// not graded (AT-162). The caller's source file is the attribution the id
+    /// was missing, and it costs nothing at runtime: `Location::caller()` is
+    /// resolved at compile time.
+    #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         let ctx = super::ctx::StyleCtx::from_ui(theme, ui);
+        let caller = std::panic::Location::caller().file();
+        set_audit_surface(caller);
         self.show_ctx(ui, &ctx)
     }
 
@@ -749,6 +761,35 @@ impl<'a> Widget for Button<'a> {
 /// (no-op unless Ctrl+Shift+I Inspect mode is on). Keying off the label means
 /// every button across the app — toolbars, nav, dialogs, panels — becomes
 /// selectable in Inspect mode without per-call-site instrumentation.
+thread_local! {
+    /// Source file of the most recent `Button::show` caller. Written by the
+    /// `#[track_caller]` entry point, read by the auto-instrumentation a few
+    /// frames of stack below it.
+    ///
+    /// A thread-local rather than a parameter because the value has to reach
+    /// `show_styled_impl` through `show_ctx` and the whole styled-impl chain,
+    /// and threading a `&'static str` through every one of those signatures to
+    /// serve a debug-only audit is not a trade worth making.
+    static AUDIT_SURFACE: std::cell::Cell<&'static str> = const { std::cell::Cell::new("") };
+}
+
+fn set_audit_surface(f: &'static str) {
+    AUDIT_SURFACE.with(|c| c.set(f));
+}
+
+/// Surface slug for the audit — the caller's file stem, e.g.
+/// `chrome/painter_pane.rs` -> `painter_pane`.
+fn audit_surface() -> String {
+    AUDIT_SURFACE.with(|c| {
+        let f = c.get();
+        f.rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(".rs")
+            .to_string()
+    })
+}
+
 fn show_styled_impl<'a, S: ButtonStyle>(
     ui: &mut Ui,
     theme: &dyn ComponentTheme,
@@ -787,7 +828,7 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         // else to 28), and an auto id carries no surface — so these cannot be
         // graded by that rule and are reported separately instead of being
         // failed against the wrong floor.
-        format!("auto.{bug_key}"),
+        format!("auto.{}/{bug_key}", audit_surface()),
         "button",
         label,
         &resp,

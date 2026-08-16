@@ -1914,8 +1914,17 @@ fn build_design_audit(state: &DevSharedState) -> serde_json::Value {
     // growing. Applied by SURFACE, not by widget name: a new chip in the pane
     // header inherits the right rule, and a new button anywhere else does not
     // get a free pass.
+    //
+    // Auto-emitted ids carry their SURFACE too, as `auto.<caller-file>/…`,
+    // captured with `#[track_caller]` at `Button::show`. That is what makes
+    // them gradeable: the pane-chrome exemption is a statement about a surface,
+    // and the caller's file is the surface.
     let min_for = |id: &str| {
-        if id.starts_with("pane.") || id.starts_with("pane_header.") {
+        let pane_chrome = id.starts_with("pane.")
+            || id.starts_with("pane_header.")
+            || id.starts_with("auto.painter_pane/")
+            || id.starts_with("auto.pane/");
+        if pane_chrome {
             crate::ui_kit::style::MIN_PANE_CHROME_TARGET_PX
         } else {
             crate::ui_kit::style::MIN_TOUCH_TARGET_PX
