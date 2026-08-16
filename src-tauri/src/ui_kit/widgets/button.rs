@@ -1348,42 +1348,78 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
             // `rect.width() - content_w == 2 * pad_x`, so the centred offset
             // IS `pad_x`. It only diverges once something made the rect wider,
             // and it never lets a clipped rect push content past its padding.
-            let mut x = rect.left() + ((rect.width() - content_w) * 0.5).max(pad_x);
+            // Button content — SOLVED.
+            //
+            // Was four `x +=` steps through leading / label / kbd-hint. The
+            // centring offset below stays hand-computed on purpose and its
+            // reasoning is unchanged: `.max(pad_x)` is a no-op at intrinsic
+            // width and only bites once something widened the rect, and no
+            // justify rule expresses "centre, but never inside the padding".
+            //
+            // What the tree removes is the SEQUENCE. The leading slot is
+            // present for a spinner OR an icon, and the old code had to
+            // remember to advance by the same amount down both arms; the label
+            // and the kbd hint each restated their own seam. Declared, the
+            // seams are margins and the arms share one slot.
             let cy = center.y;
+            let icon_w = font_size * 1.1;
+            let has_lead = loading || leading_icon.is_some();
+            let label_w = (!label.is_empty()).then(|| {
+                ui.fonts(|f| {
+                    f.layout_no_wrap(label.to_string(), crate::ui_kit::style::prop_at(font_size), fg)
+                        .rect
+                        .width()
+                })
+            });
+            let kbd_w = kbd_text.as_ref().map(|kt| {
+                ui.fonts(|f| f.layout_no_wrap(kt.clone(), kbd_font.clone(), fg).rect.width())
+            });
+
+            let content = {
+                use crate::ui_kit::cascade::element::El;
+                let start = rect.left() + ((rect.width() - content_w) * 0.5).max(pad_x);
+                El::row()
+                    .child_if(has_lead, El::slot("lead", Vec2::new(icon_w, rect.height())))
+                    .child_if(label_w.is_some(),
+                        El::slot("label", Vec2::new(label_w.unwrap_or(0.0), rect.height()))
+                            .margin_start(if has_lead { icon_gap } else { 0.0 }))
+                    .child_if(kbd_w.is_some(),
+                        El::slot("kbd", Vec2::new(kbd_w.unwrap_or(0.0), rect.height()))
+                            .margin_start(st::gap_md()))
+                    .solve_rect(Rect::from_min_size(
+                        Pos2::new(start, rect.top()),
+                        Vec2::new(rect.width(), rect.height()),
+                    ))
+            };
+
             // Leading: spinner takes priority over leading icon when loading.
             if loading {
-                let spin_rect = Rect::from_center_size(Pos2::new(x + font_size * 0.55, cy), Vec2::splat(font_size * 1.1));
+                let lead = content.rect("lead");
+                let spin_rect = Rect::from_center_size(
+                    Pos2::new(lead.left() + font_size * 0.55, cy), Vec2::splat(icon_w));
                 paint_spinner(ui, spin_rect, icon_fg);
-                x += font_size * 1.1 + icon_gap;
             } else if let Some(ic) = leading_icon {
                 painter.text(
-                    Pos2::new(x, cy),
+                    Pos2::new(content.rect("lead").left(), cy),
                     egui::Align2::LEFT_CENTER,
                     ic,
-                    crate::ui_kit::style::prop_at(font_size * 1.1),
+                    crate::ui_kit::style::prop_at(icon_w),
                     icon_fg,
                 );
-                x += font_size * 1.1 + icon_gap;
             }
             if !label.is_empty() {
-                let galley = ui.fonts(|f| {
-                    f.layout_no_wrap(label.to_string(), crate::ui_kit::style::prop_at(font_size), fg)
-                });
-                let lw = galley.rect.width();
                 painter.text(
-                    Pos2::new(x, cy),
+                    Pos2::new(content.rect("label").left(), cy),
                     egui::Align2::LEFT_CENTER,
                     label,
                     crate::ui_kit::style::prop_at(font_size),
                     fg,
                 );
-                x += lw;
             }
             if let Some(kt) = kbd_text.as_ref() {
-                x += st::gap_md();
                 let kbd_color = st::color_alpha(palette_ct(theme).base(Tone::Text), crate::ui_kit::style::alpha_dense());
                 painter.text(
-                    Pos2::new(x, cy),
+                    Pos2::new(content.rect("kbd").left(), cy),
                     egui::Align2::LEFT_CENTER,
                     kt,
                     kbd_font.clone(),
