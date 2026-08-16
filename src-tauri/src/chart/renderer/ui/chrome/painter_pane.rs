@@ -638,11 +638,30 @@ impl<'a> PainterPaneHeader<'a> {
         // ── Cursor x walks left → right ────────────────────────────────────
         let mut cx = rect.left() + gap_sm();
 
+        // Leading cluster — link dot | back | fwd — SOLVED, not walked.
+        //
+        // Three `cx += WIDTH + gap` steps with three DIFFERENT trailing gaps
+        // (`gap_sm`, `gap_xs`, `gap_sm`), each inside its own `if`. Every one
+        // is a place where turning a piece off leaves the rest offset, and the
+        // gap that follows a piece was stated at the piece rather than at the
+        // seam. Declared once, the seams are margins and the conditionals are
+        // `child_if`.
+        let lead = {
+            use crate::ui_kit::cascade::element::El;
+            El::row()
+                .child_if(self.show_link_dot, El::slot("link", Vec2::new(LINK_SELECT_W, h)))
+                .child_if(self.show_back_fwd, El::slot("back", Vec2::new(NAV_BTN_SIZE, h))
+                    .margin_start(if self.show_link_dot { gap_sm() } else { 0.0 }))
+                .child_if(self.show_back_fwd, El::slot("fwd", Vec2::new(NAV_BTN_SIZE, h))
+                    .margin_start(gap_xs()))
+                .solve_rect(Rect::from_min_size(pos2(cx, rect.top()), Vec2::new(rect.width(), h)))
+        };
+
         // Link group — passive region; caller places a Select widget here via link_dot_rect.
         // We also emit a tooltip when a group name is supplied so users can discover
         // what the colored dot means without opening the group picker.
         if self.show_link_dot {
-            let hit = Rect::from_min_size(pos2(cx, rect.top()), Vec2::new(LINK_SELECT_W, h));
+            let hit = lead.rect("link");
             let dot_resp = ui.allocate_rect(hit, Sense::hover());
             // Tooltip: "Group 1 (link group 1)" or "Not linked — click to join a link group"
             let tip = if self.link_group == 0 {
@@ -654,35 +673,39 @@ impl<'a> PainterPaneHeader<'a> {
             };
             dot_resp.on_hover_text(tip);
             out.link_dot_rect = Some(hit);
-            cx += LINK_SELECT_W + gap_sm();
         }
 
         // Back / Fwd
         if self.show_back_fwd {
             // Back
             {
-                let r = Rect::from_center_size(pos2(cx + NAV_BTN_SIZE / 2.0, rect.center().y), Vec2::splat(NAV_BTN_SIZE));
+                let r = Rect::from_center_size(pos2(lead.rect("back").center().x, rect.center().y), Vec2::splat(NAV_BTN_SIZE));
                 let resp = ui.allocate_rect(r, Sense::click());
                 let (bg, fg) = nav_colors(self.can_go_back, resp.hovered(), t, ui);
                 painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_LEFT,
                     prop_md_plus(), fg);
                 if resp.clicked() && self.can_go_back { out.clicked_back = true; }
-                cx += NAV_BTN_SIZE + gap_xs();
             }
             // Fwd
             {
-                let r = Rect::from_center_size(pos2(cx + NAV_BTN_SIZE / 2.0, rect.center().y), Vec2::splat(NAV_BTN_SIZE));
+                let r = Rect::from_center_size(pos2(lead.rect("fwd").center().x, rect.center().y), Vec2::splat(NAV_BTN_SIZE));
                 let resp = ui.allocate_rect(r, Sense::click());
                 let (bg, fg) = nav_colors(self.can_go_fwd, resp.hovered(), t, ui);
                 painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_RIGHT,
                     prop_md_plus(), fg);
                 if resp.clicked() && self.can_go_fwd { out.clicked_fwd = true; }
-                cx += NAV_BTN_SIZE + gap_sm();
             }
+            // One advance past the whole solved cluster, instead of one per
+            // piece. `gap_sm` is the seam AFTER the cluster, which is where it
+            // belongs — it used to be tacked onto the forward button.
+            cx = lead.rect("fwd").right() + gap_sm();
             // Divider separating the nav/group cluster from the ticker/tab area — always visible.
             header_divider_inline(&painter, cx, rect, t);
+        }
+        if self.show_link_dot && !self.show_back_fwd {
+            cx = lead.rect("link").right() + gap_sm();
         }
 
         // ── Tab strip OR simple symbol label ──
