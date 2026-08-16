@@ -255,7 +255,14 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
     });
 
     // ── THEME — big preview blocks with mini chart layout ──
-    PanelSection::new("THEME").show(ui, t, |ui, t| {
+    PanelSection::new("THEME")
+        .meta(
+            crate::chart_renderer::gpu::get_all_themes()
+                .get(chart.theme_idx)
+                .map(|th| th.name.to_string())
+                .unwrap_or_default(),
+        )
+        .show(ui, t, |ui, t| {
         ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
         ui.horizontal_wrapped(|ui| {
             let all_themes = crate::chart_renderer::gpu::get_all_themes();
@@ -280,7 +287,14 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
     });
 
     // ── STYLE preset (Aperture / Octave / Meridien / …) ──
-    PanelSection::new("STYLE").show(ui, t, |ui, t| {
+    PanelSection::new("STYLE")
+        .meta({
+            let p = crate::chart_renderer::ui::style::list_style_presets();
+            p.get(watchlist.style_idx.min(p.len().saturating_sub(1)))
+                .map(|(_, name)| name.to_string())
+                .unwrap_or_default()
+        })
+        .show(ui, t, |ui, t| {
         let presets = crate::chart_renderer::ui::style::list_style_presets();
         let cur_si = watchlist.style_idx.min(presets.len().saturating_sub(1));
         let btn_w: f32 = 78.0;
@@ -327,7 +341,12 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
     // ── DENSITY override (Compact / Standard / Spacious) — P4.3 ──
     // Independent of palette and style preset; overrides StyleSettings.density.
     // None = inherit from active style preset.
-    PanelSection::new("DENSITY").show(ui, t, |ui, t| {
+    PanelSection::new("DENSITY")
+        .meta(match watchlist.density_override {
+            Some(m) => m.label().to_string(),
+            None => "Inherit".to_string(),
+        })
+        .show(ui, t, |ui, t| {
         use crate::ui_kit::style::DensityMode;
         let cur_override = watchlist.density_override;
         let btn_w: f32 = 80.0;
@@ -423,7 +442,12 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
     // ── SPACING SCALE (P5) — Tight / Standard / Loose ──
     // Multiplier on every `gap_*()` token. Independent from DENSITY which
     // scales heights; SPACING SCALE controls horizontal/vertical gutters.
-    PanelSection::new("SPACING SCALE").show(ui, t, |ui, t| {
+    PanelSection::new("SPACING SCALE")
+        .meta(match watchlist.spacing_scale_override {
+            Some(m) => m.label().to_string(),
+            None => "Inherit".to_string(),
+        })
+        .show(ui, t, |ui, t| {
         use crate::ui_kit::style::SpacingScale;
         let cur = watchlist.spacing_scale_override;
         let btn_w: f32 = 80.0;
