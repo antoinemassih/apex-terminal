@@ -12,6 +12,7 @@
 //!
 //! Public API of `render` is unchanged.
 
+use crate::ui_kit::cascade::El;
 use egui;
 use crate::ui_kit::sx::Tone;
 use super::super::style::*;
@@ -398,14 +399,6 @@ struct SsState {
     formula_focus: bool,
 }
 
-fn col_x(state: &SsState, c: usize, default_w: f32) -> f32 {
-    let mut x = 0.0;
-    for i in 0..c {
-        x += state.col_widths.get(i).copied().unwrap_or(default_w);
-    }
-    x
-}
-
 fn col_w(state: &SsState, c: usize, default_w: f32) -> f32 {
     state.col_widths.get(c).copied().unwrap_or(default_w)
 }
@@ -617,14 +610,46 @@ pub(crate) fn render(
 
     let total_w: f32 = GUTTER_W + (0..chart.spreadsheet_cols)
         .map(|c| col_w(&state, c, DEFAULT_CELL_W)).sum::<f32>();
+
+    // Column x-offsets, solved ONCE per frame and shared by the header strip
+    // and every body row.
+    //
+    // There were three separate statements of where column `c` starts: a dead
+    // `col_x` prefix-sum, an `x += w` in the header loop, and an `x += cw`
+    // nested inside the per-row loop. Three ways to compute one thing, and the
+    // nested one recomputed the whole strip for every visible row.
+    //
+    // This is also why the per-row solve that `dom_row` and `watchlist_row`
+    // were exempted from is NOT the cost here: the tree is solved once for the
+    // grid, not once per row, so a 40-row × 12-column view pays a single 5.5 us
+    // solve instead of forty walks. Offsets are collected into a `Vec<f32>` on
+    // purpose — a `format!("c{c}")` lookup per CELL would be a real cost, and
+    // the string keys belong to the declaration, not the paint loop.
+    let col_offsets: Vec<f32> = {
+        let solved = (0..chart.spreadsheet_cols)
+            .fold(El::row(), |el, c| {
+                el.child(El::slot(
+                    format!("c{c}"),
+                    egui::vec2(col_w(&state, c, DEFAULT_CELL_W), 0.0),
+                ))
+            })
+            .solve_rect(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2((total_w - GUTTER_W).max(0.0), 1.0),
+            ));
+        (0..chart.spreadsheet_cols)
+            .map(|c| solved.rect(&format!("c{c}")).left())
+            .collect()
+    };
     let total_h = (chart.spreadsheet_rows as f32) * row_h();
 
     // Draw column headers (with resize handles)
     {
-        let mut x = header_rect.left() + GUTTER_W;
+        let cols_left = header_rect.left() + GUTTER_W;
         let p = ui.painter_at(header_rect);
         for c in 0..chart.spreadsheet_cols {
             let w = col_w(&state, c, DEFAULT_CELL_W);
+            let x = cols_left + col_offsets[c];
             let r = egui::Rect::from_min_size(egui::pos2(x, header_rect.top()),
                 egui::vec2(w, HEADER_H));
             p.text(r.center(), egui::Align2::CENTER_CENTER, col_label(c),
@@ -649,7 +674,6 @@ pub(crate) fn render(
                     state.col_widths[c] = (state.col_widths[c] + dx).max(MIN_CELL_W);
                 }
             }
-            x += w;
         }
     }
 
@@ -690,9 +714,10 @@ pub(crate) fn render(
                     egui::pos2(resp_rect.left() + total_w, y + row_h())],
                     stroke_grid);
 
-                let mut x = resp_rect.left() + GUTTER_W;
+                let cols_left = resp_rect.left() + GUTTER_W;
                 for c in 0..chart.spreadsheet_cols {
                     let cw = col_w(&state, c, DEFAULT_CELL_W);
+                    let x = cols_left + col_offsets[c];
                     let cell_rect = egui::Rect::from_min_size(
                         egui::pos2(x, y), egui::vec2(cw, row_h()));
                     p.line_segment([
@@ -776,7 +801,6 @@ pub(crate) fn render(
                             }
                         }
                     }
-                    x += cw;
                 }
             }
         });

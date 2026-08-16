@@ -41,6 +41,7 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
+use crate::ui_kit::cascade::El;
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
 
@@ -267,7 +268,6 @@ pub(crate) fn paint_option_badges(
     // DTE) which is exactly the kind of asymmetry a walk states at the wrong
     // place — at the piece rather than at the seam.
     let row = {
-        use crate::ui_kit::cascade::element::El;
         El::row()
             .child_if(side_w.is_some(), El::slot("side", Vec2::new(side_w.unwrap_or(0.0), bh)))
             .child_if(dte.is_some(), El::slot("dte", Vec2::new(dte.as_ref().map_or(0.0, |d| d.1), bh))
@@ -698,7 +698,6 @@ impl<'a> PainterPaneHeader<'a> {
         // seam. Declared once, the seams are margins and the conditionals are
         // `child_if`.
         let lead = {
-            use crate::ui_kit::cascade::element::El;
             El::row()
                 .child_if(self.show_link_dot, El::slot("link", Vec2::new(LINK_SELECT_W, h)))
                 .child_if(self.show_back_fwd, El::slot("back", Vec2::new(NAV_BTN_SIZE, h))
@@ -769,16 +768,59 @@ impl<'a> PainterPaneHeader<'a> {
             let tab_pad = gap_md() + 4.0;
             let gap_between = gap_md();
 
+            // The seam between tabs. `kit.rs` names the same value `TAB_GAP`;
+            // here it was a bare `+ 1.0` inside `cx += tab_w + 1.0`, which is
+            // exactly the shape that let the fit test and the paint loop
+            // disagree by a pixel per tab in `kit.rs`. Named, and stated once
+            // as the row's gap.
+            const TAB_GAP: f32 = 1.0;
+
+            // MEASURE every tab, then DECLARE the strip. The galleys are needed
+            // in the paint loop anyway, so this trades no extra text layout —
+            // it moves the widths ahead of the placement, which is what lets
+            // the strip be a shape instead of a running pen.
+            let tab_metrics: Vec<(std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>, egui::FontId, f32)> =
+                self.tabs
+                    .iter()
+                    .map(|(sym, price_text, _chg)| {
+                        let sym_galley =
+                            painter.layout_no_wrap(sym.to_string(), title_font.clone(), h_dim);
+                        let price_font = mono_at((self.title_font_size - 1.0).max(font_sm()));
+                        let price_galley = painter.layout_no_wrap(
+                            price_text.to_string(), price_font.clone(), t.dim);
+                        let tab_w = tab_pad + sym_galley.size().x + gap_between
+                            + price_galley.size().x + gap_between + TAB_CLOSE_SIZE + tab_pad;
+                        (sym_galley, price_galley, price_font, tab_w)
+                    })
+                    .collect();
+
+            // The trailing zero-width `after` slot is how the pen advances past
+            // the LAST tab: the walked form added a seam after every tab
+            // including the final one, and a row of siblings only puts gaps
+            // between them. Declaring the marker keeps the old end position
+            // exactly, rather than quietly reclaiming a pixel.
+            let strip = tab_metrics
+                .iter()
+                .enumerate()
+                .fold(El::row().gap(TAB_GAP), |el, (i, m)| {
+                    el.child(El::slot(format!("tab{i}"), Vec2::new(m.3, tab_h)))
+                })
+                .child(El::slot("after", Vec2::ZERO))
+                .solve_rect(Rect::from_min_max(pos2(cx, tab_y), rect.max));
+
             for (ti, (sym, price_text, _chg)) in self.tabs.iter().enumerate() {
                 let is_active_tab = ti == self.active_tab;
-                let sym_galley = painter.layout_no_wrap(sym.to_string(), title_font.clone(), h_dim);
-                let price_font = mono_at((self.title_font_size - 1.0).max(font_sm()));
-                let price_galley = painter.layout_no_wrap(
-                    price_text.to_string(), price_font.clone(), t.dim);
-                let tab_w = tab_pad + sym_galley.size().x + gap_between
-                    + price_galley.size().x + gap_between + TAB_CLOSE_SIZE + tab_pad;
+                // The price galley exists only to WIDTH the tab — the text is
+                // painted from `price_text` further down, at a solved x.
+                let (sym_galley, price_font, tab_w) = {
+                    let m = &tab_metrics[ti];
+                    (m.0.clone(), m.2.clone(), m.3)
+                };
 
-                let tab_rect = Rect::from_min_size(pos2(cx, tab_y), Vec2::new(tab_w, tab_h));
+                let tab_rect = Rect::from_min_size(
+                    pos2(strip.rect(&format!("tab{ti}")).left(), tab_y),
+                    Vec2::new(tab_w, tab_h),
+                );
                 let effective_sense = self.tab_sense.unwrap_or_else(Sense::click);
                 let tab_resp = ui.interact(
                     tab_rect,
@@ -872,7 +914,6 @@ impl<'a> PainterPaneHeader<'a> {
                     .flatten()
                     .map(|(side, expiry)| (side, expiry, option_badges_width(&painter, side, expiry)));
                 let tab_row = {
-                    use crate::ui_kit::cascade::element::El;
                     El::row()
                         .child(El::slot("sym", Vec2::new(sym_galley.size().x, tab_rect.height())))
                         .child_if(tab_badges.is_some(),
@@ -934,8 +975,8 @@ impl<'a> PainterPaneHeader<'a> {
                     out.clicked_tab = Some(ti);
                 }
                 out.tab_rects.push(tab_rect);
-                cx += tab_w + 1.0;
             }
+            cx = strip.rect("after").left();
         } else if let Some(sym) = self.symbol {
             // Simple label. Bump the symbol one tier above the title baseline
             // so the pane-title reads as the primary header (vs axis labels /
@@ -1022,7 +1063,6 @@ impl<'a> PainterPaneHeader<'a> {
                 .map(|(side, expiry)| option_badges_width(&painter, side, expiry));
 
             let meta = {
-                use crate::ui_kit::cascade::element::El;
                 El::row()
                     .child(El::slot("sym", Vec2::new(sym_galley.size().x + crate::ui_kit::style::gap_2xs(), h)))
                     .child_if(badge_w.is_some(),
@@ -1095,7 +1135,6 @@ impl<'a> PainterPaneHeader<'a> {
             chip_pad + g.size().x + gap_sm() + CHIP_X_W + chip_pad
         }).collect();
         let chips = {
-            use crate::ui_kit::cascade::element::El;
             let mut e = El::row().gap(gap_sm());
             for (i, w) in chip_ws.iter().enumerate() {
                 e = e.child(El::slot(format!("chip{i}"), Vec2::new(*w, chip_h)));
@@ -1142,14 +1181,25 @@ impl<'a> PainterPaneHeader<'a> {
             // per-pane controls cluster.
             if !self.tabs.is_empty() {
                 header_divider_strong(&painter, cx + gap_xs(), rect, t);
-                cx += gap_sm();
             }
             // Same clamp as the icon cluster — see the note there.
             let plus_h = (h - ICON_BTN_INSET_V)
                 .max(crate::ui_kit::style::MIN_PANE_CHROME_TARGET_PX)
                 .min(h);
+            // The cluster is DECLARED: an optional divider seam, the button,
+            // and a zero-width `after` marker whose left edge IS the new pen.
+            // `gap_sm()` was written twice — once to clear the divider, once to
+            // trail the button — and the divider's seam existed only when there
+            // were tabs, which the walked form expressed by putting one of the
+            // two increments inside an `if`. Here both are the same sibling gap.
+            let plus_cluster = El::row()
+                .gap(gap_sm())
+                .child_if(!self.tabs.is_empty(), El::slot("div", Vec2::ZERO))
+                .child(El::slot("plus", Vec2::new(PLUS_TAB_W, plus_h)))
+                .child(El::slot("after", Vec2::ZERO))
+                .solve_rect(Rect::from_min_max(pos2(cx, rect.top()), rect.max));
             let plus_rect = Rect::from_min_size(
-                pos2(cx, rect.center().y - plus_h / 2.0),
+                pos2(plus_cluster.rect("plus").left(), rect.center().y - plus_h / 2.0),
                 Vec2::new(PLUS_TAB_W, plus_h),
             );
             let resp = ui.allocate_rect(plus_rect, Sense::click());
@@ -1165,7 +1215,7 @@ impl<'a> PainterPaneHeader<'a> {
                 mono_at((self.title_font_size - 2.0).max(font_sm())), fg);
             if resp.clicked() { out.clicked_plus = true; }
             out.plus_tab_rect = Some(plus_rect);
-            cx += PLUS_TAB_W + gap_sm();
+            cx = plus_cluster.rect("after").left();
         }
 
         // ── Right cluster: [OVERLAY] [LAYERS] [DOM] [OPTIONS] | [ClosePane] [Split] [Expand] | [×] ──

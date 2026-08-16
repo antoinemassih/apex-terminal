@@ -21,6 +21,7 @@
 #![allow(dead_code)]
 
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
+use crate::ui_kit::cascade::El;
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone as SxTone;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
@@ -732,12 +733,24 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
             let advance = ord_w + gap_sm();
 
             if fitting_tabs(cx + advance) >= fitting_tabs(cx) {
+                // Declared rather than advanced: the ordinal holds `ord_w`, the
+                // seam is the row's gap, and `rest`'s left edge is the new pen.
+                // `advance` stays as the FIT PROBE above — that is a
+                // measurement, and it is the one place the two must agree.
+                let row = El::row()
+                    .gap(gap_sm())
+                    .child(El::slot("ord", Vec2::new(ord_w, 0.0)))
+                    .child(El::slot("rest", Vec2::ZERO))
+                    .solve_rect(Rect::from_min_max(
+                        Pos2::new(cx, rect.top()),
+                        rect.max,
+                    ));
                 let ord = format!("{:02}", next_section_ordinal(ui.ctx()));
                 painter.text(
-                    Pos2::new(cx, rect.center().y),
+                    Pos2::new(row.rect("ord").left(), rect.center().y),
                     Align2::LEFT_CENTER, ord, ord_font, t.accent,
                 );
-                cx += advance;
+                cx = row.rect("rest").left();
             }
         }
 
