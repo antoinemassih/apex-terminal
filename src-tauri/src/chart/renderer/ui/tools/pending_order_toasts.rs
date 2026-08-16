@@ -27,7 +27,7 @@ pub fn show_pending_order_toasts(c: PendingOrderToastsCtx<'_>) {
 
     for (ci, (oid, _created)) in c.chart.pending_confirms.iter().enumerate() {
         let order_data = c.chart.orders.iter().find(|o| o.id == *oid)
-            .map(|o| (o.label(), o.price, o.qty, o.color(c.t.bull, c.t.bear)));
+            .map(|o| (o.label(), o.price, o.qty, o.color(c.t.bull, c.t.bear, c.t.accent)));
         if let Some((label, price, qty, color)) = order_data {
             let toast_y = c.base_y - ci as f32 * 34.0;
             // P6.6 migration: was raw `egui::Window::new(...)` with hand-rolled

@@ -148,3 +148,13 @@ jobs:
       - name: Run cascade gate (siblings that skip the cascade)
         if: ${{ !cancelled() }}
         run: python dev/cascade_gate.py
+
+      # The ratchet's test-code filter, checked separately because its failure
+      # mode is "quietly stops filtering". It did exactly that twice: once
+      # handed git-bash MSYS paths native Windows Python cannot open, once when
+      # an edit silently failed to apply. Both times the only symptom was the
+      # baseline moving by the number of test literals in a few files, which
+      # reads like real drift and invites a blind re-baseline.
+      - name: Self-test the ratchet's test-code filter
+        if: ${{ !cancelled() }}
+        run: python dev/strip_test_hits.py --selftest

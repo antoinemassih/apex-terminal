@@ -173,11 +173,20 @@ impl OrderState {
 }
 
 impl OrderLevel {
-    pub fn color(&self, bull: egui::Color32, bear: egui::Color32) -> egui::Color32 {
+    /// `accent` is taken because an OCO **target** is neither side of the
+    /// trade — it is the take-profit leg, and it was a hardcoded purple here,
+    /// in a trading module with no theme in scope. That made it the same violet
+    /// in all 22 palettes, light ones included, where it sat off the ramp.
+    pub fn color(
+        &self,
+        bull: egui::Color32,
+        bear: egui::Color32,
+        accent: egui::Color32,
+    ) -> egui::Color32 {
         match self.side {
             OrderSide::Buy | OrderSide::TriggerBuy => bull,
             OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::TriggerSell => bear,
-            OrderSide::OcoTarget => egui::Color32::from_rgb(167, 139, 250), // purple
+            OrderSide::OcoTarget => accent,
         }
     }
     pub fn label(&self) -> &'static str {
@@ -701,15 +710,38 @@ impl Default for TriggerSetup {
 
 // ─── Market session ───────────────────────────────────────────────────────────
 
-pub(crate) fn market_session() -> (&'static str, egui::Color32) {
+/// Which trading session the clock is in.
+///
+/// Returned INSTEAD of a colour. This helper used to hand back
+/// `egui::Color32::from_rgb(255, 193, 37)` and friends — four literal colours
+/// decided in a trading module with no theme in scope, so the session badge was
+/// the same amber and blue in every one of the 22 palettes, including the light
+/// ones where they read badly. Naming the phase and letting the call site pick
+/// the role keeps the colour decision where the theme is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SessionPhase { Open, Pre, Post, Closed }
+
+impl SessionPhase {
+    /// Short badge label.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Open => "OPEN",
+            Self::Pre => "PRE",
+            Self::Post => "POST",
+            Self::Closed => "CLOSED",
+        }
+    }
+}
+
+pub(crate) fn market_session() -> SessionPhase {
     use chrono::Timelike;
     let now = chrono::Utc::now();
     let h = now.hour(); let m = now.minute();
     let mins = h * 60 + m;
-    if mins >= 13*60+30 && mins < 20*60 { ("OPEN", COLOR_PROFIT_GREEN) }
-    else if mins >= 9*60 && mins < 13*60+30 { ("PRE", egui::Color32::from_rgb(255, 193, 37)) }
-    else if mins >= 20*60 { ("POST", egui::Color32::from_rgb(100, 150, 255)) }
-    else { ("CLOSED", egui::Color32::from_rgb(100, 100, 110)) }
+    if mins >= 13*60+30 && mins < 20*60 { SessionPhase::Open }
+    else if mins >= 9*60 && mins < 13*60+30 { SessionPhase::Pre }
+    else if mins >= 20*60 { SessionPhase::Post }
+    else { SessionPhase::Closed }
 }
 
 pub(crate) fn contracts_for_notional(notional: f32, premium: f32, multiplier: f32) -> i32 {

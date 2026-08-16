@@ -11,7 +11,7 @@ use super::super::widgets::rows::{
 use super::super::lists::rows::watchlist_columns::{BUILTIN as WL_COLUMNS_BUILTIN};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::gpu::{fetch_chain_background, fetch_search_background, fetch_watchlist_prices, set_pending_wl_tooltip, WlTooltipData};
-use crate::chart_renderer::trading::market_session;
+use crate::chart_renderer::trading::{market_session, SessionPhase};
 use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
@@ -134,7 +134,7 @@ if is_spawn || watchlist.open {
                         const BADGE_MIN_H: f32 = 14.0;
                         let icon_btn_w = IconPlacement::PanelHeader.hit_px();
                         let item_spacing = ui.spacing().item_spacing.x;
-                        let badge_w = Button::new(market_session().0)
+                        let badge_w = Button::new(market_session().label())
                             .variant(Variant::Chrome)
                             .size(Size::Xs)
                             .intrinsic_width(ui)
@@ -241,9 +241,18 @@ if is_spawn || watchlist.open {
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
                             ui.add_space(gap_xs());
-                            let (session, session_col) = market_session();
+                            // Session colour comes from the THEME, not from the
+                            // trading module: open is the bull role, pre-market
+                            // the warn role, post the accent, closed the dim.
+                            let phase = market_session();
+                            let session_col = match phase {
+                                SessionPhase::Open   => t.bull,
+                                SessionPhase::Pre    => t.warn,
+                                SessionPhase::Post   => t.accent,
+                                SessionPhase::Closed => t.dim,
+                            };
                             let badge_bg = color_alpha(session_col, alpha_tint());
-                            ui.add(Button::new(session)
+                            ui.add(Button::new(phase.label())
                                 .variant(Variant::Chrome)
                                 .size(Size::Xs)
                                 .fg(session_col)

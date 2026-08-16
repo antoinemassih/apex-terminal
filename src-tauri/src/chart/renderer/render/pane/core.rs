@@ -6998,7 +6998,7 @@ fn render_chart_pane(
     if let Some(edit_id) = chart.editing_order {
         // Extract order data to avoid borrow conflict
         let order_data = chart.orders.iter().find(|o| o.id == edit_id)
-            .map(|o| (o.price, o.color(t.bull, t.bear), o.label(), o.option_symbol.clone(), o.side));
+            .map(|o| (o.price, o.color(t.bull, t.bear, t.accent), o.label(), o.option_symbol.clone(), o.side));
 
         if let Some((order_price, color, order_label, opt_sym, side)) = order_data {
             let y = py(order_price);
@@ -12942,7 +12942,7 @@ fn render_order_lines(
         if matches!(order.state, OrderState::Cancelled | OrderState::Rejected) { continue; }
         let y = py(order.price);
         if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-        let base_color = order.color(t.bull, t.bear);
+        let base_color = order.color(t.bull, t.bear, t.accent);
         let is_draft = order.status == OrderStatus::Draft;
         let dark = t.bg;
         let badge_h = 24.0;

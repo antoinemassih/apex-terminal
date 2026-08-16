@@ -671,7 +671,15 @@ impl<'a> PanelSection<'a> {
         let hr = header_resp.response.rect;
         if rule_enabled {
             ui.painter().line_segment(
-                [Pos2::new(hr.left(), hr.bottom() - 0.5), Pos2::new(hr.right(), hr.bottom() - 0.5)],
+                // Half the rule's OWN width inside the edge, so it lands on
+                // the pixel grid instead of straddling it. Was a fixed 0.5,
+                // which is only correct while the stroke happens to be 1px —
+                // it detaches the moment a style re-pitches the stroke ramp.
+                {
+                    let half = stroke_thin() * 0.5;
+                    [Pos2::new(hr.left(), hr.bottom() - half),
+                     Pos2::new(hr.right(), hr.bottom() - half)]
+                },
                 Stroke::new(stroke_thin(), rule_color(t)),
             );
         }

@@ -611,6 +611,53 @@ bite by deleting the export line.
 
 ---
 
+## AT-154 — the ratchet was blind below any mid-file test module — FIXED
+
+The design-system ratchet filtered out test-fixture hits with an awk pass that
+cut each file at its FIRST `^\s*#\[cfg(test)\]` line and dropped everything
+after it. Its own comment stated the assumption: *"relies on the Rust convention
+that test modules sit at the END of a file."*
+
+When the convention does not hold it fails in the dangerous direction —
+**production code below a mid-file test module stops being counted at all.** It
+hid 17 real violations, 11 of them in `chart/renderer/ui/style.rs`, whose test
+module sits above `style_system_to_style_settings`. That is the same assumption,
+in the same file, that previously made `token_consumer_gate.py` invent 37
+findings by discarding the adapter below it.
+
+The failure was unbounded, not one-off: any file that later gained a mid-file
+test module would silently drop out of the count below that point, and the
+ratchet would report an **improvement** for it. Adding a `#[cfg(test)]` accessor
+to `panel_section.rs` during this session did exactly that.
+
+**Fixed** by `dev/strip_test_hits.py` — brace-matched `#[cfg(test)] mod` bodies
+*and* bare `#[test] fn` bodies (`design_system/equivalence_tests.rs` is declared
+`pub mod` with no cfg gate and annotates each function individually).
+
+**Newly-visible debt, and what was done with it:**
+- `trading/mod.rs` decided four colours with no theme in scope — the session
+  badge (`PRE` amber, `POST` blue, `CLOSED` grey) and the OCO-target purple.
+  They rendered identically in all 22 palettes, light ones included. Fixed:
+  `market_session()` now returns a `SessionPhase` and the call site picks
+  `t.bull` / `t.warn` / `t.accent` / `t.dim`; `OrderSide::color` takes `accent`.
+- `panel_section.rs` drew its header rule at `hr.bottom() - 0.5`, correct only
+  while the stroke happens to be 1px. Now `stroke_thin() * 0.5` — half the
+  rule's own width, so it stays on the pixel grid when a style re-pitches the
+  stroke ramp.
+- One `ui.add_space(1.0)` remains baselined: 1px has no rung, and minting one
+  for a single call site is the ladder inflation these gates argue against.
+
+**The filter has a self-test**, because it failed SILENTLY twice while being
+built — once given git-bash MSYS paths (`/c/Users/...`) that native Windows
+Python cannot open, once when an edit did not apply. Both times the only symptom
+was the baseline moving by exactly the number of test literals in a few files,
+which reads like real drift and invites a blind re-baseline. It runs in CI.
+
+The headline number barely moved (1210 → 1211). That is the point: it now means
+something.
+
+---
+
 ## AT-153 — header titles overlap their own action buttons — FIXED
 
 Found by looking at a screenshot rather than by a gate. The design inspector's

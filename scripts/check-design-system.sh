@@ -108,21 +108,20 @@ PATTERNS=(
 # satisfy a lint.
 REGEX_PATTERNS=(
   # ALPHA. `color_alpha(t.text, 60)` and `tint(t, Tone::Dim, 160)` pass an
-  # opacity as a bare number. Measured at the 2026-08 audit: 634 such literals,
-  # of which 354 do not correspond to ANY rung of the alpha ladder — more than
-  # half of the app's opacity is off-system.
+  # opacity as a bare number.
   #
-  # The off-ladder values are not scattered either, which is the interesting
-  # part: 160 and 180 appear 72 times between them, in the gap between `scrim`
-  # (140) and `solid` (200); 8/12/18/25/30 appear 81 times around and below
-  # `faint` (10). Those are not mistakes, they are an unofficial second ladder
-  # that grew because the real one has holes where the app needs tiers.
+  # The original note here claimed 354 of 634 literals were off-ladder and that
+  # 160/180 formed "an unofficial second ladder". That count was wrong twice
+  # over: it read the ladder with a regex that missed `whisper` (25) and `hint`
+  # (30) because those are set via function calls rather than literals, and it
+  # pooled chrome with CHART PAINTING, where `color_alpha(base, 160)` is a
+  # candle body and `220` a wick — data geometry, not a chrome tier. See
+  # AT-150, now closed: most off-ladder chrome values were within +-2 of a rung
+  # and snapped; only 160 and 180 were a real gap, now `dense` and `near_solid`.
   #
-  # Matched whether or not the value is on-ladder, because `alpha_dim()` says
-  # what it means and `60` does not, and a literal stops tracking the moment a
-  # style re-pitches the ramp. Fixing this properly means deciding which of the
-  # recurring off-ladder values deserve rungs — a design call, recorded as
-  # AT-150 rather than guessed at here.
+  # Still matched whether or not the value is on-ladder, because `alpha_dim()`
+  # says what it means and `60` does not, and a literal stops tracking the
+  # moment a style re-pitches the ramp.
   "(color_alpha|tint)\([^)]*,[[:space:]]*[0-9]{1,3}[[:space:]]*\)"
   "\.(left|right|top|bottom|center_x|center_y)\(\)[[:space:]]*[-+][[:space:]]*[0-9]+\.[0-9]+"
   "add_space\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"
@@ -174,25 +173,24 @@ EXCLUDE_DIR_ARGS=(
 
 # ── Collect per-file violation counts ───────────────────────────────────────
 # Drop hits inside a `#[cfg(test)]` module. Test fixtures legitimately use
-# literal colours/fonts (Color32::from_rgb(1,2,3) as a sentinel), and counting
-# those as drift trains people to ignore the gate. Relies on the Rust
-# convention -- already relied upon by dev/quality_gate.py -- that test modules
-# sit at the END of a file.
+# literal colours/fonts (`Color32::from_rgb(1, 2, 3)` as a sentinel), and
+# counting those as drift trains people to ignore the gate — worse, "fixing"
+# one by reaching for a token would make the test depend on the very system it
+# exercises.
+#
+# This used to be an awk filter that cut each file at its FIRST
+# `^\s*#\[cfg(test)\]` line, on the stated assumption that "test modules sit
+# at the END of a file". When that does not hold it fails in the DANGEROUS
+# direction: production code below a mid-file test module stopped being counted
+# at all. It hid 17 real violations, 11 of them in
+# `chart/renderer/ui/style.rs`, whose test module sits above
+# `style_system_to_style_settings`. The failure was also unbounded — any file
+# that later gained a mid-file test module would silently drop out of the count
+# below that point and the ratchet would report an improvement for it.
+#
+# Brace matching removes the assumption. See `dev/strip_test_hits.py`.
 drop_test_module_hits() {
-  awk -F: '
-    {
-      f = $1; ln = $2 + 0
-      if (!(f in cut)) {
-        cut[f] = 0; n = 0
-        while ((getline l < f) > 0) {
-          n++
-          if (l ~ /^[ 	]*#\[cfg\(test\)\]/) { cut[f] = n; break }
-        }
-        close(f)
-      }
-      if (cut[f] == 0 || ln < cut[f]) print
-    }
-  '
+  python dev/strip_test_hits.py
 }
 
 collect() {

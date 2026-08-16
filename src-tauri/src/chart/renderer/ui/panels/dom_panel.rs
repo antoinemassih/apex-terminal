@@ -738,7 +738,7 @@ pub(crate) fn draw(
 
         // Build the rich-orders array for this row.
         let rich: Vec<(u32, char, u32, egui::Color32)> = oap.iter().map(|ord| {
-            let oc = ord.color(t.bull, t.bear);
+            let oc = ord.color(t.bull, t.bear, t.accent);
             let side_ch = match ord.side { OrderSide::Buy | OrderSide::TriggerBuy => 'B', _ => 'S' };
             (ord.id, side_ch, ord.qty, oc)
         }).collect();
@@ -754,7 +754,7 @@ pub(crate) fn draw(
                         OrderSide::Buy | OrderSide::TriggerBuy => 'B', _ => 'S',
                     });
                     drag_cx.ghost_qty = drag_ord.qty;
-                    drag_cx.ghost_color = drag_ord.color(t.bull, t.bear);
+                    drag_cx.ghost_color = drag_ord.color(t.bull, t.bear, t.accent);
                 }
             }
         }
