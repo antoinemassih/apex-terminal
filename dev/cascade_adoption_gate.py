@@ -49,6 +49,8 @@ FLOORS = ("el_nodes", "cascade_sites", "flex_rows")
 CEILINGS = ("cursor_walks",)
 
 TEST_MOD = re.compile(r"#\[cfg\(test\)\]")
+LINE_COMMENT = re.compile(r"//.*")
+BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 
 
 def census():
@@ -68,6 +70,12 @@ def census():
             m = TEST_MOD.search(text)
             if m:
                 text = text[: m.start()]
+            # Comments are not code. Migrated call sites routinely document the
+            # walk they REPLACED — `panel_sub_section` alone carries four such
+            # notes — and counting that prose meant the ceiling reported walks
+            # that no longer exist. It is the same mistake as the ratchet
+            # counting test fixtures (AT-154): a number nobody can act on.
+            text = BLOCK_COMMENT.sub("", LINE_COMMENT.sub("", text))
             for name, rx in PATTERNS.items():
                 counts[name] += len(re.findall(rx, text))
     return counts
