@@ -92,7 +92,7 @@ mod tests {
     use super::*;
     use crate::design_system::color_scheme::builtin_dark;
     use crate::design_system::theme_pack::ThemePack;
-    use crate::ui_kit::sx::recipe_spec::{
+    use crate::ui_kit::sx::recipe_spec::{AlphaTier, 
         ColorSpec, PadTier, RadiusTier, RecipeDelta, RecipeSpec, ShadeRef, ToneRef,
     };
     use std::collections::BTreeMap;
@@ -105,7 +105,7 @@ mod tests {
             RecipeSpec {
                 base: RecipeDelta {
                     radius: Some(RadiusTier::Pill),
-                    fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: 32 }),
+                    fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: AlphaTier::Raw(32) }),
                     text: None,
                     ..Default::default()
                 },
@@ -117,7 +117,7 @@ mod tests {
             RecipeSpec {
                 base: RecipeDelta { radius: Some(RadiusTier::None), py: Some(PadTier::Xs), ..Default::default() },
                 selected: Some(RecipeDelta {
-                    fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: 24 }),
+                    fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: AlphaTier::Raw(24) }),
                     ..Default::default()
                 }),
                 ..Default::default()

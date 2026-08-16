@@ -122,7 +122,13 @@ REGEX_PATTERNS=(
   # Still matched whether or not the value is on-ladder, because `alpha_dim()`
   # says what it means and `60` does not, and a literal stops tracking the
   # moment a style re-pitches the ramp.
-  "(color_alpha|tint)\([^)]*,[[:space:]]*[0-9]{1,3}[[:space:]]*\)"
+  # `tint_raw` is INCLUDED deliberately. It is the recipe layer's documented
+  # escape hatch (`AlphaTier::Raw`, mirroring `RadiusTier::Px`) for an opacity
+  # the source CSS states literally and no rung expresses — but it is still an
+  # off-ladder opacity in production chrome, and excluding it would have handed
+  # this ratchet a 29-violation "improvement" for a function RENAME. The number
+  # is only worth reading if it cannot be moved that way.
+  "(color_alpha|tint|tint_raw)\([^)]*,[[:space:]]*[0-9]{1,3}[[:space:]]*\)"
   "\.(left|right|top|bottom|center_x|center_y)\(\)[[:space:]]*[-+][[:space:]]*[0-9]+\.[0-9]+"
   "add_space\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"
   "Margin::(same|symmetric)\([[:space:]]*[0-9]+"

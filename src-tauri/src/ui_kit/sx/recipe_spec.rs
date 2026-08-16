@@ -131,9 +131,148 @@ impl From<ShadeRef> for Shade {
 ///
 /// ```json
 /// { "kind": "tone",    "tone": "accent",  "shade": "s400" }
-/// { "kind": "alpha",   "tone": "accent",  "alpha": 40     }
+/// { "kind": "alpha",   "tone": "accent",  "alpha": "soft" }
 /// { "kind": "literal", "hex": "#6366f1"                   }
 /// ```
+/// A rung of the alpha ladder, resolved at PAINT time.
+///
+/// The recipe layer's stated rule is "tiers over pixels" — `RadiusTier::Pill`
+/// and `PadTier::Md` track the active style's ramp, and `RadiusTier::Px` is the
+/// documented escape hatch for a value the source CSS states literally and no
+/// tier expresses. Alpha had no such tier: `ColorSpec::Alpha` carried a bare
+/// `u8`, so 56 recipe colours were pinned opacities that no style could
+/// re-pitch.
+///
+/// Baking the accessor at construction time is NOT the fix and was already
+/// tried once in `builtin_recipes.rs`: a `RecipeSet` is rebuilt on STYLE
+/// CHANGE, not per frame, so `alpha_soft()` called there freezes until the next
+/// style switch and stops tracking the inspector slider entirely. Resolving
+/// through this enum inside `ColorSpec::resolve` — which runs at paint time —
+/// is what makes the value live.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AlphaTier {
+    Faint,
+    Ghost,
+    Soft,
+    Whisper,
+    Hint,
+    Subtle,
+    Tint,
+    Dim,
+    Strong,
+    Active,
+    Heavy,
+    Scrim,
+    Dense,
+    NearSolid,
+    Solid,
+    /// Escape hatch, mirroring [`RadiusTier::Px`] — an opacity the source CSS
+    /// states literally that no rung expresses (Alto's `rgba(255,238,210,.06)`
+    /// is 15/255 and lands on `Ghost`; its `.05` does not land on anything).
+    /// Reach for a rung first; this is for the values that genuinely have none.
+    Raw(u8),
+}
+
+
+// Serde by hand so that `"alpha": 40` — the shape every committed fixture and
+// every doc example used before this enum existed — still loads, while a rung
+// round-trips as the readable `"alpha": "soft"`. A derived enum would have
+// forced `{"raw": 40}` on files that have no reason to change.
+impl Serialize for AlphaTier {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            AlphaTier::Raw(a) => s.serialize_u8(*a),
+            other => s.serialize_str(other.name()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AlphaTier {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            Name(String),
+            Raw(u8),
+        }
+        match Repr::deserialize(d)? {
+            Repr::Raw(a) => Ok(AlphaTier::Raw(a)),
+            Repr::Name(n) => AlphaTier::from_name(&n).ok_or_else(|| {
+                serde::de::Error::custom(format!("unknown alpha tier `{n}`"))
+            }),
+        }
+    }
+}
+
+impl AlphaTier {
+    /// Serde name for a rung. `Raw` has none — it serialises as a number.
+    fn name(&self) -> &'static str {
+        match self {
+            AlphaTier::Faint => "faint",
+            AlphaTier::Ghost => "ghost",
+            AlphaTier::Soft => "soft",
+            AlphaTier::Whisper => "whisper",
+            AlphaTier::Hint => "hint",
+            AlphaTier::Subtle => "subtle",
+            AlphaTier::Tint => "tint",
+            AlphaTier::Dim => "dim",
+            AlphaTier::Strong => "strong",
+            AlphaTier::Active => "active",
+            AlphaTier::Heavy => "heavy",
+            AlphaTier::Scrim => "scrim",
+            AlphaTier::Dense => "dense",
+            AlphaTier::NearSolid => "near_solid",
+            AlphaTier::Solid => "solid",
+            AlphaTier::Raw(_) => "raw",
+        }
+    }
+
+    fn from_name(n: &str) -> Option<Self> {
+        Some(match n {
+            "faint" => AlphaTier::Faint,
+            "ghost" => AlphaTier::Ghost,
+            "soft" => AlphaTier::Soft,
+            "whisper" => AlphaTier::Whisper,
+            "hint" => AlphaTier::Hint,
+            "subtle" => AlphaTier::Subtle,
+            "tint" => AlphaTier::Tint,
+            "dim" => AlphaTier::Dim,
+            "strong" => AlphaTier::Strong,
+            "active" => AlphaTier::Active,
+            "heavy" => AlphaTier::Heavy,
+            "scrim" => AlphaTier::Scrim,
+            "dense" => AlphaTier::Dense,
+            "near_solid" => AlphaTier::NearSolid,
+            "solid" => AlphaTier::Solid,
+            _ => return None,
+        })
+    }
+}
+
+impl AlphaTier {
+    pub fn to_u8(self) -> u8 {
+        use crate::ui_kit::style as st;
+        match self {
+            AlphaTier::Faint => st::alpha_faint(),
+            AlphaTier::Ghost => st::alpha_ghost(),
+            AlphaTier::Soft => st::alpha_soft(),
+            AlphaTier::Whisper => st::alpha_whisper(),
+            AlphaTier::Hint => st::alpha_hint(),
+            AlphaTier::Subtle => st::alpha_subtle(),
+            AlphaTier::Tint => st::alpha_tint(),
+            AlphaTier::Dim => st::alpha_dim(),
+            AlphaTier::Strong => st::alpha_strong(),
+            AlphaTier::Active => st::alpha_active(),
+            AlphaTier::Heavy => st::alpha_heavy(),
+            AlphaTier::Scrim => st::alpha_scrim(),
+            AlphaTier::Dense => st::alpha_dense(),
+            AlphaTier::NearSolid => st::alpha_near_solid(),
+            AlphaTier::Solid => st::alpha_solid(),
+            AlphaTier::Raw(a) => a,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ColorSpec {
@@ -143,10 +282,12 @@ pub enum ColorSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         shade: Option<ShadeRef>,
     },
-    /// The tone's base color at an explicit alpha (0–255). Useful for tinted fills.
+    /// The tone's base colour at a rung of the alpha ladder. Useful for tinted
+    /// fills. Was a bare `u8`; see [`AlphaTier`] for why that could not track a
+    /// style's ramp.
     Alpha {
         tone: ToneRef,
-        alpha: u8,
+        alpha: AlphaTier,
     },
     /// Hex literal escape hatch — for one-off colors not expressible via tones.
     /// Accepts `#rrggbb` or `#rrggbbaa`.
@@ -167,7 +308,9 @@ impl ColorSpec {
             }
             ColorSpec::Alpha { tone, alpha } => {
                 let base = pal.base((*tone).into());
-                egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), *alpha)
+                // Resolved HERE, at paint time — that is the whole point of the
+                // tier. See `AlphaTier`.
+                egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha.to_u8())
             }
             ColorSpec::Literal { hex } => {
                 let h = hex.trim_start_matches('#');
@@ -682,7 +825,7 @@ mod tests {
     #[test]
     fn color_spec_alpha_preserves_rgb() {
         let t = MockTheme;
-        let spec = ColorSpec::Alpha { tone: ToneRef::Accent, alpha: 40 };
+        let spec = ColorSpec::Alpha { tone: ToneRef::Accent, alpha: AlphaTier::Raw(40) };
         let c = spec.resolve(&t);
         // Verify alpha is preserved; also verify the color is non-transparent
         // and derives from Accent (not from a different tone).
@@ -849,8 +992,8 @@ mod m32_vocabulary_tests {
         let t = PortableTheme::dark();
         let d = RecipeDelta {
             bevel: Some(BevelSpecRef {
-                top: Some(ColorSpec::Alpha { tone: ToneRef::Text, alpha: 26 }),
-                bottom: Some(ColorSpec::Alpha { tone: ToneRef::Bg, alpha: 115 }),
+                top: Some(ColorSpec::Alpha { tone: ToneRef::Text, alpha: AlphaTier::Raw(26) }),
+                bottom: Some(ColorSpec::Alpha { tone: ToneRef::Bg, alpha: AlphaTier::Raw(115) }),
                 width: 1.0,
             }),
             ..Default::default()
@@ -900,5 +1043,49 @@ mod m32_vocabulary_tests {
         // and back out again
         let back = serde_json::to_string(&d).expect("serialise");
         assert!(back.contains("bottom"), "edge selection must survive serialisation");
+    }
+}
+
+#[cfg(test)]
+mod alpha_tier_tests {
+    use super::{AlphaTier, ColorSpec, ToneRef};
+
+    /// A bare number must still deserialise.
+    ///
+    /// Every committed fixture and doc example wrote `"alpha": 40` before this
+    /// enum existed. A derived enum would have demanded `{"raw": 40}` and
+    /// broken files that have no reason to change — the round-trip test on the
+    /// committed Figma fixture caught exactly that on the first attempt.
+    #[test]
+    fn a_bare_number_still_loads_as_a_raw_tier() {
+        let j = r#"{"kind":"alpha","tone":"accent","alpha":40}"#;
+        let spec: ColorSpec = serde_json::from_str(j).expect("legacy shape must load");
+        match spec {
+            ColorSpec::Alpha { alpha, .. } => assert_eq!(alpha, AlphaTier::Raw(40)),
+            other => panic!("expected an alpha spec, got {other:?}"),
+        }
+    }
+
+    /// A rung round-trips as its NAME, so the file says what it means.
+    #[test]
+    fn a_named_rung_round_trips_as_a_string() {
+        let spec = ColorSpec::Alpha { tone: ToneRef::Text, alpha: AlphaTier::Soft };
+        let j = serde_json::to_string(&spec).unwrap();
+        assert!(j.contains(r#""alpha":"soft""#), "got {j}");
+        let back: ColorSpec = serde_json::from_str(&j).unwrap();
+        match back {
+            ColorSpec::Alpha { alpha, .. } => assert_eq!(alpha, AlphaTier::Soft),
+            other => panic!("expected an alpha spec, got {other:?}"),
+        }
+    }
+
+    /// The point of the tier: a rung resolves through the LIVE ladder, so a
+    /// style that re-pitches its alphas moves every recipe that used a rung.
+    /// `Raw` deliberately does not — it is the CSS-literal escape hatch.
+    #[test]
+    fn a_rung_tracks_the_ladder_and_raw_does_not() {
+        assert_eq!(AlphaTier::Soft.to_u8(), crate::ui_kit::style::alpha_soft());
+        assert_eq!(AlphaTier::Dense.to_u8(), crate::ui_kit::style::alpha_dense());
+        assert_eq!(AlphaTier::Raw(13).to_u8(), 13);
     }
 }

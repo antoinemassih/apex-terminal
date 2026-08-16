@@ -62,6 +62,7 @@
 //!   `kit::PanelHeader`.
 //! - Form-field grouping with input gutters — use `FormSection`.
 
+use crate::ui_kit::sx::recipe_spec::AlphaTier;
 use egui::{Color32, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
@@ -1503,7 +1504,7 @@ mod header_layout_tests {
 mod recipe_tests {
     use crate::design_system::recipes::RecipeSet;
     use crate::ui_kit::sx::{
-        recipe_spec::{ColorSpec, RecipeDelta, RecipeSpec, ToneRef},
+        recipe_spec::{AlphaTier, ColorSpec, RecipeDelta, RecipeSpec, ToneRef},
         style::{Sx, StyleState},
     };
     use crate::ui_kit::widgets::theme::{ComponentTheme, PortableTheme};
@@ -1520,7 +1521,7 @@ mod recipe_tests {
         // Override: accent alpha tint (not the default section_header_surface).
         set.insert("section.header", RecipeSpec {
             base: RecipeDelta {
-                fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: 40 }),
+                fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: AlphaTier::Subtle }),
                 ..Default::default()
             },
             ..Default::default()

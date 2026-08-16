@@ -611,6 +611,41 @@ bite by deleting the export line.
 
 ---
 
+## AT-156 — the recipe layer had tiers for everything except alpha — FIXED
+
+`builtin_recipes.rs` is the largest single chrome entry in the ratchet, and all
+of it was one thing: 56 `tint(ToneRef::X, <u8>)` calls. Its own authoring rules
+say *"Tiers over pixels — `RadiusTier::Pill` / `PadTier::Md` track the active
+style's ramp"*, with `RadiusTier::Px` as the documented escape hatch for a value
+the source CSS states literally. Alpha had no tier at all: `ColorSpec::Alpha`
+carried a bare `u8`, so 56 recipe colours were opacities no style could
+re-pitch.
+
+**The obvious fix is wrong and had already been tried.** One line read
+`tint(ToneRef::Text, crate::ui_kit::style::alpha_soft())`. A `RecipeSet` is
+rebuilt on **style change**, not per frame, so an accessor called there freezes
+until the next style switch and stops tracking the inspector slider entirely.
+Migrating 27 sites that way would have multiplied a staleness bug.
+
+**`AlphaTier` resolves inside `ColorSpec::resolve`, which runs at paint time.**
+27 call sites now name a rung and follow the live ladder; 29 keep
+`AlphaTier::Raw` because the CSS states an opacity no rung expresses — the same
+exemption `RadiusTier::Px` already had, but spelled `tint_raw` so it is greppable
+rather than anonymous.
+
+**The ratchet counts `tint_raw` on purpose.** Excluding it would have credited
+this work with a 47-violation improvement when only 27 sites actually changed
+behaviour — the other 20 would have been a function rename. The pattern was
+widened and the real figure is 1211 → 1190. A number that can be moved by
+renaming a function is not worth reading, which is the same argument AT-154 made.
+
+Backward compatibility is kept by hand-written serde: `"alpha": 40` still loads
+(every committed fixture used it), while a rung round-trips as `"alpha": "soft"`.
+The committed Figma fixture's round-trip test caught the derived-enum version
+demanding `{"raw": 40}` on the first attempt.
+
+---
+
 ## AT-155 — the last dead controls and dead tokens — CLOSED
 
 Two leftovers recorded by earlier findings, triaged one by one rather than

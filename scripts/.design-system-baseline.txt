@@ -60,7 +60,7 @@
 1 src-tauri/src/chart/renderer/ui/tools/indicator_editor.rs
 7 src-tauri/src/chart/renderer/ui/tools/order_entry_panel.rs
 4 src-tauri/src/chart/renderer/ui/welcome.rs
-47 src-tauri/src/design_system/builtin_recipes.rs
+26 src-tauri/src/design_system/builtin_recipes.rs
 4 src-tauri/src/dev_inspector/mod.rs
 1 src-tauri/src/ui_kit/cursor.rs
 3 src-tauri/src/ui_kit/sx/color.rs

@@ -65,7 +65,7 @@
 
 use super::recipes::RecipeSet;
 use crate::ui_kit::sx::recipe_spec::{
-    BorderSpecRef, BevelSpecRef, EdgesRef, BorderWidthTier, ColorSpec, PadTier, RadiusTier, RecipeDelta, RecipeSpec,
+    AlphaTier, BorderSpecRef, BevelSpecRef, EdgesRef, BorderWidthTier, ColorSpec, PadTier, RadiusTier, RecipeDelta, RecipeSpec,
     ShadeRef, TextSizeTier, TextSpec, ToneRef,
 };
 
@@ -90,15 +90,27 @@ fn shade(t: ToneRef, s: ShadeRef) -> ColorSpec {
 /// A tone's base colour at an explicit alpha — the palette-agnostic spelling of
 /// CSS `color-mix(in srgb, var(--ds-accent) N%, transparent)`.
 #[inline]
-fn tint(t: ToneRef, a: u8) -> ColorSpec {
-    ColorSpec::Alpha { tone: t, alpha: a }
+fn tint(t: ToneRef, tier: AlphaTier) -> ColorSpec {
+    ColorSpec::Alpha { tone: t, alpha: tier }
+}
+
+/// A tone at an opacity the source CSS states literally and that no rung of the
+/// alpha ladder expresses — the `AlphaTier::Raw` escape hatch, spelled out so
+/// the call sites that need it are visible and the ones that do not stand out.
+///
+/// Mirrors the `RadiusTier::Px` exemption this module's own authoring rules
+/// already grant: "`Px(_)` is reserved for values the CSS states literally and
+/// that no tier expresses."
+#[inline]
+fn tint_raw(t: ToneRef, a: u8) -> ColorSpec {
+    ColorSpec::Alpha { tone: t, alpha: AlphaTier::Raw(a) }
 }
 
 /// Fully transparent — the second stop of a one-sided CSS inset shadow, where
 /// `bevel_raised` wants a bottom line but the CSS only declares a top one.
 #[inline]
 fn nothing() -> ColorSpec {
-    ColorSpec::Alpha { tone: ToneRef::Bg, alpha: 0 }
+    ColorSpec::Alpha { tone: ToneRef::Bg, alpha: AlphaTier::Raw(0) }
 }
 
 /// Chainable setters for [`RecipeDelta`]. The struct is a plain bag of
@@ -137,7 +149,7 @@ impl DeltaExt for RecipeDelta {
     }
     fn no_border(mut self) -> Self {
         self.border = Some(BorderSpecRef {
-            color: tint(ToneRef::Border, 0),
+            color: tint_raw(ToneRef::Border, 0),
             width: Some(BorderWidthTier::None),
             edges: EdgesRef::All,
         });
@@ -387,18 +399,18 @@ fn aperture() -> RecipeSet {
         (
             "row.list",
             spec(d().radius(RadiusTier::Pill).px(PadTier::Px(10.0)).no_border().weight(700))
-                .on_hover(d().fill(tint(ToneRef::Text, 13))),
+                .on_hover(d().fill(tint_raw(ToneRef::Text, 13))),
         ),
         (
             "row.list.hover",
-            spec(d()).on_hover(d().fill(tint(ToneRef::Text, 13))),
+            spec(d()).on_hover(d().fill(tint_raw(ToneRef::Text, 13))),
         ),
         // `.ds-panel__header { background: transparent; border-bottom: 1px
         // solid border-dim }` + `.ds-panel__title { font-weight: 600 }`.
         (
             "panel.header",
             spec(
-                d().border_edge(tint(ToneRef::Border, 90), BorderWidthTier::Std, EdgesRef::Bottom)
+                d().border_edge(tint_raw(ToneRef::Border, 90), BorderWidthTier::Std, EdgesRef::Bottom)
                     .py(PadTier::Px(8.0))
                     .weight(600),
             ),
@@ -434,7 +446,7 @@ fn cadence() -> RecipeSet {
                     .fill(tone(ToneRef::Accent))
                     .ink(ToneRef::Bg)
                     .px(PadTier::Lg)
-                    .bevel_raised(tint(ToneRef::Text, 26), nothing())
+                    .bevel_raised(tint_raw(ToneRef::Text, 26), nothing())
                     .weight(700),
             )
             .on_hover(d().fill(shade(ToneRef::Accent, ShadeRef::S400))),
@@ -528,7 +540,7 @@ fn cadence() -> RecipeSet {
             spec(
                 d().radius(RadiusTier::Md)
                     .fill(tone(ToneRef::Surface))
-                    .bevel_raised(tint(ToneRef::Text, 10), nothing()),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Faint), nothing()),
             ),
         ),
         // `.ds-btn--chrome.is-active { background: bg-surface; color: fg;
@@ -540,7 +552,7 @@ fn cadence() -> RecipeSet {
                 d().fill(tone(ToneRef::Surface))
                     .ink(ToneRef::Text)
                     .border_edge(tone(ToneRef::Accent), BorderWidthTier::Px(2.0), EdgesRef::Bottom)
-                    .bevel_marker(tint(ToneRef::Bg, 77), 1.0),
+                    .bevel_marker(tint_raw(ToneRef::Bg, 77), 1.0),
             ),
         ),
         // `.ds-tab--underline.is-selected { border-bottom-width: 3px }` — the
@@ -568,9 +580,9 @@ fn cadence() -> RecipeSet {
             spec(
                 d().radius(RadiusTier::Pill)
                     .fill(tone(ToneRef::Surface))
-                    .border(tint(ToneRef::Text, crate::ui_kit::style::alpha_soft()), BorderWidthTier::Std)
+                    .border(tint(ToneRef::Text, AlphaTier::Soft), BorderWidthTier::Std)
                     .px(PadTier::Px(10.0))
-                    .bevel_raised(tint(ToneRef::Text, 15), nothing())
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Ghost), nothing())
                     .weight(700),
             ),
         ),
@@ -582,7 +594,7 @@ fn cadence() -> RecipeSet {
                 d().radius(RadiusTier::Lg)
                     .px(PadTier::Px(16.0))
                     .py(PadTier::Px(16.0))
-                    .border(tint(ToneRef::Text, crate::ui_kit::style::alpha_soft()), BorderWidthTier::Std),
+                    .border(tint(ToneRef::Text, AlphaTier::Soft), BorderWidthTier::Std),
             ),
         ),
         // `.ds-panel__header { background: var(--ds-bg); border-bottom: 1px
@@ -593,7 +605,7 @@ fn cadence() -> RecipeSet {
             "panel.header",
             spec(
                 d().fill(tone(ToneRef::Bg))
-                    .border_edge(tint(ToneRef::Text, 10), BorderWidthTier::Std, EdgesRef::Bottom)
+                    .border_edge(tint(ToneRef::Text, AlphaTier::Faint), BorderWidthTier::Std, EdgesRef::Bottom)
                     .py(PadTier::Px(6.0))
                     .weight(700),
             ),
@@ -607,7 +619,7 @@ fn cadence() -> RecipeSet {
         // `.ds-wl-row:hover { background: color-mix(accent 8%, transparent) }`.
         (
             "row.list.hover",
-            spec(d()).on_hover(d().fill(tint(ToneRef::Accent, 20))),
+            spec(d()).on_hover(d().fill(tint(ToneRef::Accent, AlphaTier::Soft))),
         ),
         // `.ds-wl-section { background: color-mix(accent 6%, bg-surface);
         // border-top: 1px solid border }` + `.ds-wl-section span
@@ -615,7 +627,7 @@ fn cadence() -> RecipeSet {
         (
             "section.header.fill",
             spec(
-                d().fill(tint(ToneRef::Accent, 16))
+                d().fill(tint_raw(ToneRef::Accent, 16))
                     .py(PadTier::Px(6.0))
                     .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Top)
                     .weight(700),
@@ -626,7 +638,7 @@ fn cadence() -> RecipeSet {
         (
             "nav.cluster.active",
             spec(d().radius(RadiusTier::Pill))
-                .on_select(d().fill(tint(ToneRef::Accent, 40)).ink(ToneRef::Accent)),
+                .on_select(d().fill(tint(ToneRef::Accent, AlphaTier::Subtle)).ink(ToneRef::Accent)),
         ),
     ])
 }
@@ -652,7 +664,7 @@ fn alto() -> RecipeSet {
             spec(
                 d().radius(RadiusTier::Sm)
                     .fill(tone(ToneRef::Accent))
-                    .bevel_raised(tint(ToneRef::Text, 46), tint(ToneRef::Bg, 64)),
+                    .bevel_raised(tint_raw(ToneRef::Text, 46), tint_raw(ToneRef::Bg, 64)),
             ),
         ),
         // `button.action` — SHAPE ONLY, for the big block controls in a
@@ -748,7 +760,7 @@ fn alto() -> RecipeSet {
                 d().radius(RadiusTier::Sm)
                     .fill(tone(ToneRef::Surface))
                     .border(tone(ToneRef::Border), BorderWidthTier::Std)
-                    .bevel_raised(tint(ToneRef::Text, 15), tint(ToneRef::Bg, 89)),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Ghost), tint_raw(ToneRef::Bg, 89)),
             )
             .on_hover(d().fill(shade(ToneRef::Surface, ShadeRef::S400))),
         ),
@@ -756,7 +768,7 @@ fn alto() -> RecipeSet {
         // bg-surface) }` — the ambient amber wash.
         (
             "button.chrome",
-            spec(d().radius(RadiusTier::Sm)).on_select(d().fill(tint(ToneRef::Accent, 30))),
+            spec(d().radius(RadiusTier::Sm)).on_select(d().fill(tint(ToneRef::Accent, AlphaTier::Hint))),
         ),
         // `.ds-tab--underline.is-selected { background: bg-surface; box-shadow:
         // inset 0 1px 0 rgba(255,238,210,.04) }` — a beveled face, not a bar.
@@ -764,7 +776,7 @@ fn alto() -> RecipeSet {
             "tab.line.active",
             spec(d()).on_select(
                 d().fill(tone(ToneRef::Accent))
-                    .bevel_raised(tint(ToneRef::Text, 10), nothing()),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Faint), nothing()),
             ),
         ),
         // `.ds-tab--inline.is-selected { border: 1px solid border; box-shadow:
@@ -776,7 +788,7 @@ fn alto() -> RecipeSet {
             spec(
                 d().radius(RadiusTier::Sm)
                     .fill(tone(ToneRef::Surface))
-                    .bevel_raised(tint(ToneRef::Text, 20), tint(ToneRef::Bg, 115)),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Soft), tint_raw(ToneRef::Bg, 115)),
             ),
         ),
         // `.ds-pane-tab.is-active { box-shadow: inset 0 -2px 0 accent }` — the
@@ -796,7 +808,7 @@ fn alto() -> RecipeSet {
                     .fill(tone(ToneRef::Surface))
                     .border(tone(ToneRef::Border), BorderWidthTier::Std)
                     .text_size(TextSizeTier::Xs)
-                    .bevel_raised(tint(ToneRef::Text, 15), tint(ToneRef::Bg, 102)),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Ghost), tint_raw(ToneRef::Bg, 102)),
             ),
         ),
         // `--ds-card-radius: radius-md` + `--ds-card-pad: 14px` + the Zed
@@ -818,7 +830,7 @@ fn alto() -> RecipeSet {
             "row.list",
             spec(
                 d().radius(RadiusTier::None)
-                    .border_edge(tint(ToneRef::Text, 10), BorderWidthTier::Hair, EdgesRef::Bottom)
+                    .border_edge(tint(ToneRef::Text, AlphaTier::Faint), BorderWidthTier::Hair, EdgesRef::Bottom)
                     .weight(500),
             ),
         ),
@@ -830,8 +842,8 @@ fn alto() -> RecipeSet {
         (
             "row.list.selected",
             spec(d()).on_select(
-                d().fill(tint(ToneRef::Accent, 31))
-                    .border_edge(tint(ToneRef::Accent, 56), BorderWidthTier::Hair, EdgesRef::Bottom)
+                d().fill(tint_raw(ToneRef::Accent, 31))
+                    .border_edge(tint_raw(ToneRef::Accent, 56), BorderWidthTier::Hair, EdgesRef::Bottom)
                     .weight(600),
             ),
         ),
@@ -843,7 +855,7 @@ fn alto() -> RecipeSet {
             spec(
                 d().fill(tone(ToneRef::Surface))
                     .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom)
-                    .bevel_marker(tint(ToneRef::Bg, 89), 1.0),
+                    .bevel_marker(tint_raw(ToneRef::Bg, 89), 1.0),
             ),
         ),
         // `.ds-wl-section { background: color-mix(accent 6%, bg-surface);
@@ -851,7 +863,7 @@ fn alto() -> RecipeSet {
         (
             "section.header.fill",
             spec(
-                d().fill(tint(ToneRef::Accent, 16))
+                d().fill(tint_raw(ToneRef::Accent, 16))
                     .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Top)
                     .weight(700),
             ),
@@ -861,7 +873,7 @@ fn alto() -> RecipeSet {
         (
             "nav.cluster.active",
             spec(d().radius(RadiusTier::Sm))
-                .on_select(d().fill(tint(ToneRef::Accent, 40)).ink(ToneRef::Accent)),
+                .on_select(d().fill(tint(ToneRef::Accent, AlphaTier::Subtle)).ink(ToneRef::Accent)),
         ),
         // `.ds-toolbar { background: linear-gradient(bg-elevated, bg-panel);
         // border-bottom: 1px solid border-dim; box-shadow: inset 0 1px 0
@@ -872,7 +884,7 @@ fn alto() -> RecipeSet {
             spec(
                 d().fill(tone(ToneRef::Surface))
                     .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom)
-                    .bevel_raised(tint(ToneRef::Text, 15), nothing()),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Ghost), nothing()),
             ),
         ),
     ])
@@ -900,7 +912,7 @@ fn mariner() -> RecipeSet {
             spec(
                 d().radius(RadiusTier::Sm)
                     .fill(tone(ToneRef::Accent))
-                    .bevel_raised(tint(ToneRef::Text, 56), tint(ToneRef::Bg, 71)),
+                    .bevel_raised(tint_raw(ToneRef::Text, 56), tint_raw(ToneRef::Bg, 71)),
             ),
         ),
         // `button.action` — SHAPE ONLY, for the big block controls in a
@@ -995,11 +1007,11 @@ fn mariner() -> RecipeSet {
                     .fill(tone(ToneRef::Surface))
                     .border(tone(ToneRef::Border), BorderWidthTier::Std)
                     .py(PadTier::Px(3.0))
-                    .bevel_raised(tint(ToneRef::Text, 20), tint(ToneRef::Bg, 97)),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Soft), tint_raw(ToneRef::Bg, 97)),
             )
             .on_hover(
                 d().fill(shade(ToneRef::Surface, ShadeRef::S400))
-                    .bevel_raised(tint(ToneRef::Text, 26), tint(ToneRef::Bg, 97)),
+                    .bevel_raised(tint_raw(ToneRef::Text, 26), tint_raw(ToneRef::Bg, 97)),
             ),
         ),
         // `.ds-btn--chrome.is-active { background: color-mix(accent 14%,
@@ -1007,7 +1019,7 @@ fn mariner() -> RecipeSet {
         (
             "button.chrome",
             spec(d().radius(RadiusTier::Sm).px(PadTier::Px(8.0)))
-                .on_select(d().fill(tint(ToneRef::Accent, 34))),
+                .on_select(d().fill(tint_raw(ToneRef::Accent, 34))),
         ),
         // `.ds-tab--underline.is-selected { background: bg-surface; box-shadow:
         // none }` — Mariner explicitly drops Alto's bevel here, so NO bevel is
@@ -1023,7 +1035,7 @@ fn mariner() -> RecipeSet {
             spec(
                 d().radius(RadiusTier::Sm)
                     .fill(tone(ToneRef::Surface))
-                    .bevel_raised(tint(ToneRef::Text, 20), tint(ToneRef::Bg, 115)),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Soft), tint_raw(ToneRef::Bg, 115)),
             ),
         ),
         // `.ds-pane-tab.is-active { box-shadow: inset 0 -2px 0 accent }` — the
@@ -1043,7 +1055,7 @@ fn mariner() -> RecipeSet {
                     .border(tone(ToneRef::Border), BorderWidthTier::Std)
                     .px(PadTier::Px(6.0))
                     .text_size(TextSizeTier::Xs)
-                    .bevel_raised(tint(ToneRef::Text, 20), tint(ToneRef::Bg, 102)),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Soft), tint_raw(ToneRef::Bg, 102)),
             ),
         ),
         // Same radius ramp as Alto, ~10% tighter card padding (14 → 12).
@@ -1064,7 +1076,7 @@ fn mariner() -> RecipeSet {
             spec(
                 d().radius(RadiusTier::None)
                     .py(PadTier::Px(2.0))
-                    .border_edge(tint(ToneRef::Text, 10), BorderWidthTier::Hair, EdgesRef::Bottom)
+                    .border_edge(tint(ToneRef::Text, AlphaTier::Faint), BorderWidthTier::Hair, EdgesRef::Bottom)
                     .weight(500),
             ),
         ),
@@ -1076,7 +1088,7 @@ fn mariner() -> RecipeSet {
         (
             "row.list.selected",
             spec(d()).on_select(
-                d().fill(tint(ToneRef::Accent, 46))
+                d().fill(tint_raw(ToneRef::Accent, 46))
                     .border_edge(tone(ToneRef::Accent), BorderWidthTier::Px(2.0), EdgesRef::Left)
                     .weight(600),
             ),
@@ -1092,7 +1104,7 @@ fn mariner() -> RecipeSet {
                 d().fill(tone(ToneRef::Surface))
                     .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom)
                     .py(PadTier::Px(4.0))
-                    .bevel_raised(tint(ToneRef::Text, 10), nothing()),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Faint), nothing()),
             )
             .on_select(d().border_edge(
                 tone(ToneRef::Accent),
@@ -1105,7 +1117,7 @@ fn mariner() -> RecipeSet {
         (
             "section.header.fill",
             spec(
-                d().fill(tint(ToneRef::Accent, 16))
+                d().fill(tint_raw(ToneRef::Accent, 16))
                     .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Top)
                     .weight(700),
             ),
@@ -1113,7 +1125,7 @@ fn mariner() -> RecipeSet {
         (
             "nav.cluster.active",
             spec(d().radius(RadiusTier::Sm))
-                .on_select(d().fill(tint(ToneRef::Accent, 40)).ink(ToneRef::Accent)),
+                .on_select(d().fill(tint(ToneRef::Accent, AlphaTier::Subtle)).ink(ToneRef::Accent)),
         ),
         // `.ds-toolbar { background: linear-gradient(bg-elevated, bg-panel);
         // border-bottom: 1px solid border-dim; box-shadow: inset 0 1px 0
@@ -1123,7 +1135,7 @@ fn mariner() -> RecipeSet {
             spec(
                 d().fill(tone(ToneRef::Surface))
                     .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Bottom)
-                    .bevel_raised(tint(ToneRef::Text, 15), nothing()),
+                    .bevel_raised(tint(ToneRef::Text, AlphaTier::Ghost), nothing()),
             ),
         ),
     ])
@@ -1247,7 +1259,7 @@ fn lucid() -> RecipeSet {
         (
             "button.chrome",
             spec(d().radius(RadiusTier::Md).ink(ToneRef::Dim))
-                .on_hover(d().fill(tint(ToneRef::Text, 10)).ink(ToneRef::Text))
+                .on_hover(d().fill(tint(ToneRef::Text, AlphaTier::Faint)).ink(ToneRef::Text))
                 .on_select(
                     d().fill(tone(ToneRef::Text))
                         .ink(ToneRef::Bg)
@@ -1313,7 +1325,7 @@ fn lucid() -> RecipeSet {
             "row.list",
             spec(
                 d().radius(RadiusTier::Sm)
-                    .border_edge(tint(ToneRef::Border, 100), BorderWidthTier::Hair, EdgesRef::Bottom),
+                    .border_edge(tint(ToneRef::Border, AlphaTier::Active), BorderWidthTier::Hair, EdgesRef::Bottom),
             ),
         ),
         // `.ds-dom-row.is-current { background: color-mix(accent 14%, bg-panel);
@@ -1322,7 +1334,7 @@ fn lucid() -> RecipeSet {
         (
             "row.list.selected",
             spec(d()).on_select(
-                d().fill(tint(ToneRef::Accent, 36))
+                d().fill(tint_raw(ToneRef::Accent, 36))
                     .border_edge(tone(ToneRef::Accent), BorderWidthTier::Std, EdgesRef::Bottom)
                     .weight(700),
             ),
@@ -1330,14 +1342,14 @@ fn lucid() -> RecipeSet {
         // `.ds-wl-row:hover { background: color-mix(accent 8%, transparent) }`.
         (
             "row.list.hover",
-            spec(d()).on_hover(d().fill(tint(ToneRef::Accent, 20))),
+            spec(d()).on_hover(d().fill(tint(ToneRef::Accent, AlphaTier::Soft))),
         ),
         // `.ds-wl-section { background: color-mix(accent 6%, bg-surface);
         // border-top: 1px solid border }` + `span { font-weight: 700 }`.
         (
             "section.header.fill",
             spec(
-                d().fill(tint(ToneRef::Accent, 16))
+                d().fill(tint_raw(ToneRef::Accent, 16))
                     .border_edge(tone(ToneRef::Border), BorderWidthTier::Std, EdgesRef::Top)
                     .weight(700),
             ),
@@ -1358,7 +1370,7 @@ fn lucid() -> RecipeSet {
         (
             "nav.cluster.active",
             spec(d().radius(RadiusTier::Md))
-                .on_select(d().fill(tint(ToneRef::Accent, 30)).ink(ToneRef::Accent).no_border()),
+                .on_select(d().fill(tint(ToneRef::Accent, AlphaTier::Hint)).ink(ToneRef::Accent).no_border()),
         ),
     ])
 }
@@ -1579,10 +1591,10 @@ fn meridien() -> RecipeSet {
                 d().radius(RadiusTier::None)
                     .px(PadTier::Px(12.0))
                     .py(PadTier::Px(8.0))
-                    .border_edge(tint(ToneRef::Border, 100), BorderWidthTier::Hair, EdgesRef::Bottom)
+                    .border_edge(tint(ToneRef::Border, AlphaTier::Active), BorderWidthTier::Hair, EdgesRef::Bottom)
                     .weight(700),
             )
-            .on_hover(d().fill(tint(ToneRef::Text, 10))),
+            .on_hover(d().fill(tint(ToneRef::Text, AlphaTier::Faint))),
         ),
         // `.ds-dom-row.is-current { background: color-mix(accent 14%, bg-panel);
         // border-top: 1px solid accent; border-bottom: 1px solid accent }` +
@@ -1590,7 +1602,7 @@ fn meridien() -> RecipeSet {
         (
             "row.list.selected",
             spec(d()).on_select(
-                d().fill(tint(ToneRef::Accent, 36))
+                d().fill(tint_raw(ToneRef::Accent, 36))
                     .border_edge(tone(ToneRef::Accent), BorderWidthTier::Std, EdgesRef::Bottom)
                     .weight(700),
             ),
@@ -1633,7 +1645,7 @@ fn meridien() -> RecipeSet {
         (
             "nav.cluster.active",
             spec(d().radius(RadiusTier::None))
-                .on_select(d().fill(tint(ToneRef::Accent, 30)).ink(ToneRef::Accent).no_border()),
+                .on_select(d().fill(tint(ToneRef::Accent, AlphaTier::Hint)).ink(ToneRef::Accent).no_border()),
         ),
     ])
 }
@@ -2055,7 +2067,7 @@ mod tests {
     fn alto_and_mariner_bevels_differ_in_intensity() {
         fn top_alpha(set: &RecipeSet, key: &str) -> u8 {
             match set.get(key).unwrap().base.bevel.as_ref().unwrap().top.as_ref().unwrap() {
-                ColorSpec::Alpha { alpha, .. } => *alpha,
+                ColorSpec::Alpha { alpha, .. } => alpha.to_u8(),
                 other => panic!("bevel highlights must be tone+alpha — got {other:?}"),
             }
         }

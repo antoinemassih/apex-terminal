@@ -51,7 +51,7 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::ui_kit::sx::recipe_spec::{RecipeKey, RecipeSpec};
+use crate::ui_kit::sx::recipe_spec::{AlphaTier, RecipeKey, RecipeSpec};
 use crate::ui_kit::sx::style::Sx;
 use crate::ui_kit::widgets::theme::ComponentTheme;
 
@@ -243,7 +243,7 @@ mod tests {
                 ..Default::default()
             },
             selected: Some(RecipeDelta {
-                fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: 28 }),
+                fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: AlphaTier::Raw(28) }),
                 ..Default::default()
             }),
             ..Default::default()
@@ -484,7 +484,7 @@ mod tests {
         let mut set = RecipeSet::new();
         set.insert("row.list.selected", RecipeSpec {
             selected: Some(RecipeDelta {
-                fill: Some(ColorSpec::Alpha { tone: ToneRef::Bull, alpha: 48 }),
+                fill: Some(ColorSpec::Alpha { tone: ToneRef::Bull, alpha: AlphaTier::Tint }),
                 ..Default::default()
             }),
             ..Default::default()
