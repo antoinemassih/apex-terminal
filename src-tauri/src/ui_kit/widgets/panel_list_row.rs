@@ -110,6 +110,7 @@ use crate::ui_kit::sx::{palette_ct, Fill, Sx, StyleState, Tone as SxTone};
 use crate::ui_kit::widgets::{motion, Tooltip};
 use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 use crate::ui_kit::text_style::TextStyle;
+use crate::ui_kit::layout::{Flex, Item};
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -907,29 +908,37 @@ fn paint_columns<T: ComponentTheme>(ui: &mut Ui, rect: Rect, cols: &[Column<'_>]
     let gap = gap_xs();
     let total_gaps = gap * (n as f32 - 1.0).max(0.0);
 
-    // Sum mins + weights.
-    let mut min_total = 0.0_f32;
-    let mut weight_total = 0.0_f32;
-    for c in cols {
-        min_total += c.min_width.unwrap_or(0.0);
-        weight_total += c.weight.max(0.0);
-    }
-    let flex_w = (content_w - total_gaps - min_total).max(0.0);
+    // Column widths, SOLVED.
+    //
+    // The block this replaces was a hand-written flexbox: sum the `min_width`s
+    // as a basis, sum the `weight`s, distribute `content_w - gaps - min_total`
+    // in proportion, walk `x` across the result. That is `flex-basis` and
+    // `flex-grow` spelled out by hand, next to a Taffy-backed flex layer that
+    // could not express it — `Item::grow` pins basis to 0 so `grow(1)+grow(1)`
+    // splits the whole axis. `Item::flex(grow, basis)` was added for this, and
+    // the reimplementation goes away with it.
+    //
+    // One behaviour is intentionally gained: oversized bases now SHRINK to fit
+    // rather than overflowing the row. The manual version clamped the slack at
+    // zero (`.max(0.0)`) and then let the columns run past `inner_right`.
+    let cells: Vec<Rect> = {
+        let mut f = Flex::row().gap(gap);
+        for c in cols {
+            f = f.item(Item::flex(c.weight.max(0.0), c.min_width.unwrap_or(0.0)));
+        }
+        let off = egui::Vec2::new(inner_left, rect.top());
+        f.solve(egui::Vec2::new(content_w, rect.height()))
+            .into_iter()
+            .map(|r| Rect::from_min_max(
+                Pos2::new(r.min.x + off.x, rect.top()),
+                Pos2::new(r.max.x + off.x, rect.bottom()),
+            ))
+            .collect()
+    };
 
     let cy = rect.center().y;
-    let mut x = inner_left;
     for (i, c) in cols.iter().enumerate() {
-        let base = c.min_width.unwrap_or(0.0);
-        let extra = if weight_total > 0.0 {
-            flex_w * (c.weight.max(0.0) / weight_total)
-        } else {
-            0.0
-        };
-        let cell_w = base + extra;
-        let cell_rect = Rect::from_min_max(
-            Pos2::new(x, rect.top()),
-            Pos2::new(x + cell_w, rect.bottom()),
-        );
+        let cell_rect = cells[i];
 
         let font = if c.mono {
             TextStyle::MonoSm.font_id_in(ui)
@@ -948,11 +957,6 @@ fn paint_columns<T: ComponentTheme>(ui: &mut Ui, rect: Rect, cols: &[Column<'_>]
         // Clip to cell so overflow doesn't bleed into the next column.
         let cell_painter = painter.with_clip_rect(cell_rect);
         cell_painter.galley(Pos2::new(tx, cy - th * 0.5), galley, color);
-
-        x += cell_w;
-        if i + 1 < n {
-            x += gap;
-        }
     }
 }
 

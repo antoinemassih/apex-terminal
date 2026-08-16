@@ -100,6 +100,15 @@ pub enum Justify {
 /// How one child is sized along the main axis.
 #[derive(Clone, Copy, Debug)]
 pub enum Size {
+    /// CSS `flex: <grow> 1 <basis>` — a starting width that then takes a share
+    /// of whatever is left over.
+    ///
+    /// [`Size::Grow`] pins `flex-basis` to 0 so that `grow(1) + grow(1)` splits
+    /// the WHOLE axis, which is what those callers want. That makes it unable
+    /// to express "start at 80 px, then take a third of the slack" — the model
+    /// hand-written column layouts actually use, with a `min_width` basis and a
+    /// `weight` share. `panel_list_row` had reimplemented exactly that by hand.
+    Flex { grow: f32, basis: f32 },
     /// Exactly this many pixels.
     Fixed(f32),
     /// A fraction of the container's main-axis size (0.0..=1.0).
@@ -208,6 +217,10 @@ impl Item {
     pub fn percent(f: f32) -> Self { Self::new(Size::Percent(f)) }
     pub fn auto() -> Self { Self::new(Size::Auto) }
     pub fn grow(factor: f32) -> Self { Self::new(Size::Grow(factor)) }
+    /// CSS `flex: <grow> 1 <basis>` — see [`Size::Flex`].
+    pub fn flex(grow: f32, basis: f32) -> Self {
+        Self::new(Size::Flex { grow: grow.max(0.0), basis: basis.max(0.0) })
+    }
 
     // ── M4.1: content-sized constructors (the adoption unblock) ─────────────
 
@@ -485,6 +498,13 @@ impl Flex {
                         if self.row { st.flex_basis = length(px); }
                         else { st.flex_basis = length(px); }
                         st.flex_grow = 0.0;
+                        st.flex_shrink = 1.0;
+                    }
+                    Size::Flex { grow, basis } => {
+                        st.flex_grow = grow;
+                        st.flex_basis = length(basis);
+                        // Shrinkable, so a row of bases wider than the container
+                        // degrades proportionally instead of overflowing.
                         st.flex_shrink = 1.0;
                     }
                     Size::Grow(g) => {
@@ -1547,5 +1567,66 @@ mod intrinsic_width_tests {
         assert!((placed.rect("a").left() - 100.0).abs() < 0.5);
         assert!((placed.rect("b").right() - (100.0 + w)).abs() < 0.5,
             "placement disagreed with measurement: {} vs {}", placed.rect("b").right(), 100.0 + w);
+    }
+}
+
+#[cfg(test)]
+mod flex_basis_tests {
+    use super::{Flex, Item};
+    use egui::Vec2;
+
+    /// `Item::flex(grow, basis)` starts at `basis` and then takes its share of
+    /// the slack — the model `Item::grow` cannot express, because `grow` pins
+    /// basis to 0.
+    #[test]
+    fn a_flex_item_starts_at_its_basis_then_takes_its_share() {
+        // 200 wide, two items: basis 50 + 50 = 100, slack 100 split 1:3.
+        let r = Flex::row()
+            .item(Item::flex(1.0, 50.0))
+            .item(Item::flex(3.0, 50.0))
+            .solve(Vec2::new(200.0, 20.0));
+        assert!((r[0].width() - 75.0).abs() < 0.5, "first was {}", r[0].width());
+        assert!((r[1].width() - 125.0).abs() < 0.5, "second was {}", r[1].width());
+    }
+
+    /// A zero grow keeps the basis exactly — a fixed column beside flexible ones.
+    #[test]
+    fn zero_grow_keeps_the_basis() {
+        let r = Flex::row()
+            .item(Item::flex(0.0, 60.0))
+            .item(Item::flex(1.0, 0.0))
+            .solve(Vec2::new(200.0, 20.0));
+        assert!((r[0].width() - 60.0).abs() < 0.5, "fixed column was {}", r[0].width());
+        assert!((r[1].width() - 140.0).abs() < 0.5, "flexible column was {}", r[1].width());
+    }
+
+    /// The distinction from `grow`, stated as a test so the two cannot be
+    /// confused later: `grow` ignores any basis and splits the whole axis.
+    #[test]
+    fn grow_splits_the_whole_axis_and_flex_does_not() {
+        let g = Flex::row()
+            .item(Item::grow(1.0))
+            .item(Item::grow(1.0))
+            .solve(Vec2::new(200.0, 20.0));
+        assert!((g[0].width() - 100.0).abs() < 0.5);
+
+        let f = Flex::row()
+            .item(Item::flex(1.0, 120.0))
+            .item(Item::flex(1.0, 0.0))
+            .solve(Vec2::new(200.0, 20.0));
+        assert!(f[0].width() > f[1].width(), "basis must bias the split: {} vs {}",
+            f[0].width(), f[1].width());
+    }
+
+    /// Bases wider than the container degrade proportionally rather than
+    /// overflowing — the row still fits its box.
+    #[test]
+    fn oversized_bases_shrink_to_fit() {
+        let r = Flex::row()
+            .item(Item::flex(1.0, 300.0))
+            .item(Item::flex(1.0, 300.0))
+            .solve(Vec2::new(200.0, 20.0));
+        let total = r[0].width() + r[1].width();
+        assert!(total <= 200.5, "row overflowed its container: {total}");
     }
 }
