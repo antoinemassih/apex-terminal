@@ -532,3 +532,37 @@ not yet triaged. A first pass counting only `dt_*!` reads said 48 — 34 of thos
 turned out to be read by direct field access, so the honest number is 14.
 
 ---
+## AT-153 — header titles overlap their own action buttons — FIXED
+
+Found by looking at a screenshot rather than by a gate. The design inspector's
+title painted straight through the RESET button beside it — an unreadable
+collision *over a live click target*, not a cosmetic overrun.
+
+**Root cause, and it was in the canonical widget too.** `ui.horizontal` with a
+label followed by `with_layout(right_to_left)` does not push back when the
+content exceeds the row: the right-to-left group overlaps the label. 30 sites
+share that shape. And `ui_kit::Header` — the widget those sites are supposed to
+migrate *to* — pinned its title `.shrink(0.0)` with a comment calling shrink "a
+deliberate follow-up, not a plumbing change". That pin was correct while the
+flex layer was replacing a cursor walk and had to overflow identically; kept
+past that point it meant migrating to the design system would not have fixed the
+bug.
+
+Fixed in two halves, because either alone is insufficient:
+- `Item::content(title_w).shrink(1.0)` — the title yields before the elastic
+  middle collapses, so the close slot and trailing actions keep their width.
+- The title is painted through a truncating `LayoutJob` bounded by its solved
+  slot. A narrowed rect does not narrow glyphs; `painter.text` would have kept
+  painting past the slot edge onto the buttons.
+
+`an_oversized_title_overflows_rather_than_shrinking` now asserts the opposite of
+what it did, and additionally that the title never overlaps the close slot.
+
+**Residual, stated rather than hidden:** the inspector's five action buttons
+measure ~360 px on their own, so its title elides to "…" at every width the
+panel is allowed. That is the correct failure mode — yielding, not colliding —
+but the real fix is fewer or smaller actions. Widening the panel to 412 px was
+tried, bought nothing, and was reverted rather than left in for lost chart space.
+
+---
+

@@ -105,11 +105,20 @@ pub struct HeaderSlots {
 
 /// `icon · title …… close`, `pad_x` inset on both ends.
 ///
-/// The measured pieces use [`Item::content`] pinned with `shrink(0.0)`: a
-/// cursor walk never yields, it overflows, so a shrinkable title would move
-/// the subtitle on a pathologically narrow header where the old code did not.
-/// (Letting the title shrink instead is a deliberate follow-up, not a
-/// plumbing change.)
+/// The icon is pinned `shrink(0.0)` — a glyph has no smaller form. **The title
+/// shrinks**, which is the follow-up this comment used to defer.
+///
+/// It was pinned during the cursor-walk migration so a long title overflowed
+/// exactly as the `+=` walk did, keeping that change plumbing-only. The cost of
+/// keeping it is real and visible: at a 360 px side panel the design inspector's
+/// own title painted straight through the RESET button beside it. A cursor walk
+/// does not yield, it overflows — and overflow in a row whose right end holds
+/// *buttons* is not a cosmetic overrun, it is an unreadable collision over a
+/// live click target.
+///
+/// Shrinking is the flexbox answer and it is only half the fix: the title is
+/// also painted truncated to its solved slot (see `show`), because a narrowed
+/// rect does not narrow glyphs.
 fn header_row_flex(m: &HeaderMetrics, pad_x: f32) -> Flex {
     let mut f = Flex::row()
         .padding_sides(pad_x, pad_x, 0.0, 0.0)
@@ -119,7 +128,9 @@ fn header_row_flex(m: &HeaderMetrics, pad_x: f32) -> Flex {
     }
     f = f.item(
         Item::content(m.title_w)
-            .shrink(0.0)
+            // Shrinks before the elastic middle collapses, so the close slot
+            // and any trailing actions keep their width at every panel size.
+            .shrink(1.0)
             // was `left_cursor += icon_w + st::gap_sm()`
             .margin_start(if m.icon_w.is_some() { st::gap_sm() } else { 0.0 }),
     );
@@ -333,13 +344,32 @@ impl<'a> Header<'a> {
         }
 
         // ── Title (uppercase for Panel/Section, mixed-case for Dialog) ──
-        painter.text(
-            egui::pos2(slots.title.left(), slots.title.center().y),
-            egui::Align2::LEFT_CENTER,
-            &title_text,
-            title_font,
-            title_color,
-        );
+        //
+        // Truncated to the slot the flex solved. Shrinking the rect alone does
+        // not shrink glyphs — `painter.text` would happily paint the full
+        // string past the slot's right edge and back onto the trailing
+        // buttons, which is the collision this pair of changes removes.
+        {
+            let mut job = egui::text::LayoutJob::single_section(
+                title_text.clone(),
+                egui::TextFormat::simple(title_font, title_color),
+            );
+            job.wrap = egui::text::TextWrapping {
+                max_width: slots.title.width().max(0.0),
+                max_rows: 1,
+                break_anywhere: true,
+                overflow_character: Some('…'),
+            };
+            let galley = painter.layout_job(job);
+            painter.galley(
+                egui::pos2(
+                    slots.title.left(),
+                    slots.title.center().y - galley.size().y * 0.5,
+                ),
+                galley,
+                title_color,
+            );
+        }
 
         // ── Subtitle (muted, right after title) ──
         if let Some(sub) = self.subtitle {
@@ -475,15 +505,52 @@ mod header_layout_tests {
         assert!(approx(s.rest.top(), r.top()));
     }
 
-    /// Measured pieces are pinned no-shrink so a long title overflows exactly
-    /// as the old cursor walk did, instead of yielding and dragging the
-    /// subtitle left with it.
+    /// An oversized title yields instead of painting over what follows it.
+    ///
+    /// This asserts the OPPOSITE of what it used to. The pinned-overflow
+    /// behaviour was migration fidelity — the cursor walk it replaced
+    /// overflowed, so the flex version overflowed identically and the change
+    /// stayed plumbing-only. Kept past that point it is a bug: at a 360 px
+    /// side panel the design inspector's title painted through the RESET
+    /// button next to it, so the overrun landed on a live click target.
     #[test]
-    fn an_oversized_title_overflows_rather_than_shrinking() {
+    fn an_oversized_title_shrinks_instead_of_overrunning_the_row() {
         let r = strip();
         let m = HeaderMetrics { icon_w: None, title_w: 500.0, close_w: 22.0 };
         let s = solve_header_row(r, &m, st::gap_md());
-        assert!(approx(s.title.width(), 500.0), "got {}", s.title.width());
+
+        assert!(
+            s.title.width() < 500.0,
+            "title must yield when it cannot fit; got {}",
+            s.title.width()
+        );
+        assert!(
+            s.title.right() <= r.right() + 0.5,
+            "title ran past the row: {} vs {}",
+            s.title.right(),
+            r.right()
+        );
+        // The point of shrinking: the close slot keeps its full width and
+        // stays inside the row, so nothing is painted over it.
+        let close = s.close.expect("close slot requested");
+        assert!(approx(close.width(), 22.0), "close shrank: {}", close.width());
+        assert!(
+            s.title.right() <= close.left() + 0.5,
+            "title overlaps the close button: title ends {}, close starts {}",
+            s.title.right(),
+            close.left()
+        );
+    }
+
+    /// Shrinking must not invert the rect when there is genuinely no room —
+    /// the truncating layout job takes `max_width` from this and a negative
+    /// width would be a panic in `TextWrapping`.
+    #[test]
+    fn a_title_squeezed_to_nothing_stays_non_negative() {
+        let r = Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(30.0, 28.0));
+        let m = HeaderMetrics { icon_w: Some(14.0), title_w: 500.0, close_w: 22.0 };
+        let s = solve_header_row(r, &m, st::gap_md());
+        assert!(s.title.width() >= 0.0, "negative title width: {}", s.title.width());
     }
 
     /// Degenerate widths happen while a panel is being dragged; they must not

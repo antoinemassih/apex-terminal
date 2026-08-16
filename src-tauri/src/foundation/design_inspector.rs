@@ -577,6 +577,12 @@ let _ = ctx;
             egui::SidePanel::right("design_inspector")
                 .min_width(320.0)
                 .max_width(420.0)
+                // NOTE: the header's five action buttons measure ~360 px on
+                // their own, so the title elides to "…" at every width this
+                // panel is allowed to take. That is the correct FAILURE mode —
+                // it used to paint over the RESET button instead — but the real
+                // fix is fewer or smaller actions, not a wider panel. Widening
+                // to 412 was tried and bought nothing but lost chart space.
                 .default_width(360.0)
                 .frame(panel_frame)
                 .show(ctx, |ui| { self.show_inspector_body(ui, tokens, &mut modified); });
@@ -594,9 +600,17 @@ let _ = ctx;
                     .inner_margin(egui::Margin { left: 12, right: 12, top: 10, bottom: 10 })
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("DESIGN INSPECTOR")
-                                .monospace().size(13.0).strong()
-                                .color(Color32::from_rgb(203, 166, 247)));
+                            // The title is added LAST, inside the right-to-left
+                            // group, so it lands leftmost and receives whatever
+                            // the five buttons leave — then truncates.
+                            //
+                            // It used to be added first, outside the group. At
+                            // the 360 px side-panel width the buttons do not
+                            // fit, and a right-to-left group does not push back
+                            // — it overlaps. "DESIGN INSPECTOR" painted straight
+                            // through the RESET button, over a live click
+                            // target. Same defect the canonical `ui_kit::Header`
+                            // had; fixed there by letting the title shrink.
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 // Popout / dock toggle
                                 let popout_label = if self.is_popout { "DOCK" } else { "POP" };
@@ -682,6 +696,15 @@ let _ = ctx;
                                     *modified = true;
                                     self.dirty = true;
                                 }
+
+                                // Title last = leftmost in an RTL row, sized by
+                                // what remains. `truncate()` is the other half:
+                                // a narrowed rect does not narrow glyphs.
+                                ui.add(egui::Label::new(
+                                    RichText::new("DESIGN INSPECTOR")
+                                        .monospace().size(13.0).strong()
+                                        .color(Color32::from_rgb(203, 166, 247)),
+                                ).truncate());
                             });
                         });
 
