@@ -261,22 +261,33 @@ pub(crate) fn paint_option_badges(
     let badge_font = mono_2xs();
     let dark_fg = badge_fg(theme);
     let (side_w, dte) = option_badge_metrics(painter, side, expiry);
+    let dte_w = dte.as_ref().map(|d| d.1);
 
-    let mut x = cx;
+    // Two slots, solved. The seams differ (4 after the side pill, 6 after the
+    // DTE) which is exactly the kind of asymmetry a walk states at the wrong
+    // place — at the piece rather than at the seam.
+    let row = {
+        use crate::ui_kit::cascade::element::El;
+        El::row()
+            .child_if(side_w.is_some(), El::slot("side", Vec2::new(side_w.unwrap_or(0.0), bh)))
+            .child_if(dte.is_some(), El::slot("dte", Vec2::new(dte.as_ref().map_or(0.0, |d| d.1), bh))
+                .margin_start(if side_w.is_some() { 4.0 } else { 0.0 }))
+            .solve_rect(Rect::from_min_size(pos2(cx, by), Vec2::new(f32::INFINITY, bh)))
+    };
     if let Some(bw) = side_w {
-        let r = Rect::from_min_size(pos2(x, by), Vec2::new(bw, bh));
+        let r = Rect::from_min_size(pos2(row.rect("side").left(), by), Vec2::new(bw, bh));
         let accent_color = if side == "C" { theme.bull } else { theme.bear };
         painter.rect_filled(r, radius_sm(), color_alpha(accent_color, alpha_solid()));
         painter.text(r.center(), Align2::CENTER_CENTER, side, badge_font.clone(), dark_fg);
-        x += bw + 4.0;
     }
     if let Some((lbl, bw)) = dte {
-        let r = Rect::from_min_size(pos2(x, by), Vec2::new(bw, bh));
+        let r = Rect::from_min_size(pos2(row.rect("dte").left(), by), Vec2::new(bw, bh));
         painter.rect_filled(r, radius_sm(), tint(theme, Tone::Accent, alpha_solid()));
         painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
-        x += bw + 6.0;
     }
-    x - cx
+    // Consumed width stays derived from the same metrics as
+    // `option_badges_width`, so the two cannot drift.
+    side_w.map_or(0.0, |w| w + 4.0) + dte_w.map_or(0.0, |w| w + 6.0)
 }
 
 /// Paint an icon-label button (ORDER / DOM / +Tab style). The icon is drawn in
@@ -846,20 +857,42 @@ impl<'a> PainterPaneHeader<'a> {
                     pos2(tab_rect.left() + tab_pad, tab_rect.center().y),
                     Align2::LEFT_CENTER, sym, title_font.clone(), sym_col,
                 );
-                let mut price_x = tab_rect.left() + tab_pad + sym_galley.size().x + gap_between;
                 // Option badges in tab strip (C/P pill + DTE). `option_badges` is a
                 // single header-level value derived from the pane's ACTIVE
                 // instrument (core.rs), so it only describes the active tab —
                 // painting it on every tab bled a C/P+DTE badge onto unrelated
                 // stock tabs sharing the pane. Gate on the active tab.
-                if is_active_tab {
-                    if let Some((side, expiry)) = self.option_badges {
-                        price_x += paint_option_badges(
-                            &painter, price_x, tab_rect.center().y, tab_rect.height(),
-                            side, expiry, t,
-                        );
-                    }
+                //
+                // The badge slot is DECLARED rather than accumulated: measuring
+                // it up front (`option_badges_width`) is what lets the price
+                // sit in a solved slot instead of wherever painting happened to
+                // leave the cursor.
+                let tab_badges = is_active_tab
+                    .then(|| self.option_badges)
+                    .flatten()
+                    .map(|(side, expiry)| (side, expiry, option_badges_width(&painter, side, expiry)));
+                let tab_row = {
+                    use crate::ui_kit::cascade::element::El;
+                    El::row()
+                        .child(El::slot("sym", Vec2::new(sym_galley.size().x, tab_rect.height())))
+                        .child_if(tab_badges.is_some(),
+                            El::slot("badges", Vec2::new(tab_badges.map_or(0.0, |b| b.2), tab_rect.height()))
+                                .margin_start(gap_between))
+                        .child(El::slot("price", Vec2::new(0.0, tab_rect.height()))
+                            .grow(1.0)
+                            .margin_start(if tab_badges.is_some() { 0.0 } else { gap_between }))
+                        .solve_rect(Rect::from_min_size(
+                            pos2(tab_rect.left() + tab_pad, tab_rect.top()),
+                            Vec2::new(tab_rect.width() - tab_pad, tab_rect.height()),
+                        ))
+                };
+                if let Some((side, expiry, _)) = tab_badges {
+                    paint_option_badges(
+                        &painter, tab_row.rect("badges").left(), tab_rect.center().y,
+                        tab_rect.height(), side, expiry, t,
+                    );
                 }
+                let price_x = tab_row.rect("price").left();
                 // On accent header (Aperture orange bar), use h_dim for price/change text.
                 let price_color = if accent_header && is_active_tab {
                     h_dim
