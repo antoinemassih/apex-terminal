@@ -4350,6 +4350,68 @@ mod m1_ladder_tests {
         assert_eq!(snap.font_sm, 33.0, "authored ui_sm must reach TokenSnapshot");
     }
 
+    /// Every rung the cascade gate now guards must actually MOVE when the
+    /// DesignTokens layer changes — the behavioural half of that gate.
+    ///
+    /// `cascade_gate.py` proves the source line has the right SHAPE. This proves
+    /// the shape does what it claims, which is the part that was broken: eleven
+    /// fields read their StyleSystem value directly, so they were authorable and
+    /// exportable and round-tripped green while the inspector slider above them
+    /// did nothing. A structural check alone would not have noticed if, say, the
+    /// snapshot field were spelled one way and the token path another — both
+    /// sides would look correct and the pixel still would not move.
+    #[cfg(feature = "design-mode")]
+    #[test]
+    fn every_guarded_rung_responds_to_the_token_layer() {
+        use crate::design_tokens as dtk;
+
+        // The inspector edits a copy of `pristine()`; `pick_*` returns the live
+        // value only where it DIFFERS, so the probe has to change each field.
+        let base = dtk::pristine().cloned().unwrap_or_else(dtk::DesignTokens::default);
+        dtk::init(base.clone());
+
+        let mut edited = base.clone();
+        edited.alpha.whisper = 91;
+        edited.alpha.hint = 92;
+        edited.alpha.dense = 93;
+        edited.alpha.near_solid = 94;
+        edited.font.display_sm = 95.0;
+        edited.font.display_md = 96.0;
+        edited.font.display_lg = 97.0;
+        edited.font.display_xl = 98.0;
+        edited.font.ui_4xs = 99.0;
+        edited.font.ui_xs_plus = 100.0;
+        edited.font.ui_md_plus = 101.0;
+        edited.font.sm = 102.0;
+        edited.font.xs = 103.0;
+        edited.font.sm_tight = 104.0;
+        edited.spacing.gap_2xs = 105.0;
+        dtk::update(edited);
+
+        begin_frame();
+        let s = crate::ui_kit::style::frame_tokens();
+
+        // restore before asserting so one failure cannot poison the suite
+        dtk::update(base);
+        begin_frame();
+
+        assert_eq!(s.alpha_whisper, 91, "alpha_whisper ignored the token layer");
+        assert_eq!(s.alpha_hint, 92, "alpha_hint ignored the token layer");
+        assert_eq!(s.alpha_dense, 93, "alpha_dense ignored the token layer");
+        assert_eq!(s.alpha_near_solid, 94, "alpha_near_solid ignored the token layer");
+        assert_eq!(s.font_display_sm, 95.0, "font_display_sm ignored the token layer");
+        assert_eq!(s.font_display_md, 96.0, "font_display_md ignored the token layer");
+        assert_eq!(s.font_display_lg, 97.0, "font_display_lg ignored the token layer");
+        assert_eq!(s.font_display_xl, 98.0, "font_display_xl ignored the token layer");
+        assert_eq!(s.font_4xs, 99.0, "font_4xs ignored the token layer");
+        assert_eq!(s.font_xs_plus, 100.0, "font_xs_plus ignored the token layer");
+        assert_eq!(s.font_md_plus, 101.0, "font_md_plus ignored the token layer");
+        assert_eq!(s.font_body, 102.0, "font_body ignored the token layer");
+        assert_eq!(s.font_caption, 103.0, "font_caption ignored the token layer");
+        assert_eq!(s.font_section_label, 104.0, "font_section_label ignored the token layer");
+        assert_eq!(s.gap_2xs, 105.0, "gap_2xs ignored the token layer");
+    }
+
     /// `pane_gap` routed through the snapshot must equal the value the mosaic
     /// read before — for EVERY style, not just the default.
     ///
