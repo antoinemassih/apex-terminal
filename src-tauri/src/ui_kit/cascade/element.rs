@@ -199,7 +199,7 @@ impl El {
     /// Computed before anything is painted — that is the whole point of the
     /// tree. A container asks its children, so "does this row fit" has an
     /// answer at declaration time rather than after an overrun.
-    fn intrinsic(&self, ui: &Ui, inherited: Inherited) -> f32 {
+    fn intrinsic(&self, ui: Option<&Ui>, inherited: Inherited) -> f32 {
         if let Some(px) = self.fixed {
             return px;
         }
@@ -216,6 +216,11 @@ impl El {
                 sum + gaps + padding
             }
             Kind::Text { text, tier } => {
+                // Without a `Ui` there is no font stack to measure against.
+                // `solve_rect` documents that a text node must then carry an
+                // explicit width; returning 0 here makes that failure visible
+                // as a collapsed slot rather than a wrong one.
+                let Some(ui) = ui else { return 0.0 };
                 let t = tier.or(here.text_style).unwrap_or(TextStyle::Body);
                 let font = t.font_id_in(ui);
                 ui.fonts(|f| {
@@ -226,6 +231,7 @@ impl El {
             }
             Kind::Spacer { .. } => 0.0,
             Kind::Button { label, .. } => {
+                let Some(ui) = ui else { return 0.0 };
                 let t = here.text_style.unwrap_or(TextStyle::BodySm);
                 let font = t.font_id_in(ui);
                 let w = ui.fonts(|f| {
@@ -239,7 +245,7 @@ impl El {
         }
     }
 
-    fn as_item(&self, ui: &Ui, inherited: Inherited) -> Item {
+    fn as_item(&self, ui: Option<&Ui>, inherited: Inherited) -> Item {
         let mut it = match (self.fixed, &self.kind) {
             (Some(px), _) => Item::fixed(px),
             (None, Kind::Spacer { grow }) => Item::grow(*grow),
@@ -262,9 +268,26 @@ impl El {
     /// Solve and paint into the space `ui` offers.
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Rendered {
         let avail = ui.available_size_before_wrap();
-        let h = if avail.y.is_finite() && avail.y > 0.0 { avail.y } else { self.intrinsic_cross(ui) };
+        let h = if avail.y.is_finite() && avail.y > 0.0 { avail.y } else { self.intrinsic_cross() };
         let (rect, _) = ui.allocate_exact_size(Vec2::new(avail.x, h), egui::Sense::hover());
         self.show_in(ui, theme, rect)
+    }
+
+    /// Solve geometry with NO `Ui` at all — for painter-only surfaces.
+    ///
+    /// Several widgets paint from a bare `&egui::Painter` and never receive a
+    /// `Ui` (`paint_one_tab_painter` is one). They are exactly the code most
+    /// full of cursor walks, because without a layout context the only tool
+    /// available was a running `x`.
+    ///
+    /// Every node must carry its own width here — `slot`, `fixed`, `spacer`,
+    /// `grow`. A `text` node has no font stack to measure against and resolves
+    /// to zero, which shows up as a collapsed slot rather than a wrong one.
+    pub fn solve_rect(self, rect: Rect) -> Rendered {
+        let mut out = Rendered::default();
+        let inherited = context::resolved();
+        solve(self, None, rect, inherited, &mut out);
+        out
     }
 
     /// Solve geometry only — paint nothing, return the rects.
@@ -281,7 +304,7 @@ impl El {
     pub fn solve_in(self, ui: &mut Ui, rect: Rect) -> Rendered {
         let mut out = Rendered::default();
         let inherited = context::resolved();
-        solve(self, ui, rect, inherited, &mut out);
+        solve(self, Some(ui), rect, inherited, &mut out);
         out
     }
 
@@ -293,10 +316,10 @@ impl El {
         out
     }
 
-    fn intrinsic_cross(&self, ui: &Ui) -> f32 {
+    fn intrinsic_cross(&self) -> f32 {
         match &self.kind {
             Kind::Slot { size, .. } => size.y,
-            _ => crate::ui_kit::style::control_h_md().max(ui.spacing().interact_size.y),
+            _ => crate::ui_kit::style::control_h_md(),
         }
     }
 }
@@ -351,7 +374,7 @@ fn paint(
             );
             let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
             for c in &children {
-                flex = flex.item(c.as_item(ui, here));
+                flex = flex.item(c.as_item(Some(ui), here));
             }
             let solved = flex.solve(inner.size());
             let off = inner.min.to_vec2();
@@ -540,7 +563,7 @@ mod tests {
 /// Geometry-only walk. Mirrors `paint`'s traversal exactly so a surface that
 /// solves here and paints itself lands on the same rects a full `show_in`
 /// would have produced.
-fn solve(el: El, ui: &Ui, rect: Rect, inherited: Inherited, out: &mut Rendered) {
+fn solve(el: El, ui: Option<&Ui>, rect: Rect, inherited: Inherited, out: &mut Rendered) {
     let here = el.style.over(inherited);
     match el.kind {
         Kind::Container { row, children, gap } => {
