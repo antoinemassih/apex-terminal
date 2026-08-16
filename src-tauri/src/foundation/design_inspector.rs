@@ -577,13 +577,17 @@ let _ = ctx;
             egui::SidePanel::right("design_inspector")
                 .min_width(320.0)
                 .max_width(420.0)
-                // NOTE: the header's five action buttons measure ~360 px on
-                // their own, so the title elides to "…" at every width this
-                // panel is allowed to take. That is the correct FAILURE mode —
-                // it used to paint over the RESET button instead — but the real
-                // fix is fewer or smaller actions, not a wider panel. Widening
-                // to 412 was tried and bought nothing but lost chart space.
-                .default_width(360.0)
+                // 392, not 360. Widening was tried once and REVERTED, because
+                // at the time five labelled buttons measured ~360 px on their
+                // own and the extra width went straight to them. Two of those
+                // are icon-only now and SAVE only exists while dirty, so the
+                // actions come to ~250 and the remainder reaches the title.
+                //
+                // 420 is this panel'''s existing max_width, so it takes no more
+                // than a user could already drag it to — and the panel is
+                // design-mode only, absent from release builds, so the chart
+                // space it costs is never a real user'''s.
+                .default_width(420.0)
                 .frame(panel_frame)
                 .show(ctx, |ui| { self.show_inspector_body(ui, tokens, &mut modified); });
         }
@@ -640,11 +644,14 @@ let _ = ctx;
                                     Color32::from_rgb(100, 100, 110)
                                 };
                                 if ui.add(egui::Button::new(
-                                    RichText::new("📖 Help").monospace().size(10.0).strong().color(help_col))
+                                    RichText::new("📖").monospace().size(10.0).strong().color(help_col))
                                     .fill(if self.show_help { Color32::from_rgba_unmultiplied(250, 179, 135, 18) } else { Color32::TRANSPARENT })
                                     .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(help_col.r(), help_col.g(), help_col.b(), 60)))
                                     .corner_radius(radius_sm())
-                                ).on_hover_text("Open Field Reference — all StyleSettings fields and what they affect")
+                                // Icon-only: the label was redundant with the
+                                // tooltip below, and five labelled buttons left
+                                // the header title with nothing but "…".
+                                ).on_hover_text("Field Reference — all StyleSettings fields and what they affect")
                                 .clicked() {
                                     self.show_help = !self.show_help;
                                 }
@@ -656,7 +663,7 @@ let _ = ctx;
                                     Color32::from_rgb(100, 100, 110)
                                 };
                                 if ui.add(egui::Button::new(
-                                    RichText::new("👁 LEFT").monospace().size(10.0).strong().color(preview_col))
+                                    RichText::new("👁").monospace().size(10.0).strong().color(preview_col))
                                     .fill(if self.is_preview_left_open { Color32::from_rgba_unmultiplied(250, 179, 135, 20) } else { Color32::TRANSPARENT })
                                     .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(preview_col.r(), preview_col.g(), preview_col.b(), 60)))
                                     .corner_radius(radius_sm())
@@ -665,21 +672,33 @@ let _ = ctx;
                                     self.is_preview_left_open = !self.is_preview_left_open;
                                 }
 
-                                if ui.add(egui::Button::new(
-                                    RichText::new(if self.dirty { "SAVE" } else { "saved" })
-                                        .monospace().size(10.0).strong()
-                                        .color(if self.dirty { Color32::from_rgb(166, 227, 161) } else { Color32::from_rgb(100, 100, 110) }))
-                                    .fill(if self.dirty { Color32::from_rgba_unmultiplied(166, 227, 161, 25) } else { Color32::TRANSPARENT })
-                                    .stroke(Stroke::new(stroke_thin(), if self.dirty { Color32::from_rgba_unmultiplied(166, 227, 161, 80) } else { Color32::from_rgb(50, 50, 60) }))
-                                    .corner_radius(radius_sm())
-                                ).clicked() && self.dirty {
-                                    match tokens.save(&self.toml_path) {
-                                        Ok(_) => {
-                                            self.dirty = false;
-                                            self.status = "Saved!".to_string();
-                                        }
-                                        Err(e) => {
-                                            self.status = format!("Save error: {e}");
+                                // SAVE appears only when there IS something to
+                                // save. It used to render permanently, greyed
+                                // and captioned "saved", with its click guarded
+                                // by `&& self.dirty` — a control that looks
+                                // pressable and does nothing, which is the exact
+                                // class the inspector-slider gate exists for.
+                                //
+                                // It also cost ~85px of a 360px header for the
+                                // whole time it could not be used, which is why
+                                // the title next to it had nothing but "…".
+                                if self.dirty {
+                                    let green = Color32::from_rgb(166, 227, 161);
+                                    if ui.add(egui::Button::new(
+                                        RichText::new("SAVE").monospace().size(10.0).strong().color(green))
+                                        .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 25))
+                                        .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(166, 227, 161, 80)))
+                                        .corner_radius(radius_sm())
+                                    ).on_hover_text("Write the edited tokens to design.toml")
+                                    .clicked() {
+                                        match tokens.save(&self.toml_path) {
+                                            Ok(_) => {
+                                                self.dirty = false;
+                                                self.status = "Saved!".to_string();
+                                            }
+                                            Err(e) => {
+                                                self.status = format!("Save error: {e}");
+                                            }
                                         }
                                     }
                                 }

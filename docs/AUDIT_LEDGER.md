@@ -719,11 +719,24 @@ Fixed in two halves, because either alone is insufficient:
 `an_oversized_title_overflows_rather_than_shrinking` now asserts the opposite of
 what it did, and additionally that the title never overlaps the close slot.
 
-**Residual, stated rather than hidden:** the inspector's five action buttons
-measure ~360 px on their own, so its title elides to "…" at every width the
-panel is allowed. That is the correct failure mode — yielding, not colliding —
-but the real fix is fewer or smaller actions. Widening the panel to 412 px was
-tried, bought nothing, and was reverted rather than left in for lost chart space.
+**Residual — now CLOSED.** The inspector's five action buttons measured ~360 px
+on their own, so its title elided to "…" at every allowed width. Widening the
+panel was tried first and reverted, because the extra width went straight to the
+buttons. The actual fix was to make the actions smaller, and both halves were
+correct on their own merits before they were correct for width:
+
+- `👁 LEFT` and `📖 Help` are icon-only. Both already carried `on_hover_text`,
+  so the words were redundant width rather than information.
+- **SAVE appears only when there is something to save.** It used to render
+  permanently, greyed and captioned "saved", with its click guarded by
+  `&& self.dirty` — a control that looks pressable and does nothing, which is
+  the same class the inspector-slider gate was built for. It cost ~85 px of a
+  360 px header for the entire time it could not be used.
+
+With the actions at ~250 px the panel default moved to 420 — its own existing
+`max_width`, so no more than a user could already drag to, and the panel is
+design-mode only so the chart space is never a real user's. `DESIGN INSPECTOR`
+now renders in full. Verified by screenshot.
 
 ---
 
