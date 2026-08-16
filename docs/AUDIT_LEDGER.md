@@ -439,6 +439,32 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   tooltip and a dropdown open on several styles — the harness interaction that
   has been unreliable in this session. Worth doing with a screenshot pass.
 
+  CORRECTED AFTER TRACING. "Three specs ignored" understates it. There are
+  THREE shadow mechanisms, and two of them declare a type called `ShadowSpec`:
+
+      design_system::Shadows{card,modal,tooltip,dropdown}   authored per style; only `card` wired
+      StyleSettings.shadow_{blur,offset_y,alpha}            derived from shadows.card; used by CardFrame
+      ui_kit::widgets::shadow::ShadowSpec::{sm,md,lg}_themed  HARDCODED radius 8/16/24, alpha 64/77
+
+  Modals do not merely miss `shadows.modal` — they use the third mechanism, a
+  tiered GPU-composited shadow, and its values are literals. So this is not a
+  wiring gap to fill; it is a consolidation, and the surviving mechanism has to
+  be chosen rather than assumed.
+
+  The third one is also carefully tuned. `modal.rs` explains at length why it
+  uses the md tier and not lg: "lg (radius 24) routes to the GPU silhouette path
+  and painted a ~48-pt halo on each side — visibly too wide. md (radius 16)
+  stays in the fast CPU stacked-rect path". Replacing that with an authored
+  `shadows.modal` blur of 36 would walk straight back into the halo it
+  documents avoiding, and would change a CPU path into a GPU one.
+
+  So the real work is: pick ONE shadow vocabulary, decide whether tiers
+  (sm/md/lg) or roles (card/modal/tooltip/dropdown) are the right axis — they
+  are different models, not two spellings of one — and note that the tier
+  mechanism carries performance behaviour (CPU stacked-rect vs GPU silhouette)
+  that the role mechanism has no way to express. Then rename one of the two
+  `ShadowSpec` types.
+
   NOTE ON HOW THIS HID. `token_consumer_gate` layer 2 matches bare field names,
   and `card` / `modal` / `tooltip` / `dropdown` are widget names all over the
   app, so all four scored as consumed. Qualified matching was tried and
