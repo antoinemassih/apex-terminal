@@ -103,22 +103,60 @@ impl<'a> TradeCard<'a> {
             ),
             st::radius_pill(), pnl_col);
 
-        let cx = card_rect.left() + crate::ui_kit::style::gap_sm();
-        let mut cy = card_rect.top() + crate::ui_kit::style::gap_sm();
+        // Card body — a COLUMN of rows, each with its own columns.
+        //
+        // Was `cy += 16.0` / `cy += 14.0` down the card, with the columns inside
+        // each row addressed as `cx + 50.0`, `cx + 60.0`, `cx + 90.0`. Those
+        // offsets are column positions written as arithmetic on a cursor: the
+        // second row's fields line up with the first row's only because the
+        // numbers happen to agree, and nothing states it.
+        //
+        // Declared, the rows are slots and the columns are slots. The optional
+        // notes row becomes a `child_if` rather than a conditional `cy +=`,
+        // which is where a stack like this usually drifts.
+        use crate::ui_kit::cascade::element::El;
+        let pad = crate::ui_kit::style::gap_sm();
+        let body = egui::Rect::from_min_max(
+            egui::pos2(card_rect.left() + pad, card_rect.top() + pad),
+            egui::pos2(card_rect.right() - pad, card_rect.bottom()),
+        );
+        const ROW1_H: f32 = 16.0;
+        const ROW_H: f32 = 14.0;
+        let rows = El::column()
+            .child(El::slot("r1", egui::vec2(0.0, ROW1_H)))
+            .child(El::slot("r2", egui::vec2(0.0, ROW_H)))
+            .child(El::slot("r3", egui::vec2(0.0, ROW_H)))
+            .child_if(!entry.notes.is_empty(), El::slot("r4", egui::vec2(0.0, ROW_H)))
+            .solve_rect(body);
+
+        // Text sits `gap_xs` below each row's top edge — the old `cy + 4.0`,
+        // now a token instead of a number repeated at nine call sites.
+        let baseline = |r: egui::Rect| r.top() + crate::ui_kit::style::gap_xs();
+        let right = card_rect.right() - pad;
 
         // Row 1: symbol · side · P&L
-        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
+        let r1 = rows.rect("r1");
+        let r1_cols = El::row()
+            .child(El::slot("sym", egui::vec2(50.0, ROW1_H)))
+            .child(El::slot("side", egui::vec2(0.0, ROW1_H)).grow(1.0))
+            .solve_rect(r1);
+        p.text(egui::pos2(r1_cols.rect("sym").left(), baseline(r1)), egui::Align2::LEFT_CENTER,
             entry.symbol, f_mono_sm.clone(), pal.base(Tone::Text));
-        p.text(egui::pos2(cx + 50.0, cy + 4.0), egui::Align2::LEFT_CENTER,
+        p.text(egui::pos2(r1_cols.rect("side").left(), baseline(r1)), egui::Align2::LEFT_CENTER,
             entry.side, f_mono_xs.clone(), dir_col);
         let sign = if entry.pnl >= 0.0 { "+" } else { "" };
-        p.text(egui::pos2(card_rect.right() - crate::ui_kit::style::gap_sm(), cy + 4.0), egui::Align2::RIGHT_CENTER,
+        p.text(egui::pos2(right, baseline(r1)), egui::Align2::RIGHT_CENTER,
             &format!("{}${:.0} ({:+.1}%)", sign, entry.pnl, entry.pnl_pct),
             f_mono_sm.clone(), pnl_col);
-        cy += 16.0;
 
         // Row 2: setup · duration · R-multiple
-        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
+        let r2 = rows.rect("r2");
+        let r2_cols = El::row()
+            .child(El::slot("setup", egui::vec2(60.0, ROW_H)))
+            .child(El::slot("dur", egui::vec2(30.0, ROW_H)))
+            .child(El::slot("r", egui::vec2(0.0, ROW_H)).grow(1.0))
+            .solve_rect(r2);
+        p.text(egui::pos2(r2_cols.rect("setup").left(), baseline(r2)), egui::Align2::LEFT_CENTER,
             entry.setup_type, f_mono_sm.clone(), color_subtle(pal.base(Tone::Accent)));
         let dur = if entry.duration_mins >= 1440 {
             format!("{:.0}d", entry.duration_mins as f64 / 1440.0)
@@ -127,24 +165,24 @@ impl<'a> TradeCard<'a> {
         } else {
             format!("{}m", entry.duration_mins)
         };
-        p.text(egui::pos2(cx + 60.0, cy + 4.0), egui::Align2::LEFT_CENTER,
+        p.text(egui::pos2(r2_cols.rect("dur").left(), baseline(r2)), egui::Align2::LEFT_CENTER,
             &dur, f_mono_sm.clone(), color_half(pal.base(Tone::Dim)));
         let r_col = if entry.r_multiple > 0.0 { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
-        p.text(egui::pos2(cx + 90.0, cy + 4.0), egui::Align2::LEFT_CENTER,
+        p.text(egui::pos2(r2_cols.rect("r").left(), baseline(r2)), egui::Align2::LEFT_CENTER,
             &format!("{:+.1}R", entry.r_multiple), f_mono_sm.clone(), r_col);
-        cy += 14.0;
 
-        // Row 3: entry→exit prices · timeframe
-        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
+        // Row 3: entry -> exit prices · timeframe
+        let r3 = rows.rect("r3");
+        p.text(egui::pos2(r3.left(), baseline(r3)), egui::Align2::LEFT_CENTER,
             &format!("{:.2} \u{2192} {:.2}", entry.entry_price, entry.exit_price),
             f_mono_sm.clone(), color_dim(pal.base(Tone::Dim)));
-        p.text(egui::pos2(card_rect.right() - crate::ui_kit::style::gap_sm(), cy + 4.0), egui::Align2::RIGHT_CENTER,
+        p.text(egui::pos2(right, baseline(r3)), egui::Align2::RIGHT_CENTER,
             entry.timeframe, f_mono_sm.clone(), color_dim(pal.base(Tone::Dim)));
 
         // Optional notes row
         if !entry.notes.is_empty() {
-            cy += 14.0;
-            p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
+            let r4 = rows.rect("r4");
+            p.text(egui::pos2(r4.left(), baseline(r4)), egui::Align2::LEFT_CENTER,
                 entry.notes, f_mono_sm.clone(), st::color_dim(pal.base(Tone::Dim)));
         }
 

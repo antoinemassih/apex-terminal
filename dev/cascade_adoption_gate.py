@@ -41,7 +41,11 @@ PATTERNS = {
     "el_nodes":      r"\bEl::(?:row|column|text|spacer|button|slot)\(",
     "cascade_sites": r"cascade::(?:scope|resolved)\(",
     "flex_rows":     r"Flex::(?:row|column)\(\)",
-    "cursor_walks":  r"\b(?:x|y|cx|cy|cursor|left_cursor|top_cursor)\s*\+=",
+    # A BARE local accumulator. The `(?<![.\w])` guard matters: without it this
+    # matched `chart.order_panel.pos.x += delta.x`, which is a panel DRAG and
+    # not a layout walk — four of them in `order_entry_panel` alone. Counting
+    # those would demand a "migration" of code with nothing to migrate.
+    "cursor_walks":  r"(?<![.\w])(?:x|y|cx|cy|cursor|left_cursor|top_cursor)\s*\+=",
 }
 
 # Which way each metric is allowed to move.
