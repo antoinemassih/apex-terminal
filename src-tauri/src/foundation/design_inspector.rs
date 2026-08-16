@@ -71,6 +71,9 @@ pub struct Inspector {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Category {
+    /// Icon / leading / row / control ladders — the four scale ladders that
+    /// were theme-authorable but had no live control.
+    Scale,
     Font,
     Spacing,
     Radius,
@@ -120,6 +123,7 @@ impl Category {
     const ALL: &[Category] = &[
         Category::Design,        // Style + Theme + Preview sub-tabs (best panel).
         Category::TwoAxis,       // StyleSystem × ColorScheme hot-reload editor.
+        Category::Scale,         // icon / line / row / control ladders — all LIVE.
         Category::Font,          // font.xxs..font.xl — 6 LIVE sliders (dead ones removed).
         Category::Spacing,       // spacing.xs..xxxl + xs_mid — all LIVE.
         Category::Alpha,         // 12 alpha tiers — all LIVE.
@@ -130,6 +134,7 @@ impl Category {
 
     fn label(self) -> &'static str {
         match self {
+            Category::Scale => "Scale Ladders",
             Category::Font => "Font Sizes",
             Category::Spacing => "Spacing",
             Category::Radius => "Corner Radii",
@@ -170,6 +175,7 @@ impl Category {
             Category::Spacing => "[ ]",
             Category::Radius => "( )",
             Category::Stroke => "---",
+            Category::Scale => "px",
             Category::Alpha => "%%",
             Category::Shadow => "//",
             Category::Colors => "⚠",
@@ -940,6 +946,36 @@ let _ = ctx;
                 changed |= drag_f32(ui, "sm (3.0)", &mut tokens.radius.sm, 0.0..=20.0);
                 changed |= drag_f32(ui, "md (4.0)", &mut tokens.radius.md, 0.0..=20.0);
                 changed |= drag_f32(ui, "lg (8.0)", &mut tokens.radius.lg, 0.0..=30.0);
+            }
+            Category::Scale => {
+                // The four ladders that a StyleSystem could author but nothing
+                // could tune live. They now go through the same three-tier
+                // cascade as spacing and alpha; these are the controls that
+                // makes that reachable.
+                ui.label(RichText::new("icon").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+                changed |= drag_f32(ui, "  xs (14)", &mut tokens.icon.xs, 4.0..=48.0);
+                changed |= drag_f32(ui, "  sm (16)", &mut tokens.icon.sm, 4.0..=48.0);
+                changed |= drag_f32(ui, "  md (18)", &mut tokens.icon.md, 4.0..=48.0);
+                changed |= drag_f32(ui, "  lg (20)", &mut tokens.icon.lg, 4.0..=48.0);
+                ui.label(RichText::new("line height").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+                changed |= drag_f32(ui, "  tight (1.20)", &mut tokens.line.tight, 0.8..=2.5);
+                changed |= drag_f32(ui, "  heading (1.25)", &mut tokens.line.heading, 0.8..=2.5);
+                changed |= drag_f32(ui, "  dense (1.30)", &mut tokens.line.dense, 0.8..=2.5);
+                changed |= drag_f32(ui, "  compact (1.35)", &mut tokens.line.compact, 0.8..=2.5);
+                changed |= drag_f32(ui, "  normal (1.40)", &mut tokens.line.normal, 0.8..=2.5);
+                changed |= drag_f32(ui, "  loose (1.50)", &mut tokens.line.loose, 0.8..=2.5);
+                ui.label(RichText::new("row height").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+                changed |= drag_f32(ui, "  dense (18)", &mut tokens.row.dense, 8.0..=64.0);
+                changed |= drag_f32(ui, "  compact (20)", &mut tokens.row.compact, 8.0..=64.0);
+                changed |= drag_f32(ui, "  default (22)", &mut tokens.row.default, 8.0..=64.0);
+                changed |= drag_f32(ui, "  spacious (24)", &mut tokens.row.spacious, 8.0..=64.0);
+                changed |= drag_f32(ui, "  tall (30)", &mut tokens.row.tall, 8.0..=64.0);
+                ui.label(RichText::new("control height").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+                changed |= drag_f32(ui, "  xs (18)", &mut tokens.control.xs, 8.0..=64.0);
+                changed |= drag_f32(ui, "  sm (22)", &mut tokens.control.sm, 8.0..=64.0);
+                changed |= drag_f32(ui, "  md (28)", &mut tokens.control.md, 8.0..=64.0);
+                changed |= drag_f32(ui, "  lg (34)", &mut tokens.control.lg, 8.0..=64.0);
+                changed |= drag_f32(ui, "  xl (40)", &mut tokens.control.xl, 8.0..=64.0);
             }
             Category::Stroke => {
                 changed |= drag_f32(ui, "hair (0.3)", &mut tokens.stroke.hair, 0.0..=5.0);
@@ -2831,6 +2867,7 @@ fn category_from_name(name: &str) -> Option<Category> {
         "Spacing" => Some(Category::Spacing),
         "Corner Radii" | "Radius" => Some(Category::Radius),
         "Stroke Widths" | "Stroke" => Some(Category::Stroke),
+        "Scale Ladders" | "Scale" => Some(Category::Scale),
         "Alpha / Opacity" | "Alpha" => Some(Category::Alpha),
         "Shadows" | "Shadow" => Some(Category::Shadow),
         "Semantic Colors" | "Colors" => Some(Category::Colors),

@@ -198,16 +198,16 @@ pub fn begin_frame() {
         font_md_plus:    if let Some(ref ov) = override_style { ov.typography.ui_md_plus } else { crate::dt_f32!(font.ui_md_plus, ty.ui_md_plus) },
         gap_2xs:         if let Some(ref ov) = override_style { ov.spacing.gap_2xs } else { crate::dt_f32!(spacing.gap_2xs, sp.gap_2xs) },
         focus_ring:   ass.treatments.focus_ring,
-        icon_xs:      ass.icons.xs,
-        icon_sm:      ass.icons.sm,
-        icon_md:      ass.icons.md,
-        icon_lg:      ass.icons.lg,
-        line_tight:   ass.line_heights.tight,
-        line_heading: ass.line_heights.heading,
-        line_dense:   ass.line_heights.dense,
-        line_compact: ass.line_heights.compact,
-        line_normal:  ass.line_heights.normal,
-        line_loose:   ass.line_heights.loose,
+        icon_xs:        if let Some(ref ov) = override_style { ov.icons.xs } else { crate::dt_f32!(icon.xs, ass.icons.xs) },
+        icon_sm:        if let Some(ref ov) = override_style { ov.icons.sm } else { crate::dt_f32!(icon.sm, ass.icons.sm) },
+        icon_md:        if let Some(ref ov) = override_style { ov.icons.md } else { crate::dt_f32!(icon.md, ass.icons.md) },
+        icon_lg:        if let Some(ref ov) = override_style { ov.icons.lg } else { crate::dt_f32!(icon.lg, ass.icons.lg) },
+        line_tight:     if let Some(ref ov) = override_style { ov.line_heights.tight } else { crate::dt_f32!(line.tight, ass.line_heights.tight) },
+        line_heading:   if let Some(ref ov) = override_style { ov.line_heights.heading } else { crate::dt_f32!(line.heading, ass.line_heights.heading) },
+        line_dense:     if let Some(ref ov) = override_style { ov.line_heights.dense } else { crate::dt_f32!(line.dense, ass.line_heights.dense) },
+        line_compact:   if let Some(ref ov) = override_style { ov.line_heights.compact } else { crate::dt_f32!(line.compact, ass.line_heights.compact) },
+        line_normal:    if let Some(ref ov) = override_style { ov.line_heights.normal } else { crate::dt_f32!(line.normal, ass.line_heights.normal) },
+        line_loose:     if let Some(ref ov) = override_style { ov.line_heights.loose } else { crate::dt_f32!(line.loose, ass.line_heights.loose) },
         stroke_extra_thick: crate::dt_f32!(stroke.heavy, 2.5),
         stroke_rule:        crate::dt_f32!(stroke.rule, 3.0),
         stroke_std,
@@ -278,11 +278,11 @@ pub fn begin_frame() {
         // rhythm. A rail is a horizontal width and the splitter is a pointer hit
         // target — shrinking either with density would change hit areas, not
         // rhythm.
-        row_dense:      ass.density.row_dense    * dens,
-        row_compact:    ass.density.row_compact  * dens,
-        row_default:    ass.density.row_default  * dens,
-        row_spacious:   ass.density.row_spacious * dens,
-        row_tall:       ass.density.row_tall     * dens,
+        row_dense:      if let Some(ref ov) = override_style { ov.density.row_dense * dens } else { crate::dt_f32!(row.dense, ass.density.row_dense) * dens },
+        row_compact:    if let Some(ref ov) = override_style { ov.density.row_compact * dens } else { crate::dt_f32!(row.compact, ass.density.row_compact) * dens },
+        row_default:    if let Some(ref ov) = override_style { ov.density.row_default * dens } else { crate::dt_f32!(row.default, ass.density.row_default) * dens },
+        row_spacious:   if let Some(ref ov) = override_style { ov.density.row_spacious * dens } else { crate::dt_f32!(row.spacious, ass.density.row_spacious) * dens },
+        row_tall:       if let Some(ref ov) = override_style { ov.density.row_tall * dens } else { crate::dt_f32!(row.tall, ass.density.row_tall) * dens },
         splitter_width: ass.density.splitter_width,
         // Sourced from `st` (= `current()`), NOT from `ass.density`, and that is
         // deliberate. `pane_gap` lives on StyleSettings and varies per style
@@ -293,11 +293,11 @@ pub fn begin_frame() {
         // through the snapshot is byte-identical today and is what lets the
         // override / inspector layers reach it at all.
         pane_gap:       st.pane_gap,
-        control_xs:     ass.density.control_xs * dens,
-        control_sm:     ass.density.control_sm * dens,
-        control_md:     ass.density.control_md * dens,
-        control_lg:     ass.density.control_lg * dens,
-        control_xl:     ass.density.control_xl * dens,
+        control_xs:     if let Some(ref ov) = override_style { ov.density.control_xs * dens } else { crate::dt_f32!(control.xs, ass.density.control_xs) * dens },
+        control_sm:     if let Some(ref ov) = override_style { ov.density.control_sm * dens } else { crate::dt_f32!(control.sm, ass.density.control_sm) * dens },
+        control_md:     if let Some(ref ov) = override_style { ov.density.control_md * dens } else { crate::dt_f32!(control.md, ass.density.control_md) * dens },
+        control_lg:     if let Some(ref ov) = override_style { ov.density.control_lg * dens } else { crate::dt_f32!(control.lg, ass.density.control_lg) * dens },
+        control_xl:     if let Some(ref ov) = override_style { ov.density.control_xl * dens } else { crate::dt_f32!(control.xl, ass.density.control_xl) * dens },
         rail_narrow:    ass.density.rail_narrow,
         rail_medium:    ass.density.rail_medium,
         rail_wide:      ass.density.rail_wide,
@@ -4375,6 +4375,77 @@ mod m1_ladder_tests {
         assert_eq!(s.font_caption, 103.0, "font_caption ignored the token layer");
         assert_eq!(s.font_section_label, 104.0, "font_section_label ignored the token layer");
         assert_eq!(s.gap_2xs, 105.0, "gap_2xs ignored the token layer");
+    }
+
+    /// The four scale ladders must respond to the token layer AND to the
+    /// hot-reload override, with the density multiplier applied on both.
+    ///
+    /// They were theme-authorable and cascaded NOWHERE — 20 of the 44 snapshot
+    /// fields that read their StyleSystem value directly. `cascade_gate.py`
+    /// permitted that, correctly: its rule is all-siblings-or-none, and "none"
+    /// is legitimate for a group that is deliberately snapshot-only. What a
+    /// gate cannot say is whether a group SHOULD cascade. These four should —
+    /// they are the ladders a designer most wants to drag.
+    ///
+    /// **Density is forced off 1.0 on purpose.** The first version of this test
+    /// asserted `row_dense == 51.0 * dens` at the default density, where `dens`
+    /// is exactly 1.0 — so the multiplier could be deleted outright and the
+    /// assertion still passed. Verified by deleting it. A test that cannot fail
+    /// is worse than no test, because it reports coverage it does not have.
+    #[cfg(feature = "design-mode")]
+    #[test]
+    fn the_four_scale_ladders_respond_on_both_cascade_branches() {
+        use crate::design_tokens as dtk;
+        use crate::ui_kit::style::DensityMode;
+
+        let prev_density = density_override();
+        // 0.85x — anything but 1.0, so `* dens` is observable.
+        set_density_override(Some(DensityMode::Compact));
+
+        let base = dtk::pristine().cloned().unwrap_or_else(dtk::DesignTokens::default);
+        dtk::init(base.clone());
+
+        let mut e = base.clone();
+        e.icon.xs = 41.0; e.icon.lg = 44.0;
+        e.line.tight = 2.01; e.line.loose = 2.06;
+        e.row.dense = 51.0;
+        e.control.xl = 65.0;
+        dtk::update(e);
+
+        // ── branch 1: no override — the DesignTokens tier ──
+        begin_frame();
+        let tok = crate::ui_kit::style::frame_tokens();
+        let dens = effective_density().scale();
+
+        // ── branch 2: a hot-reload override outranks the token tier ──
+        let mut ov = crate::design_system::style_system::StyleSystem::default();
+        ov.icons.xs = 71.0;
+        ov.density.row_dense = 81.0;
+        crate::design_system::hot_reload::install_override_for_test(ov);
+        begin_frame();
+        let ovr = crate::ui_kit::style::frame_tokens();
+
+        // restore BEFORE asserting so one failure cannot poison the suite
+        crate::design_system::hot_reload::clear_override_for_test();
+        dtk::update(base);
+        set_density_override(prev_density);
+        begin_frame();
+
+        assert!(dens != 1.0, "density must be off 1.0 or the multiplier assertions are vacuous");
+
+        assert_eq!(tok.icon_xs, 41.0, "icon_xs ignored the token layer");
+        assert_eq!(tok.icon_lg, 44.0, "icon_lg ignored the token layer");
+        assert!((tok.line_tight - 2.01).abs() < 1e-4, "line_tight ignored the token layer");
+        assert!((tok.line_loose - 2.06).abs() < 1e-4, "line_loose ignored the token layer");
+        assert!((tok.row_dense - 51.0 * dens).abs() < 1e-3,
+            "row_dense lost the density multiplier: {} vs {}", tok.row_dense, 51.0 * dens);
+        assert!((tok.control_xl - 65.0 * dens).abs() < 1e-3,
+            "control_xl lost the density multiplier: {} vs {}", tok.control_xl, 65.0 * dens);
+
+        assert_eq!(ovr.icon_xs, 71.0, "the override must outrank the token tier");
+        assert!((ovr.row_dense - 81.0 * dens).abs() < 1e-3,
+            "the override branch dropped the density multiplier: {} vs {}",
+            ovr.row_dense, 81.0 * dens);
     }
 
     /// `pane_gap` routed through the snapshot must equal the value the mosaic

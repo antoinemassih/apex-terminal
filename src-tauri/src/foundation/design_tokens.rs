@@ -34,6 +34,19 @@ pub struct DesignTokens {
     pub order_entry: OrderEntryTokens,
     pub pane_header: PaneHeaderTokens,
     pub segmented: SegmentedTokens,
+    /// Icon size ladder. Theme-authorable via `StyleSystem.icons`; these make
+    /// it live-tunable too, which is the tier it was missing.
+    #[serde(default)]
+    pub icon: IconTokens,
+    /// Leading ladder (`StyleSystem.line_heights`).
+    #[serde(default)]
+    pub line: LineTokens,
+    /// Row-height ladder (`StyleSystem.density.row_*`).
+    #[serde(default)]
+    pub row: RowTokens,
+    /// Control-height ladder (`StyleSystem.density.control_*`).
+    #[serde(default)]
+    pub control: ControlTokens,
     pub icon_button: IconButtonTokens,
     pub form: FormTokens,
     pub split_divider: SplitDividerTokens,
@@ -131,6 +144,38 @@ pub struct PaneHeaderTokens {  pub height: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SegmentedTokens { pub trough_darken: u8, pub trough_expand_x: f32,  }
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IconTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32 }
+#[cfg(feature = "design-mode")]
+impl Default for IconTokens {
+    fn default() -> Self { Self { xs: 14.0, sm: 16.0, md: 18.0, lg: 20.0 } }
+}
+
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LineTokens { pub tight: f32, pub heading: f32, pub dense: f32, pub compact: f32, pub normal: f32, pub loose: f32 }
+#[cfg(feature = "design-mode")]
+impl Default for LineTokens {
+    fn default() -> Self { Self { tight: 1.20, heading: 1.25, dense: 1.30, compact: 1.35, normal: 1.40, loose: 1.50 } }
+}
+
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RowTokens { pub dense: f32, pub compact: f32, pub default: f32, pub spacious: f32, pub tall: f32 }
+#[cfg(feature = "design-mode")]
+impl Default for RowTokens {
+    fn default() -> Self { Self { dense: 18.0, compact: 20.0, default: 22.0, spacious: 24.0, tall: 30.0 } }
+}
+
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControlTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32, pub xl: f32 }
+#[cfg(feature = "design-mode")]
+impl Default for ControlTokens {
+    fn default() -> Self { Self { xs: 18.0, sm: 22.0, md: 28.0, lg: 34.0, xl: 40.0 } }
+}
+
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IconButtonTokens {}
@@ -335,6 +380,10 @@ impl Default for DesignTokens {
             order_entry: OrderEntryTokens {},
             pane_header: PaneHeaderTokens {  height: 28.0 },
             segmented: SegmentedTokens { trough_darken: 12, trough_expand_x: 4.0,  },
+            icon: IconTokens::default(),
+            line: LineTokens::default(),
+            row: RowTokens::default(),
+            control: ControlTokens::default(),
             icon_button: IconButtonTokens {},
             form: FormTokens { label_width: 120.0, row_height: 18.0 },
             split_divider: SplitDividerTokens { height: 6.0, dot_spacing: 8.0, dot_radius: 1.5, active_stroke: 2.0, inactive_stroke: 1.0, inset: 8.0 },

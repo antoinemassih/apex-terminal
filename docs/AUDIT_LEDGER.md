@@ -611,6 +611,45 @@ bite by deleting the export line.
 
 ---
 
+## AT-157 — four scale ladders were authorable but never cascaded — FIXED
+
+`cascade_gate.py` reported 48 of 91 snapshot fields cascading. The other 43 sat
+in 16 groups that read their `StyleSystem` value directly. The gate passed them,
+correctly — its rule is all-siblings-or-none and "none" is legitimate for a
+group that is deliberately snapshot-only. **What a gate cannot say is whether a
+group SHOULD cascade.**
+
+Four of those groups should, being the ladders a designer most wants to drag:
+icon size (4), leading (6), row height (5), control height (5). Twenty fields,
+theme-authorable, with no live control anywhere.
+
+Now routed through the same three-tier expression as spacing and alpha, with
+`IconTokens` / `LineTokens` / `RowTokens` / `ControlTokens` behind them and a
+new **Scale Ladders** inspector category. 48 → **68 of 91** fields cascade, and
+the slider gate holds at **0 dead of 93**.
+
+`row_*` and `control_*` carry the density multiplier, and it has to apply on the
+override branch too — otherwise the authored and overridden values disagree the
+moment density leaves 1.0, the same shape as the `gap_xs_mid` defect the ladder
+gate was written for.
+
+**The first version of the test could not fail.** It asserted
+`row_dense == 51.0 * dens` at the default density, where `dens` is exactly 1.0 —
+so the multiplier could be deleted outright and it still passed. Confirmed by
+deleting it. The test now forces density to Compact (0.85×) and drives *both*
+cascade branches by installing a hot-reload override, and was re-verified to
+fail when the multiplier is dropped from either one. A test that cannot fail is
+worse than no test: it reports coverage it does not have.
+
+**Still not cascading (23 fields, deliberately):** `elev_*` (documented as a
+uniformly-direct group when the ladder was introduced), the four `bevel_*`, the
+three `focus_*`, `rail_*`, `wl_*`, and the enum-valued treatments
+(`button_treatment`, `surface_bevel`, `panel_tab_treatment`) which have no
+meaningful slider. Uniform within their groups, so the gate is satisfied and
+the remaining work is a judgement call rather than a defect.
+
+---
+
 ## AT-156 — the recipe layer had tiers for everything except alpha — FIXED
 
 `builtin_recipes.rs` is the largest single chrome entry in the ratchet, and all
