@@ -2,6 +2,12 @@
 
 The Rust/egui native trading terminal renders almost everything as immediate-mode painter calls. Most "magic numbers" are literals at the call site, with a small set of shared tokens in `src-tauri/src/chart_renderer/ui/style.rs` and theme colors in `src-tauri/src/ui_kit/theme.rs`.
 
+> **Before changing a token or a literal, read [GATES.md](GATES.md).** Eleven
+> checks enforce the design system on every push; each exists because a specific
+> defect shipped and nothing caught it. GATES.md also documents the five-link
+> chain a new token has to travel — a token that stops at any link is authorable
+> in appearance only.
+
 This file is the entry point for restyling work. For each visible element, find:
 
 - **What** — one-line description
