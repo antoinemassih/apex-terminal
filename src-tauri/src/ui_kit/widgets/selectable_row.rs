@@ -29,6 +29,7 @@
 use egui::{CornerRadius, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::cascade::El;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
@@ -180,23 +181,38 @@ impl<'a> SelectableRow<'a> {
             st::cursor::focus_ring(ui, &response, pal.base(Tone::Accent));
         }
 
-        // Layout: leading icon, then label.
+        // Layout: leading icon, then label — DECLARED, not walked.
+        //
+        // `solve_rect` because this is a painter-only surface: there is no
+        // child `Ui` to allocate into, only a rect and a painter. The tree is
+        // the whole statement of the row's geometry — the icon holds its
+        // width, the gap applies only between siblings (so a row with no icon
+        // gets no gap, which the `x += icon_w + icon_gap` form got right only
+        // because the increment lived inside the `if`), and the label takes
+        // the rest.
         let cy = rect.center().y;
-        let mut x = rect.left() + pad_x;
+        let solved = El::row()
+            .pad_x(pad_x)
+            .gap(icon_gap)
+            .child_if(
+                leading_icon.is_some(),
+                El::slot("icon", egui::vec2(icon_w, 0.0)),
+            )
+            .child(El::slot("label", egui::Vec2::ZERO).grow(1.0))
+            .solve_rect(rect);
 
         if let Some(ic) = leading_icon {
             painter.text(
-                Pos2::new(x, cy),
+                Pos2::new(solved.rect("icon").left(), cy),
                 egui::Align2::LEFT_CENTER,
                 ic,
                 icon_font,
                 icon_color,
             );
-            x += icon_w + icon_gap;
         }
 
         painter.galley(
-            Pos2::new(x, cy - label_h * 0.5),
+            Pos2::new(solved.rect("label").left(), cy - label_h * 0.5),
             label_galley,
             text_color,
         );

@@ -423,12 +423,20 @@ fn paint_tabs(
         }
         let origin = Vec2::new(x, strip_rect.top());
         let solved = f.solve(Vec2::new(strip_total.max(strip_rect.width()), row_h));
-        if addable {
-            // The last slot IS the `+` button; `x` now points at its left edge.
-            x += solved[n].min.x;
+        // Not a layout walk — the strip is already solved. This converts the
+        // solve's strip-relative end into an ABSOLUTE x, which is why it reads
+        // like an accumulator and is not one. Named rather than folded back
+        // into `x`, because a variable that is an alignment offset on one line
+        // and an end-edge on the next is how the cursor-walk habit survives a
+        // migration that has otherwise already happened.
+        let tabs_end = x + if addable {
+            // The last slot IS the `+` button, so its LEFT edge is where the
+            // tabs stop.
+            solved[n].min.x
         } else {
-            x += solved.last().map(|r| r.max.x).unwrap_or(0.0);
-        }
+            solved.last().map_or(0.0, |r| r.max.x)
+        };
+        x = tabs_end;
         solved
             .into_iter()
             .take(n)

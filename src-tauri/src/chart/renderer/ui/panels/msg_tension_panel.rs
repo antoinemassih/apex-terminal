@@ -463,15 +463,24 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         // across different symbols would need a unified price scale, which is
         // out of scope for a side panel.)
         let iv_y = area.top() + crate::ui_kit::style::gap_2xs();
-        let dash  = 6.0_f32;
-        let mut x = area.left();
-        while x < area.right() {
-            let x1 = (x + dash).min(area.right());
+        // A dashed rule, drawn as an INDEXED period rather than a walked `x`.
+        //
+        // This one is deliberately NOT an element tree. A dash pattern is
+        // stroke decoration, not layout: declaring ~30 sibling nodes to draw
+        // one hairline would cost a Taffy solve per repaint to express
+        // something a multiply already says exactly. The accumulator went
+        // anyway, because `x` stepping by a stride is an index in disguise and
+        // reads better as one.
+        let dash = 6.0_f32;
+        let period = dash * 2.0;
+        let dashes = (area.width() / period).ceil().max(0.0) as usize;
+        for i in 0..dashes {
+            let x0 = area.left() + i as f32 * period;
+            let x1 = (x0 + dash).min(area.right());
             painter.line_segment(
-                [egui::pos2(x, iv_y), egui::pos2(x1, iv_y)],
+                [egui::pos2(x0, iv_y), egui::pos2(x1, iv_y)],
                 egui::Stroke::new(stroke_bold(), tint(t, Tone::Bear, alpha_muted())),
             );
-            x += dash * 2.0;
         }
         painter.text(
             egui::pos2(area.right() - crate::ui_kit::style::gap_2xs(), iv_y + 1.0),

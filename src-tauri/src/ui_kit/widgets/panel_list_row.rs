@@ -106,6 +106,7 @@ use crate::ui_kit::tokens::{
     radius_sm,
 };
 use crate::ui_kit::widgets::theme::{ComponentTheme, get_ambient_recipes};
+use crate::ui_kit::cascade::El;
 use crate::ui_kit::sx::{palette_ct, Fill, Sx, StyleState, Tone as SxTone};
 use crate::ui_kit::widgets::{motion, Tooltip};
 use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
@@ -517,17 +518,25 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 // Per-button rects, left-to-right inside the strip (RTL
                 // visually is just left-to-right placement starting from
                 // strip_left — order matches the slice index).
-                let mut rects: Vec<Rect> = Vec::with_capacity(n);
                 let cy = rect.center().y;
-                let mut x = strip_left;
-                for _ in 0..n {
-                    let cx = x + btn_size * 0.5;
-                    rects.push(Rect::from_center_size(
-                        Pos2::new(cx, cy),
-                        Vec2::splat(btn_size),
-                    ));
-                    x += btn_size + btn_gap;
-                }
+                // A DECLARED strip. `strip_w` above still computes the total
+                // because the strip has to be positioned before it can be
+                // solved — but the per-button placement is the tree's job, and
+                // `btn_gap` is now stated once (as the row's gap) instead of
+                // once in the width formula and again in the advance. Those
+                // two were free to disagree; they cannot now.
+                let strip_el = (0..n).fold(El::row().gap(btn_gap), |el, i| {
+                    el.child(El::slot(format!("b{i}"), Vec2::splat(btn_size)))
+                });
+                let solved = strip_el.solve_rect(strip);
+                let rects: Vec<Rect> = (0..n)
+                    .map(|i| {
+                        Rect::from_center_size(
+                            Pos2::new(solved.rect(&format!("b{i}")).center().x, cy),
+                            Vec2::splat(btn_size),
+                        )
+                    })
+                    .collect();
                 (Some(strip), rects)
             }
             _ => (None, Vec::new()),

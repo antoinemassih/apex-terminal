@@ -32,4 +32,10 @@
 pub mod context;
 pub mod element;
 
+// Both halves are re-exported at the root so a call site writes
+// `cascade::{El, scope}` and never has to know which submodule a name lives
+// in. The split between `context` and `element` is an implementation
+// boundary — it exists so the two can be adopted independently, not so
+// callers have to spell it out on every import.
 pub use context::{resolved, scope, Inherited};
+pub use element::{El, Rendered};

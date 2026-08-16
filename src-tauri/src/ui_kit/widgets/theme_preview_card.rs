@@ -20,6 +20,7 @@ use crate::ui_kit::tokens as st;
 // The card chrome (border/selection) uses the ACTIVE theme via Sx; the swatch
 // it previews deliberately keeps raw `preview_theme.*` reads (it's showing a
 // *different* theme's colors, so it must not route through the active palette).
+use crate::ui_kit::cascade::El;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::interaction::{
     apply_interaction, HoverTreatment, InteractionState, InteractionTokens,
@@ -162,19 +163,43 @@ impl<'a> ThemePreviewCard<'a> {
                 ];
                 let line_h = 2.0;
                 let line_gap = 4.0;
-                let mut y = inner_top;
-                for (indent, frac, accent) in lines {
+                // The five rows are DECLARED as a column and solved once; only
+                // the horizontal extent (indent + width fraction) is computed
+                // per line, because that is the part that actually varies.
+                let rows = El::column()
+                    .child(El::slot("l0", egui::vec2(0.0, line_h)))
+                    .child(El::slot("l1", egui::vec2(0.0, line_h)))
+                    .child(El::slot("l2", egui::vec2(0.0, line_h)))
+                    .child(El::slot("l3", egui::vec2(0.0, line_h)))
+                    .child(El::slot("l4", egui::vec2(0.0, line_h)))
+                    .gap(line_gap)
+                    .solve_rect(Rect::from_min_max(
+                        Pos2::new(inner_left, inner_top),
+                        Pos2::new(inner_right, inner_bottom),
+                    ));
+                for (i, (indent, frac, accent)) in lines.into_iter().enumerate() {
+                    let row = rows.rect(match i {
+                        0 => "l0",
+                        1 => "l1",
+                        2 => "l2",
+                        3 => "l3",
+                        _ => "l4",
+                    });
+                    // The walked form painted, THEN advanced, THEN broke — so
+                    // the first row always drew even in a card too short for
+                    // it, and every later row drew only if it fitted. Kept
+                    // exactly, rather than tidied into a uniform bounds check,
+                    // because the difference is visible on the smallest card.
+                    if i > 0 && row.bottom() > inner_bottom {
+                        break;
+                    }
                     let x0 = inner_left + indent * inner_w;
                     let x1 = (x0 + frac * inner_w).min(inner_right);
                     let color = if accent { preview_theme.accent() } else { preview_theme.text() };
                     // Slightly muted so the preview doesn't scream.
                     let color = crate::ui_kit::style::color_alpha(color, crate::ui_kit::style::alpha_solid());
-                    let lr = Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1, y + line_h));
+                    let lr = Rect::from_min_max(Pos2::new(x0, row.top()), Pos2::new(x1, row.top() + line_h));
                     painter.rect_filled(lr, CornerRadius::same(1), color); // TODO: off-token
-                    y += line_h + line_gap;
-                    if y + line_h > inner_bottom {
-                        break;
-                    }
                 }
             }
             PreviewKind::Chart => {

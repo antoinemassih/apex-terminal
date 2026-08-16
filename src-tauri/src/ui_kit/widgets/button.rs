@@ -1376,7 +1376,7 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
             });
 
             let content = {
-                use crate::ui_kit::cascade::element::El;
+                use crate::ui_kit::cascade::El;
                 let start = rect.left() + ((rect.width() - content_w) * 0.5).max(pad_x);
                 El::row()
                     .child_if(has_lead, El::slot("lead", Vec2::new(icon_w, rect.height())))

@@ -14,6 +14,7 @@ use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
+use crate::ui_kit::cascade::El;
 use crate::ui_kit::sx::{palette_ct, Sx, Tone};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
@@ -187,11 +188,25 @@ impl Alert {
                 color,
             );
 
-            // Title + body
+            // Title + body — a DECLARED column, not a walked `y`.
+            //
+            // The gap belongs BETWEEN the two, and a titleless alert must not
+            // pay for it. In the walked form that was true only because
+            // `y += title_h + title_gap` sat inside the `if`; here it is a
+            // property of the tree, so it cannot be got wrong by moving a line.
             let text_col_rect = text_slot.translate(off);
             let text_x = text_col_rect.left();
-            let mut y = text_col_rect.top();
+            let stack = El::column()
+                .gap(title_gap)
+                .child_if(
+                    title_galley.is_some(),
+                    El::slot("title", egui::vec2(0.0, title_h)),
+                )
+                .child(El::slot("body", egui::Vec2::ZERO).grow(1.0))
+                .solve_rect(text_col_rect);
+            let mut y = stack.rect("body").top();
             if let Some(g) = title_galley {
+                y = stack.rect("title").top();
                 // Keep the egui galley for height measurement (drives
                 // `title_h` and the body_y advance), but paint the
                 // glyphs via cosmic-text for shaping quality.
@@ -208,9 +223,8 @@ impl Alert {
                 } else {
                     painter.galley(Pos2::new(text_x, y), g, text_color);
                 }
-                y += title_h + title_gap;
             }
-            painter.galley(Pos2::new(text_x, y), body_galley, dim_color);
+            painter.galley(Pos2::new(text_x, stack.rect("body").top()), body_galley, dim_color);
 
             // Close button
             if let Some(slot) = close_slot {

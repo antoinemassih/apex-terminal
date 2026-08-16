@@ -28,6 +28,7 @@
 use std::collections::{HashSet, VecDeque};
 use crate::chart_renderer::ui::style::tint;
 use crate::chart_renderer::ui::foundation::text_style::TextStyle;
+use crate::ui_kit::cascade::El;
 use crate::ui_kit::sx::Tone;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -215,17 +216,27 @@ pub fn draw(ctx: &egui::Context, screen_rect: egui::Rect) {
     const TOAST_H: f32 = 120.0;
     const PAD: f32 = 8.0;
     let right = screen_rect.right() - crate::ui_kit::style::gap_lg();
-    let mut y = screen_rect.top() + crate::ui_kit::style::gap_lg();
+    // The stack is DECLARED, not walked. `PAD` is the column's gap — stated
+    // once, between siblings — rather than a term added to `y` after each
+    // toast, which is the form that silently pads below the last one.
+    let inset = crate::ui_kit::style::gap_lg();
+    let stack = visible
+        .iter()
+        .enumerate()
+        .fold(El::column().gap(PAD), |el, (i, _)| {
+            el.child(El::slot(format!("t{i}"), egui::vec2(TOAST_W, TOAST_H)))
+        })
+        .solve_rect(egui::Rect::from_min_max(
+            egui::pos2(right - TOAST_W, screen_rect.top() + inset),
+            egui::pos2(right, screen_rect.bottom()),
+        ));
 
     let mut dismissed_now: Vec<String> = Vec::new();
     let mut jump_now: Option<(String, i64)> = None;
     let mut provenance_now: Option<String> = None;
 
     for (i, toast) in visible.iter().enumerate() {
-        let rect = egui::Rect::from_min_size(
-            egui::pos2(right - TOAST_W, y),
-            egui::vec2(TOAST_W, TOAST_H),
-        );
+        let rect = stack.rect(&format!("t{i}"));
         egui::Area::new(egui::Id::new(("spike_toast", &toast.spike.id, i)))
             .order(egui::Order::Foreground)
             .fixed_pos(rect.min)
@@ -244,7 +255,6 @@ pub fn draw(ctx: &egui::Context, screen_rect: egui::Rect) {
                             &mut dismissed_now, &mut jump_now, &mut provenance_now);
                     });
             });
-        y += TOAST_H + PAD;
     }
 
     // Apply collected interactions outside the render closure so we don't
