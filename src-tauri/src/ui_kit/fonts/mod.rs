@@ -465,12 +465,16 @@ impl FontRegistry {
     /// selection.  Returns the definitions and any fallback warnings.
     ///
     /// This is the primary entry point for the host integration step.
+    /// `family_ui: None` means the style defers to the user's font picker.
+    /// This entry point has no access to that choice, so it resolves the
+    /// deferral to the registry's own default rather than inventing a family.
+    /// Callers that DO know the picker (the render loop) resolve it themselves.
     pub fn build_from_typography(
         &self,
         typography: &crate::design_system::style_system::Typography,
     ) -> (FontDefinitions, Vec<Warning>) {
         self.build_definitions(
-            &typography.family_ui,
+            typography.family_ui.as_deref().unwrap_or("Inter"),
             &typography.family_mono,
             &typography.family_display,
         )

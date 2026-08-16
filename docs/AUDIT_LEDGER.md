@@ -532,6 +532,41 @@ not yet triaged. A first pass counting only `dt_*!` reads said 48 — 34 of thos
 turned out to be read by direct field access, so the honest number is 14.
 
 ---
+## AT-149 — font family had two mechanisms — CLOSED
+
+`Typography.family_ui: String` could not say "no opinion". So deferral lived in
+a second mechanism, `style_preferred_font(style_id) -> Option<usize>`, whose
+`None` arm meant "honour the user's picker".
+
+Two mechanisms, and they disagreed — the fifth instance of that class here:
+
+- the map returned `None` for **Meridien** and **Octave** while both set
+  `family_ui: "Inter"`;
+- the map gave **Alto** and **Mariner** IBM Plex Sans while their `family_ui`
+  said `"Inter"`.
+
+The map was also keyed by style **INDEX**, the exact fragility the audit note on
+`compact_adjusted` — the function directly below it — warns about: reordering
+the style list silently reassigns entries.
+
+**Fixed:** `family_ui` is `Option<String>`. `Some(name)` is a choice, `None` is
+a deferral, and `"Inter"` is no longer both the default and a deliberate
+selection (which is why "differs from default" could never separate them). The
+map's arms were transcribed onto the styles themselves and the map deleted.
+Export omits the key when a style defers — writing a name would turn a deferral
+back into a choice on reload.
+
+Guarded by two tests: one asserts every opinion the map held is still expressed,
+keyed by style ID so reordering cannot break it; the other asserts a stated
+family actually resolves to a registered font, since an unregistered name falls
+back to the picker silently and the theme then renders in the wrong face with
+nothing reporting it.
+
+Behaviour is unchanged: Meridien/Octave → picker, Aperture/Cadence → Inter,
+Alto/Mariner → IBM Plex Sans, Lucid → DM Sans. Verified in the running app.
+
+---
+
 ## AT-151 — three shadow systems — CLOSED
 
 Not "three systems that overlap" — three systems that **disagreed about the same

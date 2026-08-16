@@ -171,14 +171,12 @@ identical from outside.
 
 ## Open decisions
 
-Two findings are recorded rather than fixed, because both need a human choice
-and guessing is worse than leaving them:
+None outstanding. AT-149 (font provenance), AT-150 (alpha ladder) and AT-151
+(three shadow systems) are all closed — see `docs/AUDIT_LEDGER.md`.
 
-- **AT-149** — font family has two mechanisms split by provenance. Builtins use
-  a `style_id → font index` map; imported packs use `Typography.family_ui`. The
-  map expresses "no opinion, honour the user's picker", which the token cannot,
-  and `"Inter"` is both the default *and* a deliberate choice — so "differs from
-  default" cannot separate them. Needs a schema decision first.
+Recorded for the record, since each needed a decision rather than a fix:
+
+- **AT-149**
 - **AT-150** — *closed, and worth recording how the framing was wrong.* The
   pitch was "354 off-ladder alphas, the ladder has holes". Two measurement
   errors inflated it. The ladder-extraction regex read `impl Default for Alphas`

@@ -1040,7 +1040,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             size_section_label: 8.0, // font_section_label = 8
             label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
             // Font family identifiers — Meridien uses the compiled-in defaults.
-            family_ui: "Inter".to_owned(),
+            family_ui: None,  // map returned None for Meridien -> defer to the picker
             family_mono: "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
             ..Typography::default()
@@ -1220,7 +1220,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             size_section_label: 10.0, // font_section_label = 10
             label_tracking: 0.8, nav_tracking: 0.0, section_tracking: 0.8,
             // Font family identifiers — Aperture uses the compiled-in defaults.
-            family_ui: "Inter".to_owned(),
+            family_ui: Some("Inter".to_owned()),
             family_mono: "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
             ..Typography::default()
@@ -1363,7 +1363,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             size_section_label: 8.0,
             label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
             // Font family identifiers — Octave uses the compiled-in defaults.
-            family_ui: "Inter".to_owned(),
+            family_ui: None,  // map returned None for Octave -> defer to the picker
             family_mono: "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
             ..Typography::default()
@@ -1490,6 +1490,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         // override it; see ShellSpec::resolve_archetype.
         shell: ShellSpec { archetype: Archetype::DenseScreens, ..ShellSpec::default() },
         typography: Typography {
+            family_ui: Some("Inter".to_owned()),
             size_section_label: 11.0, size_sm: 13.0,
             label_tracking: 0.6, section_tracking: 0.6,
             ..Typography::default()
@@ -1525,6 +1526,10 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // ── Alto (id=4) — Zed warm-dark: raised button faces, amber bevel ────────
     let alto = StyleSystem {
         meta: Meta::new("alto", "Alto", true),
+        typography: Typography {
+            family_ui: Some("IBM Plex Sans".to_owned()),
+            ..Typography::default()
+        },
         radii: Radii { none: 0.0, xs: 2.0, sm: 4.0, md: 6.0, lg: 8.0, full: 9999.0, pill: 99.0, chip: 0.0 },
         density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0, ..Density::default() },
         shadows: Shadows {
@@ -1564,6 +1569,10 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
     // ── Mariner (id=5) — Alto's nautical sibling, steel-blue, denser ─────────
     let mariner = StyleSystem {
         meta: Meta::new("mariner", "Mariner", true),
+        typography: Typography {
+            family_ui: Some("IBM Plex Sans".to_owned()),
+            ..Typography::default()
+        },
         radii: alto.radii.clone(),
         density: Density { factor: 0.85, row_height_dense: 22.0, row_height_comfortable: 28.0, ..Density::default() },
         shadows: alto.shadows.clone(),
@@ -1595,7 +1604,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         // DS-6.0 D1: the theme's DEFAULT archetype. A workspace may
         // override it; see ShellSpec::resolve_archetype.
         shell: ShellSpec { archetype: Archetype::Editorial, ..ShellSpec::default() },
-        typography: Typography { size_xl: 28.0, label_tracking: 0.4, section_tracking: 0.4, ..Typography::default() },
+        typography: Typography {
+            family_ui: Some("DM Sans".to_owned()), size_xl: 28.0, label_tracking: 0.4, section_tracking: 0.4, ..Typography::default() },
         // Radii from `faithful/lucid/tokens.full.json` (xs 4, sm 6, md 8,
         // lg 10). Lucid had never been checked against its source: every step
         // was roughly HALF the authored value (2/3/5/8), which is why it read

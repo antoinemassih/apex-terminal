@@ -124,7 +124,7 @@ pub fn baseline_style_system() -> StyleSystem {
             size_section_label: 8.0,
             label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
             // Font family identifiers — Meridien uses the compiled-in defaults.
-            family_ui: "Inter".to_owned(),
+            family_ui: None,
             family_mono: "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
             ..Typography::default()

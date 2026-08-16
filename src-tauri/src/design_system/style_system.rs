@@ -146,9 +146,23 @@ pub struct Typography {
     // ── Font family identifiers (S7 blocker) ─────────────────────────────────
     /// UI / proportional family name — used for all body text, labels, and
     /// headings that are not explicitly mono or display.
-    /// Default: `"Inter"` (matches the current compiled-in egui font loader).
-    #[serde(default = "Typography::default_family_ui")]
-    pub family_ui: String,
+    /// `None` means **no opinion — honour the user's font picker**, which a
+    /// plain `String` could not express.
+    ///
+    /// That gap was the whole of AT-149. Font family had two mechanisms split
+    /// by provenance: builtin styles used a `style_id -> font index` map
+    /// (`style_preferred_font`) whose `None` arm meant "defer to the user",
+    /// while imported packs used this field, which was always populated. The
+    /// two then contradicted each other — Meridien and Octave set
+    /// `family_ui: "Inter"` here while the map returned `None` for them, and
+    /// Alto/Mariner wanted IBM Plex Sans from the map while this said "Inter".
+    ///
+    /// `"Inter"` was also both the default AND a deliberate choice for some
+    /// styles, so "differs from the default" could not separate them either.
+    /// `Option` states it directly: `Some(name)` is a choice, `None` is a
+    /// deferral, and there is one mechanism instead of two.
+    #[serde(default)]
+    pub family_ui: Option<String>,
     /// Monospace family name — used for prices, code, and timestamps.
     /// Default: `"JetBrains Mono"` (matches the current compiled-in egui mono font).
     #[serde(default = "Typography::default_family_mono")]
@@ -210,7 +224,6 @@ impl Typography {
 
 impl Typography {
     fn default_section_label() -> f32 { 9.0 }
-    fn default_family_ui()      -> String { "Inter".to_owned() }
     fn default_family_mono()    -> String { "JetBrains Mono".to_owned() }
     fn default_family_display() -> String { "Inter".to_owned() }
 }
@@ -233,7 +246,7 @@ impl Default for Typography {
             label_tracking: 0.0,
             nav_tracking:   0.0,
             section_tracking: 0.0,
-            family_ui:      "Inter".to_owned(),
+            family_ui:      None,
             family_mono:    "JetBrains Mono".to_owned(),
             family_display: "Inter".to_owned(),
             display_sm: Self::default_display_sm(),

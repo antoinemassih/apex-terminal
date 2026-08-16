@@ -388,7 +388,14 @@ impl StyleSystem {
             nav_tracking:     read_f32_or(&typ_sec, "nav_tracking",     "typography", d_typ.nav_tracking),
             section_tracking: read_f32_or(&typ_sec, "section_tracking", "typography", d_typ.section_tracking),
             // Font family identifiers (S7 blocker) — gracefully absent in legacy JSON.
-            family_ui:      read_string_or(&typ_sec, "family_ui",      "typography", &d_typ.family_ui),
+            // Absent means the pack expresses no opinion — the user's picker
+            // wins. Reading it with a default would erase that distinction,
+            // which is the whole point of the Option.
+            family_ui: typ_sec
+                .get("family_ui")
+                .and_then(|n| dtcg_value(n, "typography.family_ui").ok())
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .or_else(|| d_typ.family_ui.clone()),
             family_mono:    read_string_or(&typ_sec, "family_mono",    "typography", &d_typ.family_mono),
             family_display: read_string_or(&typ_sec, "family_display", "typography", &d_typ.family_display),
             ..Typography::default()
@@ -875,7 +882,7 @@ mod tests {
                 mono_sm: 9.5, mono_md: 11.5, mono_lg: 14.5,
                 size_section_label: 8.0,
                 label_tracking: 0.5, nav_tracking: 1.0, section_tracking: 1.5,
-                family_ui: "Roboto".into(),
+                family_ui: Some("Roboto".to_owned()),
                 family_mono: "Fira Code".into(),
                 family_display: "Playfair Display".into(),
                 ..Typography::default()

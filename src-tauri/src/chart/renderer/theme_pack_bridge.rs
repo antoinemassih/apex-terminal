@@ -241,13 +241,16 @@ pub fn activate_theme_pack(ctx: &Context, pack: &ThemePack) {
     let default_display = "Inter";
     // Only reload fonts if the pack specifies different families from the
     // compiled-in defaults; avoids a full atlas rebuild for no-op changes.
-    let needs_font_load = typo.family_ui      != default_ui
+    // `family_ui: None` = "no opinion, honour the user's picker", so it must
+    // NOT count as a difference — deferring is not requesting `default_ui`.
+    let ui_family = typo.family_ui.as_deref();
+    let needs_font_load = ui_family.is_some_and(|f| f != default_ui)
         || typo.family_mono    != default_mono
         || typo.family_display != default_display;
     if needs_font_load {
         crate::ui_kit::icons::init_fonts_from_typography(
             ctx,
-            &typo.family_ui,
+            ui_family.unwrap_or(default_ui),
             &typo.family_mono,
             &typo.family_display,
         );

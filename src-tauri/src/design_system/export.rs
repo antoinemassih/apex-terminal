@@ -142,7 +142,9 @@ impl StyleSystem {
                 "label_tracking": num!(typ.label_tracking),
                 "nav_tracking":   num!(typ.nav_tracking),
                 "section_tracking": num!(typ.section_tracking),
-                "family_ui":      str_tok!(&typ.family_ui),
+                // Omitted when the style defers to the user's picker. Writing
+                // a name there would turn a deferral into a choice on reload.
+                "family_ui":      typ.family_ui.as_ref().map(|f| str_tok!(f)),
                 "family_mono":    str_tok!(&typ.family_mono),
                 "family_display": str_tok!(&typ.family_display),
             },

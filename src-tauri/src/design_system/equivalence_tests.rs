@@ -1022,10 +1022,19 @@ pub(crate) mod equivalence {
         // ── Font-family field sanity (S7 blocker) ─────────────────────────────
         for style in &styles {
             let t = &style.typography;
-            assert!(
-                !t.family_ui.is_empty(),
-                "[{}] family_ui must not be empty", style.meta.id
-            );
+            // `None` is legal and MEANINGFUL: the style defers to the user's
+            // font picker. The old assertion was `!family_ui.is_empty()`, which
+            // could not express that — it demanded every style state a family,
+            // which is precisely why deferral had to live in a second mechanism
+            // (`style_preferred_font`) that then disagreed with this one.
+            // What must hold is that a stated family is not BLANK.
+            if let Some(fam) = t.family_ui.as_deref() {
+                assert!(
+                    !fam.trim().is_empty(),
+                    "[{}] family_ui is Some but blank — say None to defer",
+                    style.meta.id
+                );
+            }
             assert!(
                 !t.family_mono.is_empty(),
                 "[{}] family_mono must not be empty", style.meta.id
@@ -1038,7 +1047,10 @@ pub(crate) mod equivalence {
 
         // ── Default values match the compiled-in font loader ──────────────────
         let default_style = crate::design_system::style_system::StyleSystem::default();
-        assert_eq!(default_style.typography.family_ui,      "Inter",          "family_ui default must be Inter");
+        // The DEFAULT is now a deferral, not a family. A style that wants
+        // Inter says so; one that has no opinion leaves the picker alone.
+        assert_eq!(default_style.typography.family_ui, None,
+            "an unopinionated style must defer to the user's picker, not claim Inter");
         assert_eq!(default_style.typography.family_mono,    "JetBrains Mono", "family_mono default must be JetBrains Mono");
         assert_eq!(default_style.typography.family_display, "Inter",          "family_display default must be Inter");
     }
@@ -1067,6 +1079,64 @@ pub(crate) mod equivalence {
                 parsed.typography.family_display, original.typography.family_display,
                 "[{}] family_display must survive DTCG round-trip", original.meta.id
             );
+        }
+    }
+
+    /// Every font opinion the deleted `style_preferred_font` map held must
+    /// still be expressed, now by the style itself.
+    ///
+    /// The map was a `style_id -> font index` match keyed by INDEX, so
+    /// reordering the style list silently reassigned families — the same
+    /// fragility the audit note beside it warned about for pane headers. It was
+    /// also a second mechanism next to `Typography.family_ui`, and the two
+    /// disagreed: the map returned `None` (defer to the picker) for Meridien
+    /// and Octave while both set `family_ui: "Inter"`, and gave Alto/Mariner
+    /// IBM Plex Sans while their `family_ui` said "Inter".
+    ///
+    /// This table is the map's own arms, transcribed. Keyed by style ID, not
+    /// index, so reordering the list cannot break it.
+    #[test]
+    fn every_style_font_opinion_survived_deleting_the_index_map() {
+        use crate::design_system::builtin::builtin_style_systems;
+
+        // (style id, what the deleted map said) — None means "user's picker".
+        let expected: &[(&str, Option<&str>)] = &[
+            ("aperture", Some("Inter")),
+            ("cadence",  Some("Inter")),
+            ("alto",     Some("IBM Plex Sans")),
+            ("mariner",  Some("IBM Plex Sans")),
+            ("lucid",    Some("DM Sans")),
+            ("meridien", None),
+            ("octave",   None),
+        ];
+
+        let styles = builtin_style_systems();
+        for (id, want) in expected {
+            let style = styles
+                .iter()
+                .find(|s| s.meta.id == *id)
+                .unwrap_or_else(|| panic!("builtin style `{id}` is missing"));
+            assert_eq!(
+                style.typography.family_ui.as_deref(),
+                *want,
+                "[{id}] font opinion changed when the index map was deleted"
+            );
+        }
+    }
+
+    /// A stated family must be one this build can actually load, or the style
+    /// silently falls back to the picker and the theme renders in the wrong
+    /// face with nothing reporting it.
+    #[test]
+    fn every_stated_font_family_resolves_to_a_registered_font() {
+        for style in crate::design_system::builtin::builtin_style_systems() {
+            if let Some(fam) = style.typography.family_ui.as_deref() {
+                assert!(
+                    crate::ui_kit::icons::family_name_to_font_idx(fam).is_some(),
+                    "[{}] family_ui `{fam}` is not a registered family — it would                      silently fall back to the user's picker",
+                    style.meta.id
+                );
+            }
         }
     }
 }

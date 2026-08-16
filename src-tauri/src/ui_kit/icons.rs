@@ -484,6 +484,14 @@ pub fn init_icons(ctx: &egui::Context) { init_fonts(ctx, 0); }
 /// - 5 → "Geist"
 /// - 6 → "IBM Plex Sans"   (also triggers IBM Plex Mono as leading monospace)
 /// - other → "JetBrains Mono" (fallback)
+/// Inverse of [`font_idx_to_family_name`].
+///
+/// `None` for a family this build does not register — the caller then falls
+/// back to the user's picker rather than silently rendering something else.
+pub fn family_name_to_font_idx(name: &str) -> Option<usize> {
+    (0..=6usize).find(|&i| font_idx_to_family_name(i) == name)
+}
+
 pub fn font_idx_to_family_name(font_idx: usize) -> &'static str {
     match font_idx {
         1 => "Inter",

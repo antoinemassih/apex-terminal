@@ -292,23 +292,6 @@ pub(crate) const STYLE_NAMES: &[&str] = &[
 /// NOTE: monospace stays pinned to JetBrains Mono regardless (tabular-digit
 /// policy in `init_fonts`).
 ///
-/// CORRECTED 2026-08: this said IBM Plex Sans "is NOT bundled here — they fall
-/// back to Geist", and asked for the TTFs to be bundled. They ARE bundled
-/// (`IBMPlexSans-Regular.ttf` / `-SemiBold.ttf`), the registry registers the
-/// family, and `font_idx_to_family_name(6)` resolves it — so Alto and Mariner
-/// have been rendering in IBM Plex Sans, not Geist, and the note was asking for
-/// work that was already done.
-pub(crate) fn style_preferred_font(style_id: u8) -> Option<usize> {
-    match style_id {
-        1 => Some(1), // Aperture → Inter (React: Inter Tight)
-        3 => Some(1), // Cadence  → Inter
-        4 => Some(6), // Alto     → IBM Plex Sans (React: --ds-font-ui: 'IBM Plex Sans')
-        5 => Some(6), // Mariner  → IBM Plex Sans (same family — instrument panel)
-        6 => Some(4), // Lucid    → DM Sans
-        _ => None,    // Meridien / Octave / unnamed → user font picker
-    }
-}
-
 /// Returns the style id for a watchlist's selected style.
 /// Any valid index within the live preset list is returned as-is.
 /// Out-of-range falls back to 0 (Meridien).
@@ -7649,7 +7632,22 @@ impl GpuCtx {
         // active style's font wins on themed presets (Aperture/Cadence/Alto/
         // Mariner/Lucid); Meridien/Octave defer to the user picker. Monospace
         // stays JetBrains regardless (tabular-digit policy in init_fonts).
-        let effective_font = style_preferred_font(style_id(watchlist))
+        // The active style's own `family_ui` decides, falling back to the
+        // user's picker when it expresses no opinion (`None`).
+        //
+        // This replaced `style_preferred_font`, a `style_id -> font index`
+        // match. Two things were wrong with it. It was keyed by style INDEX —
+        // the exact fragility the audit note on `compact_adjusted` right below
+        // warns about, where reordering the style list silently reassigns
+        // entries. And it was a SECOND mechanism beside `Typography.family_ui`,
+        // so the two disagreed: it returned None for Meridien and Octave while
+        // they both set `family_ui: "Inter"`, and it gave Alto/Mariner IBM Plex
+        // Sans while their `family_ui` said "Inter".
+        let effective_font = crate::chart_renderer::ui::style::active_style_system()
+            .typography
+            .family_ui
+            .as_deref()
+            .and_then(crate::ui_kit::icons::family_name_to_font_idx)
             .unwrap_or(watchlist.font_idx);
         // Mirror into TextEngine so PolishedLabel (Family::SansSerif sentinel)
         // shapes with the matching primary font.
