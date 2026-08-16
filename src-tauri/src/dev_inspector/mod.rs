@@ -116,12 +116,24 @@ impl WidgetRecord {
         // min-side < 28px, which mislabels every small icon button as "clipped" —
         // a touch-target concern, not clipping (see `all_touch_targets_ok`).
         const TOL: f32 = 0.5;
-        let is_clipped = rect.w > 0.0 && rect.h > 0.0 && (
-            rect.x          < clip_rect.x - TOL ||
-            rect.y          < clip_rect.y - TOL ||
-            rect.x + rect.w > clip_rect.x + clip_rect.w + TOL ||
-            rect.y + rect.h > clip_rect.y + clip_rect.h + TOL
-        );
+        // PARTIAL overlap only. A rect that pokes out of its clip rect is
+        // visually truncated — the defect. A rect ENTIRELY outside it is
+        // scrolled out of view, which is what a scroll area is for.
+        //
+        // The distinction was missing, and it made the check untrustworthy
+        // exactly where it was most needed: opening the settings modal put ten
+        // style chips below the scroll viewport and `/design-audit` reported
+        // ten clipping violations for a panel that renders perfectly. A check
+        // that fires on normal scrolling is one people learn to ignore.
+        let overlaps = rect.x < clip_rect.x + clip_rect.w + TOL
+            && rect.x + rect.w > clip_rect.x - TOL
+            && rect.y < clip_rect.y + clip_rect.h + TOL
+            && rect.y + rect.h > clip_rect.y - TOL;
+        let pokes_out = rect.x          < clip_rect.x - TOL
+            || rect.y          < clip_rect.y - TOL
+            || rect.x + rect.w > clip_rect.x + clip_rect.w + TOL
+            || rect.y + rect.h > clip_rect.y + clip_rect.h + TOL;
+        let is_clipped = rect.w > 0.0 && rect.h > 0.0 && overlaps && pokes_out;
         WidgetRecord {
             id: id.into(), role: role.into(), label: label.into(),
             // A response-backed record describes something PAINTED, so a zero
@@ -1707,5 +1719,61 @@ mod clip_tests {
         let w = rec_with(SerRect { x: 5.0, y: 5.0, w: 80.0, h: 20.0 },
                          SerRect { x: 0.0, y: 0.0, w: 100.0, h: 100.0 });
         assert!(w.in_vscroll().is_clipped == false);
+    }
+}
+
+#[cfg(test)]
+mod clipping_semantics_tests {
+    use super::SerRect;
+
+    /// Mirrors the classification in `WidgetRecord::from_response`.
+    fn clipped(rect: SerRect, clip: SerRect) -> bool {
+        const TOL: f32 = 0.5;
+        let overlaps = rect.x < clip.x + clip.w + TOL
+            && rect.x + rect.w > clip.x - TOL
+            && rect.y < clip.y + clip.h + TOL
+            && rect.y + rect.h > clip.y - TOL;
+        let pokes_out = rect.x < clip.x - TOL
+            || rect.y < clip.y - TOL
+            || rect.x + rect.w > clip.x + clip.w + TOL
+            || rect.y + rect.h > clip.y + clip.h + TOL;
+        rect.w > 0.0 && rect.h > 0.0 && overlaps && pokes_out
+    }
+
+    fn r(x: f32, y: f32, w: f32, h: f32) -> SerRect {
+        SerRect { x, y, w, h }
+    }
+
+    /// Scrolled fully out of view is NOT clipping.
+    ///
+    /// The real numbers from the settings modal: the viewport ends at y=1090
+    /// and the style chips start at y=1093.7. Ten of them were reported as
+    /// clipping violations for a panel that renders perfectly, which is how a
+    /// check earns its way onto the list of things people skip.
+    #[test]
+    fn a_widget_scrolled_past_the_viewport_is_not_clipped() {
+        let viewport = r(0.0, 389.2, 400.0, 700.8); // ends at 1090.0
+        assert!(!clipped(r(10.0, 1093.7, 78.0, 32.2), viewport));
+    }
+
+    /// Truncated by its own container IS clipping — the defect worth catching.
+    #[test]
+    fn a_widget_poking_out_of_its_viewport_is_clipped() {
+        let viewport = r(0.0, 0.0, 100.0, 100.0);
+        assert!(clipped(r(80.0, 10.0, 40.0, 20.0), viewport.clone()), "overruns the right edge");
+        assert!(clipped(r(10.0, -5.0, 20.0, 20.0), viewport), "overruns the top edge");
+    }
+
+    /// Fully inside is fine.
+    #[test]
+    fn a_widget_inside_its_viewport_is_not_clipped() {
+        let viewport = r(0.0, 0.0, 100.0, 100.0);
+        assert!(!clipped(r(10.0, 10.0, 20.0, 20.0), viewport));
+    }
+
+    /// A zero-size rect is not a clipping question — `empty_rects` owns it.
+    #[test]
+    fn a_zero_rect_is_not_reported_as_clipping() {
+        assert!(!clipped(r(10.0, 10.0, 0.0, 0.0), r(0.0, 0.0, 100.0, 100.0)));
     }
 }

@@ -97,11 +97,27 @@ impl<'a> Label<'a> {
     /// delegates here with the ambient one.
     pub fn show_ctx(self, ui: &mut Ui, sctx: &super::ctx::StyleCtx<'_>) -> Response {
         let theme = sctx.theme();
+        // Precedence, outermost wins last: an explicit `.color()` on this call
+        // beats an ancestor's declaration, which beats the widget's own default.
+        //
+        // That order is what makes the cascade adoptable without touching call
+        // sites. A label that states its colour is untouched; one that does not
+        // now asks its ancestors before falling back — so a surface opts in by
+        // opening ONE `cascade::scope`, and the 13 labels inside it that all
+        // pass `t.dim` today can stop repeating it.
+        //
+        // `.muted()` is treated as a statement, not a default: it is the call
+        // site explicitly asking for the dim tone, so an ancestor must not
+        // override it.
         let color = if let Some(c) = self.color {
             c
         } else {
             let pal = palette_ct(theme);
-            if self.muted { pal.base(Tone::Dim) } else { pal.base(Tone::Text) }
+            if self.muted {
+                pal.base(Tone::Dim)
+            } else {
+                crate::ui_kit::cascade::resolved().color_or(pal.base(Tone::Text))
+            }
         };
         let font_size = self.size.font_size();
         // Resolve family. `strong` upgrades the default Proportional
@@ -193,5 +209,80 @@ mod truncate_tests {
         assert_eq!(long.rows.len(), 1, "truncate must produce exactly one row");
         let short = layout_truncated(&ctx, "OK", 400.0);
         assert!(!short.elided, "short text that fits should not be elided");
+    }
+}
+
+#[cfg(test)]
+mod cascade_precedence_tests {
+    use crate::ui_kit::cascade::{self, Inherited};
+    use crate::ui_kit::sx::{palette_ct, Tone};
+    use crate::ui_kit::widgets::theme::PortableTheme;
+    use egui::Color32;
+
+    /// Mirrors the resolution in `show_ctx`. Kept as a function rather than
+    /// driven through a `Ui` because what is under test is the ORDER, and a
+    /// rendered pixel would prove it only indirectly.
+    fn resolve(explicit: Option<Color32>, muted: bool, theme: &PortableTheme) -> Color32 {
+        if let Some(c) = explicit {
+            c
+        } else {
+            let pal = palette_ct(theme);
+            if muted {
+                pal.base(Tone::Dim)
+            } else {
+                cascade::resolved().color_or(pal.base(Tone::Text))
+            }
+        }
+    }
+
+    /// An explicit `.color()` outranks an ancestor.
+    ///
+    /// This is the direction that must not regress: hundreds of call sites
+    /// state their colour, and a cascade that overrode them would repaint the
+    /// app the moment any surface opened a scope.
+    #[test]
+    fn an_explicit_colour_beats_an_ancestor_declaration() {
+        let theme = PortableTheme::dark();
+        let mine = Color32::from_rgb(1, 2, 3);
+        let ancestor = Color32::from_rgb(9, 9, 9);
+        cascade::context::reset_for_frame();
+        cascade::scope(Inherited::default().color(ancestor), || {
+            assert_eq!(resolve(Some(mine), false, &theme), mine);
+        });
+    }
+
+    /// With nothing explicit, an ancestor's declaration reaches the label.
+    #[test]
+    fn an_ancestor_declaration_reaches_an_unstyled_label() {
+        let theme = PortableTheme::dark();
+        let ancestor = Color32::from_rgb(9, 9, 9);
+        cascade::context::reset_for_frame();
+        cascade::scope(Inherited::default().color(ancestor), || {
+            assert_eq!(resolve(None, false, &theme), ancestor);
+        });
+    }
+
+    /// Outside any scope the widget's own default wins — the property that
+    /// makes this change invisible until a surface opts in.
+    #[test]
+    fn outside_a_scope_the_widget_default_is_unchanged() {
+        let theme = PortableTheme::dark();
+        cascade::context::reset_for_frame();
+        assert_eq!(resolve(None, false, &theme), palette_ct(&theme).base(Tone::Text));
+    }
+
+    /// `.muted()` is a STATEMENT, not a default.
+    ///
+    /// The call site is explicitly asking for the dim tone; an ancestor saying
+    /// "everything here is accent" must not silently un-mute it. Getting this
+    /// wrong would be invisible in review and obvious on screen.
+    #[test]
+    fn muted_is_a_statement_and_outranks_an_ancestor() {
+        let theme = PortableTheme::dark();
+        let ancestor = Color32::from_rgb(9, 9, 9);
+        cascade::context::reset_for_frame();
+        cascade::scope(Inherited::default().color(ancestor), || {
+            assert_eq!(resolve(None, true, &theme), palette_ct(&theme).base(Tone::Dim));
+        });
     }
 }

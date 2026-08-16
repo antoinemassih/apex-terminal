@@ -307,14 +307,41 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         p.rect_filled(rect, CornerRadius::same(r), color_alpha(accent, PILL_TINT_A).gamma_multiply(app_e));
         let bar = Rect::from_min_size(rect.min, vec2(ACCENT_W, rect.height()));
         p.rect_filled(bar, CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, accent.gamma_multiply(app_e));
-        let cx0 = rect.left() + ACCENT_W + PAD_L;
-        // Kind icon (replaces the type word to save space).
-        p.text(pos2(cx0 + ICON_W * 0.5, cy), Align2::CENTER_CENTER, kind_icon(a.kind),
+        // Layout is SOLVED, painting is unchanged.
+        //
+        // This was a cursor walk: `cx0 = left + ACCENT_W + PAD_L`, paint the
+        // icon, `x += ICON_W + gapx`, maybe paint the symbol, `x += text_w +
+        // gapx`. Every `+=` is a place the optional symbol can desynchronise
+        // the rest of the row, and the walk cannot answer "where does the
+        // message start" without having already drawn everything before it.
+        //
+        // The tree states the shape and hands back rects. The painting below is
+        // the SAME code against `solved.rect(..)` instead of a running `x` —
+        // deliberately, because this badge carries a fade (`app_e`), a morph,
+        // and a clip-rect invariant with its own bug history (see below). Only
+        // the geometry moved.
+        let solved = {
+            use crate::ui_kit::cascade::element::El;
+            El::row()
+                .gap(gapx)
+                .pad_x(0.0)
+                .child(El::slot("accent", vec2(ACCENT_W, rect.height())))
+                .child(El::slot("icon", vec2(ICON_W, rect.height())).margin_start(PAD_L))
+                .child_if(sym.is_some(), El::slot(
+                    "sym",
+                    vec2(sym.map_or(0.0, |s| text_w(ui, s, &font, t.text)), rect.height()),
+                ))
+                .child(El::slot("msg", vec2(0.0, rect.height())).grow(1.0))
+                .child(El::slot("dismiss", vec2(DISMISS_W, rect.height())).margin_start(PAD_R))
+                .solve_in(ui, rect)
+        };
+        let icon_r = solved.rect("icon");
+        p.text(icon_r.center(), Align2::CENTER_CENTER, kind_icon(a.kind),
             crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()), accent.gamma_multiply(app_e));
-        let mut x = cx0 + ICON_W + gapx;
+        let x = solved.rect("msg").left();
         if let Some(s) = sym {
-            p.text(pos2(x, cy), Align2::LEFT_CENTER, s, font.clone(), t.text.gamma_multiply(app_e));
-            x += text_w(ui, s, &font, t.text) + gapx;
+            p.text(pos2(solved.rect("sym").left(), cy), Align2::LEFT_CENTER, s,
+                font.clone(), t.text.gamma_multiply(app_e));
         }
         let tail = gapx + DISMISS_W + PAD_R;
         let ell_w = if more { text_w(ui, "…", &font, t.text) + 4.0 } else { 0.0 };

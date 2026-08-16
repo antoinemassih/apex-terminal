@@ -611,6 +611,45 @@ bite by deleting the export line.
 
 ---
 
+## AT-161 — the design audit never saw a modal — FIXED, plus what it was hiding
+
+`/design-audit` reported `clean` on all nine styles for months. It inspects
+VISIBLE widgets, and the settings panel is a modal — so nothing in it had ever
+been audited. Opening it while the audit ran turned up **21 touch-target
+failures and 10 clipping reports at once**.
+
+**The touch failures were real.** `const CHIP_H: f32 = 26.0` — a literal two
+pixels under the app's own `MIN_TOUCH_TARGET_PX` (28.0), applied to every
+preset, archetype and style chip in the panel. Now `chip_h()`, the control
+ladder's `md` rung floored at the touch minimum, so it tracks a theme's density
+and cannot fall back under the floor. 21 → 0, verified with the modal open and
+43 settings widgets present in the tree.
+
+**The clipping reports were the audit's own fault.** `is_clipped` asked only
+"does this rect poke outside its clip rect", which is true both of a widget
+truncated by an overflowing layout — the defect — and of one scrolled out of
+view, which is what a scroll area is *for*. The style chips sat at y=1093.7 with
+the viewport ending at y=1090: entirely below the fold, rendering perfectly,
+reported ten times. The check now requires the rect to **partially overlap** its
+clip rect, so truncation still fires and scrolling does not.
+
+A check that fires on normal scrolling is one people learn to skip, which is the
+same failure mode as the ratchet counting test fixtures (AT-154).
+
+**One more real defect found on the way.** The STYLE section computes how many
+chips fit per row as `(row_w + gap_xs()) / (btn_w + gap_xs())`, while the row
+itself spaces with `CHIP_GAP`. 4.0 against 6.0 — so it fitted one chip more per
+row than there was room for. The comment directly beneath records that the
+spacing was changed from `gap_xs()` to `CHIP_GAP` for rhythm; this line was not
+changed with it. Seventh instance of two mechanisms describing one value and
+disagreeing.
+
+Worth stating plainly: I fixed that arithmetic believing it caused the clipping.
+It did not — the clipping was the audit's classification. The fix stands on its
+own, but the diagnosis was wrong and the measurement corrected it.
+
+---
+
 ## AT-160 — 136 edge insets were per-site literals — FIXED
 
 The largest remaining chrome pattern, and the one AT-159 unblocked once the

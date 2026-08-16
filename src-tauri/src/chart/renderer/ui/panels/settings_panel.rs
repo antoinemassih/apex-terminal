@@ -33,7 +33,21 @@ fn body_inset() -> f32 { gap_md() }
 /// They had drifted to three heights (24 / 26 / 26) and two gutters (4 / 6),
 /// with the vertical gutter differing from the horizontal in two of them —
 /// four grids, same visual role, no two alike. One source now.
-const CHIP_H: f32 = 26.0;
+/// Settings chip height.
+///
+/// Was `const CHIP_H: f32 = 26.0` — a literal two pixels under the app's own
+/// `MIN_TOUCH_TARGET_PX` (28.0), which is why every preset / archetype / style
+/// chip in this panel failed the touch-target audit: 21 of them at 26.0.
+///
+/// It went unnoticed because `/design-audit` only inspects VISIBLE widgets and
+/// this panel is a modal — the audit reported `clean` on all nine styles for as
+/// long as nobody had the settings dialog open while it ran.
+///
+/// Now the control ladder's `md` rung, floored at the touch minimum, so it
+/// tracks a theme's own density and cannot fall back under the floor.
+fn chip_h() -> f32 {
+    crate::ui_kit::style::control_h_md().max(crate::ui_kit::style::MIN_TOUCH_TARGET_PX)
+}
 const CHIP_GAP: f32 = 6.0;
 
 /// FormRow preset matching the legacy `srow()` look (190px label gutter,
@@ -163,7 +177,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 let Some((ti, si)) = presets::resolve(p, &scheme_names, &style_names) else { continue };
                 let is_active = active.map(|a| a.id) == Some(p.id);
                 let resp = Button::toggle(p.name, is_active)
-                    .min_size(egui::vec2(96.0, CHIP_H))
+                    .min_size(egui::vec2(96.0, chip_h()))
                     .show(ui, t);
                 crate::ui_kit::widgets::Tooltip::new(p.blurb).show(ui, &resp, t);
                 if resp.clicked() {
@@ -213,7 +227,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         ui.spacing_mut().item_spacing = egui::vec2(CHIP_GAP, CHIP_GAP);
         ui.horizontal_wrapped(|ui| {
             let follow = Button::toggle("Theme default", current_override.is_none())
-                .min_size(egui::vec2(110.0, CHIP_H))
+                .min_size(egui::vec2(110.0, chip_h()))
                 .show(ui, t);
             crate::ui_kit::widgets::Tooltip::new(
                 // Name what following actually gets you, so "Theme default"
@@ -236,7 +250,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
             for a in Archetype::ALL {
                 let on = current_override == Some(a);
                 let resp = Button::toggle(a.name(), on)
-                    .min_size(egui::vec2(104.0, CHIP_H))
+                    .min_size(egui::vec2(104.0, chip_h()))
                     .show(ui, t);
                 if resp.clicked() {
                     // Clicking the active override again releases it — the
@@ -298,9 +312,18 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         let presets = crate::chart_renderer::ui::style::list_style_presets();
         let cur_si = watchlist.style_idx.min(presets.len().saturating_sub(1));
         let btn_w: f32 = 78.0;
-        let btn_h: f32 = CHIP_H;
+        let btn_h: f32 = chip_h();
         let row_w = ui.available_width().max(btn_w);
-        let per_row = ((row_w + gap_xs()) / (btn_w + gap_xs())).floor().max(1.0) as usize;
+        // CHIP_GAP, not gap_xs(). The row below spaces with CHIP_GAP (6.0)
+        // while this arithmetic assumed gap_xs() (4.0), so it fitted one chip
+        // more per row than the row actually had room for — and the last chip
+        // on every row was clipped. Ten of them, which is exactly the count
+        // `/design-audit` reported the moment this modal was open while it ran.
+        //
+        // The comment immediately below records that the spacing was changed
+        // from gap_xs() to CHIP_GAP for rhythm; this line was not changed with
+        // it. Two mechanisms describing one gap, disagreeing by 2px.
+        let per_row = ((row_w + CHIP_GAP) / (btn_w + CHIP_GAP)).floor().max(1.0) as usize;
         for chunk in presets.chunks(per_row) {
             ui.horizontal(|ui| {
                 // Was gap_xs() (4.0) where the three neighbouring chip grids

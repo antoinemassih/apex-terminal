@@ -267,6 +267,24 @@ impl El {
         self.show_in(ui, theme, rect)
     }
 
+    /// Solve geometry only — paint nothing, return the rects.
+    ///
+    /// The migration entry point. A surface that already knows how to paint
+    /// itself (and often has hard-won reasons for exactly how — fades, clip
+    /// invariants, morph animations) can move its LAYOUT here without moving
+    /// its painting, then draw into `r.rect("id")`.
+    ///
+    /// Takes no theme, because solving does not need one. An earlier version
+    /// required `&dyn ComponentTheme` for the layout-only case and that was
+    /// simply wrong: it made the cheap, safe migration path demand a value it
+    /// never used.
+    pub fn solve_in(self, ui: &mut Ui, rect: Rect) -> Rendered {
+        let mut out = Rendered::default();
+        let inherited = context::resolved();
+        solve(self, ui, rect, inherited, &mut out);
+        out
+    }
+
     /// Solve and paint into an explicit rect.
     pub fn show_in(self, ui: &mut Ui, theme: &dyn ComponentTheme, rect: Rect) -> Rendered {
         let mut out = Rendered::default();
@@ -516,5 +534,37 @@ mod tests {
         assert!((a.left() - 8.0).abs() < 0.5, "padding did not inset: {}", a.left());
         // and it is absent from the inheritable set by construction
         assert_eq!(Inherited::default(), Inherited::default());
+    }
+}
+
+/// Geometry-only walk. Mirrors `paint`'s traversal exactly so a surface that
+/// solves here and paints itself lands on the same rects a full `show_in`
+/// would have produced.
+fn solve(el: El, ui: &Ui, rect: Rect, inherited: Inherited, out: &mut Rendered) {
+    let here = el.style.over(inherited);
+    match el.kind {
+        Kind::Container { row, children, gap } => {
+            let inner = Rect::from_min_max(
+                egui::pos2(rect.left() + el.pad.0, rect.top() + el.pad.2),
+                egui::pos2(rect.right() - el.pad.1, rect.bottom() - el.pad.3),
+            );
+            let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
+            for c in &children {
+                flex = flex.item(c.as_item(ui, here));
+            }
+            let solved = flex.solve(inner.size());
+            let off = inner.min.to_vec2();
+            for (c, r) in children.into_iter().zip(solved) {
+                solve(c, ui, r.translate(off), here, out);
+            }
+        }
+        Kind::Slot { id, .. } => {
+            out.rects.insert(id, rect);
+        }
+        Kind::Button { id, .. } => {
+            // No painting here, so no response — but the rect is still useful.
+            out.rects.insert(id, rect);
+        }
+        Kind::Text { .. } | Kind::Spacer { .. } => {}
     }
 }

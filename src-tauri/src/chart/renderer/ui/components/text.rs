@@ -155,7 +155,13 @@ impl<'a> Subheader<'a> {
 
 impl<'a> Widget for Subheader<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let resolved = self.color.unwrap_or(ambient(ui.ctx()).dim);
+        let resolved = self.color.unwrap_or_else(|| {
+            // No colour at this call site: ask the ancestors before
+            // falling back to the tier's own tone. An explicit
+            // `.color()` above still wins — see the precedence tests
+            // in `ui_kit/widgets/label.rs`.
+            crate::ui_kit::cascade::resolved().color_or(ambient(ui.ctx()).dim)
+        });
         let rt = tier_rich(TextStyle::Eyebrow, ui, &style_label_case(self.text), resolved);
         let (rt, color) = self.overrides.apply(rt, resolved);
         ui.label(rt.color(color))
@@ -190,7 +196,13 @@ impl<'a> BodyLabel<'a> {
 
 impl<'a> Widget for BodyLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let resolved = self.color.unwrap_or(ambient(ui.ctx()).text);
+        let resolved = self.color.unwrap_or_else(|| {
+            // No colour at this call site: ask the ancestors before
+            // falling back to the tier's own tone. An explicit
+            // `.color()` above still wins — see the precedence tests
+            // in `ui_kit/widgets/label.rs`.
+            crate::ui_kit::cascade::resolved().color_or(ambient(ui.ctx()).text)
+        });
         let rt = tier_rich(TextStyle::Body, ui, self.text, resolved);
         let (rt, color) = self.overrides.apply(rt, resolved);
         ui.label(rt.color(color))
@@ -273,7 +285,13 @@ impl<'a> MonospaceCode<'a> {
 
 impl<'a> Widget for MonospaceCode<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let resolved = self.color.unwrap_or(ambient(ui.ctx()).text);
+        let resolved = self.color.unwrap_or_else(|| {
+            // No colour at this call site: ask the ancestors before
+            // falling back to the tier's own tone. An explicit
+            // `.color()` above still wins — see the precedence tests
+            // in `ui_kit/widgets/label.rs`.
+            crate::ui_kit::cascade::resolved().color_or(ambient(ui.ctx()).text)
+        });
         // Sizes come from the tier table; the family is forced monospace because
         // Caption/BodyLg are proportional tiers borrowed purely for their step
         // on the scale. The three tiers are strictly ordered under every
@@ -346,7 +364,13 @@ impl<'a> SectionLabel<'a> {
 
 impl<'a> Widget for SectionLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let resolved = self.color.unwrap_or(ambient(ui.ctx()).dim);
+        let resolved = self.color.unwrap_or_else(|| {
+            // No colour at this call site: ask the ancestors before
+            // falling back to the tier's own tone. An explicit
+            // `.color()` above still wins — see the precedence tests
+            // in `ui_kit/widgets/label.rs`.
+            crate::ui_kit::cascade::resolved().color_or(ambient(ui.ctx()).dim)
+        });
         let s = style_label_case(self.text);
         // Every variant now takes its size from a tier; the monospace family and
         // `.strong()` (the legacy look) are re-applied on top, since only the
@@ -408,7 +432,13 @@ impl<'a> DimLabel<'a> {
 
 impl<'a> Widget for DimLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let resolved = self.color.unwrap_or(ambient(ui.ctx()).dim);
+        let resolved = self.color.unwrap_or_else(|| {
+            // No colour at this call site: ask the ancestors before
+            // falling back to the tier's own tone. An explicit
+            // `.color()` above still wins — see the precedence tests
+            // in `ui_kit/widgets/label.rs`.
+            crate::ui_kit::cascade::resolved().color_or(ambient(ui.ctx()).dim)
+        });
         // MonoSm, not BodySm: both resolve to `font_sm()` so the size is
         // unchanged, but MonoSm restores the monospace family this widget
         // documents (and that `style::dim_label` renders with).
