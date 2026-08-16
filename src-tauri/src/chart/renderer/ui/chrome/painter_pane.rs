@@ -965,19 +965,36 @@ impl<'a> PainterPaneHeader<'a> {
         header_divider(&painter, cx, rect, t);
 
         // ── Indicator chips with painted ✕ ──
+        //
+        // A dynamic-count row, SOLVED once rather than walked per chip.
+        //
+        // Chip widths are content-derived, so the old loop had to paint each
+        // chip before it knew where the next one started — which meant the row
+        // could not answer "do these fit" at all, and an overflowing set simply
+        // ran off the header. Measuring every chip first and handing the whole
+        // set to the solver makes the row's extent knowable before anything is
+        // drawn, and the per-chip `cx +=` disappears with it.
         const CHIP_X_W: f32 = 12.0;
-        for (i, ind) in self.indicators.iter().enumerate() {
-            // Cascade-resolved. Same FontId measures the chip (chip_w) and paints
-            // the label — keep them in sync or the chip box mis-fits its text.
-            let chip_font = TextStyle::MonoSm.font_id_in(ui);
+        let chip_font = TextStyle::MonoSm.font_id_in(ui);
+        let chip_pad = gap_md();
+        let chip_h = (h - BADGE_INSET_V).min(CHIP_HEIGHT_MAX);
+        let chip_ws: Vec<f32> = self.indicators.iter().map(|ind| {
             let g = painter.layout_no_wrap(ind.to_string(), chip_font.clone(), h_dim);
-            let chip_pad = gap_md();
-            let chip_w = chip_pad + g.size().x + gap_sm() + CHIP_X_W + chip_pad;
-            let chip_h = (h - BADGE_INSET_V).min(CHIP_HEIGHT_MAX);
-            let chip_rect = Rect::from_min_size(
+            chip_pad + g.size().x + gap_sm() + CHIP_X_W + chip_pad
+        }).collect();
+        let chips = {
+            use crate::ui_kit::cascade::element::El;
+            let mut e = El::row().gap(gap_sm());
+            for (i, w) in chip_ws.iter().enumerate() {
+                e = e.child(El::slot(format!("chip{i}"), Vec2::new(*w, chip_h)));
+            }
+            e.solve_rect(Rect::from_min_size(
                 pos2(cx, rect.center().y - chip_h / 2.0),
-                Vec2::new(chip_w, chip_h),
-            );
+                Vec2::new(rect.width(), chip_h),
+            ))
+        };
+        for (i, ind) in self.indicators.iter().enumerate() {
+            let chip_rect = chips.rect(&format!("chip{i}"));
             painter.rect_stroke(
                 chip_rect, radius_sm(),
                 Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())),
@@ -985,7 +1002,7 @@ impl<'a> PainterPaneHeader<'a> {
             );
             painter.text(
                 pos2(chip_rect.left() + chip_pad, chip_rect.center().y),
-                Align2::LEFT_CENTER, ind, chip_font, h_dim,
+                Align2::LEFT_CENTER, ind, chip_font.clone(), h_dim,
             );
             let x_rect = Rect::from_center_size(
                 pos2(chip_rect.right() - chip_pad - CHIP_X_W / 2.0, chip_rect.center().y),
@@ -997,7 +1014,10 @@ impl<'a> PainterPaneHeader<'a> {
             if x_resp.clicked() {
                 out.clicked_indicator_remove = Some(i);
             }
-            cx += chip_w + gap_sm();
+        }
+        // One advance past the whole solved row.
+        if let Some(last) = chip_ws.len().checked_sub(1) {
+            cx = chips.rect(&format!("chip{last}")).right() + gap_sm();
         }
 
         // ── (Star/template button removed — template selection lives in the
