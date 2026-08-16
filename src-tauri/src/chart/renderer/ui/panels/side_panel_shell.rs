@@ -717,7 +717,7 @@ fn render_body_and_footer<'a>(
                         .corner_radius(egui::CornerRadius::same(cst.panel_footer_radius as u8))
                         .stroke(egui::Stroke::new(
                             stroke_thin(),
-                            crate::chart_renderer::ui::style::tint(t, Tone::Border, 60),
+                            crate::chart_renderer::ui::style::tint(t, Tone::Border, crate::ui_kit::style::alpha_dim()),
                         ))
                         .inner_margin(egui::Margin::same(gap_sm() as i8))
                         .outer_margin(egui::Margin::same(gap_sm() as i8));

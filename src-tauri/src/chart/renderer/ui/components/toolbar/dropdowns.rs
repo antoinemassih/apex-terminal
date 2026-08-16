@@ -87,7 +87,7 @@ pub(crate) fn render_timeframe_dropdown(
                 let hovered = hover_pos.map_or(false, |p| row_rect.contains(p));
 
                 if hovered || is_cur {
-                    let bg = if is_cur { tint(t, Tone::Accent, 25) } else { tint(t, Tone::Border, 30) };
+                    let bg = if is_cur { tint(t, Tone::Accent, crate::ui_kit::style::alpha_whisper()) } else { tint(t, Tone::Border, crate::ui_kit::style::alpha_hint()) };
                     ui.painter().rect_filled(row_rect, radius_sm(), bg);
                 }
                 if is_cur {
@@ -219,7 +219,7 @@ pub(crate) fn render_layout_dropdown(
                 let hovered = hover_pos.map_or(false, |p| row_rect.contains(p));
 
                 if hovered || is_cur {
-                    let bg = if is_cur { tint(t, Tone::Accent, 25) } else { tint(t, Tone::Border, 30) };
+                    let bg = if is_cur { tint(t, Tone::Accent, crate::ui_kit::style::alpha_whisper()) } else { tint(t, Tone::Border, crate::ui_kit::style::alpha_hint()) };
                     ui.painter().rect_filled(row_rect, radius_sm(), bg);
                 }
                 if is_cur {
@@ -294,7 +294,7 @@ pub(crate) fn render_layout_dropdown(
                     let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(236.0, 24.0));
                     let row_hover = hover_pos.map_or(false, |p| row_rect.contains(p));
                     if row_hover {
-                        ui.painter().rect_filled(row_rect, radius_sm(), tint(t, Tone::Border, 30));
+                        ui.painter().rect_filled(row_rect, radius_sm(), tint(t, Tone::Border, crate::ui_kit::style::alpha_hint()));
                     }
                     let lc = if row_hover { t.text } else { t.dim };
                     ui.painter().text(egui::pos2(row_rect.left() + 8.0, row_rect.center().y), egui::Align2::LEFT_CENTER, tpl_name.as_str(), mono_sm(), lc);
@@ -304,7 +304,7 @@ pub(crate) fn render_layout_dropdown(
                         egui::vec2(apply_w, 20.0),
                     );
                     let apply_hov = hover_pos.map_or(false, |p| apply_rect.contains(p));
-                    let apply_fill = if apply_hov { tint(t, Tone::Accent, 40) } else { tint(t, Tone::Accent, 15) };
+                    let apply_fill = if apply_hov { tint(t, Tone::Accent, crate::ui_kit::style::alpha_subtle()) } else { tint(t, Tone::Accent, crate::ui_kit::style::alpha_ghost()) };
                     ui.painter().rect_filled(apply_rect, radius_sm(), apply_fill);
                     ui.painter().text(apply_rect.center(), egui::Align2::CENTER_CENTER, "Apply", mono_sm(),
                         if apply_hov { t.accent } else { tint(t, Tone::Accent, crate::ui_kit::style::alpha_near_solid()) });

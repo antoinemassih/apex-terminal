@@ -388,7 +388,7 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         painter.rect_filled(
             egui::Rect::from_min_max(egui::pos2(lo_x, bar_top), egui::pos2(hi_x, bar_bottom)),
             radius_xs(),
-            tint(t, tone, 30),
+            tint(t, tone, crate::ui_kit::style::alpha_hint()),
         );
         // Band border.
         painter.rect_stroke(

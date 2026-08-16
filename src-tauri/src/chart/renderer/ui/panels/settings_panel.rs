@@ -713,7 +713,7 @@ fn draw_chart(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t
                         for (label, hex) in [("Navy", "#1a1a2e"), ("Purple", "#2d1b4e"), ("Green", "#1a2e1a"), ("Red", "#2e1a1a"), ("Blue", "#1a2e3e")] {
                             let active = chart.session_bg_color == hex;
                             let c = hex_to_color(hex, 1.0);
-                            let fg = if active { t.accent } else { tint(t, Tone::Text, 120) };
+                            let fg = if active { t.accent } else { tint(t, Tone::Text, crate::ui_kit::style::alpha_heavy()) };
                             let bg = if active { color_alpha(c, alpha_strong()) } else { color_alpha(c, alpha_muted()) };
                             if Button::new(label).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                                 .fill(bg).corner_radius(crate::ui_kit::style::radius_sm()).min_size(egui::vec2(38.0, row_height_dense())).show(ui, t).clicked() {
@@ -759,7 +759,7 @@ fn draw_notifications(ui: &mut egui::Ui, t: &Theme) {
             Some("Show pop-up toasts above the footer."), t, &mut p.toasts_enabled);
 
         ui.add_space(gap_xs());
-        ui.add(SectionLabel::new("ROUTE BY TYPE").tiny().color(tint(t, Tone::Dim, 200)));
+        ui.add(SectionLabel::new("ROUTE BY TYPE").tiny().color(tint(t, Tone::Dim, crate::ui_kit::style::alpha_solid())));
 
         const DEST: &[(usize, &str)] = &[(0, "Off"), (1, "Toolbar"), (2, "Toast"), (3, "Both")];
         let route_row = |ui: &mut egui::Ui, label: &str, d: &mut notif::NotifDest| {

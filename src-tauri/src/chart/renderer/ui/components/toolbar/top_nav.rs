@@ -591,7 +591,7 @@ pub(crate) fn render(
                 let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t);
                 Tooltip::new("Account Summary").show(ui, &acct_resp, t);
                 if style_current().vertical_group_dividers && acct_resp.hovered() {
-                    let col = tint(t, Tone::Border, 80);
+                    let col = tint(t, Tone::Border, crate::ui_kit::style::alpha_strong());
                     let btn_rect = acct_resp.rect;
                     let col_rect = egui::Rect::from_min_max(
                         egui::pos2(btn_rect.left() - 2.0, tb_rect.top()),
@@ -2169,7 +2169,7 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{:.2}", tip.day_low), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, radius_xs(), tint(t, Tone::Text, 15));
+                            ui.painter().rect_filled(bar_rect, radius_xs(), tint(t, Tone::Text, crate::ui_kit::style::alpha_ghost()));
                             let range = tip.day_high - tip.day_low;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.day_low) / range).clamp(0.0, 1.0);
@@ -2184,7 +2184,7 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("{:.0}", tip.low_52wk), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, radius_xs(), tint(t, Tone::Text, 15));
+                            ui.painter().rect_filled(bar_rect, radius_xs(), tint(t, Tone::Text, crate::ui_kit::style::alpha_ghost()));
                             let range = tip.high_52wk - tip.low_52wk;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.low_52wk) / range).clamp(0.0, 1.0);

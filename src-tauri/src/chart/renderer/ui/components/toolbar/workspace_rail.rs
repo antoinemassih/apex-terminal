@@ -75,7 +75,7 @@ pub(crate) fn render_workspace_rail(
     let frame = egui::Frame::NONE
         .fill(t.toolbar_bg)
         .inner_margin(egui::Margin::ZERO)
-        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, 60)));
+        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, crate::ui_kit::style::alpha_dim())));
 
     egui::SidePanel::left("workspace_nav_rail")
         .exact_width(width)
@@ -91,14 +91,14 @@ pub(crate) fn render_workspace_rail(
                     // Hairline above the footer.
                     let y = ui.cursor().min.y;
                     ui.painter().hline(ui.min_rect().x_range(), y,
-                        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, 40)));
+                        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, crate::ui_kit::style::alpha_subtle())));
                     ui.add_space(gap_sm());
 
                     if expanded {
                         // Rename row takes over the footer while active.
                         if let Some(ref target) = renaming {
                             ui.label(egui::RichText::new(format!("Rename “{target}”"))
-                                .monospace().size(font_xs()).color(tint(t, Tone::Dim, 200)));
+                                .monospace().size(font_xs()).color(tint(t, Tone::Dim, crate::ui_kit::style::alpha_solid())));
                             ui.add_space(gap_xs());
                             Input::new(&mut watchlist.workspace.rename_buf)
                                 .placeholder("New name…")
@@ -170,7 +170,7 @@ pub(crate) fn render_workspace_rail(
                     if expanded {
                         ui.add_space(gap_xs());
                         ui.label(egui::RichText::new("WORKSPACES")
-                            .monospace().size(font_xs()).color(tint(t, Tone::Dim, 200)));
+                            .monospace().size(font_xs()).color(tint(t, Tone::Dim, crate::ui_kit::style::alpha_solid())));
                         ui.add_space(gap_xs());
                         // Active workspace header — surfaces the current workspace,
                         // including an unsaved "Untitled" that has no list row yet.
@@ -206,7 +206,7 @@ pub(crate) fn render_workspace_rail(
                             if names.is_empty() {
                                 ui.add_space(gap_sm());
                                 ui.label(egui::RichText::new("No saved workspaces")
-                                    .monospace().size(font_xs()).color(tint(t, Tone::Dim, 140)));
+                                    .monospace().size(font_xs()).color(tint(t, Tone::Dim, crate::ui_kit::style::alpha_scrim())));
                             }
                         } else {
                             ui.vertical_centered(|ui| {
@@ -352,7 +352,7 @@ fn collapsed_chip(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> 
     let radius = crate::ui_kit::style::r_sm_cr();
 
     let fill = if is_active { t.accent }
-        else if hovered { tint(t, Tone::Border, 80) }
+        else if hovered { tint(t, Tone::Border, crate::ui_kit::style::alpha_strong()) }
         else { tint(t, Tone::Border, crate::ui_kit::style::alpha_tint()) };
     ui.painter().rect_filled(rect, radius, fill);
     if is_active {

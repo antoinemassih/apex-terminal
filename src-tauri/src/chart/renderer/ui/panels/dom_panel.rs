@@ -430,7 +430,7 @@ pub(crate) fn draw(
     // ── Quantity stepper — single rounded pill housing the - / qty / + cells.
     let stepper_rect = row1_slots.rect("stepper");
     let stepper_radius = egui::CornerRadius::same((r1h * 0.5) as u8);
-    painter.rect_filled(stepper_rect, stepper_radius, tint(t, Tone::Bg, 200));
+    painter.rect_filled(stepper_rect, stepper_radius, tint(t, Tone::Bg, crate::ui_kit::style::alpha_solid()));
     painter.rect_stroke(
         stepper_rect, stepper_radius,
         egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())),

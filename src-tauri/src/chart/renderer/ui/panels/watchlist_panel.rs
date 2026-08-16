@@ -610,7 +610,7 @@ if is_spawn || watchlist.open {
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
                                     egui::Stroke::new(stroke_thin(), shadow_color_alpha(t, alpha_tint())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
-                                    egui::Stroke::new(stroke_std(), tint(t, Tone::Text, 10)));
+                                    egui::Stroke::new(stroke_std(), tint(t, Tone::Text, crate::ui_kit::style::alpha_faint())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
                                     egui::Stroke::new(stroke_thin(), tint(t, Tone::Text, 5)));
                             }
@@ -1902,7 +1902,7 @@ if is_spawn || watchlist.open {
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
                             let iv_color = if row.iv > 0.7 { tint(t, Tone::Bear, crate::ui_kit::style::alpha_near_solid()) }
-                                else if row.iv > 0.5 { tint(t, Tone::Warn, 140) }
+                                else if row.iv > 0.5 { tint(t, Tone::Warn, crate::ui_kit::style::alpha_scrim()) }
                                 else if row.iv > 0.3 { tint(t, Tone::Warn, alpha_active()) }
                                 else { tint(t, Tone::Bull, alpha_active()) };
                             painter.rect_filled(egui::Rect::from_min_size(

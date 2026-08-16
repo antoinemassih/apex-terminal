@@ -39,7 +39,7 @@ pub(crate) fn render_window_controls(
     let win_btn = |ui: &mut egui::Ui, danger: bool| -> (egui::Response, egui::Rect) {
         let (r, resp) = ui.allocate_exact_size(BTN_ICON_LG, egui::Sense::click_and_drag());
         if resp.hovered() {
-            let bg = if danger { t.bear } else { tint(t, Tone::Border, 80) };
+            let bg = if danger { t.bear } else { tint(t, Tone::Border, crate::ui_kit::style::alpha_strong()) };
             ui.painter().rect_filled(r, 0.0, bg);
         }
         crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);

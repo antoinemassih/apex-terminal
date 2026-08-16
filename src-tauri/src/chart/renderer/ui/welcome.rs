@@ -294,7 +294,7 @@ fn draw_step_broker(
         ui.allocate_ui(Vec2::new(card_w, 120.0), |ui| {
             crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(theme.toolbar_bg)
-                .border(st::tint(theme, Tone::Border, 120))
+                .border(st::tint(theme, Tone::Border, crate::ui_kit::style::alpha_heavy()))
                 .radius_sm()
                 .padding(st::gap_md())
                 .show(ui, theme, |ui| {
@@ -323,7 +323,7 @@ fn draw_step_broker(
         ui.allocate_ui(Vec2::new(card_w, 120.0), |ui| {
             crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(theme.toolbar_bg)
-                .border(st::tint(theme, Tone::Border, 80))
+                .border(st::tint(theme, Tone::Border, crate::ui_kit::style::alpha_strong()))
                 .radius_sm()
                 .padding(st::gap_md())
                 .show(ui, theme, |ui| {

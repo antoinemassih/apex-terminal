@@ -228,14 +228,14 @@ fn render_dom_ladder(
             let rs = ui.cursor().min;
             let rr = egui::Rect::from_min_size(rs, egui::vec2(panel_w - gap_lg(), row_h));
             let rh = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| rr.contains(p));
-            let bg = if is_current { tint(t, Tone::Accent, 35) } else if rh { tint(t, Tone::Border, 30) } else { egui::Color32::TRANSPARENT };
+            let bg = if is_current { tint(t, Tone::Accent, 35) } else if rh { tint(t, Tone::Border, crate::ui_kit::style::alpha_hint()) } else { egui::Color32::TRANSPARENT };
             ui.painter().rect_filled(rr, 0.0, bg);
-            if has_buy { ui.painter().rect_filled(rr, 0.0, tint(t, Tone::Bull, 25)); }
-            if has_sell { ui.painter().rect_filled(rr, 0.0, tint(t, Tone::Bear, 25)); }
+            if has_buy { ui.painter().rect_filled(rr, 0.0, tint(t, Tone::Bull, crate::ui_kit::style::alpha_whisper())); }
+            if has_sell { ui.painter().rect_filled(rr, 0.0, tint(t, Tone::Bear, crate::ui_kit::style::alpha_whisper())); }
             if is_entry { ui.painter().rect_stroke(rr, 0.0, egui::Stroke::new(stroke_std(), color_alpha(crate::chart_renderer::ui::style::COLOR_AMBER, 150)), egui::StrokeKind::Inside); }
             let col_w = (panel_w - gap_lg()) / 3.0;
             let bc = if rh { t.bull } else { color_muted(t.bull) };
-            let bbg = if rh { tint(t, Tone::Bull, 15) } else { egui::Color32::TRANSPARENT };
+            let bbg = if rh { tint(t, Tone::Bull, crate::ui_kit::style::alpha_ghost()) } else { egui::Color32::TRANSPARENT };
             let bid_lbl = format!("{}", bid_size);
             if KitButton::new(bid_lbl.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm).fg(bc)
                 .min_size(egui::vec2(col_w, row_h)).frameless(true).show(ui, t).clicked() {
@@ -255,7 +255,7 @@ fn render_dom_ladder(
             let pf = if tick >= 1.0 { format!("{:.0}", price) } else { format!("{:.2}", price) };
             ui.add_sized(egui::vec2(col_w, row_h), egui::Label::new(egui::RichText::new(pf).monospace().size(font_sm()).strong().color(pc)));
             let ac = if rh { t.bear } else { color_muted(t.bear) };
-            let abg = if rh { tint(t, Tone::Bear, 15) } else { egui::Color32::TRANSPARENT };
+            let abg = if rh { tint(t, Tone::Bear, crate::ui_kit::style::alpha_ghost()) } else { egui::Color32::TRANSPARENT };
             let ask_lbl = format!("{}", ask_size);
             if KitButton::new(ask_lbl.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm).fg(ac)
                 .min_size(egui::vec2(col_w, row_h)).frameless(true).show(ui, t).clicked() {
