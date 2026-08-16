@@ -611,6 +611,40 @@ bite by deleting the export line.
 
 ---
 
+## AT-159 — the two scale settings do NOT break containment — investigated, no defect
+
+I reported the remaining geometry-nudge migration as blocked by "scale
+coupling". That reasoning was wrong and this records why, because the wrong
+version was stated confidently.
+
+The app has two scales the user sets separately and that persist separately:
+`SpacingScale` (0.75/1.0/1.25, multiplies `gap_*`) and `DensityMode`
+(0.85/1.0/1.15, multiplies `control_*` and `row_*`). Type scales with neither.
+The worst pairing grows padding 47% relative to the box holding it, which
+*looked* like it had to break containment somewhere.
+
+**Two models, both wrong, and the second said so loudly.** The first assumed
+`control_sm` holds `font_sm` text with `gap_2xs` padding — an invented pairing;
+it reported failures at numbers the app never uses. The second used `Size`'s own
+`height()`/`padding()`/`font_size()` mapping and reported breakage in **40 of 45
+pairings, including Standard × Standard** — the default configuration of an app
+that plainly renders correctly. A model that indicts the defaults is describing
+itself, not the app.
+
+**What is actually true:** `Size::padding()` has no vertical consumer.
+`Size::height()` is an exact target and text is centred inside it, so padding is
+never added to height. The real relationship is just `height ≥ line box`, and it
+holds at every density — though `control_xs` at Compact clears its own line box
+by only **1.3 px**, thin enough that one nudge to the type scale would clip it.
+That is precisely how AT-148 happened, so the relationship is now guarded, and
+the guard was verified to fire by shrinking `control_xs` from 18 to 16.
+
+**Consequence:** the geometry-nudge migration is not blocked. It remains a
+consistency question (which literals are padding and should scale, which are
+alignment and must not), not a containment risk.
+
+---
+
 ## AT-158 — `ticker_strip` is built, styled, and never rendered — RECORDED
 
 Found by migrating it. `chart/renderer/ui/components/toolbar/ticker_strip.rs`

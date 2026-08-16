@@ -1661,3 +1661,61 @@ mod corner_scale_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod two_scale_invariant_tests {
+    use super::*;
+
+    /// Every `Size` rung must still fit its own glyphs at the smallest density.
+    ///
+    /// The app exposes two scales the user sets separately and that persist
+    /// separately on the workspace:
+    ///
+    /// * `SpacingScale` — 0.75 / 1.0 / 1.25 — multiplies every `gap_*` rung.
+    /// * `DensityMode`  — 0.85 / 1.0 / 1.15 — multiplies every `control_*` rung.
+    ///
+    /// Type scales with neither, so shrinking a control does not shrink the
+    /// text inside it. That is the containment question, and `control_xs` at
+    /// Compact has only 1.3 px of headroom over its own line box — thin enough
+    /// that one nudge to the type scale would clip it, which is exactly how
+    /// AT-148 happened.
+    ///
+    /// **Spacing scale is deliberately absent from the assertion.** Two earlier
+    /// versions of this test included it, on the assumption that a control's
+    /// height had to cover `text + 2 × vertical padding`. It does not:
+    /// `Size::padding()` has no vertical consumer, `Size::height()` is an exact
+    /// target and the text is centred inside it. Both versions "found" a defect
+    /// — the second in 40 of 45 pairings, including Standard × Standard, in an
+    /// app that plainly renders fine at its defaults. A model that indicts the
+    /// default configuration is describing itself, not the app.
+    #[test]
+    fn every_size_rung_fits_its_glyphs_at_the_smallest_density() {
+        let t = &DEFAULT_TOKEN_SNAPSHOT;
+        // (name, control height, font) — mirrors Size::height() / font_size().
+        let rungs: &[(&str, f32, f32)] = &[
+            ("Xs", t.control_xs, t.font_xs),
+            ("Sm", t.control_sm, t.font_sm),
+            ("Md", t.control_md, t.font_sm),
+            ("Lg", t.control_lg, t.font_md),
+            ("Xl", t.control_xl, t.font_xl),
+        ];
+
+        let mut failures = Vec::new();
+        for dm in [DensityMode::Compact, DensityMode::Standard, DensityMode::Spacious] {
+            let d = dm.scale();
+            for (name, h, font) in rungs {
+                let box_h = h * d;
+                let line = font * t.line_normal;
+                if box_h + 0.01 < line {
+                    failures.push(format!(
+                        "{name} at density {dm:?}: box {box_h:.2} < line box {line:.2}"
+                    ));
+                }
+            }
+        }
+        assert!(failures.is_empty(),
+            "control heights clip their own text:
+  {}", failures.join("
+  "));
+    }
+}
