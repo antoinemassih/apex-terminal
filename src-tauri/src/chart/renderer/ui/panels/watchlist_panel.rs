@@ -862,7 +862,7 @@ if is_spawn || watchlist.open {
                                         } else {
                                             "---".into()
                                         };
-                                        let row_bg = if is_active { tint(t, Tone::Accent, 18) } else { egui::Color32::TRANSPARENT };
+                                        let row_bg = if is_active { tint(t, Tone::Accent, crate::ui_kit::style::alpha_soft()) } else { egui::Color32::TRANSPARENT };
 
                                         let resp = ui.horizontal(|ui| {
                                             // ui.set_min_width removed — was preventing sidebar resize
@@ -1021,7 +1021,7 @@ if is_spawn || watchlist.open {
 
                                         // Pinned section: slightly distinct background tint (active wins).
                                         let row_tint = if is_active {
-                                            tint(t, Tone::Accent, 18)
+                                            tint(t, Tone::Accent, crate::ui_kit::style::alpha_soft())
                                         } else if item_pinned {
                                             // Two layered tints (panel previously painted both): blend into one.
                                             // 80,120,200,12 + t.text @ alpha 4 → use the bluish tint; the t.text@4
@@ -1346,7 +1346,7 @@ if is_spawn || watchlist.open {
                             egui::Rect::from_min_max(
                                 egui::pos2(div_r.left(), div_y + 1.0),
                                 egui::pos2(div_r.right(), div_y + 4.0)),
-                            0.0, tint(t, Tone::Border, 160));
+                            0.0, tint(t, Tone::Border, crate::ui_kit::style::alpha_dense()));
                         // Store divider Y position for drag handling outside the panel
                         watchlist.divider_y = div_rect.center().y;
                         watchlist.divider_total_h = total_avail;
@@ -1465,7 +1465,7 @@ if is_spawn || watchlist.open {
                                         let is_call = item_option_type == "C";
                                         let color = if is_call { t.bull } else { t.bear };
                                         let is_active = item_sym == active_sym;
-                                        let row_bg = if is_active { tint(t, Tone::Accent, 18) } else { egui::Color32::TRANSPARENT };
+                                        let row_bg = if is_active { tint(t, Tone::Accent, crate::ui_kit::style::alpha_soft()) } else { egui::Color32::TRANSPARENT };
 
                                         let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, 28.0), egui::Sense::click());
                                         let painter = ui.painter();
@@ -1832,7 +1832,7 @@ if is_spawn || watchlist.open {
                     let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                         let is_saved = saved.iter().any(|s| s.contract == row.contract);
                         let color = if is_call { t.bull } else { t.bear };
-                        let base_tint = if is_call { tint(t, Tone::Bull, 8) } else { tint(t, Tone::Bear, 8) };
+                        let base_tint = if is_call { tint(t, Tone::Bull, crate::ui_kit::style::alpha_faint()) } else { tint(t, Tone::Bear, crate::ui_kit::style::alpha_faint()) };
                         // M0.6: was gamma_multiply(0.06) — alpha tint composes over any bg.
                         let itm_bg = if row.itm { color_alpha(color, alpha_ghost()) } else { base_tint };
                         let saved_bg = if is_saved { tint(t, Tone::Accent, alpha_muted()) } else { itm_bg };
@@ -1892,7 +1892,7 @@ if is_spawn || watchlist.open {
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
-                            let iv_color = if row.iv > 0.7 { tint(t, Tone::Bear, 180) }
+                            let iv_color = if row.iv > 0.7 { tint(t, Tone::Bear, crate::ui_kit::style::alpha_near_solid()) }
                                 else if row.iv > 0.5 { tint(t, Tone::Warn, 140) }
                                 else if row.iv > 0.3 { tint(t, Tone::Warn, alpha_active()) }
                                 else { tint(t, Tone::Bull, alpha_active()) };

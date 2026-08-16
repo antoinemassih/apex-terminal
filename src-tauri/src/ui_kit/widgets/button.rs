@@ -1499,7 +1499,7 @@ fn resolve_palette(
             // active bg (alpha_soft) and dropped border keep the surface
             // calm; foreground accent on active is set by `toolbar_btn`.
             transparent,
-            st::color_alpha(text, 18),
+            st::color_alpha(text, crate::ui_kit::style::alpha_soft()),
             st::color_alpha(accent, st::alpha_soft()),
             text,
             text,
@@ -1541,7 +1541,7 @@ fn resolve_palette(
             // Toggle chip: idle = transparent, hover = subtle text overlay,
             // active = soft accent fill. Caller sets `.active(bool)`.
             transparent,
-            st::color_alpha(text, 18),
+            st::color_alpha(text, crate::ui_kit::style::alpha_soft()),
             st::color_alpha(accent, st::alpha_soft()),
             st::color_muted(palette_ct(theme).base(Tone::Dim)),
             text,
@@ -1562,7 +1562,7 @@ fn resolve_palette(
             // Small icon-X close affordance. Hover paints a subtle dim overlay
             // instead of an accent so it doesn't fight modal headings.
             transparent,
-            st::color_alpha(text, 18),
+            st::color_alpha(text, crate::ui_kit::style::alpha_soft()),
             transparent,
             st::color_subtle(palette_ct(theme).base(Tone::Dim)),
             text,
@@ -1572,7 +1572,7 @@ fn resolve_palette(
         Variant::MutedIcon => (
             // Ghost-like icon button starting muted; hover restores full text.
             transparent,
-            st::color_alpha(text, 18),
+            st::color_alpha(text, crate::ui_kit::style::alpha_soft()),
             st::color_alpha(accent, st::alpha_tint()),
             st::color_half(palette_ct(theme).base(Tone::Dim)),
             text,

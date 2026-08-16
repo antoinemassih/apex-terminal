@@ -124,6 +124,11 @@ pub struct TokenSnapshot {
     /// Scrim alpha (140). Between heavy (120) and solid (200) — for
     /// command-palette / modal-backdrop scrims (dim but don't blank).
     pub alpha_scrim:  u8,
+    /// Borders and fills at full presence, one rung below `near_solid`.
+    pub alpha_dense: u8,
+    /// Secondary label text and disabled accents. Read AS TEXT, so it stops
+    /// short of `solid` — the ladder's only rung tuned for legibility.
+    pub alpha_near_solid: u8,
     pub alpha_solid:  u8,
     // Shadows.
     pub shadow_offset: f32,
@@ -243,7 +248,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     // Alphas.
     alpha_faint: 10, alpha_ghost: 15, alpha_soft: 20, alpha_subtle: 40,
     alpha_tint: 48, alpha_muted: 60, alpha_dim: 60, alpha_line: 80,
-    alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, alpha_scrim: 140, alpha_solid: 200,
+    alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, alpha_scrim: 140, alpha_dense: 160, alpha_near_solid: 180, alpha_solid: 200,
     // Shadows.
     shadow_offset: 2.0, shadow_alpha: 60, shadow_spread: 4.0,
     // Style-preset knobs (P5b): defaults match Aperture (the default preset).
@@ -514,6 +519,8 @@ pub fn frame_tokens() -> TokenSnapshot {
 #[inline] pub fn alpha_active()  -> u8 { frame_tokens().alpha_active }
 #[inline] pub fn alpha_heavy()   -> u8 { frame_tokens().alpha_heavy }
 #[inline] pub fn alpha_scrim()   -> u8 { frame_tokens().alpha_scrim }
+#[inline] pub fn alpha_dense()      -> u8 { frame_tokens().alpha_dense }
+#[inline] pub fn alpha_near_solid() -> u8 { frame_tokens().alpha_near_solid }
 #[inline] pub fn alpha_solid()   -> u8 { frame_tokens().alpha_solid }
 
 // ─── Monospace font helpers ──────────────────────────────────────────────────

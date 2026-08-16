@@ -414,31 +414,31 @@ fn draw_rrg_content(
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, plot_rect.top()), plot_rect.right_bottom().into()),
         0.0,
-        tint(t, Tone::Bull, 8),
+        tint(t, Tone::Bull, crate::ui_kit::style::alpha_faint()),
     );
     // Correct: Leading = top-right corner
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, plot_rect.top()), egui::pos2(plot_rect.right(), center.y)),
         0.0,
-        tint(t, Tone::Bull, 8),
+        tint(t, Tone::Bull, crate::ui_kit::style::alpha_faint()),
     );
     // Weakening (bottom-right): faint yellow
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, center.y), egui::pos2(plot_rect.right(), plot_rect.bottom())),
         0.0,
-        tint(t, Tone::Warn, 8),
+        tint(t, Tone::Warn, crate::ui_kit::style::alpha_faint()),
     );
     // Lagging (bottom-left): faint red
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(plot_rect.left(), center.y), egui::pos2(center.x, plot_rect.bottom())),
         0.0,
-        tint(t, Tone::Bear, 8),
+        tint(t, Tone::Bear, crate::ui_kit::style::alpha_faint()),
     );
     // Improving (top-left): faint blue
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(plot_rect.left(), plot_rect.top()), center),
         0.0,
-        tint(t, Tone::Accent, 8),
+        tint(t, Tone::Accent, crate::ui_kit::style::alpha_faint()),
     );
 
     // ── Axis crosshair at (100, alpha_active()) ──
@@ -495,7 +495,7 @@ fn draw_rrg_content(
         if (xv - 100.0).abs() > 0.1 {
             painter.line_segment(
                 [egui::pos2(screen.x, plot_rect.top()), egui::pos2(screen.x, plot_rect.bottom())],
-                egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, 12)),
+                egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, crate::ui_kit::style::alpha_faint())),
             );
         }
         xv += x_step;
@@ -515,7 +515,7 @@ fn draw_rrg_content(
         if (yv - 100.0).abs() > 0.1 {
             painter.line_segment(
                 [egui::pos2(plot_rect.left(), screen.y), egui::pos2(plot_rect.right(), screen.y)],
-                egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, 12)),
+                egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, crate::ui_kit::style::alpha_faint())),
             );
         }
         yv += y_step;

@@ -485,7 +485,7 @@ impl<'a> WatchlistRow<'a> {
                     let (rcol, rw) = if rv > 3.0 {
                         (color_alpha(theme_ref.accent, 220), 4.0)
                     } else if rv > 2.0 {
-                        (color_alpha(theme_ref.accent, 160), 3.0)
+                        (color_alpha(theme_ref.accent, crate::ui_kit::style::alpha_dense()), 3.0)
                     } else if rv > 0.8 {
                         (color_alpha(bull, alpha_active()), 2.0)
                     } else {

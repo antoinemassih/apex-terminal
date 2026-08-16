@@ -430,7 +430,7 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         painter.rect_filled(
             egui::Rect::from_min_max(egui::pos2(att_x0, mid_y - 4.0), egui::pos2(att_x1, mid_y + 4.0)),
             radius_xs(),
-            tint(t, Tone::Surface, 12),
+            tint(t, Tone::Surface, crate::ui_kit::style::alpha_faint()),
         );
         // Fill.
         let att_tone = if abs.attainability > 0.6 { Tone::Bull } else if abs.attainability > 0.35 { Tone::Warn } else { Tone::Bear };

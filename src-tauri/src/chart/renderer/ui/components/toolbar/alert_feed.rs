@@ -391,7 +391,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         fp.rect_filled(box_rect.translate(vec2(0.0, 2.0)).expand(1.0), cr,
             { let s = t.shadow_color; crate::ui_kit::style::color_alpha(s, (70.0 * app) as u8) });
         fp.rect_filled(box_rect, cr, tint(t, Tone::Surface, 252).gamma_multiply(app.max(0.001)));
-        fp.rect_stroke(box_rect, cr, Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, 160).gamma_multiply(app)), StrokeKind::Inside);
+        fp.rect_stroke(box_rect, cr, Stroke::new(crate::ui_kit::style::stroke_std(), tint(t, Tone::Border, crate::ui_kit::style::alpha_dense()).gamma_multiply(app)), StrokeKind::Inside);
         fp.rect_filled(Rect::from_min_size(box_rect.min, vec2(ACCENT_W, box_rect.height())),
             CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, accent.gamma_multiply(app));
 

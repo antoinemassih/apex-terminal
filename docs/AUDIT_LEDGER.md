@@ -470,3 +470,65 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   app, so all four scored as consumed. Qualified matching was tried and
   reverted — see the limitation comment in the gate for why. When touching a
   group whose fields have single-word names, grep the qualified path by hand.
+
+## AT-150 — alpha ladder holes — CLOSED (with a correction)
+
+**Original claim:** 354 off-ladder alpha literals; the ladder has holes.
+
+**Two measurement errors inflated that.** The ladder was extracted by regex from
+`impl Default for Alphas`, matching `name: <literal>` — so `whisper` and `hint`,
+which are set via `Self::default_whisper()` *function calls*, were scored as
+off-ladder despite being rungs added the same day. And the count pooled chrome
+with chart painting, where `color_alpha(base, 160)` is a candle body and `220` a
+wick — data geometry, which was already scoped out of the layout argument for
+exactly this reason and should have been scoped out here too.
+
+**Corrected and fixed:**
+- 48 chrome sites were within ±2 of an existing rung (18→20, 12→10, 8→10,
+  50→48, 24→25). At 1/255 that is imperceptible, so they snapped — no new
+  rungs, no naming decision needed.
+- 13 sat in the one genuine gap. The ladder steps by 20 from `active` (100) to
+  `heavy` (120) to `scrim` (140), then jumps 60 to `solid` (200). `dense` (160)
+  and `near_solid` (180) fill it and continue the existing rhythm rather than
+  inventing one.
+- Chart-painting alphas are out of scope, stated in `GATES.md`.
+
+**What the fix uncovered — AT-152.** Wiring the two new rungs showed that
+`alpha_whisper` and `alpha_hint` read `al.whisper` directly in `begin_frame`,
+bypassing the override and DesignTokens tiers all eleven siblings pass through.
+Eleven fields across three groups (`alpha_*`, `font_*`, `gap_*`) had this, every
+one of them a token I had added to satisfy the hardwire gate. See AT-152.
+
+---
+
+## AT-152 — snapshot fields that skip the cascade — CLOSED
+
+A token with a `StyleSystem` field, a `TokenSnapshot` field and an accessor
+looks finished. If `begin_frame` sources it as `al.whisper` rather than through
+`override_style` / `dt_u8!`, it is authorable in a `.apextheme`, exports,
+re-imports, round-trip asserts green — and does not move when its own inspector
+slider is dragged.
+
+Eleven fields: `alpha_whisper`, `alpha_hint`; `font_display_sm/md/lg/xl`,
+`font_4xs`, `font_xs_plus`, `font_md_plus`; `gap_2xs`. Plus three more the new
+gate found that a hand-scan had missed (`font_body`, `font_caption`,
+`font_section_label` — my `sed` range stopped short of them).
+
+No existing gate could see this: hardwire passes (the accessor is real),
+token-consumer passes (`begin_frame` does read the field), ladder_gate asks
+about scale multipliers rather than cascade tiers, and the suite passes because
+an unauthored style renders byte-identically either way.
+
+Fixed by routing all fourteen through the same three-tier expression, adding the
+missing `DesignTokens` fields, and adding `dev/cascade_gate.py` (all-siblings-
+or-none, the ladder gate's rule applied to the cascade). Verified to bite by
+reintroducing the `alpha_whisper` bypass.
+
+**Also found:** 14 `DesignTokens` leaves have no reader at all — invisible to
+every gate, since the slider gate enumerates sliders and these have none. Four
+were wired as part of this fix (`font.display`, `font.display_lg`,
+`font.sm_tight`, plus `spacing.gap_2xs` added). The remaining 10 are recorded,
+not yet triaged. A first pass counting only `dt_*!` reads said 48 — 34 of those
+turned out to be read by direct field access, so the honest number is 14.
+
+---

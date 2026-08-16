@@ -65,7 +65,7 @@ const PILL_H: f32 = 14.0;
 /// shared `Tag` widget renders too large for these dense diagnostics rows.
 fn pill(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(PILL_W, PILL_H), egui::Sense::hover());
-    ui.painter().rect_filled(rect, crate::ui_kit::style::radius_md(), color_alpha(color, 50));
+    ui.painter().rect_filled(rect, crate::ui_kit::style::radius_md(), color_alpha(color, crate::ui_kit::style::alpha_tint()));
     ui.painter().rect_stroke(rect, crate::ui_kit::style::radius_md(), egui::Stroke::new(crate::ui_kit::style::stroke_std(), color), egui::StrokeKind::Inside);
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
         text, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xs()), color);

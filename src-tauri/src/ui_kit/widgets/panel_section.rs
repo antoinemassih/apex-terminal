@@ -733,7 +733,7 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         color
     } else {
-        color_alpha(color, 160)
+        color_alpha(color, crate::ui_kit::style::alpha_dense())
     };
     ui.painter().text(
         rect.center(),

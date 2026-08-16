@@ -440,7 +440,7 @@ fn draw_bulk_cancel_confirm(
     working: usize,
 ) {
     let warn_color = tint(t, Tone::Bear, 220);
-    let bg = tint(t, Tone::Bear, 18);
+    let bg = tint(t, Tone::Bear, crate::ui_kit::style::alpha_soft());
     let avail = ui.available_width();
 
     // Outer frame with a subtle danger tint.

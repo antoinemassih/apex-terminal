@@ -130,7 +130,7 @@ pub(crate) fn render_workspace_rail(
                             let save_enabled = !active.trim().is_empty();
                             if KitButton::new("Save workspace").leading_icon(Icon::CHECK)
                                 .variant(KitVariant::Ghost).size(KitSize::Sm)
-                                .fg(if save_enabled { t.accent } else { tint(t, Tone::Dim, 160) })
+                                .fg(if save_enabled { t.accent } else { tint(t, Tone::Dim, crate::ui_kit::style::alpha_dense()) })
                                 .min_size(egui::vec2(EXPANDED_W - 16.0, ROW_H))
                                 .show(ui, t).clicked() && save_enabled {
                                 save_active = true;
@@ -353,7 +353,7 @@ fn collapsed_chip(ui: &mut egui::Ui, t: &Theme, name: &str, is_active: bool) -> 
 
     let fill = if is_active { t.accent }
         else if hovered { tint(t, Tone::Border, 80) }
-        else { tint(t, Tone::Border, 50) };
+        else { tint(t, Tone::Border, crate::ui_kit::style::alpha_tint()) };
     ui.painter().rect_filled(rect, radius, fill);
     if is_active {
         ui.painter().rect_stroke(rect, radius,

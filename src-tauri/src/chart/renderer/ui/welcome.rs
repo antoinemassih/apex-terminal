@@ -366,7 +366,7 @@ fn draw_step_risk(
     ui.horizontal(|ui| {
         ui.allocate_ui(Vec2::new(220.0, 24.0), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(TextStyle::BodySm.as_rich_cascading("Daily loss cap (USD)", st::tint(theme, Tone::Text, 180)));
+                ui.label(TextStyle::BodySm.as_rich_cascading("Daily loss cap (USD)", st::tint(theme, Tone::Text, crate::ui_kit::style::alpha_near_solid())));
             });
         });
         ui.add_space(st::gap_md());
@@ -393,7 +393,7 @@ fn draw_step_risk(
     ui.horizontal(|ui| {
         ui.allocate_ui(Vec2::new(220.0, 24.0), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(TextStyle::BodySm.as_rich_cascading("Max position size (% of account)", st::tint(theme, Tone::Text, 180)));
+                ui.label(TextStyle::BodySm.as_rich_cascading("Max position size (% of account)", st::tint(theme, Tone::Text, crate::ui_kit::style::alpha_near_solid())));
             });
         });
         ui.add_space(st::gap_md());

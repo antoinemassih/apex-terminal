@@ -683,7 +683,7 @@ impl<'a> DomRow<'a> {
                     egui::pos2(xo + 1.0, ry + 1.0),
                     egui::vec2(co - 3.0, row_h - 2.0),
                 );
-                painter.rect_filled(gr, radius_xs(), color_alpha(oc, 160));
+                painter.rect_filled(gr, radius_xs(), color_alpha(oc, crate::ui_kit::style::alpha_dense()));
                 painter.rect_stroke(gr, radius_xs(), Stroke::new(stroke_bold(), oc), StrokeKind::Outside);
                 draw_order_chip_label(painter, gr, side_ch, self.drag_cx.ghost_qty, theme_ref.overlay_text);
                 painter.rect_stroke(rr, 0.0,

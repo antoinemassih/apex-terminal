@@ -493,7 +493,7 @@ mod tests {
 
         // Replicate the PanelListRow default: bg_color(accent at 24α).
         let accent_col = t.accent();
-        let default_selected_color = color_alpha(accent_col, 24);
+        let default_selected_color = color_alpha(accent_col, crate::ui_kit::style::alpha_whisper());
         let default_sx = Sx::new().bg_color(default_selected_color);
 
         // B/C. Resolved at Active state should differ from default.

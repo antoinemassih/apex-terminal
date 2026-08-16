@@ -274,5 +274,5 @@ fn render_dom_ladder(
         });
     }
     ui.add_space(gap_xs());
-    crate::chart_renderer::ui::style::dialog_separator_shadow(ui, 0.0, tint(t, Tone::Border, 50));
+    crate::chart_renderer::ui::style::dialog_separator_shadow(ui, 0.0, tint(t, Tone::Border, crate::ui_kit::style::alpha_tint()));
 }

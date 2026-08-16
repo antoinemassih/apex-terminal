@@ -133,3 +133,18 @@ jobs:
       - name: Run hardwire gate (accessors that return literals)
         if: ${{ !cancelled() }}
         run: python dev/hardwire_gate.py
+
+      # Cascade gate. Fixing the hardwire gate above created its own defect
+      # class: a token gets a StyleSystem field, a TokenSnapshot field and an
+      # accessor — and is then sourced DIRECTLY (`al.whisper`) instead of
+      # through the override / DesignTokens tiers its siblings pass through.
+      # It compiles, renders identically, exports and round-trips green, and
+      # does not move when you drag its inspector slider. Eleven fields across
+      # three groups had this, all from the same habit, and no other check
+      # here could see it — hardwire is satisfied (the accessor is real),
+      # token_consumer is satisfied (begin_frame DOES read the field), and
+      # ladder_gate asks about scale multipliers, not cascade tiers. The rule
+      # is all-siblings-or-none, exactly like ladder_gate's.
+      - name: Run cascade gate (siblings that skip the cascade)
+        if: ${{ !cancelled() }}
+        run: python dev/cascade_gate.py

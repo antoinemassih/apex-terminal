@@ -8,7 +8,7 @@
 //! The T&S tape is a high-cadence streaming list (up to 200 visible
 //! prints, refreshed every frame on live ticks); `PanelListRow.columns`
 //! uses a borrowed `&[Column]` slice with no per-cell allocations, and
-//! `.row_tint(side_color, 12)` paints the buy/sell directional fill
+//! `.row_tint(side_color, crate::ui_kit::style::alpha_faint())` paints the buy/sell directional fill
 //! BEHIND any hover/selected backgrounds — matching the legacy
 //! `ListRow.row_tint` look exactly.
 
@@ -114,7 +114,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                     PanelListRow::new(&id_salt)
                         .height(row_h)
                         .hoverable(false)
-                        .row_tint(side_color, 12)
+                        .row_tint(side_color, crate::ui_kit::style::alpha_faint())
                         .columns(&[
                             PanelColumn { text: &time_str,  align: PanelColAlign::Left,  color: dim_color, weight: 1.0, min_width: None, mono: true },
                             PanelColumn { text: &price_str, align: PanelColAlign::Right, color: side_color, weight: 1.0, min_width: None, mono: true },

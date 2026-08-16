@@ -166,7 +166,7 @@ fn paint_toggle_row<'a>(
 
     // Hover tint background — covers full row. M3.3: fill from the ONE
     // interaction table (which also enforces "disabled suppresses hover"),
-    // replacing the hand-picked `color_alpha(text, 12)`.
+    // replacing the hand-picked `color_alpha(text, crate::ui_kit::style::alpha_faint())`.
     let ix = apply_interaction(
         rect,
         InteractionState::new().hovered(response.hovered()).disabled(disabled),

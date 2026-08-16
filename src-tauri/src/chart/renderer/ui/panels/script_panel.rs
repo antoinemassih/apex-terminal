@@ -398,7 +398,7 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
         ui.add_space(gap_xs());
         let is_error = watchlist.script.output.starts_with("Error");
         let (card_bg, card_border) = if is_error {
-            (tint(t, Tone::Bear, 18), tint(t, Tone::Bear, alpha_line()))
+            (tint(t, Tone::Bear, crate::ui_kit::style::alpha_soft()), tint(t, Tone::Bear, alpha_line()))
         } else {
             (tint(t, Tone::Border, alpha_tint()), tint(t, Tone::Border, alpha_muted()))
         };
@@ -597,7 +597,7 @@ fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme
     let resp = Button::new(label).variant(Variant::Secondary).simple_treatment(true).fg(color).show(ui, t);
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        ui.painter().rect_filled(resp.rect, r_sm_cr(), color_alpha(color, 8));
+        ui.painter().rect_filled(resp.rect, r_sm_cr(), color_alpha(color, crate::ui_kit::style::alpha_faint()));
     }
     resp
 }

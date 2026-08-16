@@ -460,7 +460,7 @@ fn draw_normal_mode(
                                 egui::vec2(ui.available_width(), row_h),
                                 egui::Sense::click());
                             let bg = if is_sel { tint(t, Tone::Accent, alpha_tint()) }
-                                     else if resp.hovered() { tint(t, Tone::Accent, 18) }
+                                     else if resp.hovered() { tint(t, Tone::Accent, crate::ui_kit::style::alpha_soft()) }
                                      else { egui::Color32::TRANSPARENT };
                             let painter = ui.painter_at(rect);
                             painter.rect_filled(rect, crate::ui_kit::style::radius_md(), bg);
@@ -499,7 +499,7 @@ fn draw_normal_mode(
                                     egui::Align2::RIGHT_CENTER,
                                     "•",
                                     crate::ui_kit::style::prop_at(super::style::font_sm()),
-                                    tint(t, Tone::Accent, 180),
+                                    tint(t, Tone::Accent, crate::ui_kit::style::alpha_near_solid()),
                                 );
                             }
 

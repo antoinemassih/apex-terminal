@@ -60,10 +60,10 @@ pub struct DesignTokens {
 
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FontTokens { pub xxs: f32, pub xs: f32, pub sm_tight: f32, pub sm: f32, pub md: f32, pub input: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub display: f32, pub display_lg: f32 }
+pub struct FontTokens { pub xxs: f32, pub xs: f32, pub sm_tight: f32, pub sm: f32, pub md: f32, pub input: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub display_sm: f32, pub display_md: f32, pub display_lg: f32, pub display_xl: f32, pub ui_4xs: f32, pub ui_xs_plus: f32, pub ui_md_plus: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpacingTokens { pub xs: f32, pub xs_mid: f32, pub sm: f32, pub md: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub xxxl: f32 }
+pub struct SpacingTokens { pub gap_2xs: f32, pub xs: f32, pub xs_mid: f32, pub sm: f32, pub md: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub xxxl: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RadiusTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32 }
@@ -88,7 +88,7 @@ impl StrokeTokens {
 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AlphaTokens { pub faint: u8, pub ghost: u8, pub soft: u8, pub subtle: u8, pub tint: u8, pub muted: u8, pub line: u8, pub dim: u8, pub strong: u8, pub active: u8, pub heavy: u8, pub scrim: u8, pub solid: u8 }
+pub struct AlphaTokens { pub faint: u8, pub ghost: u8, pub soft: u8, pub whisper: u8, pub hint: u8, pub subtle: u8, pub tint: u8, pub muted: u8, pub line: u8, pub dim: u8, pub strong: u8, pub active: u8, pub heavy: u8, pub scrim: u8, pub dense: u8, pub near_solid: u8, pub solid: u8 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShadowTokens { pub offset: f32, pub alpha: u8, pub spread: f32, pub gradient: [u8; 3] }
@@ -325,11 +325,11 @@ impl Default for DesignTokens {
         Self {
             // Aligned to the canonical `ui_kit::style` constant fallbacks so
             // RESET restores the app's shipped look, not a different tier.
-            font: FontTokens { xxs: 8.0, xs: 9.0, sm_tight: 10.0, sm: 11.0, md: 13.0, input: 13.0, lg: 16.0, xl: 22.0, xxl: 28.0, display: 32.0, display_lg: 42.0 },
-            spacing: SpacingTokens { xs: 4.0, xs_mid: 6.0, sm: 8.0, md: 12.0, lg: 16.0, xl: 20.0, xxl: 24.0, xxxl: 32.0 },
+            font: FontTokens { xxs: 8.0, xs: 9.0, sm_tight: 10.0, sm: 11.0, md: 13.0, input: 13.0, lg: 16.0, xl: 22.0, xxl: 28.0, display_sm: 28.0, display_md: 32.0, display_lg: 42.0, display_xl: 56.0, ui_4xs: 7.0, ui_xs_plus: 10.0, ui_md_plus: 14.0 },
+            spacing: SpacingTokens { gap_2xs: 2.0, xs: 4.0, xs_mid: 6.0, sm: 8.0, md: 12.0, lg: 16.0, xl: 20.0, xxl: 24.0, xxxl: 32.0 },
             radius: RadiusTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0 },
             stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5,  rule: 3.0 },
-            alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, scrim: 140, solid: 200 },
+            alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, whisper: 25, hint: 30, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, scrim: 140, dense: 160, near_solid: 180, solid: 200 },
             shadow: ShadowTokens { offset: 2.0, alpha: 60, spread: 4.0, gradient: [20, 12, 4] },
             toolbar: ToolbarTokens { height: 38.0,    },
             panel: PanelTokens {  margin_top: 10.0, margin_bottom: 8.0,  compact_margin_top: 8.0, compact_margin_bottom: 6.0,        tooltip_width_sm: 160.0, tooltip_width_md: 220.0, content_width_lg: 520.0, content_width_xl: 680.0 },

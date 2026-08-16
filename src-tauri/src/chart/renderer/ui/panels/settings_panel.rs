@@ -45,7 +45,7 @@ fn setting_form_row<'a>(label: &'a str, t: &Theme) -> FormRow<'a> {
     FormRow::new(label)
         .gutter(190.0)
         .label_left(true)
-        .label_color(tint(t, Tone::Text, 180))
+        .label_color(tint(t, Tone::Text, crate::ui_kit::style::alpha_near_solid()))
         .alignment(FormRowAlign::Right)
         .inner_pad(10.0)
         .margins(0.0, gap_xs())

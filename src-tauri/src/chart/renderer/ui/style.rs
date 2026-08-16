@@ -189,16 +189,14 @@ pub fn begin_frame() {
         // `stroke.heavy` is 2.5 in DesignTokens and had a live inspector
         // slider that nothing consumed; `stroke_extra_thick()` hardcoded the
         // same 2.5. Same number, two homes — now one.
-        font_display_sm: ty.display_sm,
-        font_display_md: ty.display_md,
-        font_display_lg: ty.display_lg,
-        font_display_xl: ty.display_xl,
-        font_4xs:        ty.ui_4xs,
-        font_xs_plus:    ty.ui_xs_plus,
-        font_md_plus:    ty.ui_md_plus,
-        gap_2xs:           sp.gap_2xs,
-        alpha_whisper:     al.whisper,
-        alpha_hint:        al.hint,
+        font_display_sm: if let Some(ref ov) = override_style { ov.typography.display_sm } else { crate::dt_f32!(font.display_sm, ty.display_sm) },
+        font_display_md: if let Some(ref ov) = override_style { ov.typography.display_md } else { crate::dt_f32!(font.display_md, ty.display_md) },
+        font_display_lg: if let Some(ref ov) = override_style { ov.typography.display_lg } else { crate::dt_f32!(font.display_lg, ty.display_lg) },
+        font_display_xl: if let Some(ref ov) = override_style { ov.typography.display_xl } else { crate::dt_f32!(font.display_xl, ty.display_xl) },
+        font_4xs:        if let Some(ref ov) = override_style { ov.typography.ui_4xs } else { crate::dt_f32!(font.ui_4xs, ty.ui_4xs) },
+        font_xs_plus:    if let Some(ref ov) = override_style { ov.typography.ui_xs_plus } else { crate::dt_f32!(font.ui_xs_plus, ty.ui_xs_plus) },
+        font_md_plus:    if let Some(ref ov) = override_style { ov.typography.ui_md_plus } else { crate::dt_f32!(font.ui_md_plus, ty.ui_md_plus) },
+        gap_2xs:         if let Some(ref ov) = override_style { ov.spacing.gap_2xs } else { crate::dt_f32!(spacing.gap_2xs, sp.gap_2xs) },
         focus_ring:   ass.treatments.focus_ring,
         icon_xs:      ass.icons.xs,
         icon_sm:      ass.icons.sm,
@@ -228,6 +226,10 @@ pub fn begin_frame() {
         alpha_active:  if let Some(ref ov) = override_style { ov.alphas.active    } else { crate::dt_u8!(alpha.active, al.active)    },
         alpha_heavy:   if let Some(ref ov) = override_style { ov.alphas.heavy_u8  } else { crate::dt_u8!(alpha.heavy,  al.heavy_u8)  },
         alpha_scrim:   if let Some(ref ov) = override_style { ov.alphas.scrim     } else { crate::dt_u8!(alpha.scrim,  al.scrim)     },
+        alpha_whisper:     if let Some(ref ov) = override_style { ov.alphas.whisper } else { crate::dt_u8!(alpha.whisper, al.whisper) },
+        alpha_hint:        if let Some(ref ov) = override_style { ov.alphas.hint } else { crate::dt_u8!(alpha.hint, al.hint) },
+        alpha_dense:       if let Some(ref ov) = override_style { ov.alphas.dense } else { crate::dt_u8!(alpha.dense, al.dense) },
+        alpha_near_solid:  if let Some(ref ov) = override_style { ov.alphas.near_solid } else { crate::dt_u8!(alpha.near_solid, al.near_solid) },
         alpha_solid:   if let Some(ref ov) = override_style { ov.alphas.solid     } else { crate::dt_u8!(alpha.solid,  al.solid)     },
         // Shadows.
         shadow_offset: crate::dt_f32!(shadow.offset, 2.0),
@@ -249,9 +251,9 @@ pub fn begin_frame() {
         bevel_highlight_tint:  egui::Color32::WHITE,
         bevel_shadow_tint:     egui::Color32::BLACK,
         // M2.1: per-style semantic fonts for the (now ui_kit-resident) cascade.
-        font_body:          st.font_body,
-        font_caption:       st.font_caption,
-        font_section_label: st.font_section_label,
+        font_body:          if let Some(ref ov) = override_style { ov.typography.size_sm } else { crate::dt_f32!(font.sm, st.font_body) },
+        font_caption:       if let Some(ref ov) = override_style { ov.typography.size_xs } else { crate::dt_f32!(font.xs, st.font_caption) },
+        font_section_label: if let Some(ref ov) = override_style { ov.typography.size_section_label } else { crate::dt_f32!(font.sm_tight, st.font_section_label) },
         // M4.5: structural proportions from the active StyleSystem's Density.
         //
         // AUDIT 2026-08 — DENSITY IS APPLIED ONCE, HERE.
@@ -1454,7 +1456,7 @@ pub fn color_shade(c: Color32, factor: f32, alpha: u8) -> Color32 {
 /// HOVER_BG_ALPHA constant — gives ~7% text alpha overlay.
 #[inline]
 pub fn hover_tint_text(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    tint(t, Tone::Text, 18)
+    tint(t, Tone::Text, crate::ui_kit::style::alpha_soft())
 }
 
 /// Subtle accent fill for active chips/toggles. Use when a toggleable
@@ -1483,7 +1485,7 @@ pub fn disabled_overlay(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
 //   L0: t.bg              — app canvas
 //   L1: t.toolbar_bg      — panel body
 //   L2: `color_layer_up`  — sub-section / card / active tab body
-//   L3: hover/selected    — tint(t, Tone::Text, 8) or tint(t, Tone::Accent, 24)
+//   L3: hover/selected    — tint(t, Tone::Text, crate::ui_kit::style::alpha_faint()) or tint(t, Tone::Accent, crate::ui_kit::style::alpha_whisper())
 //
 // Direction (lighten vs darken) is derived from the theme's `bg` brightness so
 // the lift reads the same on dark + light themes.
@@ -3286,7 +3288,7 @@ pub fn apply_ui_style(style: &mut egui::Style, settings: &StyleSettings, toolbar
         inact.corner_radius = egui::CornerRadius::ZERO;
 
         let hov = &mut style.visuals.widgets.hovered;
-        hov.bg_fill      = color_alpha(toolbar_border, 18);
+        hov.bg_fill      = color_alpha(toolbar_border, crate::ui_kit::style::alpha_soft());
         hov.corner_radius = egui::CornerRadius::ZERO;
 
         let act = &mut style.visuals.widgets.active;
@@ -3421,7 +3423,7 @@ pub fn paint_chrome_tile_button(
             tint(t, Tone::Accent, alpha_line()),
         ),
         ChromeTileState::Idle    => (
-            tint(t, Tone::Border, 18),
+            tint(t, Tone::Border, crate::ui_kit::style::alpha_soft()),
             tint(t, Tone::Border, alpha_muted()),
         ),
     };

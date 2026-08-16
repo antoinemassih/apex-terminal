@@ -166,7 +166,7 @@ pub fn paint_dom_action(
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_glyph, ctx.strong_text);
         }
         QtyReadout => {
-            let fill = if ctx.is_light { Color32::WHITE } else { tint(t, Tone::Bg, 180) };
+            let fill = if ctx.is_light { Color32::WHITE } else { tint(t, Tone::Bg, crate::ui_kit::style::alpha_near_solid()) };
             let text_col = if ctx.is_light { ctx.dark_ink } else { t.text };
             painter.rect_filled(rect, egui::CornerRadius::ZERO, fill);
             painter.rect_stroke(rect, egui::CornerRadius::ZERO, border_stroke, egui::StrokeKind::Inside);
@@ -210,7 +210,7 @@ pub fn paint_dom_action(
         Warn => {
             let fc = t.warn;
             painter.rect_filled(rect, r_xs,
-                if hover { color_alpha(fc, alpha_line()) } else { color_alpha(fc, 18) });
+                if hover { color_alpha(fc, alpha_line()) } else { color_alpha(fc, crate::ui_kit::style::alpha_soft()) });
             painter.rect_stroke(rect, r_xs,
                 egui::Stroke::new(stroke_thin(), color_alpha(fc, alpha_line())),
                 egui::StrokeKind::Outside);

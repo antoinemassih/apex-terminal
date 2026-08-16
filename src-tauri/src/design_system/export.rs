@@ -185,6 +185,8 @@ impl StyleSystem {
                 "active":    int_tok!(al.active),
                 "heavy_u8":  int_tok!(al.heavy_u8),
                 "scrim":     int_tok!(al.scrim),
+                "dense":      int_tok!(al.dense),
+                "near_solid": int_tok!(al.near_solid),
                 "solid":     int_tok!(al.solid),
                 // f32 multipliers
                 "subtle":        num!(al.subtle),

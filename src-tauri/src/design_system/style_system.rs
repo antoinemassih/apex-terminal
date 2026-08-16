@@ -479,6 +479,15 @@ pub struct Alphas {
     pub heavy_u8: u8,  // 120
     /// Scrim — modal-backdrop / cmd-palette dimming. Backs `alpha_scrim()` = 140.
     pub scrim:   u8,   // 140
+    /// Dense (160) and near-solid (180) — the top of the ladder steps by 20
+    /// (`active` 100 → `heavy` 120 → `scrim` 140) and then jumped 60 straight to
+    /// `solid`. These two continue that rhythm rather than inventing a new one.
+    /// `dense` is borders and fills at full presence; `near_solid` is secondary
+    /// label text and disabled accents — read as text, so not quite opaque.
+    #[serde(default = "Alphas::default_dense")]
+    pub dense: u8,     // 160
+    #[serde(default = "Alphas::default_near_solid")]
+    pub near_solid: u8, // 180
     /// Solid — high-opacity element. Backs `alpha_solid()` = 200.
     pub solid:   u8,   // 200
 
@@ -502,6 +511,8 @@ pub struct Alphas {
 impl Alphas {
     fn default_whisper() -> u8 { 25 }
     fn default_hint()    -> u8 { 30 }
+    fn default_dense()      -> u8 { 160 }
+    fn default_near_solid() -> u8 { 180 }
 }
 
 impl Default for Alphas {
@@ -522,6 +533,8 @@ impl Default for Alphas {
             active:   100,
             heavy_u8: 120,
             scrim:    140,
+            dense:      Self::default_dense(),
+            near_solid: Self::default_near_solid(),
             solid:    200,
             // f32 multipliers
             subtle:        0.04,

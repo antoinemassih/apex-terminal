@@ -90,12 +90,12 @@ impl ComponentTheme for Theme {
     // fields on Theme + 15 initializer copies. Now derived from text/accent
     // at the trait boundary so palettes only need to declare the base 6
     // colors. Identical resolved values vs. the prior table.
-    fn element_hover(&self)    -> Color32 { color_alpha(self.text,   12) }
-    fn element_active(&self)   -> Color32 { color_alpha(self.text,   24) }
-    fn element_selected(&self) -> Color32 { color_alpha(self.accent, 24) }
+    fn element_hover(&self)    -> Color32 { color_alpha(self.text,   crate::ui_kit::style::alpha_faint()) }
+    fn element_active(&self)   -> Color32 { color_alpha(self.text,   crate::ui_kit::style::alpha_whisper()) }
+    fn element_selected(&self) -> Color32 { color_alpha(self.accent, crate::ui_kit::style::alpha_whisper()) }
     fn element_disabled(&self) -> Color32 { color_alpha(self.dim,    80) }
     fn ghost_hover(&self)      -> Color32 { color_alpha(self.text,    6) }
-    fn ghost_active(&self)     -> Color32 { color_alpha(self.text,   12) }
+    fn ghost_active(&self)     -> Color32 { color_alpha(self.text,   crate::ui_kit::style::alpha_faint()) }
     fn icon(&self)             -> Color32 { self.text }
     fn icon_muted(&self)       -> Color32 { color_alpha(self.text,  178) }
     fn icon_disabled(&self)    -> Color32 { color_alpha(self.text,  102) }
@@ -145,12 +145,12 @@ pub fn theme_to_portable(t: &Theme) -> PortableTheme {
         warn:             t.warn,
         bg:               t.bg,
         surface:          t.toolbar_bg,
-        element_hover:    color_alpha(t.text,   12),
-        element_active:   color_alpha(t.text,   24),
-        element_selected: color_alpha(t.accent, 24),
+        element_hover:    color_alpha(t.text,   crate::ui_kit::style::alpha_faint()),
+        element_active:   color_alpha(t.text,   crate::ui_kit::style::alpha_whisper()),
+        element_selected: color_alpha(t.accent, crate::ui_kit::style::alpha_whisper()),
         element_disabled: color_alpha(t.dim,    80),
         ghost_hover:      color_alpha(t.text,    6),
-        ghost_active:     color_alpha(t.text,   12),
+        ghost_active:     color_alpha(t.text,   crate::ui_kit::style::alpha_faint()),
         icon:             t.text,
         icon_muted:       color_alpha(t.text,  178),
         icon_disabled:    color_alpha(t.text,  102),

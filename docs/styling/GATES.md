@@ -1,6 +1,6 @@
 # Design-system gates
 
-Eleven checks run on every push (`.github/workflows/design-system-check.yml`).
+Twelve checks run on every push (`.github/workflows/design-system-check.yml`).
 Each one exists because a specific defect shipped and nothing caught it. This
 page is the short version: what each asks, the bug that motivated it, and what
 to do when it fires.
@@ -14,7 +14,7 @@ says so in its own header, having been baselined blindly once already.
 
 ## Why so many
 
-They are not eleven arbitrary rules. They are the answers to one question asked
+They are not twelve arbitrary rules. They are the answers to one question asked
 at every layer a value passes through:
 
 ```
@@ -23,6 +23,7 @@ StyleSystem field          can a theme author it?          token-consumer L2
 StyleSettings / DesignTokens
   ↓ begin_frame
 TokenSnapshot              does the cascade carry it?      token-consumer L1, L3
+  ↓                        …by the same route as siblings? cascade
   ↓ ui_kit::style accessor is the accessor real?           hardwire
   ↓                        do siblings scale together?     ladder
 call site                  is the value on-system?         design-system ratchet
@@ -74,6 +75,30 @@ Every rung of a ladder must apply the same override multiplier, or none may.
 at Tight (0.75×) the ladder read 3.0 / 6.0 / 6.0 and the mid rung landed exactly
 on the rung above it.
 
+### `cascade_gate.py` — all siblings, or none
+Fixing the hardwire gate created its own defect class. A token gets its
+`StyleSystem` field, its `TokenSnapshot` field and its accessor — then is
+sourced **directly** (`al.whisper`) instead of through the override and
+DesignTokens tiers its siblings pass through:
+
+```rust
+alpha_scrim:   if let Some(ref ov) = override_style { ov.alphas.scrim }
+               else { dt_u8!(alpha.scrim, al.scrim) },   // three tiers
+alpha_whisper: al.whisper,                               // one tier
+```
+
+The short form compiles, renders byte-identically, exports, re-imports and
+round-trip asserts green. What it does not do is respond to its own inspector
+slider or the hot-reload file. Eleven fields across three groups had this, all
+from the same habit, and **no other check here could see it**: hardwire is
+satisfied (the accessor is real), token-consumer is satisfied (`begin_frame`
+does read the field), and ladder_gate asks about scale multipliers rather than
+cascade tiers.
+
+A group where *nothing* cascades passes — those are legitimately snapshot-only,
+and forcing token fields on all of them would be ladder inflation. A group that
+is **split** is the defect: someone extended it and did not finish.
+
 ### `check-design-system.sh` — the ratchet
 Per-file budgets for off-token primitives: colour, type, radius, stroke weight,
 **space** and **opacity**. Counts only ever go down.
@@ -84,9 +109,11 @@ Two things to know before reading the number:
   `chart_widgets.rs`, `gpu.rs`) where `.left() + 6.0` is a candle body or a
   gauge tick. That is data geometry, not chrome layout. Driving the total to
   zero would mean mangling the renderer to satisfy a lint.
-- The opacity portion is large because the **alpha ladder has holes**: 160/180
-  appear 72 times between `scrim` (140) and `solid` (200). The call sites are
-  arguably right and the ladder is short — see **AT-150**.
+- The opacity portion was large for a reason that turned out to be mostly
+  measurement error. See **AT-150** below — the corrected version is that most
+  off-ladder alphas were within ±2 of a rung (imperceptible, so they snapped)
+  or were chart painting (candle bodies, wick alpha — data, not chrome tiers).
+  Only two values, 160 and 180, were a genuine gap.
 
 ### `single_system_gate.py` — one styling system
 Censuses eight mechanisms and ratchets them. Legacy ones are ceilings (may
@@ -123,7 +150,11 @@ three separate times.
 
 1. `StyleSystem` group field, with a serde default.
 2. `TokenSnapshot` field + `DEFAULT_TOKEN_SNAPSHOT` entry.
-3. `begin_frame` — source it from `ass.<group>.<field>`.
+3. `begin_frame` — source it **the way its siblings are sourced**. If they
+   cascade, so must it: `if let Some(ref ov) = override_style { ov.<g>.<f> }
+   else { dt_f32!(<tok>.<f>, <src>) }`. A bare `ass.<group>.<field>` skips the
+   override and DesignTokens tiers and renders identically, which is why this
+   step needs its own gate.
 4. `ui_kit::style` accessor, applying the override multiplier if its ladder has
    one.
 5. `export.rs` **and** `loader.rs` — or it will not survive a theme pack.
@@ -148,5 +179,15 @@ and guessing is worse than leaving them:
   map expresses "no opinion, honour the user's picker", which the token cannot,
   and `"Inter"` is both the default *and* a deliberate choice — so "differs from
   default" cannot separate them. Needs a schema decision first.
-- **AT-150** — the alpha ladder's holes. Needs the recurring off-ladder values
-  named before 354 call sites can move.
+- **AT-150** — *closed, and worth recording how the framing was wrong.* The
+  pitch was "354 off-ladder alphas, the ladder has holes". Two measurement
+  errors inflated it. The ladder-extraction regex read `impl Default for Alphas`
+  for literal values, so `whisper` and `hint` — set via `Self::default_hint()`
+  function calls — were scored as off-ladder despite being rungs. And the count
+  pooled chrome with chart painting, where `color_alpha(base, 160)` is a candle
+  body, not a tier. Corrected: 48 chrome sites were within ±2 of a rung
+  (~1/255, imperceptible) and simply snapped; 13 sat in the one real gap, where
+  the ladder steps by 20 up to `scrim` (140) and then jumps 60 to `solid`;
+  `dense` (160) and `near_solid` (180) fill it and continue the existing rhythm.
+  Chart-painting alphas are scoped out of the ladder argument, as layout
+  geometry already was.

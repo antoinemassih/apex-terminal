@@ -70,7 +70,7 @@ pub(crate) fn render_timeframe_dropdown(
                         let y = ui.cursor().min.y;
                         ui.painter().line_segment(
                             [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, 50)));
+                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, crate::ui_kit::style::alpha_tint())));
                         ui.add_space(gap_sm());
                     }
                     ui.horizontal(|ui| {
@@ -202,7 +202,7 @@ pub(crate) fn render_layout_dropdown(
                         let y = ui.cursor().min.y;
                         ui.painter().line_segment(
                             [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, 50)));
+                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, crate::ui_kit::style::alpha_tint())));
                         ui.add_space(gap_sm());
                     }
                     ui.horizontal(|ui| {
@@ -281,7 +281,7 @@ pub(crate) fn render_layout_dropdown(
                 let y = ui.cursor().min.y;
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, 50)));
+                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, crate::ui_kit::style::alpha_tint())));
                 ui.add_space(gap_sm());
                 ui.horizontal(|ui| {
                     ui.add_space(gap_md());
@@ -307,7 +307,7 @@ pub(crate) fn render_layout_dropdown(
                     let apply_fill = if apply_hov { tint(t, Tone::Accent, 40) } else { tint(t, Tone::Accent, 15) };
                     ui.painter().rect_filled(apply_rect, radius_sm(), apply_fill);
                     ui.painter().text(apply_rect.center(), egui::Align2::CENTER_CENTER, "Apply", mono_sm(),
-                        if apply_hov { t.accent } else { tint(t, Tone::Accent, 180) });
+                        if apply_hov { t.accent } else { tint(t, Tone::Accent, crate::ui_kit::style::alpha_near_solid()) });
                     if apply_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if apply_hov && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                         watchlist.workspace.active = tpl_name.clone();
@@ -324,7 +324,7 @@ pub(crate) fn render_layout_dropdown(
                 let y = ui.cursor().min.y;
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, 50)));
+                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, crate::ui_kit::style::alpha_tint())));
                 ui.add_space(gap_sm());
                 ui.horizontal(|ui| {
                     use crate::ui_kit::widgets::Input;

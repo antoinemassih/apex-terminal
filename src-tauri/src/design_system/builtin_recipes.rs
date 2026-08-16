@@ -568,7 +568,7 @@ fn cadence() -> RecipeSet {
             spec(
                 d().radius(RadiusTier::Pill)
                     .fill(tone(ToneRef::Surface))
-                    .border(tint(ToneRef::Text, 18), BorderWidthTier::Std)
+                    .border(tint(ToneRef::Text, crate::ui_kit::style::alpha_soft()), BorderWidthTier::Std)
                     .px(PadTier::Px(10.0))
                     .bevel_raised(tint(ToneRef::Text, 15), nothing())
                     .weight(700),
@@ -582,7 +582,7 @@ fn cadence() -> RecipeSet {
                 d().radius(RadiusTier::Lg)
                     .px(PadTier::Px(16.0))
                     .py(PadTier::Px(16.0))
-                    .border(tint(ToneRef::Text, 18), BorderWidthTier::Std),
+                    .border(tint(ToneRef::Text, crate::ui_kit::style::alpha_soft()), BorderWidthTier::Std),
             ),
         ),
         // `.ds-panel__header { background: var(--ds-bg); border-bottom: 1px
