@@ -1921,8 +1921,29 @@ fn build_design_audit(state: &DevSharedState) -> serde_json::Value {
             crate::ui_kit::style::MIN_TOUCH_TARGET_PX
         }
     };
+    // Auto-instrumented records (`auto.` — emitted by the Button primitive
+    // itself) are graded SEPARATELY.
+    //
+    // Not to keep the number green. The floor above is chosen from the id's
+    // surface prefix, and an auto id has no surface: a pane-header chip at 24 px
+    // is CORRECT and would be failed here against 28. Grading them in this
+    // bucket would mean reporting known-good widgets as defects, which is how a
+    // check stops being read.
+    //
+    // They are still counted and returned, because the coverage they add is the
+    // point: hand instrumentation reached 24 of 876 widget constructions in the
+    // panels and toolbar — 2 % — so "audit clean" meant "the 2 % it can see is
+    // clean". These need per-surface attribution before they can be graded; the
+    // list is the work queue for that.
+    let is_auto = |w: &&&crate::dev_inspector::WidgetRecord| w.id.starts_with("auto.");
     let touch_fails: Vec<_> = button_widgets.iter()
+        .filter(|w| !is_auto(w))
         .filter(|w| w.rect.min_side() < min_for(&w.id))
+        .map(|w| serde_json::json!({"id": w.id, "min_side_px": w.rect.min_side()}))
+        .collect();
+    let touch_fails_auto: Vec<_> = button_widgets.iter()
+        .filter(is_auto)
+        .filter(|w| w.rect.min_side() < crate::ui_kit::style::MIN_TOUCH_TARGET_PX)
         .map(|w| serde_json::json!({"id": w.id, "min_side_px": w.rect.min_side()}))
         .collect();
 
@@ -1968,6 +1989,12 @@ fn build_design_audit(state: &DevSharedState) -> serde_json::Value {
         "clean": clean,
         "total_widgets": widgets.len(),
         "frame": state.frame_counter,
+        // Unattributed candidates from primitive-level instrumentation. Not
+        // part of `clean` — see the note at `touch_fails_auto`.
+        "touch_targets_unattributed": {
+            "count": touch_fails_auto.len(),
+            "violations": touch_fails_auto,
+        },
         "touch_targets": {
             "checked": button_widgets.len(),
             "pass": button_widgets.len() - touch_fails.len(),

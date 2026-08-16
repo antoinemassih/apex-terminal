@@ -611,6 +611,41 @@ bite by deleting the export line.
 
 ---
 
+## AT-162 — the design audit covered 2% of the app — FIXED
+
+AT-161 found the settings modal had never been audited. The larger version of
+that finding is worse.
+
+`/design-audit` inspects widgets that call `dev_inspector::record(..)`, and
+recording was the **call site's** job. A census: **24 such calls against 876
+widget constructions across the panels and toolbar — 2 % coverage.** Every
+"audit clean on all nine styles" reported in this ledger and in commit messages
+was true and much weaker than it reads: it meant *the 2 % it could see* was
+clean.
+
+**Fixed by instrumenting the primitive.** `Button`'s shared wrapper already
+derives a `bug_key` for the Bug-Inspect registry, so it now emits a
+`WidgetRecord` from the same key — the id is shared rather than invented. Debug
+builds only. Coverage went 451 → 490 widgets on the default screen, and **35
+touch-target candidates appeared immediately** that were structurally invisible
+before.
+
+**Those 35 are reported, not graded, and that distinction is deliberate.** The
+audit picks a widget's touch floor from its id prefix — `pane.` chrome is held
+to `MIN_PANE_CHROME_TARGET_PX` (24), everything else to `MIN_TOUCH_TARGET_PX`
+(28). An auto-emitted id carries no surface, so a pane-header chip at 24 px is
+*correct* and would be failed here against 28. Grading them would mean reporting
+known-good widgets as defects, which is precisely how a check stops being read
+(see AT-154, AT-161).
+
+They land in `touch_targets_unattributed` — counted, listed, outside `clean`.
+Sizes cluster at 9.0 (×2), 18.0 (×6), 20.7 (×2), 24.0 (×9) and 25.3 (×16); the
+24.0 group is very likely legitimate pane chrome and the 9.0 pair very likely
+is not a button at all. That list is the work queue for per-surface attribution,
+and it exists where before there was nothing to see.
+
+---
+
 ## AT-161 — the design audit never saw a modal — FIXED, plus what it was hiding
 
 `/design-audit` reported `clean` on all nine styles for months. It inspects

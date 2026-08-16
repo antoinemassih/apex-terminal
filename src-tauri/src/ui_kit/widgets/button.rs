@@ -760,8 +760,39 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         btn.label,
         btn.leading_icon.or(btn.trailing_icon),
     );
+    let label = btn.label;
     let resp = show_styled_impl_inner(ui, theme, btn, style, placed);
     crate::ui_kit::inspect::register(&bug_key, resp.rect, file!(), line!());
+
+    // Auto-instrument for `/design-audit`.
+    //
+    // Recording used to be the CALL SITE's job, via an explicit
+    // `dev_inspector::record(..)`. A census found 24 such calls against 876
+    // widget constructions across the panels and toolbar — **2 % coverage**. So
+    // "audit clean on all nine styles" meant "the 2 % it can see is clean",
+    // which reads far stronger than it is, and it is why the settings panel
+    // carried 21 touch-target failures unnoticed (AT-161).
+    //
+    // Instrumenting the PRIMITIVE is the same move the rest of this design
+    // system makes: the widget knows what it is, so 876 call sites do not each
+    // have to be told. `bug_key` is already derived here for the Bug-Inspect
+    // registry, so the id is shared rather than invented.
+    //
+    // Debug-only — release builds are untouched.
+    #[cfg(debug_assertions)]
+    crate::dev_inspector::record(crate::dev_inspector::WidgetRecord::from_response(
+        // `auto.` marks a record the PRIMITIVE emitted rather than a call
+        // site. It matters because the audit picks a widget's touch-target
+        // floor from its id prefix (`pane.` chrome is held to 24 px, everything
+        // else to 28), and an auto id carries no surface — so these cannot be
+        // graded by that rule and are reported separately instead of being
+        // failed against the wrong floor.
+        format!("auto.{bug_key}"),
+        "button",
+        label,
+        &resp,
+        ui,
+    ));
     resp
 }
 
