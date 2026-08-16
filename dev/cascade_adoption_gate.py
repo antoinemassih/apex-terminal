@@ -47,12 +47,21 @@ BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # overruled: the rule is that the chart ENGINE is sacred and everything else in
 # the UI is for migration. A spreadsheet pane is UI. It stays in the count as
 # pending work.
+#
+# `dom_row` and `watchlist_row` are exempt on MEASURED cost, not on taste.
+# `flex.rs::report_solve_cost_for_a_typical_row` times a 3-item solve at 5.5 us
+# in release. `dom_row` documents itself as painting ~40 rungs per frame, so a
+# per-row solve there is 0.22 ms — 1.3% of a 16.7 ms budget — to replace about
+# three multiplies. The element tree earns its cost on conditional rows built
+# once per frame, not on fixed fractional splits painted forty times.
 CHART = (
     "/render/",
     "chart_widgets",
     "gpu.rs",
     "/indicators/",
     "tps_overlay.rs",
+    "dom_row.rs",
+    "watchlist_row.rs",
 )
 
 # The migration scope: UI and chrome. The chart engine is out by rule, and
@@ -67,7 +76,12 @@ PATTERNS = {
     # matched `chart.order_panel.pos.x += delta.x`, which is a panel DRAG and
     # not a layout walk — four of them in `order_entry_panel` alone. Counting
     # those would demand a "migration" of code with nothing to migrate.
-    "cursor_walks":  r"(?<![.\w])(?:x|y|cx|cy|cursor|left_cursor|top_cursor)\s*\+=",
+    # …and not followed by a bare INTEGER. Layout advances by a float — a
+    # width, a gap, a measured galley. `y += 1` is a counter, and twice it was
+    # literally stepping YEARS in a date calculation (`brief_feed`,
+    # `screenshot_panel`). Excluding integer increments removes that class
+    # without weakening the real signal, since no layout step is `+= 3`.
+    "cursor_walks":  r"(?<![.\w])(?:x|y|cx|cy|cursor|left_cursor|top_cursor)\s*\+=(?!\s*\d+\s*;)",
 }
 
 # Which way each metric is allowed to move.

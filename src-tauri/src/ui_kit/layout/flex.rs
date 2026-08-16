@@ -1684,3 +1684,37 @@ mod walk_equivalence_tests {
             "extent was {}", solved.last().unwrap().max.x);
     }
 }
+
+#[cfg(test)]
+mod solve_cost_tests {
+    use super::{Flex, Item};
+    use egui::Vec2;
+
+    /// What a solve costs, measured — so "is the tree fast enough for a
+    /// per-row hot path" is answered with a number instead of a shrug.
+    ///
+    /// `dom_row` documents itself as painting ~40 rungs per frame and
+    /// `watchlist_row` is similar. Replacing three multiplies with a Taffy
+    /// solve there is only worth it if the solve is cheap at that rate; this
+    /// prints the per-solve cost so the decision is informed. Not an assertion
+    /// on timing — a wall-clock bound would be exactly the load-sensitive test
+    /// that already bit this suite twice.
+    #[test]
+    fn report_solve_cost_for_a_typical_row() {
+        const N: u32 = 2_000;
+        let t0 = std::time::Instant::now();
+        for _ in 0..N {
+            let r = Flex::row()
+                .gap(4.0)
+                .item(Item::flex(1.0, 0.0))
+                .item(Item::flex(2.0, 0.0))
+                .item(Item::flex(1.0, 0.0))
+                .solve(Vec2::new(300.0, 18.0));
+            std::hint::black_box(r);
+        }
+        let per = t0.elapsed().as_secs_f64() / f64::from(N);
+        println!("flex solve: {:.1} us per 3-item row", per * 1e6);
+        println!("  40 rows/frame => {:.3} ms", per * 40.0 * 1e3);
+        println!("  at 60fps that is {:.2}% of a 16.7ms budget", per * 40.0 / 0.0167 * 100.0);
+    }
+}

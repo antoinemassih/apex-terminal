@@ -656,6 +656,42 @@ hot loops contain none of this code.
 
 ---
 
+## AT-164 — the release build did not compile — FIXED
+
+Found by trying to time a layout solve in `--release`.
+
+`ui_kit::inspect::apply_ui_debug` reads `egui::Style::debug`, and that field is
+itself `#[cfg(debug_assertions)]`. Referencing it unconditionally does not
+compile in release. Now gated, with a release no-op — the overlay it drives is a
+development affordance and the flags do not exist there.
+
+**Not caused by this session's work.** The file is untouched across the whole
+effort and the code is byte-identical at the commit this branch started from.
+
+Worth stating why it went unnoticed: every build in this workflow is a debug or
+`design-mode` build. The only configuration that failed is the one nobody
+compiles day to day — and the one that ships. It is also why the chart-perf
+answer given earlier (AT: "Chart-engine performance") had to rest on a debug,
+vsync-quantised measurement with the caveat stated: release could not be built
+to measure.
+
+**A number that fell out of it.** With release building,
+`flex.rs::report_solve_cost_for_a_typical_row` measures a 3-item flex solve at
+**5.5 µs**. That sets a real boundary for the element-tree migration rather than
+a taste-based one:
+
+* `dom_row` paints ~40 rungs per frame by its own comment. A per-row solve there
+  is 0.22 ms — **1.3 % of a 16.7 ms frame** — to replace roughly three
+  multiplies. `watchlist_row` is the same shape.
+* Both are now exempt from the cursor-walk ceiling **on measured cost**, with
+  the measurement named in the gate so the exemption can be re-argued if the
+  solver gets cheaper.
+
+The tree earns its cost on conditional rows built once per frame — headers,
+toolbars, tab strips, cards — not on fixed fractional splits painted forty times.
+
+---
+
 ## AT-163 — the touch minimum and the control ladder contradicted each other — RESOLVED
 
 Falling out of AT-162's 35-item queue. Every one was a HEIGHT under

@@ -61,6 +61,22 @@ pub fn ui_debug() -> bool { UI_DEBUG.with(|c| c.get()) }
 
 /// Push the UI-debug flags into egui's style. Call once per frame, early
 /// (before widgets are laid out) so the overlay matches this frame's geometry.
+///
+/// # Debug builds only
+///
+/// `egui::Style::debug` is itself `#[cfg(debug_assertions)]`, so referencing it
+/// unconditionally does not compile in release — **the release build was
+/// broken**, and had been: this code is byte-identical at the commit this
+/// session's work started from, so nothing here caused it. It surfaced when a
+/// `--release` test run was attempted to measure layout-solve cost.
+///
+/// Worth stating why it went unnoticed: every build in this workflow is a debug
+/// or `design-mode` build, so the only configuration that fails is the one
+/// nobody compiles day to day — and the one that ships.
+///
+/// In release this is a no-op: the overlay is a development affordance and the
+/// flags it drives do not exist there.
+#[cfg(debug_assertions)]
 pub fn apply_ui_debug(ctx: &egui::Context) {
     let on = ui_debug();
     // Avoid a style write (which clones the Arc<Style>) on the common path.
@@ -75,6 +91,10 @@ pub fn apply_ui_debug(ctx: &egui::Context) {
         s.debug.show_resize = on;
     });
 }
+
+/// Release no-op — see the debug variant.
+#[cfg(not(debug_assertions))]
+pub fn apply_ui_debug(_ctx: &egui::Context) {}
 
 // ── VIEWPORT SIZING (dev harness) ────────────────────────────────────────────
 //

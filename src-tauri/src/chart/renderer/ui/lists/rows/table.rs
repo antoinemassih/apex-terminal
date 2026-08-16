@@ -126,26 +126,36 @@ impl<'a, T> Table<'a, T> {
         let border = self.theme_border.unwrap_or(default_t.toolbar_border);
         let bg = self.theme_bg.unwrap_or(default_t.toolbar_bg);
 
-        // Compute column x-positions.
+        // Column x-positions — SOLVED.
+        //
+        // `ColWidth::Fixed(w) | Flex(f)` IS flexbox: a fixed basis, or a share
+        // of what is left. The block this replaces summed the fixed widths,
+        // summed the flex factors, guarded the divisor with `max(1e-6)`,
+        // subtracted to get the remainder, then walked `x += w` — a
+        // proportional distribution written by hand next to a solver that does
+        // exactly this. `Item::flex(grow, basis)` maps the enum directly:
+        // Fixed is `flex(0, w)`, Flex is `flex(f, 0)`.
+        //
+        // The `1e-6` guard goes too. It existed because dividing by a zero flex
+        // sum is a NaN that propagates into every column position; the solver
+        // has no such division to protect.
         let select_w = if self.select_col { 22.0 } else { 0.0 };
-        let mut col_xs: Vec<(f32, f32)> = Vec::with_capacity(self.columns.len());
         let total_inner = (avail_w - select_w).max(0.0);
-        let fixed_sum: f32 = self.columns.iter()
-            .filter_map(|c| if let ColWidth::Fixed(w) = c.width { Some(w) } else { None })
-            .sum();
-        let flex_sum: f32 = self.columns.iter()
-            .filter_map(|c| if let ColWidth::Flex(f) = c.width { Some(f) } else { None })
-            .sum::<f32>().max(1e-6);
-        let remaining = (total_inner - fixed_sum).max(0.0);
-        let mut x = rect.left() + select_w;
-        for c in self.columns {
-            let w = match c.width {
-                ColWidth::Fixed(w) => w,
-                ColWidth::Flex(f) => remaining * (f / flex_sum),
-            };
-            col_xs.push((x, w));
-            x += w;
-        }
+        let col_xs: Vec<(f32, f32)> = {
+            use crate::ui_kit::layout::{Flex, Item};
+            let mut f = Flex::row();
+            for c in self.columns {
+                f = f.item(match c.width {
+                    ColWidth::Fixed(w) => Item::flex(0.0, w),
+                    ColWidth::Flex(fr) => Item::flex(fr, 0.0),
+                });
+            }
+            let left = rect.left() + select_w;
+            f.solve(egui::vec2(total_inner, 1.0))
+                .into_iter()
+                .map(|r| (left + r.min.x, r.width()))
+                .collect()
+        };
 
         // Header.
         let header_h = self.row_height;
