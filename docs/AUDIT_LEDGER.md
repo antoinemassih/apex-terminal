@@ -414,3 +414,33 @@ Surfaced while verifying existing items. Ids continue the AT- sequence.
   (on-ladder included — `alpha_dim()` says what it means and `60` does not, and
   a literal stops tracking when a style re-pitches the ramp). Baseline 740 ->
   1294; the delta IS this class.
+- [ ] **AT-151** `P3` `C` `UX` — Three of the four shadow specs are authorable and ignored; modals, tooltips and dropdowns all wear the card's shadow
+
+  `Shadows` declares four specs. Reads outside the declaration/serialisation
+  files, by qualified grep:
+
+      shadows.card       8
+      shadows.modal      0
+      shadows.tooltip    0
+      shadows.dropdown   0
+
+  Only `card` is wired — the adapter maps `ss.shadows.card.{blur,offset_y,
+  alpha}` into the single `shadow_*` fields on `StyleSettings`, and every
+  surface reads those. Modals DO paint shadows (`ui_kit/widgets/modal.rs`), just
+  not their own: they inherit the card geometry.
+
+  The styles author real differences that are being discarded — card blur 24,
+  modal 36, tooltip 12, dropdown 24. A modal is supposed to sit further off the
+  surface than a card; right now it cannot.
+
+  Fix is to carry the three specs through `TokenSnapshot` and have the modal,
+  tooltip and dropdown surfaces read their own. Deferred rather than done
+  because shadows are purely visual and the verification needs a modal, a
+  tooltip and a dropdown open on several styles — the harness interaction that
+  has been unreliable in this session. Worth doing with a screenshot pass.
+
+  NOTE ON HOW THIS HID. `token_consumer_gate` layer 2 matches bare field names,
+  and `card` / `modal` / `tooltip` / `dropdown` are widget names all over the
+  app, so all four scored as consumed. Qualified matching was tried and
+  reverted — see the limitation comment in the gate for why. When touching a
+  group whose fields have single-word names, grep the qualified path by hand.

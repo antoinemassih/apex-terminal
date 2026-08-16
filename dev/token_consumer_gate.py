@@ -73,6 +73,26 @@ TEST_CFG_RE = re.compile(r"#\[cfg\([^\n]*\btest\b")
 # Files that DECLARE or SERIALISE the style system. A read in one of these is
 # not a consumer: round-tripping a value through JSON proves it survives, not
 # that it does anything.
+# KNOWN LIMITATION — layer 2 matches on the bare field NAME.
+#
+# A field whose leaf name is also a common identifier is masked: `Shadows` has
+# `card` / `modal` / `tooltip` / `dropdown`, and those words appear as widget
+# and module names throughout the app, so all four score as consumed while only
+# `card` is actually wired (verified by qualified grep — see AT-151).
+#
+# Matching the QUALIFIED path (`.shadows.modal`) was tried and reverted. It is
+# exact but far too strict: reads reach these fields through local aliases
+# (`let (sp, ty, al) = (&ass.spacing, ..)` then `ty.display_sm`), through
+# adapter parameters (`ss.chrome.x`), through methods (`shell.resolve_archetype()`),
+# and through a second hop into `StyleSettings` (`current().x`). Resolving
+# aliases fixed the first case and left the rest, taking the gate from 16 false
+# positives to 60+. A gate that cries wolf gets its baseline regenerated
+# blindly, which is worse than one with a documented blind spot.
+#
+# So: this layer catches distinctly-named fields, which is most of them, and is
+# known not to catch generically-named ones. Check those by hand with a
+# qualified grep when touching a group with single-word field names.
+
 SS_DECL_FILES = {
     "style_system.rs", "export.rs", "loader.rs", "baseline.rs", "builtin.rs",
     "design_inspector.rs", "convert.rs", "model.rs",
