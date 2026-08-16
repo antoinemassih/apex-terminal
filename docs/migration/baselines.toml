@@ -51,7 +51,19 @@
 #   nav_cluster_padding, button_group, toolnav_height, footer_default_open,
 #   panel_header_treatment, panel_section_fill_alpha, panel_footer_card,
 #   panel_footer_radius
-style_settings_pub_fields = 99
+#   pane_header_compact_adjust
+#
+# Raised 99 -> 100 for `pane_header_compact_adjust`, added by 58428919 ("pane
+# header: per-style behaviour moves from a style-INDEX match into the style").
+# That is a legitimate field — it is the same class of fix the audit ledger
+# records repeatedly, replacing a fragile match on style INDEX with a value the
+# style itself carries — and the baseline was simply never raised with it.
+#
+# So this gate has been RED on every branch carrying that commit since
+# 2026-08-16, which is also why `Design System Lint` was failing in CI while
+# every gate run locally reported green: the local runs did not include
+# `style-mig-lint.sh`.
+style_settings_pub_fields = 100
 
 # ── Check 2 ───────────────────────────────────────────────────────────────────
 # Number of `crate::chart_renderer` or `crate::chart::renderer` references
