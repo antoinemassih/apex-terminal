@@ -32,7 +32,6 @@ pub fn ticker_strip(ui: &mut Ui, t: &Theme, entries: &[TickerEntry]) -> TickerSt
     let avail = ui.available_size_before_wrap();
     let h = avail.y.max(20.0);
     let (rect, _resp) = ui.allocate_exact_size(Vec2::new(avail.x, h), Sense::hover());
-    let painter = ui.painter_at(rect);
 
     let sym_font = mono_sm();
     let px_font  = crate::ui_kit::style::mono_xs();
@@ -47,13 +46,34 @@ pub fn ticker_strip(ui: &mut Ui, t: &Theme, entries: &[TickerEntry]) -> TickerSt
     // "where they go" is a layout, and only the second belongs in a tree.
     let strip_left = rect.left() + gap_sm();
     struct Quote<'q> {
-        flex: crate::ui_kit::layout::FlexSlots<&'static str>,
         w: f32,
         e: &'q TickerEntry,
         px_s: String,
         chg_s: String,
         chg_col: Color32,
     }
+
+    // One quote = `SYM · price · +chg%` — three text nodes that MEASURE AND
+    // PAINT THEMSELVES.
+    //
+    // Built twice, once to measure and once to paint, because `El` consumes
+    // itself on show and a quote is three `String`s and three `FontId`s — a
+    // cheap closure, and cheaper than keeping a second representation of the
+    // same row around to be told to agree with the first.
+    let quote_el = |e: &TickerEntry, px_s: &str, chg_s: &str, chg_col: Color32| {
+        El::row()
+            .child(El::text_with_font(e.symbol.clone(), sym_font.clone()).color(t.text))
+            .child(
+                El::text_with_font(px_s.to_string(), px_font.clone())
+                    .color(color_subtle(t.dim))
+                    .margin_start(gap_sm()),
+            )
+            .child(
+                El::text_with_font(chg_s.to_string(), chg_font.clone())
+                    .color(chg_col)
+                    .margin_start(gap_sm()),
+            )
+    };
 
     let measured: Vec<Quote> = entries
         .iter()
@@ -62,29 +82,13 @@ pub fn ticker_strip(ui: &mut Ui, t: &Theme, entries: &[TickerEntry]) -> TickerSt
             let chg_col = if e.change_pct >= 0.0 { t.bull } else { t.bear };
             let chg_s =
                 format!("{}{:.2}%", if e.change_pct >= 0.0 { "+" } else { "" }, e.change_pct);
-
-            // One quote = `SYM · price · +chg%`, three content-sized items with
-            // their own seam tokens. This was three `cx += galley.width + gap`
-            // steps; the flex row states the same layout as a shape instead of
-            // a sequence of mutations, which is what makes the width knowable
-            // BEFORE anything is painted.
-            let flex = Flex::row()
-                .slot("sym", Item::text(ui, e.symbol.clone(), sym_font.clone()))
-                .slot("px", Item::text(ui, px_s.clone(), px_font.clone()).margin_start(gap_sm()))
-                .slot("chg", Item::text(ui, chg_s.clone(), chg_font.clone()).margin_start(gap_sm()));
-            // Unbounded width, so this is the quote's INTRINSIC extent. The old
-            // fit test was `cx > rect.right() - 40.0`, a fixed guess unrelated
-            // to the quote about to be drawn: anything wider than 40px started
-            // inside the strip and ran past its right edge, where `painter_at`
-            // clipped it mid-glyph.
-            let w = flex
-                .solve_in(Rect::from_min_size(
-                    egui::pos2(0.0, 0.0),
-                    Vec2::new(f32::INFINITY, h),
-                ))
-                .rect("chg")
-                .right();
-            Quote { flex, w, e, px_s, chg_s, chg_col }
+            // The quote's INTRINSIC extent, asked of the tree directly. The
+            // old fit test was `cx > rect.right() - 40.0`, a fixed guess
+            // unrelated to the quote about to be drawn: anything wider than
+            // 40px started inside the strip and ran past its right edge, where
+            // `painter_at` clipped it mid-glyph.
+            let w = quote_el(e, &px_s, &chg_s, chg_col).intrinsic_width(ui);
+            Quote { w, e, px_s, chg_s, chg_col }
         })
         .collect();
 
@@ -111,19 +115,15 @@ pub fn ticker_strip(ui: &mut Ui, t: &Theme, entries: &[TickerEntry]) -> TickerSt
             rect.max,
         ));
 
-    let cy = rect.center().y;
+    // `Theme` IS a `ComponentTheme` — `theme_impl.rs` is the chart app's bridge.
+    let theme = t;
     for (i, q) in measured.iter().take(fitting).enumerate() {
         let slot = strip.rect(&format!("q{i}"));
-        let solved = q.flex.solve_in(Rect::from_min_size(
-            slot.min,
-            Vec2::new(q.w, h),
-        ));
-        let put = |r: Rect, text: &str, font: FontId, col: Color32| {
-            painter.text(egui::pos2(r.left(), cy), Align2::LEFT_CENTER, text, font, col);
-        };
-        put(solved.rect("sym"), &q.e.symbol, sym_font.clone(), t.text);
-        put(solved.rect("px"), &q.px_s, px_font.clone(), color_subtle(t.dim));
-        put(solved.rect("chg"), &q.chg_s, chg_font.clone(), q.chg_col);
+        quote_el(q.e, &q.px_s, &q.chg_s, q.chg_col).show_in(
+            ui,
+            theme,
+            Rect::from_min_size(slot.min, Vec2::new(q.w, h)),
+        );
 
         // Click-to-load spans the whole quote — exactly the solved extent, no
         // half-gap fudge (`cx - gap_md() * 0.5`) needed.

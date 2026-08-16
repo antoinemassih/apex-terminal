@@ -304,6 +304,22 @@ impl El {
         it
     }
 
+    /// The tree's intrinsic main-axis width, measured against `ui`'s fonts.
+    ///
+    /// The public form of what `intrinsic()` already computed internally, and
+    /// the thing the module docstring promises — "does this row fit" has an
+    /// answer at declaration time rather than after an overrun.
+    ///
+    /// It was private, so a caller that needed a width before placing a tree
+    /// had to solve the tree into an infinite rect and read a trailing probe
+    /// slot back out. That works and is absurd; every surface that packs
+    /// variable-width items left to right needs this, and making them each
+    /// reinvent the probe is how a measure and a paint drift apart.
+    #[must_use]
+    pub fn intrinsic_width(&self, ui: &Ui) -> f32 {
+        self.intrinsic(Some(ui), context::resolved())
+    }
+
     // ── Render ─────────────────────────────────────────────────────────────
 
     /// Solve and paint into the space `ui` offers.

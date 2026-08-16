@@ -13,9 +13,15 @@ introduces no violations. It was deleted.
 additive by design. With no scope open nothing changes, which is what makes
 adoption safe and also what makes abandonment invisible. So:
 
-* **Floors** — `El::` nodes, `cascade::scope`/`resolved` call sites, and
-  `Flex::` rows may not fall. A migration is not finished by abandoning the
-  destination.
+* **Floors** — `El::` nodes, SELF-PAINTING `El::` nodes, `cascade::scope`
+  call sites, and declared containers (`Flex::` or `El::`) may not fall. A
+  migration is not finished by abandoning the destination.
+
+  `self_painting` is separate from `el_nodes` on purpose. `el_nodes` reached
+  99 while every one was a `slot` — a reserved rect the caller still painted
+  by hand — so the tree's entire component half had zero production callers
+  and passed every floor here. A floor any node satisfies guards against
+  abandonment, not against hollowness.
 * **Ceiling** — cursor walks (`x += …`) in chrome may not rise. That is the
   thing the element tree replaces, and it is how ~80 of them accumulated: each
   one was locally reasonable.
@@ -89,20 +95,34 @@ PATTERNS = {
     # A floor that any node satisfies guards against abandonment, not against
     # hollowness. This one counts only the nodes that draw.
     "self_painting": r"\bEl::(?:text|text_with_font|spacer|button)\(",
-    # …and the trees that paint at all. `solve_in`/`solve_rect` are migration
-    # paths that hand back rects; `show`/`show_in` are where the tree owns the
-    # pixels.
+    # There WAS a `painting_trees` metric here — trees that call `show`/
+    # `show_in` rather than `solve_in`. It is gone, and the reason is worth
+    # keeping.
     #
-    # Anchored to `El::` and bounded by `[^;]` — an element tree is a single
-    # expression statement, so it cannot span a semicolon. The obvious pattern
-    # (`\.show_in\(\s*ui\s*,`) reported 3 when 1 existed: it also matched
-    # `DomRow::show_in` in `dom_panel` and `El::show`'s own delegation inside
-    # `element.rs`. Third time this session an instrument has over-reported in
-    # the direction that flatters the work, so it gets checked before it gets
-    # believed.
-    "painting_trees": r"El::(?:row|column)\(\)[^;]*?\.show(?:_in)?\(",
+    # Its first form (`\.show_in\(\s*ui\s*,`) reported 3 when 1 existed: it
+    # matched `DomRow::show_in` and `El::show`'s own delegation. Anchoring it
+    # to `El::(?:row|column)\(\)[^;]*?\.show` fixed the over-count and
+    # immediately UNDER-counted, because `ticker_strip` builds its tree in a
+    # closure and shows the closure's return value — no regex follows that.
+    #
+    # A metric that needs a type-aware pass is not a metric a grep-based gate
+    # can hold, and the next iteration would only have been cleverer and wrong
+    # in a subtler way. `self_painting` already carries the signal: a node that
+    # draws can only exist inside a tree that draws.
     "cascade_sites": r"cascade::(?:scope|resolved)\(",
     "flex_rows":     r"Flex::(?:row|column)\(\)",
+    # DECLARED containers, whichever layer states them.
+    #
+    # `flex_rows` was a floor on its own, and it fired the first time a
+    # `Flex::row()` was replaced by an `El::row()` — reporting an UPGRADE as
+    # abandonment. `El` is built on `Flex`; moving a call site up the stack
+    # keeps the declaration and loses nothing, and a floor that punishes it
+    # would pin every surface to whichever layer it landed on first.
+    #
+    # So the floor is the SUM, and `flex_rows` stays as an informational count.
+    # What must never fall is the number of containers declared somewhere; it
+    # does not matter which of the two spellings holds them.
+    "declared_rows": r"(?:Flex|El)::(?:row|column)\(\)",
     # A BARE local accumulator. The `(?<![.\w])` guard matters: without it this
     # matched `chart.order_panel.pos.x += delta.x`, which is a panel DRAG and
     # not a layout walk — four of them in `order_entry_panel` alone. Counting
@@ -116,7 +136,7 @@ PATTERNS = {
 }
 
 # Which way each metric is allowed to move.
-FLOORS = ("el_nodes", "cascade_sites", "flex_rows", "self_painting", "painting_trees")
+FLOORS = ("el_nodes", "cascade_sites", "declared_rows", "self_painting")
 CEILINGS = ("cursor_walks",)
 
 TEST_MOD = re.compile(r"#\[cfg\(test\)\]")
@@ -213,9 +233,9 @@ def main():
     dropped = {k: base.get(k, 0) - now[k] for k in CEILINGS if now[k] < base.get(k, 0)}
     print(
         f"cascade-adoption gate: PASS "
-        f"(El {now['el_nodes']}, of which {now['self_painting']} self-painting "
-        f"across {now['painting_trees']} painting trees; "
-        f"cascade {now['cascade_sites']}, Flex {now['flex_rows']}, "
+        f"(El {now['el_nodes']}, of which {now['self_painting']} self-painting; "
+        f"cascade {now['cascade_sites']}, declared rows {now['declared_rows']} "
+        f"({now['flex_rows']} still Flex), "
         f"cursor walks {now['cursor_walks']})"
     )
     if gained or dropped:
