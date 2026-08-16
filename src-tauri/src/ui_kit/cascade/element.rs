@@ -56,7 +56,7 @@ enum Kind {
     /// Lays its children out along an axis.
     Container { row: bool, children: Vec<El>, gap: f32 },
     /// A string. Measured from the resolved tier, painted at its solved rect.
-    Text { text: String, tier: Option<TextStyle> },
+    Text { text: String, tier: Option<TextStyle>, font: Option<egui::FontId> },
     /// Takes the leftover space. CSS `flex: 1` with nothing in it.
     Spacer { grow: f32 },
     /// An interactive rect. Painted as a button; addressed by id afterwards.
@@ -102,10 +102,24 @@ impl El {
         Self::new(Kind::Container { row: false, children: Vec::new(), gap: 0.0 })
     }
     pub fn text(s: impl Into<String>) -> Self {
-        Self::new(Kind::Text { text: s.into(), tier: None })
+        Self::new(Kind::Text { text: s.into(), tier: None, font: None })
     }
     pub fn spacer() -> Self {
         Self::new(Kind::Spacer { grow: 1.0 })
+    }
+    /// A text node with an EXPLICIT font, bypassing the tier ladder.
+    ///
+    /// The tiers are the right default and every new surface should use
+    /// `text` + `tier`. This exists because the widgets being migrated do not:
+    /// they paint with `prop_at(font_xs())`, `mono_at(size)` or an icon
+    /// `FontId`, and pixel-locked chrome cannot be re-tiered as a side effect
+    /// of moving its layout. Without this the component half of the tree was
+    /// unadoptable by anything that already exists — which is exactly why it
+    /// had zero production callers.
+    ///
+    /// CSS has the same escape: `font-family` is a value, not only a class.
+    pub fn text_with_font(s: impl Into<String>, font: egui::FontId) -> Self {
+        Self::new(Kind::Text { text: s.into(), tier: None, font: Some(font) })
     }
     pub fn button(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self::new(Kind::Button { id: id.into(), label: label.into() })
@@ -157,6 +171,23 @@ impl El {
             *tier = Some(t);
         }
         self.style = self.style.text_style(t);
+        self
+    }
+
+    /// Text colour for this node and its subtree — sugar for
+    /// `.style(Inherited::default().color(c))`, and it CASCADES, exactly like
+    /// CSS `color`. Declaring it on a row is how a whole cluster stops
+    /// repeating the same `t.dim` on every child.
+    #[must_use]
+    pub fn color(mut self, c: egui::Color32) -> Self {
+        self.style = self.style.color(c);
+        self
+    }
+
+    /// Text alignment within the solved slot — inherits like CSS `text-align`.
+    #[must_use]
+    pub fn align(mut self, a: Align) -> Self {
+        self.style = self.style.align(a);
         self
     }
 
@@ -215,14 +246,15 @@ impl El {
                 let padding = if *row { self.pad.0 + self.pad.1 } else { self.pad.2 + self.pad.3 };
                 sum + gaps + padding
             }
-            Kind::Text { text, tier } => {
+            Kind::Text { text, tier, font: explicit } => {
                 // Without a `Ui` there is no font stack to measure against.
                 // `solve_rect` documents that a text node must then carry an
                 // explicit width; returning 0 here makes that failure visible
                 // as a collapsed slot rather than a wrong one.
                 let Some(ui) = ui else { return 0.0 };
-                let t = tier.or(here.text_style).unwrap_or(TextStyle::Body);
-                let font = t.font_id_in(ui);
+                let font = explicit.clone().unwrap_or_else(|| {
+                    tier.or(here.text_style).unwrap_or(TextStyle::Body).font_id_in(ui)
+                });
                 let base = ui.fonts(|f| {
                     f.layout_no_wrap(text.clone(), font, egui::Color32::PLACEHOLDER)
                         .size()
@@ -318,10 +350,19 @@ impl El {
     }
 
     /// Solve and paint into an explicit rect.
+    ///
+    /// Painting is CLIPPED to `rect`. A tree handed a 200 px strip must not
+    /// draw at 260 px because a child measured wider than the space it was
+    /// given — the widgets this replaces all paint through `ui.painter_at(..)`
+    /// for exactly that reason, and an element tree that quietly overflowed
+    /// would be a regression dressed as a migration.
     pub fn show_in(self, ui: &mut Ui, theme: &dyn ComponentTheme, rect: Rect) -> Rendered {
         let mut out = Rendered::default();
         let inherited = context::resolved();
+        let restore = ui.clip_rect();
+        ui.set_clip_rect(restore.intersect(rect));
         paint(self, ui, theme, rect, inherited, &mut out);
+        ui.set_clip_rect(restore);
         out
     }
 
@@ -391,10 +432,11 @@ fn paint(
                 paint(c, ui, theme, r.translate(off), here, out);
             }
         }
-        Kind::Text { text, tier } => {
-            let t = tier.or(here.text_style).unwrap_or(TextStyle::Body);
+        Kind::Text { text, tier, font: explicit } => {
             let col = here.color_or(crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Text));
-            let font = t.font_id_in(ui);
+            let font = explicit.unwrap_or_else(|| {
+                tier.or(here.text_style).unwrap_or(TextStyle::Body).font_id_in(ui)
+            });
 
             // `text_align` and `letter_spacing` are honoured HERE, and until
             // recently they were not honoured anywhere.

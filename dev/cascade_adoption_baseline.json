@@ -2,5 +2,7 @@
   "cascade_sites": 6,
   "cursor_walks": 0,
   "el_nodes": 99,
-  "flex_rows": 30
+  "flex_rows": 30,
+  "painting_trees": 1,
+  "self_painting": 2
 }

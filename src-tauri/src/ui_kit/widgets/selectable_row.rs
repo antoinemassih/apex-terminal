@@ -26,7 +26,7 @@
 //! Returns a normal `Response` so callers use `.clicked()` exactly like
 //! `ui.selectable_label(...)`.
 
-use egui::{CornerRadius, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
+use egui::{Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::cascade::El;
@@ -113,6 +113,11 @@ impl<'a> SelectableRow<'a> {
 
         // Measure label.
         let label_font = crate::ui_kit::style::mono_at(font_size);
+        // Measured HERE and not by the tree, deliberately: the row must know
+        // its own width before it can allocate a rect, and the tree can only
+        // measure inside one. egui caches galleys, so the node laying the same
+        // string out again at paint time costs a hash lookup, not a shaping
+        // pass.
         let label_galley = ui.fonts(|f| {
             f.layout_no_wrap(label.to_string(), label_font.clone(), text_color)
         });
@@ -181,41 +186,35 @@ impl<'a> SelectableRow<'a> {
             st::cursor::focus_ring(ui, &response, pal.base(Tone::Accent));
         }
 
-        // Layout: leading icon, then label — DECLARED, not walked.
+        // Content: leading icon, then label — a DECLARED tree that PAINTS.
         //
-        // `solve_rect` because this is a painter-only surface: there is no
-        // child `Ui` to allocate into, only a rect and a painter. The tree is
-        // the whole statement of the row's geometry — the icon holds its
-        // width, the gap applies only between siblings (so a row with no icon
-        // gets no gap, which the `x += icon_w + icon_gap` form got right only
-        // because the increment lived inside the `if`), and the label takes
-        // the rest.
-        let cy = rect.center().y;
-        let solved = El::row()
+        // Not `solve_rect` + hand-painting: the two text nodes measure and draw
+        // themselves, so the widget no longer states each string's geometry
+        // twice (once to size it, once to place it). The gap applies only
+        // between siblings, so a row with no icon pays no seam — which the
+        // `x += icon_w + icon_gap` form got right only because the increment
+        // happened to live inside the `if`.
+        //
+        // `text_with_font` rather than a tier: this row's fonts are
+        // `prop_at(font_size)`, size-dependent and pixel-locked to the menus it
+        // appears in. Moving its layout into the tree must not silently re-tier
+        // its type.
+        //
+        // Colour is declared ONCE on the row and inherits — the icon and the
+        // label were passing the same resolved colour separately, which is the
+        // repetition the cascade exists to remove. The icon still overrides,
+        // because a disabled or accent icon is a real distinction.
+        El::row()
             .pad_x(pad_x)
             .gap(icon_gap)
+            .color(text_color)
             .child_if(
                 leading_icon.is_some(),
-                El::slot("icon", egui::vec2(icon_w, 0.0)),
+                El::text_with_font(leading_icon.unwrap_or(""), icon_font.clone())
+                    .color(icon_color),
             )
-            .child(El::slot("label", egui::Vec2::ZERO).grow(1.0))
-            .solve_rect(rect);
-
-        if let Some(ic) = leading_icon {
-            painter.text(
-                Pos2::new(solved.rect("icon").left(), cy),
-                egui::Align2::LEFT_CENTER,
-                ic,
-                icon_font,
-                icon_color,
-            );
-        }
-
-        painter.galley(
-            Pos2::new(solved.rect("label").left(), cy - label_h * 0.5),
-            label_galley,
-            text_color,
-        );
+            .child(El::text_with_font(label, label_font.clone()).grow(1.0))
+            .show_in(ui, theme, rect);
 
         crate::ui_kit::inspect::mark(bug_loc, "row", response.rect);
         response
@@ -229,3 +228,85 @@ impl<'a> Widget for SelectableRow<'a> {
     }
 }
 
+
+#[cfg(test)]
+mod painted_geometry_tests {
+    //! `SelectableRow` is the first widget whose CONTENT is painted by the
+    //! element tree rather than by hand. These assert the painted result, not
+    //! the solve, because the whole risk of that change is that the tree draws
+    //! somewhere the hand-written code did not.
+    use super::*;
+    use crate::ui_kit::text_style::TextStyle;
+
+    /// x positions of every text shape painted by one row, left to right.
+    fn painted_text_xs(icon: Option<&'static str>) -> Vec<f32> {
+        use std::cell::{Cell, RefCell};
+        let out = RefCell::new(Vec::new());
+        let icon = Cell::new(icon);
+        let ctx = egui::Context::default();
+        // One throwaway frame so the font atlas exists — without it every
+        // string measures 0 and this test proves nothing. See
+        // `cascade::element::tests::run`.
+        let _ = ctx.run(Default::default(), |_| {});
+        let _ = ctx.run(Default::default(), |c| {
+            egui::CentralPanel::default().show(c, |ui| {
+                TextStyle::install(ui.style_mut());
+                let theme = super::super::theme::PortableTheme::dark();
+                let mut row = SelectableRow::new("Triangulator", false);
+                if let Some(ic) = icon.get() {
+                    row = row.leading_icon(ic);
+                }
+                row.show(ui, &theme);
+                let layer = ui.layer_id();
+                let mut xs: Vec<f32> = ui.ctx().graphics(|g| {
+                    g.get(layer)
+                        .map(|l| {
+                            l.all_entries()
+                                .filter_map(|cs| match &cs.shape {
+                                    egui::Shape::Text(t) => Some(t.pos.x),
+                                    _ => None,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                });
+                xs.sort_by(f32::total_cmp);
+                *out.borrow_mut() = xs;
+            });
+        });
+        out.into_inner()
+    }
+
+    /// With no icon the label starts at the row's left padding — the tree must
+    /// not insert the icon gap for a child that is not there.
+    #[test]
+    fn a_row_without_an_icon_pays_no_icon_gap() {
+        let xs = painted_text_xs(None);
+        assert_eq!(xs.len(), 1, "one text node expected, got {xs:?}");
+    }
+
+    /// With an icon there are two text nodes and the label sits to its RIGHT.
+    #[test]
+    fn an_icon_pushes_the_label_right() {
+        let with = painted_text_xs(Some("*"));
+        let without = painted_text_xs(None);
+        assert_eq!(with.len(), 2, "icon + label expected, got {with:?}");
+        assert!(
+            with[0] < with[1],
+            "icon must be left of the label: {with:?}"
+        );
+        assert!(
+            with[1] > without[0],
+            "the icon must displace the label: with={:?}, without={:?}",
+            with,
+            without
+        );
+        // The icon itself starts where the label would have — same left pad.
+        assert!(
+            (with[0] - without[0]).abs() < 0.01,
+            "the leading child must start at the same left pad either way: {:?} vs {:?}",
+            with[0],
+            without[0]
+        );
+    }
+}

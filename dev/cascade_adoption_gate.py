@@ -76,7 +76,31 @@ CHART = (
 UI_ROOTS = ("/ui_kit/", "/chart/renderer/ui/", "/chart/renderer/chrome/")
 
 PATTERNS = {
-    "el_nodes":      r"\bEl::(?:row|column|text|spacer|button|slot)\(",
+    "el_nodes":      r"\bEl::(?:row|column|text|text_with_font|spacer|button|slot)\(",
+    # Nodes that PAINT THEMSELVES, counted separately from `el_nodes`.
+    #
+    # `el_nodes` reached 99 while every one of them was a `slot` — a reserved
+    # rect the caller still paints by hand. That is a real use of the tree (it
+    # replaced ~80 cursor walks) and it is NOT the component system this was
+    # built to be: the entire painting half — `El::text`, `El::button`,
+    # `El::spacer`, `show`/`show_in`, `paint()` — had zero production callers
+    # and would have passed every floor in this file forever.
+    #
+    # A floor that any node satisfies guards against abandonment, not against
+    # hollowness. This one counts only the nodes that draw.
+    "self_painting": r"\bEl::(?:text|text_with_font|spacer|button)\(",
+    # …and the trees that paint at all. `solve_in`/`solve_rect` are migration
+    # paths that hand back rects; `show`/`show_in` are where the tree owns the
+    # pixels.
+    #
+    # Anchored to `El::` and bounded by `[^;]` — an element tree is a single
+    # expression statement, so it cannot span a semicolon. The obvious pattern
+    # (`\.show_in\(\s*ui\s*,`) reported 3 when 1 existed: it also matched
+    # `DomRow::show_in` in `dom_panel` and `El::show`'s own delegation inside
+    # `element.rs`. Third time this session an instrument has over-reported in
+    # the direction that flatters the work, so it gets checked before it gets
+    # believed.
+    "painting_trees": r"El::(?:row|column)\(\)[^;]*?\.show(?:_in)?\(",
     "cascade_sites": r"cascade::(?:scope|resolved)\(",
     "flex_rows":     r"Flex::(?:row|column)\(\)",
     # A BARE local accumulator. The `(?<![.\w])` guard matters: without it this
@@ -92,7 +116,7 @@ PATTERNS = {
 }
 
 # Which way each metric is allowed to move.
-FLOORS = ("el_nodes", "cascade_sites", "flex_rows")
+FLOORS = ("el_nodes", "cascade_sites", "flex_rows", "self_painting", "painting_trees")
 CEILINGS = ("cursor_walks",)
 
 TEST_MOD = re.compile(r"#\[cfg\(test\)\]")
@@ -181,12 +205,18 @@ def main():
         )
         return 1
 
-    gained = {k: now[k] - base[k] for k in FLOORS if now[k] > base[k]}
-    dropped = {k: base[k] - now[k] for k in CEILINGS if now[k] < base[k]}
+    # `.get(k, 0)` throughout: a metric added to PATTERNS has no baseline entry
+    # on its first run, and a gate that CRASHES on its own extension is a gate
+    # people stop extending. Absent means zero, which for a floor is the
+    # correct starting point — it can only be raised from here.
+    gained = {k: now[k] - base.get(k, 0) for k in FLOORS if now[k] > base.get(k, 0)}
+    dropped = {k: base.get(k, 0) - now[k] for k in CEILINGS if now[k] < base.get(k, 0)}
     print(
         f"cascade-adoption gate: PASS "
-        f"(El {now['el_nodes']}, cascade {now['cascade_sites']}, "
-        f"Flex {now['flex_rows']}, cursor walks {now['cursor_walks']})"
+        f"(El {now['el_nodes']}, of which {now['self_painting']} self-painting "
+        f"across {now['painting_trees']} painting trees; "
+        f"cascade {now['cascade_sites']}, Flex {now['flex_rows']}, "
+        f"cursor walks {now['cursor_walks']})"
     )
     if gained or dropped:
         print(f"Improved — re-baseline to lock in: gained {gained}, walks removed {dropped}")
