@@ -55,6 +55,10 @@ CHART = (
     "tps_overlay.rs",
 )
 
+# The migration scope: UI and chrome. The chart engine is out by rule, and
+# everything outside these roots is not layout to begin with.
+UI_ROOTS = ("/ui_kit/", "/chart/renderer/ui/", "/chart/renderer/chrome/")
+
 PATTERNS = {
     "el_nodes":      r"\bEl::(?:row|column|text|spacer|button|slot)\(",
     "cascade_sites": r"cascade::(?:scope|resolved)\(",
@@ -83,7 +87,16 @@ def census():
             if not f.endswith(".rs"):
                 continue
             path = os.path.join(root, f)
-            if any(c in path.replace("\\", "/") for c in CHART):
+            rel = path.replace("\\", "/")
+            # UI AND CHROME ONLY — the stated scope. Restricting to these roots
+            # rather than merely excluding the chart engine, because a bare
+            # `x +=` outside the UI is usually not layout at all: the census was
+            # counting `y += 1` stepping YEARS in a date calculation
+            # (`data/feeds/brief_feed.rs`). A ceiling that reports date
+            # arithmetic as pending layout work is not one anybody will act on.
+            if not any(u in rel for u in UI_ROOTS):
+                continue
+            if any(c in rel for c in CHART):
                 continue
             with io.open(path, encoding="utf-8", errors="ignore") as fh:
                 text = fh.read()
