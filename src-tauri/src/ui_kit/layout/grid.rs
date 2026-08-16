@@ -139,7 +139,29 @@ impl Grid {
     /// Solve the layout headlessly and return one `Rect` per item, in the order
     /// the items were added. Pure — no egui, no side effects — so grid geometry
     /// is unit-testable exactly like `Flex::solve`.
+    /// Taffy's API is fallible, and every one of its error variants describes a
+    /// mistake in the CALLER's tree — an unknown node id, a child index out of
+    /// range. None can occur for a tree this function builds and drops inside
+    /// its own body. That is an argument for `.expect()` being unreachable; it
+    /// is not an argument for `.expect()`.
+    ///
+    /// This is a trading terminal. A panic here does not surface a layout bug,
+    /// it takes down the window mid-session — to redraw a mosaic. So every
+    /// Taffy call short-circuits with `.ok()?`.
+    ///
+    /// The fallback is NOT an empty `Vec`. Callers pair this result with their
+    /// items positionally — `for (rect, item) in solve(..).iter().zip(..)`, and
+    /// several index it directly — so returning a short vec would move the
+    /// panic from here to them, which is worse: it would surface as an
+    /// out-of-bounds miles from the cause. One COLLAPSED rect per item keeps
+    /// the length an invariant, and a zero-size rect fails `is_rect_visible`,
+    /// so the frame paints nothing instead of painting garbage.
     pub fn solve(&self, available: Vec2) -> Vec<Rect> {
+        self.try_solve(available)
+            .unwrap_or_else(|| vec![Rect::ZERO; self.items.len()])
+    }
+
+    fn try_solve(&self, available: Vec2) -> Option<Vec<Rect>> {
         debug_assert!(
             self.items.len() <= MAX_REASONABLE_CELLS,
             "Grid with {} cells — grids are for chrome/dashboards, not hot row \
@@ -147,7 +169,7 @@ impl Grid {
             self.items.len()
         );
         if self.items.is_empty() || self.cols.is_empty() {
-            return Vec::new();
+            return Some(Vec::new());
         }
 
         let mut tree: TaffyTree<()> = TaffyTree::new();
@@ -169,9 +191,9 @@ impl Grid {
                     Some(l) => Line { start: line(l as i16), end: span(it.row_span) },
                     None       => Line { start: taffy::style::GridPlacement::Auto, end: span(it.row_span) },
                 };
-                tree.new_leaf(st).expect("taffy leaf")
+                tree.new_leaf(st).ok()
             })
-            .collect();
+            .collect::<Option<Vec<_>>>()?;
 
         let mut root_style = Style {
             display: Display::Grid,
@@ -190,7 +212,7 @@ impl Grid {
             root_style.grid_auto_rows = vec![length(h)];
         }
 
-        let root = tree.new_with_children(root_style, &children).expect("taffy root");
+        let root = tree.new_with_children(root_style, &children).ok()?;
         tree.compute_layout(
             root,
             Size {
@@ -198,16 +220,16 @@ impl Grid {
                 height: AvailableSpace::Definite(available.y),
             },
         )
-        .expect("taffy grid solve");
+        .ok()?;
 
         children
             .iter()
             .map(|&c| {
-                let l = tree.layout(c).expect("taffy layout");
-                Rect::from_min_size(
+                let l = tree.layout(c).ok()?;
+                Some(Rect::from_min_size(
                     egui::pos2(l.location.x, l.location.y),
                     egui::vec2(l.size.width, l.size.height),
-                )
+                ))
             })
             .collect()
     }
@@ -449,5 +471,40 @@ mod tests {
     fn empty_grid_solves_to_nothing() {
         assert!(Grid::new().cols(Track::fr_repeat(12, 1.0)).solve(egui::vec2(100.0, 100.0)).is_empty());
         assert!(Grid::new().item(GridItem::new()).solve(egui::vec2(100.0, 100.0)).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod solve_arity_tests {
+    //! Same contract as `flex.rs::solve_arity_tests` — see there for why the
+    //! fallback preserves LENGTH rather than returning an empty vec.
+    use super::*;
+
+    #[test]
+    fn solve_returns_one_rect_per_item_under_hostile_space() {
+        for avail in [
+            egui::vec2(0.0, 0.0),
+            egui::vec2(-50.0, -50.0),
+            egui::vec2(f32::INFINITY, f32::INFINITY),
+            egui::vec2(1e9, 1e9),
+        ] {
+            let g = Grid::new()
+                .cols(Track::fr_repeat(3, 1.0))
+                .item(GridItem::new())
+                .item(GridItem::new().col_span(2))
+                .item(GridItem::new());
+            assert_eq!(g.solve(avail).len(), 3, "grid solve must return one rect per item");
+        }
+    }
+
+    #[test]
+    fn more_items_than_template_cells_still_returns_every_rect() {
+        // 7 items into a 3-column template — Taffy must implicitly place the
+        // overflow, and every one of them still needs a rect.
+        let mut g = Grid::new().cols(Track::fr_repeat(3, 1.0));
+        for _ in 0..7 {
+            g = g.item(GridItem::new());
+        }
+        assert_eq!(g.solve(egui::vec2(300.0, 200.0)).len(), 7);
     }
 }

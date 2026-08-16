@@ -115,7 +115,6 @@ fn nothing() -> ColorSpec {
 
 /// Chainable setters for [`RecipeDelta`]. The struct is a plain bag of
 /// `Option`s; this turns authoring into `d().radius(Pill).fill(...)`.
-#[allow(dead_code)] // authoring vocabulary — not every setter is used by every style
 trait DeltaExt: Sized {
     fn radius(self, r: RadiusTier) -> Self;
     fn px(self, p: PadTier) -> Self;
@@ -186,10 +185,17 @@ fn spec(base: RecipeDelta) -> RecipeSpec {
 }
 
 /// Chainable per-state setters for [`RecipeSpec`].
-#[allow(dead_code)] // authoring vocabulary — `on_press` has no CSS counterpart yet
+///
+/// `on_press` — which set `RecipeSpec::active` — used to live here behind an
+/// `#[allow(dead_code)]` captioned "no CSS counterpart yet". Nothing called
+/// it, in any of the nine built-in styles, and "yet" had been true for the
+/// whole life of the trait. That is the `sx::recipes` failure in miniature:
+/// authoring vocabulary written for a caller that never arrived, kept alive
+/// by an allow that made its deadness invisible. The `active` FIELD is
+/// untouched and still resolved by `apply_over`; only the unused setter is
+/// gone. Re-add it in the commit that first authors a pressed state.
 trait SpecExt: Sized {
     fn on_hover(self, d: RecipeDelta) -> Self;
-    fn on_press(self, d: RecipeDelta) -> Self;
     /// The `.is-active` / `.is-selected` CSS state (toggled nav button, active
     /// tab, selected row). `apply_over` folds this into `StyleState::Active`.
     fn on_select(self, d: RecipeDelta) -> Self;
@@ -197,7 +203,6 @@ trait SpecExt: Sized {
 
 impl SpecExt for RecipeSpec {
     fn on_hover(mut self, d: RecipeDelta) -> Self { self.hover = Some(d); self }
-    fn on_press(mut self, d: RecipeDelta) -> Self { self.active = Some(d); self }
     fn on_select(mut self, d: RecipeDelta) -> Self { self.selected = Some(d); self }
 }
 

@@ -2107,7 +2107,13 @@ fn render_chart_pane(
     // Defined here so every GPU-routing site below has them in scope.
     #[cfg(feature = "gpu_chart_v2")]
     let vs_floor: f32 = vs.floor();
-    #[cfg(feature = "gpu_chart_v2")]
+    // NOT cfg-gated: `render_order_lines` below takes `drawing_ppp` and
+    // `_drawing_c32` UNCONDITIONALLY, so gating their definitions meant
+    // `--no-default-features` (the legacy egui render path) did not compile.
+    // That build is in CI's matrix and had been failing.
+    //
+    // Deliberately the smallest possible fix — a float read and an unused
+    // closure — rather than any restructuring of the render path.
     let drawing_ppp: f32 = ctx.pixels_per_point();
 
     // chart_rect: the GPU render loop scissors to this. Theme bg/bull/bear
@@ -2121,12 +2127,12 @@ fn render_chart_pane(
     }
     // sRGB → linear: surface format is Bgra8UnormSrgb, so the GPU gamma-encodes
     // shader output. Hand it linear values; egui Color32 is sRGB bytes.
-    #[cfg(feature = "gpu_chart_v2")]
     fn _gpu_srgb_to_linear(c: u8) -> f32 {
         let s = c as f32 / 255.0;
         if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
     }
-    #[cfg(feature = "gpu_chart_v2")]
+    // See the note on `drawing_ppp` above — passed unconditionally, so defined
+    // unconditionally. The closure costs nothing unless it is called.
     let _drawing_c32 = |c: egui::Color32| -> [f32; 4] {
         [_gpu_srgb_to_linear(c.r()), _gpu_srgb_to_linear(c.g()),
          _gpu_srgb_to_linear(c.b()), c.a() as f32 / 255.0]

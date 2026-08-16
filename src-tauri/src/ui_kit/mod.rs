@@ -20,7 +20,14 @@ pub mod layout;
 /// The declarative cascading layer: parent-to-child inheritance plus an
 /// element tree that compiles down to egui. An ORGANIZING system, not a
 /// renderer — no VDOM, no diffing.
-#[allow(dead_code)]
+///
+/// The blanket `#[allow(dead_code)]` this carried while the module had no
+/// consumers is GONE, deliberately. It was load-bearing for about a day and
+/// then became a place for unused API to hide: the whole risk with an
+/// additive layer is that it is written, admired, and never called, and an
+/// allow at the module root is exactly what makes that invisible. Now that
+/// widgets, the pane chrome and the tab strip go through it, the compiler
+/// telling us a constructor is unreachable is information we want.
 pub mod cascade;
 /// Typed design scales (Space/Radius/Weight/Level) — the constraint layer.
 pub mod scale;

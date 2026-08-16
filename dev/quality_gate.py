@@ -97,6 +97,18 @@ TEST_CFG_RE = re.compile(r"#\[cfg\([^\n]*\btest\b")
 UNWRAP_RE = re.compile(r"\.unwrap\(\)")
 EXPECT_RE = re.compile(r"\.expect\(")
 DEAD_RE = re.compile(r"#\[allow\([^)]*dead_code")
+# A COMMENT LINE. `dead_code_allows` is a count of attributes, and an attribute
+# written inside prose is not one — but the regex above cannot tell the
+# difference, so three doc comments that merely NAME `#[allow(dead_code)]`
+# while explaining it were being counted as three suppressions.
+#
+# This is AT-154 again, the third time in this repo: the ratchet counted test
+# fixtures, the cascade ceiling counted comments describing migrations it had
+# already done, and now this. The failure mode is always the same and always
+# in the same direction — the gate reports work that does not exist, so the
+# only way to make it pass is to stop writing the explanation. A gate that
+# penalises documenting itself is worse than no gate.
+COMMENT_LINE_RE = re.compile(r"^\s*(?://|\*|/\*)")
 # F2: raw stderr in the data/ layer must route through errors_sink/tracing so a
 # misconfig surfaces as a persistent in-app indicator, not a one-time console
 # line. Require an open paren so prose mentions in doc-comments don't count.
@@ -158,7 +170,9 @@ def collect():
         if n_unwrap:
             counts["unwrap_by_dir"][area] = counts["unwrap_by_dir"].get(area, 0) + n_unwrap
         counts["expect_total"] += len(EXPECT_RE.findall(prod))
-        counts["dead_code_allows"] += len(DEAD_RE.findall(text))
+        counts["dead_code_allows"] += sum(
+            len(DEAD_RE.findall(ln)) for ln in lines if not COMMENT_LINE_RE.match(ln)
+        )
         if r.startswith("chart/renderer/ui/") or r == "chart/renderer/gpu.rs":
             counts["ui_direct_mutation"] += len(MUT_RE.findall(text))
         if r.startswith("data/"):

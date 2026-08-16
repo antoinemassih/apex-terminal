@@ -1134,3 +1134,81 @@ now renders in full. Verified by screenshot.
 
 ---
 
+
+## AT-165 — the second red-CI workflow, and three ratchets that were lying
+
+AT-164 recorded that CI had been red for a whole session while local runs said
+"all gates pass". The fix was `dev/run_all_gates.sh`. It was not sufficient, and
+the way it failed is worth more than the fix itself.
+
+`run_all_gates.sh` derived its list from `design-system-check.yml` and
+cross-checked itself against that same file. It was complete, self-verifying,
+and blind: `Quality Gates` is a **different workflow file**, and it was still
+red. A checklist cannot report a gap in the source it was derived from. The
+script now enumerates both workflows and runs the build matrix behind `--full`.
+
+Three separate defects came out of the two failing jobs.
+
+**1. `--no-default-features` had not compiled since 2026-07-05** (six weeks,
+commit `2692ce9b`). `drawing_ppp` and `_drawing_c32` are defined under
+`#[cfg(feature = "gpu_chart_v2")]` but passed to `render_order_lines`
+unconditionally, so the legacy egui render path referenced values that did not
+exist in that configuration. Fixed by ungating the two definitions — a float
+read and an uncalled closure. This is chart-engine code and the chart engine is
+sacred, so the change is a cfg correction and nothing else: no restructuring, no
+migration, no design system anywhere near it.
+
+**2. `expect_total` 63 vs baseline 61 — real, and mine.** `Grid::solve` and
+`Flex::solve` called `.expect()` on four Taffy calls each. Every Taffy error
+variant describes a caller mistake that cannot occur for a tree built and
+dropped inside one function, which is a good argument for the panic being
+unreachable and **no argument at all** for writing a panic into a trading
+terminal's layout path. Both now short-circuit with `.ok()?`.
+
+The fallback shape mattered more than the conversion. Returning an empty `Vec`
+would have compiled and would have been wrong: `Flex`'s two-pass measure path
+indexes `first[i]` for every hooked child, and several call sites zip the result
+against their items. A short vec converts a clear panic here into an
+out-of-bounds one function away — strictly worse. The fallback is one
+**collapsed** rect per item, so the length is an invariant regardless of
+success, and a zero-size rect fails `is_rect_visible` so a failed solve paints
+nothing for one frame. `solve_arity_tests` in both files locks the arity under
+zero, negative, infinite and over-subscribed space.
+
+**3. `dead_code_allows` 52 vs baseline 49 — and the gate was counting prose.**
+Three of the 52 matches were doc comments that merely *named*
+`#[allow(dead_code)]` while explaining one. This is AT-154 for the third time in
+this repo — the ratchet counted test fixtures, the cascade ceiling counted
+comments describing migrations it had already completed, and now this. The
+direction is always the same: the gate reports work that does not exist, so the
+only way to make it pass is to stop writing the explanation. A gate that
+penalises documenting itself is worse than no gate.
+
+Fixing the regex was not the end of it, and this is the part that would have
+been easy to skip. With comments excluded the count dropped to 49 — exactly the
+baseline — and the gate went green. That would have been a false pass: the
+baseline `49` had itself been measured with the buggy regex and included two
+prose lines, so the honest comparison is 47-then against 49-now. There was a
+genuine `+2` underneath, and the regex fix was about to bury it.
+
+Both were mine, both in `builtin_recipes.rs`, both captioned "authoring
+vocabulary". Removing them showed **one** actually suppressed anything:
+`SpecExt::on_press`, unused by all nine built-in styles, kept alive by an allow
+captioned "no CSS counterpart yet" where "yet" had been true for the trait's
+entire life. That is `sx::recipes` in miniature — vocabulary written for a
+caller that never arrived, with an allow making its deadness invisible. Deleted
+the setter; the `active` field it wrote is untouched and still resolved by
+`apply_over`. The other allow suppressed nothing and is simply gone.
+
+Result: 47, below the corrected baseline, on the merits rather than on a
+re-measurement. `#[allow(dead_code)]` on `pub mod cascade` also came off — the
+module now has real consumers and `cargo check` reports nothing unused in it,
+which is the first independent evidence that the cascade layer is not the thing
+it was built to avoid becoming.
+
+**The pattern across AT-164 and AT-165.** Every instrument in this session has
+erred in the direction that flatters the work — the cursor-walk census four
+times, the containment model, now the dead-code ratchet. A number that agrees
+with you is the one to re-derive.
+
+---

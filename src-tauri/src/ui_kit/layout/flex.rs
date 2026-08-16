@@ -429,6 +429,12 @@ impl Flex {
         self.items.iter().any(|i| i.measure.is_some())
     }
 
+    /// Fallible internally, infallible at the boundary — see `Grid::solve` for
+    /// the full argument. In short: every Taffy error variant describes a
+    /// caller mistake that cannot occur for a tree built and dropped inside
+    /// this body, but "unreachable" is not a reason to `.expect()` in a
+    /// trading terminal, and the fallback returns one COLLAPSED rect per item
+    /// so the length stays an invariant for the callers that index it.
     pub fn solve(&self, available: Vec2) -> Vec<Rect> {
         if !self.needs_measure_pass() {
             return self.solve_once(available);
@@ -449,7 +455,20 @@ impl Flex {
         measured.solve_once(available)
     }
 
+    /// The infallible boundary. `try_solve_once` short-circuits on any Taffy
+    /// error; this turns that into one COLLAPSED rect per item.
+    ///
+    /// The length must be preserved, not the content: pass 1 above indexes
+    /// `first[i]` for every hooked child, so a short vec here would turn a
+    /// Taffy error into an out-of-bounds panic one function away from its
+    /// cause — trading a clear crash for a confusing one. A zero-size rect
+    /// fails `is_rect_visible`, so a failed solve paints nothing for a frame.
     fn solve_once(&self, available: Vec2) -> Vec<Rect> {
+        self.try_solve_once(available)
+            .unwrap_or_else(|| vec![Rect::ZERO; self.items.len()])
+    }
+
+    fn try_solve_once(&self, available: Vec2) -> Option<Vec<Rect>> {
         debug_assert!(
             self.items.len() <= MAX_REASONABLE_ITEMS,
             "Flex with {} children — flexbox is for panel chrome/forms, not hot \
@@ -457,7 +476,7 @@ impl Flex {
             self.items.len()
         );
         if self.items.is_empty() {
-            return Vec::new();
+            return Some(Vec::new());
         }
 
         let mut tree: TaffyTree<()> = TaffyTree::new();
@@ -532,9 +551,9 @@ impl Flex {
                     if self.row { st.margin.left = length(m); }
                     else { st.margin.top = length(m); }
                 }
-                tree.new_leaf(st).expect("taffy leaf")
+                tree.new_leaf(st).ok()
             })
-            .collect();
+            .collect::<Option<Vec<_>>>()?;
 
         let root_style = Style {
             display: Display::Flex,
@@ -563,7 +582,7 @@ impl Flex {
             ..Default::default()
         };
 
-        let root = tree.new_with_children(root_style, &children).expect("taffy root");
+        let root = tree.new_with_children(root_style, &children).ok()?;
         tree.compute_layout(
             root,
             taffy::geometry::Size {
@@ -575,16 +594,16 @@ impl Flex {
                 },
             },
         )
-        .expect("taffy layout");
+        .ok()?;
 
         children
             .iter()
             .map(|c| {
-                let l = tree.layout(*c).expect("taffy child layout");
-                Rect::from_min_size(
+                let l = tree.layout(*c).ok()?;
+                Some(Rect::from_min_size(
                     egui::pos2(l.location.x, l.location.y),
                     egui::vec2(l.size.width, l.size.height),
-                )
+                ))
             })
             .collect()
     }
@@ -1716,5 +1735,60 @@ mod solve_cost_tests {
         println!("flex solve: {:.1} us per 3-item row", per * 1e6);
         println!("  40 rows/frame => {:.3} ms", per * 40.0 * 1e3);
         println!("  at 60fps that is {:.2}% of a 16.7ms budget", per * 40.0 / 0.0167 * 100.0);
+    }
+}
+
+#[cfg(test)]
+mod solve_arity_tests {
+    //! `Flex::solve` and `Grid::solve` return one rect per item — ALWAYS.
+    //!
+    //! This is the invariant the `Rect::ZERO` fallback exists to protect. The
+    //! Taffy error path is not reachable from safe input (every variant
+    //! describes a caller mistake we cannot make on a tree we build and drop
+    //! in one function), so it cannot be provoked from a test. What CAN be
+    //! tested is the contract that made the fallback shape non-obvious: the
+    //! two-pass measure path indexes `first[i]`, and several call sites zip
+    //! the result against their items. Returning a SHORT vec on failure would
+    //! satisfy the compiler and convert a clear panic here into an
+    //! out-of-bounds somewhere else, so the length must never depend on
+    //! whether the solve succeeded.
+    use super::*;
+
+    fn arity(f: Flex, n: usize, avail: egui::Vec2) {
+        assert_eq!(f.solve(avail).len(), n, "solve must return one rect per item");
+    }
+
+    #[test]
+    fn solve_returns_one_rect_per_item_under_hostile_space() {
+        // Zero, negative, infinite and absurd available space — the inputs most
+        // likely to make a solver bail — must not change the ARITY.
+        for avail in [
+            egui::vec2(0.0, 0.0),
+            egui::vec2(-50.0, -50.0),
+            egui::vec2(f32::INFINITY, f32::INFINITY),
+            egui::vec2(1e9, 1e9),
+            egui::vec2(1.0, 0.0),
+        ] {
+            arity(
+                Flex::row()
+                    .item(Item::fixed(40.0))
+                    .item(Item::grow(1.0))
+                    .item(Item::auto()),
+                3,
+                avail,
+            );
+            arity(Flex::column().item(Item::percent(0.5)).item(Item::grow(1.0)), 2, avail);
+        }
+    }
+
+    #[test]
+    fn over_subscribed_row_still_returns_every_rect() {
+        // 10 fixed 100px children in 50px. Over-subscription is the one case a
+        // real layout engine may genuinely refuse to satisfy.
+        let mut f = Flex::row();
+        for _ in 0..10 {
+            f = f.item(Item::fixed(100.0));
+        }
+        arity(f, 10, egui::vec2(50.0, 20.0));
     }
 }
