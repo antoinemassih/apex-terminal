@@ -24,6 +24,7 @@
 //! painter-drawn at computed positions, so nothing reflows.
 
 use egui::{self, Color32, Stroke};
+use crate::ui_kit::cascade::El;
 use crate::ui_kit::sx::Tone;
 use super::style::*;
 use super::overlays::indicators::*;
@@ -1342,14 +1343,19 @@ fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
 
         let line_x_start = left + badge_w + 6.0;
         let line_x_end = right - 50.0;
+        // A dashed leader, drawn as an INDEXED period. Same call as
+        // `msg_tension_panel`: a dash pattern is stroke decoration, not layout,
+        // so it does not become an element tree — but `x` stepping by a fixed
+        // stride is an index in disguise and reads better as one.
         let dash_len = 4.0;
         let gap_len = 3.0;
-        let mut x = line_x_start;
-        while x < line_x_end {
+        let period = dash_len + gap_len;
+        let dashes = ((line_x_end - line_x_start) / period).ceil().max(0.0) as usize;
+        for i in 0..dashes {
+            let x = line_x_start + i as f32 * period;
             let end = (x + dash_len).min(line_x_end);
             p.line_segment([egui::pos2(x, y), egui::pos2(end, y)],
                 Stroke::new(stroke_hair(), color_alpha(level_color, alpha_muted())));
-            x += dash_len + gap_len;
         }
 
         let font_size = if is_pp { FONT_LG } else { FONT_SM };
@@ -1853,7 +1859,16 @@ fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 /// Risk Dashboard — position sizing calculator
 fn draw_risk_dash(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let left = body.left() + 8.0;
-    let mut y = body.top() + 4.0;
+    // Two bands: the hero shares figure, then the 2x2 stats grid. `y += 48.0`
+    // named the hero's height nowhere; here it is the slot's height.
+    let dash = El::column()
+        .child(El::slot("hero", egui::vec2(0.0, 48.0)))
+        .child(El::slot("stats", egui::Vec2::ZERO).grow(1.0))
+        .solve_rect(egui::Rect::from_min_max(
+            egui::pos2(left, body.top() + 4.0),
+            egui::pos2(body.right(), body.bottom()),
+        ));
+    let y = dash.rect("hero").top();
     // Real account equity (NAV) when a broker is connected; fall back to a
     // $100k default for the position-sizing what-if when it isn't.
     let account = crate::chart_renderer::trading::read_account_data()
@@ -1871,9 +1886,9 @@ fn draw_risk_dash(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
         &format!("{:.0}", shares), prop_display_sm(), t.accent);
     p.text(egui::pos2(body.center().x, y + 34.0), egui::Align2::CENTER_CENTER,
         "SHARES", mono_2xs(), color_half(t.dim));
-    y += 48.0;
 
     // Stats grid
+    let y = dash.rect("stats").top();
     let stats = [
         ("Risk $", format!("${:.0}", dollar_risk)),
         ("Stop", format!("${:.2}", stop_dist)),
@@ -2226,9 +2241,19 @@ fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     ];
 
     let row_h = (body.height() - 20.0) / flows.len().min(6) as f32;
-    let mut y = body.top() + 18.0;
+    let rows_el = flows
+        .iter()
+        .enumerate()
+        .fold(El::column(), |el, (i, _)| {
+            el.child(El::slot(format!("f{i}"), egui::vec2(0.0, row_h)))
+        })
+        .solve_rect(egui::Rect::from_min_max(
+            egui::pos2(body.left(), body.top() + 18.0),
+            body.max,
+        ));
 
-    for (side, contract, value, bullish, flow_type) in flows {
+    for (i, (side, contract, value, bullish, flow_type)) in flows.into_iter().enumerate() {
+        let y = rows_el.rect(&format!("f{i}")).top();
         if y + row_h > body.bottom() { break; }
         let col = if bullish { t.bull } else { t.bear };
 
@@ -2250,8 +2275,6 @@ fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         // Flow type
         p.text(egui::pos2(body.right() - 6.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
             flow_type, mono_4xs(), color_dim(t.dim));
-
-        y += row_h;
     }
 }
 
@@ -2259,7 +2282,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
                        hover: Option<egui::Pos2>, btns: &mut Vec<(egui::Rect, WidgetBtnAction)>) {
     let left = body.left() + 6.0;
     let right = body.right() - 6.0;
-    let mut y = body.top() + 2.0;
+    let y = body.top() + 2.0;
 
     if wd.all_positions.is_empty() {
         // No positions
@@ -2272,7 +2295,39 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         return;
     }
 
+    // The panel is a DECLARED column of bands.
+    //
+    // It was five `y += <literal>` steps interleaved with the painting, so the
+    // vertical structure existed only as a side effect of the order the
+    // statements happened to be written in: moving one paint call moved
+    // everything below it. Stated as a tree, the bands are named, their heights
+    // are visible in one place, and the row list is a sibling group rather than
+    // a loop that mutates the same `y` the header used.
+    //
+    // (This panel sits ON the chart but is not chart rendering — no price
+    // geometry, no series, no axis. It is a UI panel drawn with a painter, and
+    // the rule is that the chart ENGINE is sacred, not everything painted near
+    // one.)
+    let row_h = crate::chart_renderer::ui::style::style_row_height();
+    let bands = wd
+        .all_positions
+        .iter()
+        .enumerate()
+        .fold(
+            El::column()
+                .child(El::slot("pnl", egui::vec2(0.0, 16.0)))
+                .child(El::slot("sep", egui::vec2(0.0, 4.0)))
+                .child(El::slot("actions", egui::vec2(0.0, 20.0)))
+                .child(El::slot("colhdr", egui::vec2(0.0, 12.0))),
+            |el, (i, _)| el.child(El::slot(format!("row{i}"), egui::vec2(0.0, row_h))),
+        )
+        .solve_rect(egui::Rect::from_min_max(
+            egui::pos2(left, y),
+            egui::pos2(right, body.bottom()),
+        ));
+
     // ── Day total P&L header ──
+    let y = bands.rect("pnl").top();
     let total_col = if wd.day_pnl >= 0.0 { t.bull } else { t.bear };
     p.text(egui::pos2(left, y + 5.0), egui::Align2::LEFT_CENTER,
         "DAY P&L", mono_2xs(), color_half(t.dim));
@@ -2280,15 +2335,15 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     p.text(egui::pos2(right, y + 5.0), egui::Align2::RIGHT_CENTER,
         &format!("{}${:.0}", pnl_sign, wd.day_pnl),
         mono_md(), total_col);
-    y += 16.0;
 
     // Separator
+    let y = bands.rect("sep").top();
     p.line_segment(
         [egui::pos2(left, y), egui::pos2(right, y)],
         egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
-    y += 4.0;
 
     // ── "Close All" button ──
+    let y = bands.rect("actions").top();
     let btn_w = 50.0;
     let btn_rect = egui::Rect::from_min_size(
         egui::pos2(right - btn_w, y), egui::vec2(btn_w, 14.0));
@@ -2303,9 +2358,9 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     p.text(egui::pos2(left, y + 7.0), egui::Align2::LEFT_CENTER,
         &format!("{} positions", wd.all_positions.len()),
         mono_2xs(), color_dim(t.dim));
-    y += 20.0;
 
     // ── Column headers ──
+    let y = bands.rect("colhdr").top();
     p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
         "SYMBOL", mono_2xs(), color_dim(t.dim));
     p.text(egui::pos2(left + 70.0, y + 4.0), egui::Align2::LEFT_CENTER,
@@ -2314,11 +2369,10 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         "P&L", mono_2xs(), color_dim(t.dim));
     p.text(egui::pos2(right, y + 4.0), egui::Align2::RIGHT_CENTER,
         "", mono_2xs(), color_dim(t.dim));
-    y += 12.0;
 
     // ── Position rows ──
-    let row_h = crate::chart_renderer::ui::style::style_row_height();
     for (pos_idx, pos) in wd.all_positions.iter().enumerate() {
+        let y = bands.rect(&format!("row{pos_idx}")).top();
         if y + row_h > body.bottom() - 2.0 { break; } // clip to body
 
         let pnl_col = if pos.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
@@ -2366,8 +2420,6 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         p.line_segment(
             [egui::pos2(left, y + row_h - 0.5), egui::pos2(right, y + row_h - 0.5)],
             egui::Stroke::new(stroke_hair(), tint(t, Tone::Border, 20)));
-
-        y += row_h;
     }
 }
 
@@ -2873,16 +2925,32 @@ fn draw_trade_plan(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     // Entry / Target / Stop rows
     let left = body.left() + 10.0;
     let right = body.right() - 10.0;
-    let mut y = body.top() + 24.0;
-    for (label, price, color) in [("ENTRY", entry, t.text), ("TARGET", target, t.bull), ("STOP", stop, t.bear)] {
+    // Three price rows and the R:R line below them. The trailing slot is what
+    // the walked `y` became after the loop — declared, so the R:R line does not
+    // depend on the loop having run the number of times you assumed.
+    let plan = El::column()
+        .child(El::slot("entry", egui::vec2(0.0, 18.0)))
+        .child(El::slot("target", egui::vec2(0.0, 18.0)))
+        .child(El::slot("stop", egui::vec2(0.0, 18.0)))
+        .child(El::slot("rr", egui::vec2(0.0, 18.0)))
+        .solve_rect(egui::Rect::from_min_max(
+            egui::pos2(left, body.top() + 24.0),
+            egui::pos2(right, body.bottom()),
+        ));
+    for (slot, label, price, color) in [
+        ("entry", "ENTRY", entry, t.text),
+        ("target", "TARGET", target, t.bull),
+        ("stop", "STOP", stop, t.bear),
+    ] {
+        let y = plan.rect(slot).top();
         p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
             label, mono_2xs(), color_half(t.dim));
         p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
             &format!("${:.2}", price), mono_sm(), color);
-        y += 18.0;
     }
 
     // R:R and conviction
+    let y = plan.rect("rr").top();
     let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { t.warn } else { t.bear };
     p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
         &format!("{:.1}R", rr), mono_lg(), rr_col);
@@ -2936,17 +3004,28 @@ fn draw_zone_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         ("TESTED", format!("{}", wd.zone_count.saturating_sub(wd.zone_fresh)), t.warn),
     ];
 
-    let mut y = body.top() + 8.0;
-    for (label, value, color) in &rows {
+    // Three count rows and a strength bar, DECLARED. The `y += 4.0` before the
+    // bar was a seam expressed as an extra advance; here it is the gap between
+    // the last row and the bar, which is what it always meant.
+    let stack = El::column()
+        .child(El::slot("r0", egui::vec2(0.0, 22.0)))
+        .child(El::slot("r1", egui::vec2(0.0, 22.0)))
+        .child(El::slot("r2", egui::vec2(0.0, 22.0)))
+        .child(El::slot("bar", egui::vec2(0.0, 6.0)).margin_start(4.0))
+        .solve_rect(egui::Rect::from_min_max(
+            egui::pos2(left, body.top() + 8.0),
+            egui::pos2(right, body.bottom()),
+        ));
+    for (i, (label, value, color)) in rows.iter().enumerate() {
+        let y = stack.rect(match i { 0 => "r0", 1 => "r1", _ => "r2" }).top();
         p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
             *label, mono_2xs(), color_half(t.dim));
         p.text(egui::pos2(right, y + 4.0), egui::Align2::RIGHT_CENTER,
             value, mono_lg(), *color);
-        y += 22.0;
     }
 
     // Average strength bar
-    y += 4.0;
+    let y = stack.rect("bar").top();
     p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
         "STRENGTH", mono_2xs(), color_dim(t.dim));
     let bar_x = left + 56.0;

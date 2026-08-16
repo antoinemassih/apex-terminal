@@ -54,9 +54,16 @@ BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # per-row solve there is 0.22 ms — 1.3% of a 16.7 ms budget — to replace about
 # three multiplies. The element tree earns its cost on conditional rows built
 # once per frame, not on fixed fractional splits painted forty times.
+#
+# `chart_widgets` USED to be exempt here, on the strength of its name. That was
+# wrong for the same reason `spreadsheet_pane` was: the rule is that the chart
+# ENGINE is sacred, not everything painted near one. Its walks were in
+# `draw_positions_panel`, `draw_trade_plan`, `draw_risk_dash`,
+# `draw_options_flow` and `draw_zone_strength` — overlay panels with no price
+# geometry, no series and no axis, which is UI. All eleven are migrated and the
+# file is now in scope.
 CHART = (
     "/render/",
-    "chart_widgets",
     "gpu.rs",
     "/indicators/",
     "tps_overlay.rs",
