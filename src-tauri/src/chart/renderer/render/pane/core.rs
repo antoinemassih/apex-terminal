@@ -7537,11 +7537,21 @@ fn render_chart_pane(
                 ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
                 // Toggle on the LEFT — gear icon when collapsed, ‹ chevron when
                 // expanded. Single click toggles the strip.
+                // Both states are ICON buttons so the control keeps ONE hit
+                // size across its two states.
+                //
+                // The expanded state was `ToolBarButton::new("‹")` — a bare
+                // glyph with no min width, which measured **8.97 px wide**
+                // while the collapsed state's gear got a proper square. Same
+                // control, two states, two very different click targets; the
+                // narrow one is the whole reason `/design-audit` still reported
+                // a sub-rung button after the other 33 turned out to be
+                // correct-by-their-rung (AT-163).
+                use crate::ui_kit::icons::Icon;
                 let toggle_resp = if identity_collapsed {
-                    use crate::ui_kit::icons::Icon;
                     ToolBarButton::icon(Icon::GEAR).show(ui, t)
                 } else {
-                    ToolBarButton::new("‹").show(ui, t)
+                    ToolBarButton::icon(Icon::CARET_LEFT).show(ui, t)
                 };
                 if toggle_resp.clicked() {
                     ctx.data_mut(|d| d.insert_temp(identity_collapsed_id, !identity_collapsed));

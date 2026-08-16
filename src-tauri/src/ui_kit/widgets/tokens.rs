@@ -119,6 +119,18 @@ impl Size {
         egui::Margin { left: x as i8, right: x as i8, top: y as i8, bottom: y as i8 }
     }
 
+    /// Stable slug for audit ids, so a check can grade a control against the
+    /// rung its caller actually ASKED for rather than one global minimum.
+    pub fn slug(&self) -> &'static str {
+        match self {
+            Size::Xs => "xs",
+            Size::Sm => "sm",
+            Size::Md => "md",
+            Size::Lg => "lg",
+            Size::Xl => "xl",
+        }
+    }
+
     /// Maps to the control-height ladder (`Density.control_xs..control_xl`).
     ///
     /// This returned frozen literals — `18/22/28/34/40` — while `font_size()`,

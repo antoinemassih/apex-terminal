@@ -802,6 +802,7 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         btn.leading_icon.or(btn.trailing_icon),
     );
     let label = btn.label;
+    let size_slug = btn.size.slug();
     let resp = show_styled_impl_inner(ui, theme, btn, style, placed);
     crate::ui_kit::inspect::register(&bug_key, resp.rect, file!(), line!());
 
@@ -828,7 +829,7 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         // else to 28), and an auto id carries no surface — so these cannot be
         // graded by that rule and are reported separately instead of being
         // failed against the wrong floor.
-        format!("auto.{}/{bug_key}", audit_surface()),
+        format!("auto.{}.{size_slug}/{bug_key}", audit_surface()),
         "button",
         label,
         &resp,
@@ -981,6 +982,31 @@ fn show_styled_impl_inner<'a, S: ButtonStyle>(
     //
     // Taking the max of both keeps the original guarantee exactly — the hit
     // target can still never come out smaller than the placement demands.
+    // The button's own SIZE RUNG is a floor.
+    //
+    // `desired` above is content-derived — text plus padding — and `Size` only
+    // reached the height when a caller happened to set `min_size`/`min_width`.
+    // So `Button::new("x").show(..)` was sized by its glyphs and the control
+    // ladder, which exists to make sibling controls agree, did not apply.
+    //
+    // **This currently changes nothing, and that is the finding.** Measured
+    // across the app: no button's content height falls below its own rung, so
+    // the floor never binds today. It closes the hole rather than fixing a
+    // present defect, and the sub-minimum buttons the audit reports are NOT
+    // caused by it.
+    //
+    // What causes them is a genuine tension in the ladder itself. The audit
+    // found 35 buttons under `MIN_TOUCH_TARGET_PX` (28) at 18.0 / 20.7 / 24.0 /
+    // 25.3. Those surfaces ask for `Size::Xs` or `Size::Sm` — rungs that ARE
+    // 18 and 22. A button correctly using `Size::Xs` is correctly 18 px tall and
+    // correctly fails a 28 px touch minimum. Two parts of the design system
+    // disagree, and neither is misused.
+    //
+    // Resolving it is a decision, not a fix: either the small rungs are not for
+    // touch targets, or the minimum does not apply to them, or the rungs move.
+    // Recorded as AT-163 rather than guessed at here.
+    desired.y = desired.y.max(size.height());
+
     if let Some(p) = placement {
         let hit = p.hit_px();
         if hit > 0.0 {

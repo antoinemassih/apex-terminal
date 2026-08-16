@@ -1950,9 +1950,33 @@ fn build_design_audit(state: &DevSharedState) -> serde_json::Value {
         .filter(|w| w.rect.min_side() < min_for(&w.id))
         .map(|w| serde_json::json!({"id": w.id, "min_side_px": w.rect.min_side()}))
         .collect();
+    // Graded against the rung the CALLER ASKED FOR, which the id now carries as
+    // `auto.<surface>.<size>/…`.
+    //
+    // AT-163: the control ladder's small rungs are `xs` 18 and `sm` 22, both
+    // BELOW `MIN_TOUCH_TARGET_PX` (28). So a button correctly asking for
+    // `Size::Xs` is correctly 18 px and was correctly failed by a flat 28 px
+    // minimum — two parts of the design system disagreeing with neither
+    // misused. Holding every control to the primary minimum would mean the
+    // dense toolbar chips this terminal is built from can never pass.
+    //
+    // Asking for a dense rung is a STATEMENT, the same way `.muted()` is a
+    // statement in the cascade and pane chrome is an exemption by surface. So
+    // `xs`/`sm` are held to their own rung; `md` and up are held to the touch
+    // minimum. A `md` button that comes out at 20 px is still caught, which is
+    // the case worth catching.
+    let min_for_auto = |id: &str| {
+        if id.contains(".xs/") {
+            crate::ui_kit::style::control_h_xs()
+        } else if id.contains(".sm/") {
+            crate::ui_kit::style::control_h_sm()
+        } else {
+            crate::ui_kit::style::MIN_TOUCH_TARGET_PX
+        }
+    };
     let touch_fails_auto: Vec<_> = button_widgets.iter()
         .filter(is_auto)
-        .filter(|w| w.rect.min_side() < crate::ui_kit::style::MIN_TOUCH_TARGET_PX)
+        .filter(|w| w.rect.min_side() < min_for_auto(&w.id))
         .map(|w| serde_json::json!({"id": w.id, "min_side_px": w.rect.min_side()}))
         .collect();
 

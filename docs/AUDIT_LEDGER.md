@@ -611,6 +611,41 @@ bite by deleting the export line.
 
 ---
 
+## AT-163 — the touch minimum and the control ladder contradicted each other — RESOLVED
+
+Falling out of AT-162's 35-item queue. Every one was a HEIGHT under
+`MIN_TOUCH_TARGET_PX` (28) — and the surfaces reporting them were asking for
+`Size::Xs` or `Size::Sm`, whose rungs **are** 18 and 22.
+
+So a button correctly requesting a dense rung was correctly 18 px tall and
+correctly failed a flat 28 px minimum. Two parts of the design system
+disagreeing, with neither misused. Holding every control to the primary minimum
+would mean the dense toolbar chips this terminal is built from could never pass.
+
+**Resolved by grading against the rung the caller asked for.** Asking for a
+dense rung is a STATEMENT — the same reading `.muted()` gets in the cascade, and
+the same shape as the audit's existing pane-chrome exemption by surface. `xs`
+and `sm` are held to their own rung; `md` and up to the touch minimum, so a
+`md` button that comes out at 20 px is still caught. The id carries the rung as
+`auto.<surface>.<size>/…`.
+
+**35 → 2.** The two survivors were real, and were exactly what the grading was
+meant to isolate: `ToolBarButton::new("‹")` in the pane header — a bare glyph
+with **no min width, 8.97 px wide** — while the same control's *other state*
+(`identity_collapsed`) used `ToolBarButton::icon(Icon::GEAR)` and got a proper
+square. One control, two states, two very different click targets. Both states
+are icon buttons now.
+
+**2 → 0.** Nothing in the app is under 12 px; the narrowest toolbar button is
+25.3.
+
+One correction worth keeping: I also made `Size`'s rung a height floor in the
+button primitive, believing it caused this. It does not — no button's content
+height falls below its own rung, so the floor never binds today. It closes a
+hole rather than fixing a present defect, and the comment in the code says so.
+
+---
+
 ## AT-162 — the design audit covered 2% of the app — FIXED
 
 AT-161 found the settings modal had never been audited. The larger version of
