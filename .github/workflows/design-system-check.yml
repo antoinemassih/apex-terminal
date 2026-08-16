@@ -158,3 +158,17 @@ jobs:
       - name: Self-test the ratchet's test-code filter
         if: ${{ !cancelled() }}
         run: python dev/strip_test_hits.py --selftest
+
+      # Adoption floors for the declarative cascading layer, plus a ceiling on
+      # the cursor walks it replaces.
+      #
+      # Every other check here is a ceiling on a bad pattern. Ceilings keep a
+      # system from getting worse; they cannot keep one from being built and
+      # then ignored. `sx::recipes` passed every ceiling in this repo right up
+      # until it was deleted, because a system nobody calls produces no
+      # violations — and `ui_kit/cascade` is at the same risk for the same
+      # reason: it is additive, so with no scope open nothing changes. That is
+      # what makes adoption safe AND what makes abandonment invisible.
+      - name: Run cascade-adoption gate (floors + cursor-walk ceiling)
+        if: ${{ !cancelled() }}
+        run: python dev/cascade_adoption_gate.py
