@@ -686,19 +686,40 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
         // ordinal costs even one, drop it — and do NOT consume an ordinal
         // number, or every panel below would shift by one for an ordinal
         // nobody can see.
+        // Tab widths, measured ONCE.
+        //
+        // They were measured twice — here to decide how many fit, and again in
+        // the paint loop below — and the two DISAGREED. This predicate walked
+        // `x += w`; the paint loop walks `x += tab_w + 1.0`, the 1 px being the
+        // inter-tab hairline divider. So the fit test was short by one pixel per
+        // tab and could report that a tab fits when the row has no room for it.
+        // With eight tabs that is seven pixels of optimism, and the failure mode
+        // is a tab clipped at the strip's edge rather than sent to the overflow
+        // menu — the exact thing the overflow menu exists to prevent.
+        const TAB_GAP: f32 = 1.0;
+        let tab_ws: Vec<f32> = self.tabs.iter().map(|(_, label)| {
+            tab_pad + painter.layout_no_wrap(label.to_string(), title_font.clone(), t.dim).size().x + tab_pad
+        }).collect();
+
+        // Solved positions from a given start. One definition of the row, used
+        // by both the fit test and the painting.
+        let solve_tabs = |start_x: f32| -> Vec<Rect> {
+            use crate::ui_kit::layout::{Flex, Item};
+            let mut f = Flex::row().gap(TAB_GAP);
+            for w in &tab_ws {
+                f = f.item(Item::fixed(*w));
+            }
+            let span: f32 = tab_ws.iter().sum::<f32>()
+                + TAB_GAP * (tab_ws.len().saturating_sub(1)) as f32;
+            f.solve(Vec2::new(span, 1.0))
+                .into_iter()
+                .map(|r| r.translate(Vec2::new(start_x, 0.0)))
+                .collect()
+        };
+
         let fitting_tabs = |start_x: f32| -> usize {
             let max_right = chrome.strip.right() - (HEADER_CLOSE_SIZE + gap_sm() * 2.0);
-            let mut x = start_x;
-            let mut n = 0;
-            for (_, label) in self.tabs.iter() {
-                let w = tab_pad
-                    + painter.layout_no_wrap(label.to_string(), title_font.clone(), t.dim).size().x
-                    + tab_pad;
-                if x + w > max_right { break; }
-                x += w;
-                n += 1;
-            }
-            n
+            solve_tabs(start_x).iter().take_while(|r| r.max.x <= max_right).count()
         };
 
         if self.numbered && crate::chart_renderer::ui::style::style_numbers_sections() {
@@ -731,21 +752,21 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
         let mut hidden_idx: Vec<usize> = Vec::new();
         let overflow_reserved = HEADER_CLOSE_SIZE + gap_sm() * 2.0;
 
+        // The SAME solve the fit test used, at the row's actual start.
+        let solved_tabs = solve_tabs(cx);
         for (ti, (tab_val, label)) in self.tabs.iter().enumerate() {
             let is_active = ti == active_idx;
-            let label_galley = painter.layout_no_wrap(
-                label.to_string(), title_font.clone(), t.dim,
-            );
-            let tab_w = tab_pad + label_galley.size().x + tab_pad;
+            let tab_w = tab_ws[ti];
+            let solved = solved_tabs[ti];
             // Clamp so tabs don't overlap the close + overflow buttons. Once one
             // tab doesn't fit, all remaining go to the overflow menu.
             let max_right = chrome.strip.right() - overflow_reserved;
-            if cx + tab_w > max_right {
+            if solved.max.x > max_right {
                 hidden_idx.extend(ti..self.tabs.len());
                 break;
             }
 
-            let tab_rect = Rect::from_min_size(Pos2::new(cx, tab_y), Vec2::new(tab_w, tab_h));
+            let tab_rect = Rect::from_min_size(Pos2::new(solved.min.x, tab_y), Vec2::new(tab_w, tab_h));
             let tab_resp = ui.interact(
                 tab_rect,
                 scope_id.with(("tab", ti)),
@@ -797,7 +818,10 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
                 tab_resp.context_menu(|ui| cb(ui, tv));
             }
             tab_rects.push(tab_rect);
-            cx += tab_w + 1.0;
+        }
+        // One advance past the tabs that were actually drawn.
+        if let Some(last) = tab_rects.last() {
+            cx = last.right() + TAB_GAP;
         }
 
         if new_active != active_idx {
