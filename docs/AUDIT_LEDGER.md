@@ -611,6 +611,51 @@ bite by deleting the export line.
 
 ---
 
+## Chart-engine performance — measured, not assumed
+
+Asked directly whether any of this design-system work touches the charting
+engine's performance. Checked rather than reassured.
+
+**Structural — nothing added executes per bar.** Across
+`chart/renderer/render/`, `gpu.rs`, `chart/indicators/` and `chart_widgets.rs`
+there are **zero** `cascade::` or `El::` call sites. Every alpha, geometry-inset
+and recipe migration in this work excluded those paths by construction, because
+`.left() + 6.0` there is a candle body, not chrome padding.
+
+Only two chart-engine files changed at all across the whole effort:
+
+* `render/pane/core.rs` — `OrderSide::color` gained an `accent` parameter (order
+  LINES, not candles), and the pane-header chevron became an icon button. Both
+  chrome.
+* `gpu.rs` — font resolution replaced a `style_id -> index` match with the
+  active style's own `family_ui`. Runs **once per frame**, behind the existing
+  `LAST_FONT` atomic that already gates the expensive `set_fonts` call.
+
+`dev_inspector::record` call sites in the render paths: **2 before this work, 2
+now.** The new primitive-level instrumentation is `#[cfg(debug_assertions)]`, so
+release builds carry none of it.
+
+`begin_frame` gained one `Vec::clear` for the cascade scope stack.
+
+**Measured A/B**, same machine, same workspace, debug + design-mode, three
+samples each:
+
+| | fps (cur / min / max) | frame_ms |
+|---|---|---|
+| pre-work `7b66c37f` | 27.8 / 16.3 / 60.3 | 35.9, 33.4, 50.1 |
+| current HEAD | 20.0 / 13.5 / 60.2 | 50.0, 33.4, 33.5 |
+
+Indistinguishable. Both oscillate between 33.3 ms (30 Hz) and 50 ms (20 Hz),
+which is vsync quantisation rather than work, and both reach the same 60 fps
+ceiling.
+
+**Caveat, stated rather than buried:** this is a debug build and the sampler is
+vsync-quantised, so it is a coarse instrument — it would not resolve a few
+hundred microseconds. The stronger evidence is the structural one above: the
+hot loops contain none of this code.
+
+---
+
 ## AT-163 — the touch minimum and the control ladder contradicted each other — RESOLVED
 
 Falling out of AT-162's 35-item queue. Every one was a HEIGHT under

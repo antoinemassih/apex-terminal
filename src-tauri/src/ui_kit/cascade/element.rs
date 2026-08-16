@@ -535,7 +535,7 @@ mod tests {
                 .gap(10.0)
                 .child(El::slot("a", Vec2::new(20.0, 20.0)))
                 .child(El::slot("b", Vec2::new(20.0, 20.0)));
-            w.set(row.intrinsic(ui, Inherited::default()));
+            w.set(row.intrinsic(Some(ui), Inherited::default()));
         });
         assert!((w.get() - 50.0).abs() < 0.5, "measured {} not 50", w.get());
     }
