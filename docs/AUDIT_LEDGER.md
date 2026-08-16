@@ -659,10 +659,19 @@ the app is its module declaration. A census of `ui_kit/widgets`,
 eight hits are internal helpers exposed `pub` for their own tests
 (`solve_header_row`, `key_value_row_flex`), which is a different thing.
 
-**Not wired, and not deleted.** Wiring it puts a new visible element into a
-trading toolbar and needs a live quote source; that is a product decision, not a
-design-system fix, and it is not mine to make. Deleting it discards work that
-was clearly intended. It is recorded here for that decision.
+**WIRED** (decision taken by the owner). It renders in `render_toolnav`, in the
+gap between the chart controls and the alert feed — exactly the space that used
+to be a bare `ui.add_space(gap_w)`, so the feed still starts at the same 40 %
+mark and the controls are untouched. Quotes come from loaded watchlist items;
+clicking one loads it into the active pane through the same
+`pending_symbol_change` path the command palette uses.
+
+Items without a usable `prev_close` are **excluded rather than shown at 0.00 %**
+— a computed-looking zero would read as "flat" when the truth is "unknown",
+which is fabricated data rather than a placeholder.
+
+Live: `QQQ 730.85 −0.17%   SPY 776.34 −0.20%`, symbol in text, price dim, change
+in the bear tone.
 
 **What was done:** its cursor walk was migrated to `Flex` anyway, which removed
 a real defect in code that would ship the moment it is wired —

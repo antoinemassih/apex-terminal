@@ -60,15 +60,59 @@ pub(crate) fn render_toolnav(
                 //    indicators / widgets / alt-bar settings / magnet / hit). ──
                 super::top_nav::render_chart_controls(ui, watchlist, panes, ap, t, tb_rect);
 
-                // ── Alert feed: occupies from 40 % of the toolbar width to the
-                //    right edge, with a minimum gap so it never collides with
-                //    the controls even when they are wide. ──
+                // ── Ticker strip: fills the gap between the controls and the
+                //    alert feed. The Aperture reference puts `SYM price +chg%`
+                //    quotes here, and the widget existed, fully styled, with
+                //    nothing rendering it (AT-158).
+                //
+                //    It takes only the space that was previously `add_space`,
+                //    so the alert feed still starts at the same 40 % mark and
+                //    the controls are untouched. The strip draws as many WHOLE
+                //    quotes as fit and stops — it does not clip one mid-glyph.
                 let cursor_x   = ui.cursor().left();
                 let target_x   = tb_rect.left() + tb_rect.width() * 0.40;
                 if cursor_x < target_x {
-                    ui.add_space(target_x - cursor_x);
+                    let gap_w = target_x - cursor_x;
+                    let entries = ticker_entries(watchlist);
+                    if entries.is_empty() {
+                        ui.add_space(gap_w);
+                    } else {
+                        let resp = ui.allocate_ui_with_layout(
+                            egui::vec2(gap_w, ui.available_height()),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| super::ticker_strip::ticker_strip(ui, t, &entries),
+                        ).inner;
+                        if let Some(sym) = resp.clicked_symbol {
+                            // Same path the command palette uses for `sym:` —
+                            // the centralized publisher in `App::about_to_wait`
+                            // consumes `pending_symbol_change`.
+                            let tf = panes[ap].timeframe.clone();
+                            panes[ap].symbol = sym.clone();
+                            panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(&sym);
+                            panes[ap].pending_symbol_change = Some(sym.clone());
+                            crate::chart_renderer::gpu::fetch_bars_background(sym, tf, 0);
+                        }
+                    }
                 }
                 super::alert_feed::render_badge_feed(ui, t);
             });
         });
+}
+
+/// Loaded watchlist items as ticker quotes.
+///
+/// Only `loaded` items with a usable `prev_close` are included — a quote whose
+/// change% cannot be computed would render `+0.00%` and read as "flat" rather
+/// than "unknown", which is fabricated data, not a placeholder.
+fn ticker_entries(wl: &Watchlist) -> Vec<super::ticker_strip::TickerEntry> {
+    wl.sections
+        .iter()
+        .flat_map(|sec| sec.items.iter())
+        .filter(|i| i.loaded && i.prev_close > 0.0)
+        .map(|i| super::ticker_strip::TickerEntry {
+            symbol: i.symbol.clone(),
+            price: i.price,
+            change_pct: (i.price - i.prev_close) / i.prev_close * 100.0,
+        })
+        .collect()
 }
