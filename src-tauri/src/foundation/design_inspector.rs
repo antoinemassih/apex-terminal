@@ -946,6 +946,9 @@ let _ = ctx;
                 changed |= drag_f32(ui, "sm (3.0)", &mut tokens.radius.sm, 0.0..=20.0);
                 changed |= drag_f32(ui, "md (4.0)", &mut tokens.radius.md, 0.0..=20.0);
                 changed |= drag_f32(ui, "lg (8.0)", &mut tokens.radius.lg, 0.0..=30.0);
+                // Meridien and Glass author 0.0 here ("sharp pill"); a hardcoded
+                // 999 made every RadiusTier::Pill render a capsule in every theme.
+                changed |= drag_f32(ui, "pill (99)", &mut tokens.radius.pill, 0.0..=999.0);
             }
             Category::Scale => {
                 // The four ladders that a StyleSystem could author but nothing
@@ -970,6 +973,16 @@ let _ = ctx;
                 changed |= drag_f32(ui, "  default (22)", &mut tokens.row.default, 8.0..=64.0);
                 changed |= drag_f32(ui, "  spacious (24)", &mut tokens.row.spacious, 8.0..=64.0);
                 changed |= drag_f32(ui, "  tall (30)", &mut tokens.row.tall, 8.0..=64.0);
+                ui.label(RichText::new("side rail width").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+                changed |= drag_f32(ui, "  narrow (44)", &mut tokens.rail.narrow, 16.0..=160.0);
+                changed |= drag_f32(ui, "  medium (56)", &mut tokens.rail.medium, 16.0..=160.0);
+                changed |= drag_f32(ui, "  wide (72)", &mut tokens.rail.wide, 16.0..=160.0);
+                ui.label(RichText::new("pane mosaic").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+                changed |= drag_f32(ui, "  gutter (8)", &mut tokens.pane_header.gap, 0.0..=40.0);
+                ui.label(RichText::new("watchlist row").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+                changed |= drag_f32(ui, "  side margin", &mut tokens.wl.side_margin, 0.0..=24.0);
+                changed |= drag_u8(ui,  "  corner radius", &mut tokens.wl.corner_radius);
+                changed |= drag_u8(ui,  "  divider alpha", &mut tokens.wl.divider_alpha);
                 ui.label(RichText::new("control height").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 changed |= drag_f32(ui, "  xs (18)", &mut tokens.control.xs, 8.0..=64.0);
                 changed |= drag_f32(ui, "  sm (22)", &mut tokens.control.sm, 8.0..=64.0);

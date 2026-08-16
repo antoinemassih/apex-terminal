@@ -170,7 +170,7 @@ pub fn begin_frame() {
         radius_sm:     r_sm,
         radius_md:     r_md,
         radius_lg:     r_lg,
-        radius_pill:   st.r_pill as f32,
+        radius_pill:   crate::dt_f32!(radius.pill, st.r_pill as f32),
         // Strokes (already resolved with override + DesignTokens precedence above).
         stroke_hair,
         stroke_thin,
@@ -283,7 +283,7 @@ pub fn begin_frame() {
         row_default:    if let Some(ref ov) = override_style { ov.density.row_default * dens } else { crate::dt_f32!(row.default, ass.density.row_default) * dens },
         row_spacious:   if let Some(ref ov) = override_style { ov.density.row_spacious * dens } else { crate::dt_f32!(row.spacious, ass.density.row_spacious) * dens },
         row_tall:       if let Some(ref ov) = override_style { ov.density.row_tall * dens } else { crate::dt_f32!(row.tall, ass.density.row_tall) * dens },
-        splitter_width: ass.density.splitter_width,
+        splitter_width: if let Some(ref ov) = override_style { ov.density.splitter_width } else { crate::dt_f32!(split_divider.height, ass.density.splitter_width) },
         // Sourced from `st` (= `current()`), NOT from `ass.density`, and that is
         // deliberate. `pane_gap` lives on StyleSettings and varies per style
         // (8.0 default, 0.0 for the flush baseline); `Density` has no such
@@ -292,21 +292,21 @@ pub fn begin_frame() {
         // regression traded for a tidier line. Routing the existing value
         // through the snapshot is byte-identical today and is what lets the
         // override / inspector layers reach it at all.
-        pane_gap:       st.pane_gap,
+        pane_gap:       crate::dt_f32!(pane_header.gap, st.pane_gap),
         control_xs:     if let Some(ref ov) = override_style { ov.density.control_xs * dens } else { crate::dt_f32!(control.xs, ass.density.control_xs) * dens },
         control_sm:     if let Some(ref ov) = override_style { ov.density.control_sm * dens } else { crate::dt_f32!(control.sm, ass.density.control_sm) * dens },
         control_md:     if let Some(ref ov) = override_style { ov.density.control_md * dens } else { crate::dt_f32!(control.md, ass.density.control_md) * dens },
         control_lg:     if let Some(ref ov) = override_style { ov.density.control_lg * dens } else { crate::dt_f32!(control.lg, ass.density.control_lg) * dens },
         control_xl:     if let Some(ref ov) = override_style { ov.density.control_xl * dens } else { crate::dt_f32!(control.xl, ass.density.control_xl) * dens },
-        rail_narrow:    ass.density.rail_narrow,
-        rail_medium:    ass.density.rail_medium,
-        rail_wide:      ass.density.rail_wide,
+        rail_narrow:    if let Some(ref ov) = override_style { ov.density.rail_narrow } else { crate::dt_f32!(rail.narrow, ass.density.rail_narrow) },
+        rail_medium:    if let Some(ref ov) = override_style { ov.density.rail_medium } else { crate::dt_f32!(rail.medium, ass.density.rail_medium) },
+        rail_wide:      if let Some(ref ov) = override_style { ov.density.rail_wide } else { crate::dt_f32!(rail.wide, ass.density.rail_wide) },
         // Default tab treatment — Filled for Aperture/Cadence/Glass, Line for others.
         panel_tab_treatment:   st.panel_tab_treatment,
         // List row shape — pill for Aperture/Glass, hairlines for Alto/Mariner/Relay.
-        wl_row_side_margin:    st.wl_row_side_margin,
-        wl_row_corner_radius:  st.wl_row_corner_radius,
-        wl_row_divider_alpha:  st.wl_row_divider_alpha,
+        wl_row_side_margin:    crate::dt_f32!(wl.side_margin, st.wl_row_side_margin),
+        wl_row_corner_radius:  crate::dt_u8!(wl.corner_radius, st.wl_row_corner_radius),
+        wl_row_divider_alpha:  crate::dt_u8!(wl.divider_alpha, st.wl_row_divider_alpha),
     };
     // Push to the canonical ui_kit thread_local. ui_kit's
     // `frame_tokens()` reads this back for `radius_*` / `stroke_*` /

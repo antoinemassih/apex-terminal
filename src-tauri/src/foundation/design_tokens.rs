@@ -34,6 +34,12 @@ pub struct DesignTokens {
     pub order_entry: OrderEntryTokens,
     pub pane_header: PaneHeaderTokens,
     pub segmented: SegmentedTokens,
+    /// Side-rail width ladder (`StyleSystem.density.rail_*`).
+    #[serde(default)]
+    pub rail: RailTokens,
+    /// Watchlist row chrome (`StyleSettings.wl_row_*`).
+    #[serde(default)]
+    pub wl: WatchlistRowTokens,
     /// Icon size ladder. Theme-authorable via `StyleSystem.icons`; these make
     /// it live-tunable too, which is the tier it was missing.
     #[serde(default)]
@@ -79,7 +85,10 @@ pub struct FontTokens { pub xxs: f32, pub xs: f32, pub sm_tight: f32, pub sm: f3
 pub struct SpacingTokens { pub gap_2xs: f32, pub xs: f32, pub xs_mid: f32, pub sm: f32, pub md: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub xxxl: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RadiusTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32 }
+pub struct RadiusTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32,
+    /// The pill rung. Meridien and Glass author 0.0 ("sharp pill"), so a
+    /// hardcoded 999 here would make every style render capsules.
+    #[serde(default)] pub pill: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StrokeTokens {
@@ -140,10 +149,28 @@ pub struct WatchlistTokens {   }
 pub struct OrderEntryTokens {}
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaneHeaderTokens {  pub height: f32 }
+pub struct PaneHeaderTokens {  pub height: f32,
+    /// The mosaic gutter between panes (`StyleSystem.chrome.pane_gap`).
+    #[serde(default)] pub gap: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SegmentedTokens { pub trough_darken: u8, pub trough_expand_x: f32,  }
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RailTokens { pub narrow: f32, pub medium: f32, pub wide: f32 }
+#[cfg(feature = "design-mode")]
+impl Default for RailTokens {
+    fn default() -> Self { Self { narrow: 44.0, medium: 56.0, wide: 72.0 } }
+}
+
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchlistRowTokens { pub side_margin: f32, pub corner_radius: u8, pub divider_alpha: u8 }
+#[cfg(feature = "design-mode")]
+impl Default for WatchlistRowTokens {
+    fn default() -> Self { Self { side_margin: 0.0, corner_radius: 0, divider_alpha: 0 } }
+}
+
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IconTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32 }
@@ -363,7 +390,7 @@ impl Default for DesignTokens {
             // RESET restores the app's shipped look, not a different tier.
             font: FontTokens { xxs: 8.0, xs: 9.0, sm_tight: 10.0, sm: 11.0, md: 13.0, lg: 16.0, xl: 22.0, xxl: 28.0, display_sm: 28.0, display_md: 32.0, display_lg: 42.0, display_xl: 56.0, ui_4xs: 7.0, ui_xs_plus: 10.0, ui_md_plus: 14.0 },
             spacing: SpacingTokens { gap_2xs: 2.0, xs: 4.0, xs_mid: 6.0, sm: 8.0, md: 12.0, lg: 16.0, xl: 20.0, xxl: 24.0, xxxl: 32.0 },
-            radius: RadiusTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0 },
+            radius: RadiusTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0 , pill: 99.0 },
             stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5,  rule: 3.0 },
             alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, whisper: 25, hint: 30, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, scrim: 140, dense: 160, near_solid: 180, solid: 200 },
             shadow: ShadowTokens { offset: 2.0, alpha: 60, spread: 4.0, gradient: [20, 12, 4] },
@@ -378,8 +405,10 @@ impl Default for DesignTokens {
             chart: ChartTokens { padding_bottom: 30.0, padding_top: 4.0, padding_right: 80.0 },
             watchlist: WatchlistTokens {   },
             order_entry: OrderEntryTokens {},
-            pane_header: PaneHeaderTokens {  height: 28.0 },
+            pane_header: PaneHeaderTokens {  height: 28.0 , gap: 8.0 },
             segmented: SegmentedTokens { trough_darken: 12, trough_expand_x: 4.0,  },
+            rail: RailTokens::default(),
+            wl: WatchlistRowTokens::default(),
             icon: IconTokens::default(),
             line: LineTokens::default(),
             row: RowTokens::default(),
