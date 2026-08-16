@@ -199,6 +199,54 @@ pub(crate) fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bo
 /// Paints nothing if both side and expiry are empty/unrecognised.
 ///
 /// `pub(crate)` for reuse by other pane-chrome renderers.
+/// The two option badges as `(side_width, dte_label, dte_width)`.
+///
+/// Split out so a caller can lay the badges out BEFORE painting them.
+/// `paint_option_badges` used to be the only entry point and it both painted
+/// and returned how much room it had taken — so the strip around it could not
+/// be solved: knowing where the timeframe starts required having already drawn
+/// the badges. Measure and paint are separate now, and the walk inside them is
+/// gone with it.
+fn option_badge_metrics(
+    painter: &egui::Painter,
+    side: &str,
+    expiry: &str,
+) -> (Option<f32>, Option<(String, f32)>) {
+    let badge_font = mono_2xs();
+    let side_w = (side == "C" || side == "P").then(|| {
+        painter
+            .layout_no_wrap(side.to_string(), badge_font.clone(), Color32::PLACEHOLDER)
+            .size()
+            .x
+            + 8.0
+    });
+    let dte = (!expiry.is_empty()).then(|| {
+        use chrono::NaiveDate;
+        let today = chrono::Utc::now().date_naive();
+        let d = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
+            .ok()
+            .map(|d| (d - today).num_days())
+            .unwrap_or(0);
+        let lbl = if d <= 0 { "0D".to_string() } else { format!("{d}D") };
+        let w = painter
+            .layout_no_wrap(lbl.clone(), badge_font.clone(), Color32::PLACEHOLDER)
+            .size()
+            .x
+            + 6.0;
+        (lbl, w)
+    });
+    (side_w, dte)
+}
+
+/// Total width the option badges occupy, including their trailing seams.
+pub(crate) fn option_badges_width(painter: &egui::Painter, side: &str, expiry: &str) -> f32 {
+    let (s, d) = option_badge_metrics(painter, side, expiry);
+    s.map_or(0.0, |w| w + 4.0) + d.map_or(0.0, |(_, w)| w + 6.0)
+}
+
+/// Paint the option badges starting at `cx`. Returns the width consumed, which
+/// equals [`option_badges_width`] — the two are derived from the same metrics
+/// so they cannot drift.
 pub(crate) fn paint_option_badges(
     painter: &egui::Painter,
     cx: f32,
@@ -212,31 +260,23 @@ pub(crate) fn paint_option_badges(
     let by = center_y - bh / 2.0;
     let badge_font = mono_2xs();
     let dark_fg = badge_fg(theme);
-    let mut consumed = 0.0_f32;
+    let (side_w, dte) = option_badge_metrics(painter, side, expiry);
 
-    if side == "C" || side == "P" {
-        let g = painter.layout_no_wrap(side.to_string(), badge_font.clone(), dark_fg);
-        let bw = g.size().x + 8.0;
-        let r = Rect::from_min_size(pos2(cx + consumed, by), Vec2::new(bw, bh));
+    let mut x = cx;
+    if let Some(bw) = side_w {
+        let r = Rect::from_min_size(pos2(x, by), Vec2::new(bw, bh));
         let accent_color = if side == "C" { theme.bull } else { theme.bear };
         painter.rect_filled(r, radius_sm(), color_alpha(accent_color, alpha_solid()));
         painter.text(r.center(), Align2::CENTER_CENTER, side, badge_font.clone(), dark_fg);
-        consumed += bw + 4.0;
+        x += bw + 4.0;
     }
-    if !expiry.is_empty() {
-        use chrono::NaiveDate;
-        let today = chrono::Utc::now().date_naive();
-        let dte = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
-            .ok().map(|d| (d - today).num_days()).unwrap_or(0);
-        let lbl = if dte <= 0 { "0D".to_string() } else { format!("{}D", dte) };
-        let g = painter.layout_no_wrap(lbl.clone(), badge_font.clone(), dark_fg);
-        let bw = g.size().x + 6.0;
-        let r = Rect::from_min_size(pos2(cx + consumed, by), Vec2::new(bw, bh));
+    if let Some((lbl, bw)) = dte {
+        let r = Rect::from_min_size(pos2(x, by), Vec2::new(bw, bh));
         painter.rect_filled(r, radius_sm(), tint(theme, Tone::Accent, alpha_solid()));
         painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
-        consumed += bw + 6.0;
+        x += bw + 6.0;
     }
-    consumed
+    x - cx
 }
 
 /// Paint an icon-label button (ORDER / DOM / +Tab style). The icon is drawn in
@@ -924,37 +964,76 @@ impl<'a> PainterPaneHeader<'a> {
             // Weight belongs to the font, not to the number of times we draw.
             // If the symbol should be heavier, register a bold mono face and
             // ask for it here.
+            // Symbol · badges · timeframe · price — SOLVED.
+            //
+            // Four `cx += measured_width + gap` steps, and the comment on the
+            // timeframe one states the hazard exactly: "measured AND painted
+            // with the same FontId — `cx` advances by the galley width, so
+            // these must never diverge". That is a walk asking every future
+            // edit to remember something. Measuring everything first and
+            // solving once removes the requirement rather than restating it.
+            //
+            // The badges needed `option_badges_width` for this: the helper
+            // both painted and returned its own advance, so nothing after it
+            // had a position until it had been drawn.
+            let tf_font = TextStyle::MonoSm.font_id_in(ui);
+            let tf_w = self.timeframe.map(|tf| {
+                painter.layout_no_wrap(tf.to_string(), tf_font.clone(), h_dim).size().x
+            });
+            let price_font = mono_at(self.title_font_size - 1.0);
+            let price_col = self.price_color.unwrap_or(t.dim);
+            let price_w = self.price_text.map(|p| {
+                painter.layout_no_wrap(p.to_string(), price_font.clone(), price_col).size().x
+            });
+            let badge_w = self.option_badges
+                .map(|(side, expiry)| option_badges_width(&painter, side, expiry));
+
+            let meta = {
+                use crate::ui_kit::cascade::element::El;
+                El::row()
+                    .child(El::slot("sym", Vec2::new(sym_galley.size().x + crate::ui_kit::style::gap_2xs(), h)))
+                    .child_if(badge_w.is_some(),
+                        El::slot("badges", Vec2::new(badge_w.unwrap_or(0.0), h))
+                            .margin_start(gap_md() + 4.0))
+                    .child_if(tf_w.is_some(),
+                        El::slot("tf", Vec2::new(tf_w.unwrap_or(0.0), h))
+                            .margin_start(if badge_w.is_some() { 0.0 } else { gap_md() + 4.0 }))
+                    .child_if(price_w.is_some(),
+                        El::slot("price", Vec2::new(price_w.unwrap_or(0.0), h))
+                            .margin_start(gap_md()))
+                    .solve_rect(Rect::from_min_size(pos2(cx, rect.top()), Vec2::new(rect.width(), h)))
+            };
+
             painter.text(
-                pos2(cx + 2.0, rect.center().y),
+                pos2(meta.rect("sym").left() + crate::ui_kit::style::gap_2xs(), rect.center().y),
                 Align2::LEFT_CENTER,
                 sym,
                 sym_font.clone(),
                 label_color,
             );
-            cx += sym_galley.size().x + gap_md() + 4.0;
 
             // Option badges: C/P pill + DTE countdown (shared helper).
             if let Some((side, expiry)) = self.option_badges {
-                cx += paint_option_badges(&painter, cx, rect.center().y, h, side, expiry, t);
+                paint_option_badges(&painter, meta.rect("badges").left(), rect.center().y, h, side, expiry, t);
             }
 
             if let Some(tf) = self.timeframe {
-                // Cascade-resolved. Measured AND painted with the same FontId —
-                // `cx` advances by the galley width, so these must never diverge.
-                let tf_font = TextStyle::MonoSm.font_id_in(ui);
-                let g = painter.layout_no_wrap(tf.to_string(), tf_font.clone(), h_dim);
-                painter.text(pos2(cx, rect.center().y), Align2::LEFT_CENTER, tf,
+                painter.text(pos2(meta.rect("tf").left(), rect.center().y), Align2::LEFT_CENTER, tf,
                     tf_font, h_dim);
-                cx += g.size().x + gap_md();
             }
 
-            if let (Some(price_text), price_color) = (self.price_text, self.price_color.unwrap_or(t.dim)) {
-                let price_font = mono_at(self.title_font_size - 1.0);
-                let g = painter.layout_no_wrap(price_text.to_string(), price_font.clone(), price_color);
-                painter.text(pos2(cx, rect.center().y), Align2::LEFT_CENTER,
-                    price_text, price_font, price_color);
-                cx += g.size().x + gap_md() + 4.0;
+            if let Some(price_text) = self.price_text {
+                painter.text(pos2(meta.rect("price").left(), rect.center().y), Align2::LEFT_CENTER,
+                    price_text, price_font, price_col);
             }
+
+            // One advance past the whole solved strip.
+            cx = [meta.rect("price"), meta.rect("tf"), meta.rect("badges"), meta.rect("sym")]
+                .into_iter()
+                .filter(|r| r.is_finite())
+                .map(|r| r.right())
+                .fold(cx, f32::max)
+                + gap_md() + 4.0;
 
             // Surface symbol click to caller
             if sym_clicked { out.clicked_symbol = true; }
