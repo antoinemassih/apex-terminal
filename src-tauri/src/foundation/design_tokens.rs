@@ -60,7 +60,7 @@ pub struct DesignTokens {
 
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FontTokens { pub xxs: f32, pub xs: f32, pub sm_tight: f32, pub sm: f32, pub md: f32, pub input: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub display_sm: f32, pub display_md: f32, pub display_lg: f32, pub display_xl: f32, pub ui_4xs: f32, pub ui_xs_plus: f32, pub ui_md_plus: f32 }
+pub struct FontTokens { pub xxs: f32, pub xs: f32, pub sm_tight: f32, pub sm: f32, pub md: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub display_sm: f32, pub display_md: f32, pub display_lg: f32, pub display_xl: f32, pub ui_4xs: f32, pub ui_xs_plus: f32, pub ui_md_plus: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpacingTokens { pub gap_2xs: f32, pub xs: f32, pub xs_mid: f32, pub sm: f32, pub md: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub xxxl: f32 }
@@ -97,7 +97,7 @@ pub struct ShadowTokens { pub offset: f32, pub alpha: u8, pub spread: f32, pub g
 pub struct ToolbarTokens { pub height: f32,    }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PanelTokens {  pub margin_top: f32, pub margin_bottom: f32,  pub compact_margin_top: f32, pub compact_margin_bottom: f32,        pub tooltip_width_sm: f32, pub tooltip_width_md: f32, pub content_width_lg: f32, pub content_width_xl: f32 }
+pub struct PanelTokens {}
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DialogTokens { pub header_darken: u8,   }
@@ -118,13 +118,13 @@ pub struct TabTokens {    }
 pub struct TableTokens { pub header_height: f32,    }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChartTokens { pub right_pad_bars: u32, pub padding_bottom: f32, pub padding_top: f32, pub padding_right: f32,  pub replay_progress_height: f32,   }
+pub struct ChartTokens { pub padding_bottom: f32, pub padding_top: f32, pub padding_right: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchlistTokens {   }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrderEntryTokens { pub padding: f32,   }
+pub struct OrderEntryTokens {}
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaneHeaderTokens {  pub height: f32 }
@@ -133,13 +133,13 @@ pub struct PaneHeaderTokens {  pub height: f32 }
 pub struct SegmentedTokens { pub trough_darken: u8, pub trough_expand_x: f32,  }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IconButtonTokens {  pub min_size: f32 }
+pub struct IconButtonTokens {}
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormTokens { pub label_width: f32, pub row_height: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SplitDividerTokens { pub height: f32, pub dot_spacing: f32, pub dot_radius: f32, pub dot_count: usize, pub active_stroke: f32, pub inactive_stroke: f32, pub inset: f32 }
+pub struct SplitDividerTokens { pub height: f32, pub dot_spacing: f32, pub dot_radius: f32, pub active_stroke: f32, pub inactive_stroke: f32, pub inset: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TooltipTokens { pub corner_radius: f32, pub padding: f32, pub stat_label_size: f32, pub stat_value_size: f32 }
@@ -156,7 +156,6 @@ pub struct ColorTokens {
     pub danger: Rgba, pub triggered_red: Rgba, pub dark_pool: Rgba, pub info_blue: Rgba,
     pub discord: Rgba, pub dialog_fill: Rgba, pub dialog_border: Rgba,
     pub deep_bg: Rgba, pub deep_bg_alt: Rgba,
-    pub pane_tints: [Rgba; 4],
 }
 
 #[cfg(feature = "design-mode")]
@@ -317,28 +316,28 @@ impl Default for DesignTokens {
         Self {
             // Aligned to the canonical `ui_kit::style` constant fallbacks so
             // RESET restores the app's shipped look, not a different tier.
-            font: FontTokens { xxs: 8.0, xs: 9.0, sm_tight: 10.0, sm: 11.0, md: 13.0, input: 13.0, lg: 16.0, xl: 22.0, xxl: 28.0, display_sm: 28.0, display_md: 32.0, display_lg: 42.0, display_xl: 56.0, ui_4xs: 7.0, ui_xs_plus: 10.0, ui_md_plus: 14.0 },
+            font: FontTokens { xxs: 8.0, xs: 9.0, sm_tight: 10.0, sm: 11.0, md: 13.0, lg: 16.0, xl: 22.0, xxl: 28.0, display_sm: 28.0, display_md: 32.0, display_lg: 42.0, display_xl: 56.0, ui_4xs: 7.0, ui_xs_plus: 10.0, ui_md_plus: 14.0 },
             spacing: SpacingTokens { gap_2xs: 2.0, xs: 4.0, xs_mid: 6.0, sm: 8.0, md: 12.0, lg: 16.0, xl: 20.0, xxl: 24.0, xxxl: 32.0 },
             radius: RadiusTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0 },
             stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5,  rule: 3.0 },
             alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, whisper: 25, hint: 30, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, scrim: 140, dense: 160, near_solid: 180, solid: 200 },
             shadow: ShadowTokens { offset: 2.0, alpha: 60, spread: 4.0, gradient: [20, 12, 4] },
             toolbar: ToolbarTokens { height: 38.0,    },
-            panel: PanelTokens {  margin_top: 10.0, margin_bottom: 8.0,  compact_margin_top: 8.0, compact_margin_bottom: 6.0,        tooltip_width_sm: 160.0, tooltip_width_md: 220.0, content_width_lg: 520.0, content_width_xl: 680.0 },
+            panel: PanelTokens {},
             dialog: DialogTokens { header_darken: 8,   },
             button: ButtonTokens {      },
             card: CardTokens { margin_left: 9, margin_right: 6, margin_y: 5, radius: 4.0, stripe_width: 3.0,     },
-            badge: BadgeTokens { font_size: 8.0, height: 16.0 },
+            badge: BadgeTokens { font_size: 10.0, height: 14.0 },
             tab: TabTokens {    },
             table: TableTokens { header_height: 12.0,    },
-            chart: ChartTokens { right_pad_bars: 20, padding_bottom: 30.0, padding_top: 4.0, padding_right: 80.0,  replay_progress_height: 6.0,   },
+            chart: ChartTokens { padding_bottom: 30.0, padding_top: 4.0, padding_right: 80.0 },
             watchlist: WatchlistTokens {   },
-            order_entry: OrderEntryTokens { padding: 8.0,   },
+            order_entry: OrderEntryTokens {},
             pane_header: PaneHeaderTokens {  height: 28.0 },
             segmented: SegmentedTokens { trough_darken: 12, trough_expand_x: 4.0,  },
-            icon_button: IconButtonTokens {  min_size: 26.0 },
-            form: FormTokens { label_width: 80.0, row_height: 18.0 },
-            split_divider: SplitDividerTokens { height: 6.0, dot_spacing: 8.0, dot_radius: 1.5, dot_count: 3, active_stroke: 2.0, inactive_stroke: 1.0, inset: 8.0 },
+            icon_button: IconButtonTokens {},
+            form: FormTokens { label_width: 120.0, row_height: 18.0 },
+            split_divider: SplitDividerTokens { height: 6.0, dot_spacing: 8.0, dot_radius: 1.5, active_stroke: 2.0, inactive_stroke: 1.0, inset: 8.0 },
             tooltip: TooltipTokens { corner_radius: 8.0, padding: 8.0, stat_label_size: 8.0, stat_value_size: 10.0 },
             separator: SeparatorTokens { after_space: 1.0, shadow_space: 4.0 },
             color: ColorTokens {
@@ -347,7 +346,7 @@ impl Default for DesignTokens {
                 danger: [224,85,96,255], triggered_red: [231,76,60,255], dark_pool: [180,100,255,255], info_blue: [100,200,255,255],
                 discord: [88,101,242,255], dialog_fill: [26,26,32,255], dialog_border: [60,60,70,80],
                 deep_bg: [10,12,16,255], deep_bg_alt: [12,14,18,255],
-                pane_tints: [[62,120,180,30], [180,100,255,30], [46,204,113,30], [255,191,0,30]],
+
             },
             status: StatusTokens {
                 ok:    [120, 180, 120, 255], // DisplayChip default — muted green

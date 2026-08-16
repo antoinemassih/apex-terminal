@@ -996,8 +996,6 @@ let _ = ctx;
                 changed |= drag_f32(ui, "height", &mut tokens.toolbar.height, 20.0..=60.0);
             }
             Category::Panel => {
-                changed |= drag_f32(ui, "margin_top", &mut tokens.panel.margin_top, 0.0..=30.0);
-                changed |= drag_f32(ui, "margin_bottom", &mut tokens.panel.margin_bottom, 0.0..=30.0);
                 ui.add_space(4.0);
                 ui.label(RichText::new("Widths").monospace().size(font_xs()).color(Color32::from_rgb(130, 130, 140)));
             }
@@ -1030,7 +1028,6 @@ let _ = ctx;
             Category::Watchlist => {
             }
             Category::OrderEntry => {
-                changed |= drag_f32(ui, "padding (8)", &mut tokens.order_entry.padding, 0.0..=20.0);
             }
             Category::PaneHeader => {
                 changed |= drag_f32(ui, "height (36)", &mut tokens.pane_header.height, 20.0..=60.0);
@@ -1040,7 +1037,6 @@ let _ = ctx;
                 changed |= drag_f32(ui, "trough_expand_x (4)", &mut tokens.segmented.trough_expand_x, 0.0..=20.0);
             }
             Category::IconButton => {
-                changed |= drag_f32(ui, "min_size (26)", &mut tokens.icon_button.min_size, 14.0..=50.0);
             }
             Category::Form => {
                 changed |= drag_f32(ui, "label_width (80)", &mut tokens.form.label_width, 30.0..=200.0);

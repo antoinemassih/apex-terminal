@@ -109,7 +109,11 @@ impl<'a> Badge<'a> {
             BadgeKind::Text => self.text.clone(),
         };
 
-        let h: f32 = 14.0;
+        // Was a bare 14.0 while a `badge.height` token sat with no reader —
+        // the slider moved and nothing did. Token default set to 14.0 so an
+        // unauthored style renders byte-identically (it was 16.0, which would
+        // have made wiring it a silent resize).
+        let h: f32 = crate::dt_f32!(badge.height, 14.0);
 
         if matches!(self.kind, BadgeKind::Dot) {
             let size = 8.0;
@@ -124,7 +128,7 @@ impl<'a> Badge<'a> {
         // forbids sub-11px). Badges are a documented exception — they are
         // glanceable indicators (counts on icons), not body text. Do not
         // copy this size into other widgets.
-        let font_size: f32 = 10.0;
+        let font_size: f32 = crate::dt_f32!(badge.font_size, 10.0);
         let galley = ui.fonts(|f| {
             // layout-only: width measurement only; text color is decided below.
             f.layout_no_wrap(display.clone(), crate::ui_kit::style::mono_at(font_size), egui::Color32::PLACEHOLDER)

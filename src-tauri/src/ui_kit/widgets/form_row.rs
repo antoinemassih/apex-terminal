@@ -90,7 +90,9 @@ impl<'a> FormRow<'a> {
     pub fn new(label: &'a str) -> Self {
         Self {
             label,
-            label_width: 120.0,
+            // `form.label_width` existed as a token with no reader; this was
+            // the literal it was meant to back.
+            label_width: crate::dt_f32!(form.label_width, 120.0),
             helper: None,
             error: None,
             required: false,

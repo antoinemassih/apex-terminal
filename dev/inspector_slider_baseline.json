@@ -1,11 +1,3 @@
 {
-  "dead": [
-    "badge.font_size",
-    "badge.height",
-    "form.label_width",
-    "icon_button.min_size",
-    "order_entry.padding",
-    "panel.margin_bottom",
-    "panel.margin_top"
-  ]
+  "dead": []
 }

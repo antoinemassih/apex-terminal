@@ -611,6 +611,41 @@ bite by deleting the export line.
 
 ---
 
+## AT-155 — the last dead controls and dead tokens — CLOSED
+
+Two leftovers recorded by earlier findings, triaged one by one rather than
+swept. The standing rule applies: delete what is genuinely useless, but a thing
+that is unconnected through *oversight* gets finished instead.
+
+**Wired (3) — the token existed and the widget hardcoded the value beside it:**
+- `badge.font_size` — `badge.rs` held `let font_size: f32 = 10.0;`
+- `badge.height` — `let h: f32 = 14.0;`
+- `form.label_width` — `form_row.rs` held `label_width: 120.0`
+
+Each token's default had to be moved to the literal it replaces (badge was
+8.0/16.0, form was 80.0). Wiring without that is a silent resize dressed as
+plumbing, and leaves the slider discontinuous at its own resting value — the
+token-consumer gate caught exactly that and refused the first attempt.
+
+**Deleted (15) — superseded, with the successor named:**
+- `panel.margin_top/bottom`, `panel.compact_margin_*` — `side_panel_shell`
+  builds its margins from `gap_*` tokens.
+- `panel.tooltip_width_sm/md`, `panel.content_width_lg/xl` — no consumer and no
+  hardcoded equivalent anywhere; never used.
+- `icon_button.min_size` — `IconPlacement::*.hit_px()` owns hit sizing (AT-148).
+- `font.input` — `Input` derives from `size.font_size().max(font_md())`.
+- `split_divider.dot_count` — the divider computes how many dots fit its
+  available height. A fixed count would be wrong, so this is superseded by
+  something better rather than merely unused.
+- `chart.right_pad_bars`, `chart.replay_progress_height`, `color.pane_tints`,
+  `order_entry.padding` — no consumer, no equivalent.
+
+**The inspector-slider gate's ceiling is now 0**, down from 59 when it was
+written. Every slider in the design inspector moves a pixel, and the gate is a
+floor rather than a budget from here: a dead control cannot be added.
+
+---
+
 ## AT-154 — the ratchet was blind below any mid-file test module — FIXED
 
 The design-system ratchet filtered out test-fixture hits with an awk pass that
