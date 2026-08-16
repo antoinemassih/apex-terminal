@@ -2360,15 +2360,22 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         mono_2xs(), color_dim(t.dim));
 
     // ── Column headers ──
+    // Column headers — the empty trailing `p.text(.., "")` that used to sit at
+    // `right` is gone: it painted no glyphs and reserved no space, so it was a
+    // statement of intent with no effect. The tree states the same intent with
+    // a spacer that does something.
     let y = bands.rect("colhdr").top();
-    p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
-        "SYMBOL", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(left + 70.0, y + 4.0), egui::Align2::LEFT_CENTER,
-        "QTY", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(right - 40.0, y + 4.0), egui::Align2::RIGHT_CENTER,
-        "P&L", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(right, y + 4.0), egui::Align2::RIGHT_CENTER,
-        "", mono_2xs(), color_dim(t.dim));
+    El::row()
+        .color(color_dim(t.dim))
+        .child(El::text_with_font("SYMBOL", mono_2xs()).fixed(70.0))
+        .child(El::text_with_font("QTY", mono_2xs()))
+        .child(El::spacer())
+        .child(El::text_with_font("P&L", mono_2xs()))
+        .show_with(
+            p,
+            t,
+            egui::Rect::from_min_max(egui::pos2(left, y), egui::pos2(right - 40.0, y + 8.0)),
+        );
 
     // ── Position rows ──
     for (pos_idx, pos) in wd.all_positions.iter().enumerate() {
@@ -2943,10 +2950,17 @@ fn draw_trade_plan(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         ("stop", "STOP", stop, t.bear),
     ] {
         let y = plan.rect(slot).top();
-        p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
-            label, mono_2xs(), color_half(t.dim));
-        p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
-            &format!("${:.2}", price), mono_sm(), color);
+        // Same shape as `draw_zone_strength`: label left, spacer, value right,
+        // painted by the tree through `show_with`.
+        El::row()
+            .child(El::text_with_font(label, mono_2xs()).color(color_half(t.dim)))
+            .child(El::spacer())
+            .child(El::text_with_font(format!("${price:.2}"), mono_sm()).color(color))
+            .show_with(
+                p,
+                t,
+                egui::Rect::from_min_max(egui::pos2(left, y - 4.0), egui::pos2(right, y + 4.0)),
+            );
     }
 
     // R:R and conviction
@@ -3018,10 +3032,27 @@ fn draw_zone_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         ));
     for (i, (label, value, color)) in rows.iter().enumerate() {
         let y = stack.rect(match i { 0 => "r0", 1 => "r1", _ => "r2" }).top();
-        p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
-            *label, mono_2xs(), color_half(t.dim));
-        p.text(egui::pos2(right, y + 4.0), egui::Align2::RIGHT_CENTER,
-            value, mono_lg(), *color);
+        // Label left, value right — DECLARED and PAINTED by the tree, on a
+        // surface that has only a `&Painter`. That combination is new: before
+        // `show_with`, every chart-overlay panel could use the tree for layout
+        // and had to paint by hand, which is why 73 of the first 99 nodes were
+        // placeholder slots.
+        //
+        // The spacer between them is what "flush right" means here — no
+        // `Align2::RIGHT_CENTER` against a hand-computed `right`, and no way
+        // for the two ends to disagree about where the row ends.
+        El::row()
+            .child(El::text_with_font(*label, mono_2xs()).color(color_half(t.dim)))
+            .child(El::spacer())
+            .child(El::text_with_font(value.clone(), mono_lg()).color(*color))
+            .show_with(
+                p,
+                t,
+                egui::Rect::from_min_max(
+                    egui::pos2(left, y),
+                    egui::pos2(right, y + 8.0),
+                ),
+            );
     }
 
     // Average strength bar

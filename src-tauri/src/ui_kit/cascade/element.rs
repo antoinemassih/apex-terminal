@@ -65,6 +65,58 @@ enum Kind {
     Slot { id: String, size: Vec2 },
 }
 
+/// Where a node gets its font stack from.
+///
+/// The tree originally took `Option<&Ui>`: `Some` to measure, `None` for
+/// painter-only surfaces where text collapsed to zero width. That binary is
+/// the wrong shape, because most of this app paints from a bare `&Painter`
+/// with no `Ui` anywhere — `draw_positions_panel`, `draw_trade_plan`, every
+/// chart-overlay panel — and those surfaces could therefore use the tree only
+/// as a layout solver, never as a component tree. The painting half was
+/// unreachable for the majority of its intended callers.
+///
+/// A `Painter` can lay text out (`Painter::fonts`) and draw it. The only thing
+/// a `Ui` adds is `style().text_styles` for TIER resolution and interaction
+/// for buttons — and `TextStyle::font_id()` already resolves a tier without
+/// one, so the painter path loses only the per-context tier OVERRIDE, which is
+/// exactly what `text_with_font` exists to sidestep.
+#[derive(Clone, Copy)]
+enum Measure<'a> {
+    Ui(&'a Ui),
+    Painter(&'a egui::Painter),
+    /// No font stack at all — `solve_rect`. Text resolves to zero width, which
+    /// shows up as a collapsed slot rather than a wrong one.
+    None,
+}
+
+impl Measure<'_> {
+    fn font(self, tier: TextStyle) -> egui::FontId {
+        match self {
+            // A `Ui` can carry a per-context override of a tier's font.
+            Measure::Ui(ui) => tier.font_id_in(ui),
+            // Without one, the tier's own definition. Same ladder, no override.
+            _ => tier.font_id(),
+        }
+    }
+
+    fn width(self, text: &str, font: egui::FontId) -> f32 {
+        let lay = |g: &egui::epaint::Fonts| {
+            g.layout_no_wrap(text.to_owned(), font.clone(), egui::Color32::PLACEHOLDER)
+                .size()
+                .x
+        };
+        match self {
+            Measure::Ui(ui) => ui.fonts(lay),
+            Measure::Painter(p) => p.fonts(lay),
+            Measure::None => 0.0,
+        }
+    }
+
+    fn is_measurable(self) -> bool {
+        !matches!(self, Measure::None)
+    }
+}
+
 /// One node of the tree.
 pub struct El {
     kind: Kind,
@@ -230,7 +282,7 @@ impl El {
     /// Computed before anything is painted — that is the whole point of the
     /// tree. A container asks its children, so "does this row fit" has an
     /// answer at declaration time rather than after an overrun.
-    fn intrinsic(&self, ui: Option<&Ui>, inherited: Inherited) -> f32 {
+    fn intrinsic(&self, m: Measure<'_>, inherited: Inherited) -> f32 {
         if let Some(px) = self.fixed {
             return px;
         }
@@ -240,7 +292,7 @@ impl El {
                 let n = children.len();
                 let sum: f32 = children
                     .iter()
-                    .map(|c| c.intrinsic(ui, here) + c.margin_start.unwrap_or(0.0))
+                    .map(|c| c.intrinsic(m, here) + c.margin_start.unwrap_or(0.0))
                     .sum();
                 let gaps = if n > 1 { gap * (n as f32 - 1.0) } else { 0.0 };
                 let padding = if *row { self.pad.0 + self.pad.1 } else { self.pad.2 + self.pad.3 };
@@ -251,15 +303,13 @@ impl El {
                 // `solve_rect` documents that a text node must then carry an
                 // explicit width; returning 0 here makes that failure visible
                 // as a collapsed slot rather than a wrong one.
-                let Some(ui) = ui else { return 0.0 };
+                if !m.is_measurable() {
+                    return 0.0;
+                }
                 let font = explicit.clone().unwrap_or_else(|| {
-                    tier.or(here.text_style).unwrap_or(TextStyle::Body).font_id_in(ui)
+                    m.font(tier.or(here.text_style).unwrap_or(TextStyle::Body))
                 });
-                let base = ui.fonts(|f| {
-                    f.layout_no_wrap(text.clone(), font, egui::Color32::PLACEHOLDER)
-                        .size()
-                        .x
-                });
+                let base = m.width(text, font);
                 // Tracking widens the node. Measuring without it would size the
                 // slot for untracked text and then paint tracked text into it —
                 // a right-aligned or centred sibling would be placed wrong, and
@@ -272,25 +322,21 @@ impl El {
             }
             Kind::Spacer { .. } => 0.0,
             Kind::Button { label, .. } => {
-                let Some(ui) = ui else { return 0.0 };
-                let t = here.text_style.unwrap_or(TextStyle::BodySm);
-                let font = t.font_id_in(ui);
-                let w = ui.fonts(|f| {
-                    f.layout_no_wrap(label.clone(), font, egui::Color32::PLACEHOLDER)
-                        .size()
-                        .x
-                });
-                w + crate::ui_kit::style::gap_md() * 2.0
+                if !m.is_measurable() {
+                    return 0.0;
+                }
+                let font = m.font(here.text_style.unwrap_or(TextStyle::BodySm));
+                m.width(label, font) + crate::ui_kit::style::gap_md() * 2.0
             }
             Kind::Slot { size, .. } => size.x,
         }
     }
 
-    fn as_item(&self, ui: Option<&Ui>, inherited: Inherited) -> Item {
+    fn as_item(&self, m: Measure<'_>, inherited: Inherited) -> Item {
         let mut it = match (self.fixed, &self.kind) {
             (Some(px), _) => Item::fixed(px),
             (None, Kind::Spacer { grow }) => Item::grow(*grow),
-            _ => Item::content(self.intrinsic(ui, inherited)),
+            _ => Item::content(self.intrinsic(m, inherited)),
         };
         if let Some(g) = self.grow {
             it = Item::grow(g);
@@ -317,7 +363,7 @@ impl El {
     /// reinvent the probe is how a measure and a paint drift apart.
     #[must_use]
     pub fn intrinsic_width(&self, ui: &Ui) -> f32 {
-        self.intrinsic(Some(ui), context::resolved())
+        self.intrinsic(Measure::Ui(ui), context::resolved())
     }
 
     // ── Render ─────────────────────────────────────────────────────────────
@@ -343,7 +389,7 @@ impl El {
     pub fn solve_rect(self, rect: Rect) -> Rendered {
         let mut out = Rendered::default();
         let inherited = context::resolved();
-        solve(self, None, rect, inherited, &mut out);
+        solve(self, Measure::None, rect, inherited, &mut out);
         out
     }
 
@@ -361,7 +407,43 @@ impl El {
     pub fn solve_in(self, ui: &mut Ui, rect: Rect) -> Rendered {
         let mut out = Rendered::default();
         let inherited = context::resolved();
-        solve(self, Some(ui), rect, inherited, &mut out);
+        solve(self, Measure::Ui(ui), rect, inherited, &mut out);
+        out
+    }
+
+    /// Solve and PAINT with no `Ui` — for surfaces that only have a `Painter`.
+    ///
+    /// This is the entry point most of this app actually needs. The overlay
+    /// panels (`draw_positions_panel`, `draw_trade_plan`, `draw_risk_dash`,
+    /// `draw_zone_strength`, …) receive a `&egui::Painter` and nothing else,
+    /// so before this existed they could use the tree only as a layout solver.
+    /// The component half was unreachable from the majority of its intended
+    /// callers, which is a large part of why it had none.
+    ///
+    /// Two things a `Ui` provides are not available here, and both are
+    /// deliberate rather than hidden:
+    ///
+    /// * **Tier overrides.** A tier resolves through `TextStyle::font_id()`,
+    ///   its own definition, rather than through `ui.style().text_styles`.
+    ///   Same ladder; no per-context override. `text_with_font` sidesteps it
+    ///   entirely and is what these surfaces use anyway.
+    /// * **Buttons.** An `El::button` needs to `interact`, and interaction is
+    ///   a `Ui` concept. Its rect is still recorded so the caller can drive it,
+    ///   but nothing is painted — and a `debug_assert` fires, because a node
+    ///   that silently draws nothing is the fail-silent class this codebase
+    ///   has eleven documented forms of.
+    ///
+    /// Painting is clipped to `rect`, same as [`Self::show_in`].
+    pub fn show_with(
+        self,
+        painter: &egui::Painter,
+        theme: &dyn ComponentTheme,
+        rect: Rect,
+    ) -> Rendered {
+        let mut out = Rendered::default();
+        let inherited = context::resolved();
+        let clipped = painter.with_clip_rect(painter.clip_rect().intersect(rect));
+        paint_with(self, &clipped, theme, rect, inherited, &mut out);
         out
     }
 
@@ -440,7 +522,7 @@ fn paint(
             );
             let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
             for c in &children {
-                flex = flex.item(c.as_item(Some(ui), here));
+                flex = flex.item(c.as_item(Measure::Ui(ui), here));
             }
             let solved = flex.solve(inner.size());
             let off = inner.min.to_vec2();
@@ -449,63 +531,19 @@ fn paint(
             }
         }
         Kind::Text { text, tier, font: explicit } => {
-            let col = here.color_or(crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Text));
+            let col = here.color_or(
+                crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Text),
+            );
             let font = explicit.unwrap_or_else(|| {
-                tier.or(here.text_style).unwrap_or(TextStyle::Body).font_id_in(ui)
+                Measure::Ui(ui).font(tier.or(here.text_style).unwrap_or(TextStyle::Body))
             });
-
-            // `text_align` and `letter_spacing` are honoured HERE, and until
-            // recently they were not honoured anywhere.
-            //
-            // Both sat in `Inherited` with builders (`.align()`,
-            // `.letter_spacing()`), a docstring explaining that CSS inherits
-            // them, and a test asserting they exist — and no consumer. A caller
-            // could declare a right-aligned subtree and get left-aligned text
-            // with no error, no warning and no failing test. That is worse than
-            // a missing feature: a declaration that silently does nothing is
-            // the "familiar API that lies" this module's own docs warn about.
-            let (anchor_x, align) = match here.text_align {
-                Some(Align::Center) => (rect.center().x, egui::Align2::CENTER_CENTER),
-                Some(Align::Max) => (rect.right(), egui::Align2::RIGHT_CENTER),
-                // `Align::Min` and absent both mean left — absent is "the
-                // widget's own default", and a text node's own default is left.
-                _ => (rect.left(), egui::Align2::LEFT_CENTER),
-            };
-            let pos = egui::pos2(anchor_x, rect.center().y);
-
-            match here.letter_spacing {
-                // The common path: no tracking declared, so lay the text out
-                // the cheap way rather than building a `LayoutJob` per node.
-                None => {
-                    ui.painter().text(pos, align, text, font, col);
-                }
-                Some(px) => {
-                    let mut job = egui::text::LayoutJob::single_section(
-                        text,
-                        egui::TextFormat {
-                            font_id: font,
-                            color: col,
-                            extra_letter_spacing: px,
-                            ..Default::default()
-                        },
-                    );
-                    job.wrap.max_width = f32::INFINITY;
-                    let galley = ui.fonts(|f| f.layout_job(job));
-                    let size = galley.size();
-                    // `painter.galley` takes a TOP-LEFT corner, so the anchor
-                    // has to be resolved by hand here — `Align2` does that for
-                    // `painter.text` and there is no equivalent for a galley.
-                    let origin = egui::pos2(
-                        match align {
-                            egui::Align2::CENTER_CENTER => pos.x - size.x * 0.5,
-                            egui::Align2::RIGHT_CENTER => pos.x - size.x,
-                            _ => pos.x,
-                        },
-                        pos.y - size.y * 0.5,
-                    );
-                    ui.painter().galley(origin, galley, col);
-                }
-            }
+            // ONE implementation of "how a declared property becomes a glyph
+            // position", shared with the painter-only path. `text_align` and
+            // `letter_spacing` sat in `Inherited` unread for the whole of this
+            // module's life; two copies of the code that reads them is how one
+            // of them starts ignoring them again.
+            let painter = ui.painter().clone();
+            paint_text(&painter, rect, &text, font, col, here);
         }
         Kind::Spacer { .. } => {}
         Kind::Button { id, label } => {
@@ -668,7 +706,7 @@ mod tests {
                 .gap(10.0)
                 .child(El::slot("a", Vec2::new(20.0, 20.0)))
                 .child(El::slot("b", Vec2::new(20.0, 20.0)));
-            w.set(row.intrinsic(Some(ui), Inherited::default()));
+            w.set(row.intrinsic(Measure::Ui(ui), Inherited::default()));
         });
         assert!((w.get() - 50.0).abs() < 0.5, "measured {} not 50", w.get());
     }
@@ -696,7 +734,117 @@ mod tests {
 /// Geometry-only walk. Mirrors `paint`'s traversal exactly so a surface that
 /// solves here and paints itself lands on the same rects a full `show_in`
 /// would have produced.
-fn solve(el: El, ui: Option<&Ui>, rect: Rect, inherited: Inherited, out: &mut Rendered) {
+/// The painter-only twin of `paint`. Same tree, same cascade, no `Ui`.
+fn paint_with(
+    el: El,
+    painter: &egui::Painter,
+    theme: &dyn ComponentTheme,
+    rect: Rect,
+    inherited: Inherited,
+    out: &mut Rendered,
+) {
+    let here = el.style.over(inherited);
+    let m = Measure::Painter(painter);
+    match el.kind {
+        Kind::Container { row, children, gap } => {
+            let inner = Rect::from_min_max(
+                egui::pos2(rect.left() + el.pad.0, rect.top() + el.pad.2),
+                egui::pos2(rect.right() - el.pad.1, rect.bottom() - el.pad.3),
+            );
+            let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
+            for c in &children {
+                flex = flex.item(c.as_item(m, here));
+            }
+            let solved = flex.solve(inner.size());
+            let off = inner.min.to_vec2();
+            for (c, r) in children.into_iter().zip(solved) {
+                paint_with(c, painter, theme, r.translate(off), here, out);
+            }
+        }
+        Kind::Text { text, tier, font: explicit } => {
+            let col = here.color_or(
+                crate::ui_kit::sx::palette_ct(theme).base(crate::ui_kit::sx::Tone::Text),
+            );
+            let font = explicit
+                .unwrap_or_else(|| m.font(tier.or(here.text_style).unwrap_or(TextStyle::Body)));
+            paint_text(painter, rect, &text, font, col, here);
+        }
+        Kind::Spacer { .. } => {}
+        Kind::Button { id, .. } => {
+            // Interaction needs a `Ui`. The rect is recorded so the caller can
+            // still drive the button itself; the assert is here because a node
+            // that quietly paints nothing is exactly the failure this codebase
+            // keeps rediscovering.
+            debug_assert!(
+                false,
+                "El::button in a painter-only tree ({id}): buttons need a Ui to                  interact. Use show_in, or a slot the caller paints."
+            );
+            out.rects.insert(id, rect);
+        }
+        Kind::Slot { id, .. } => {
+            out.rects.insert(id, rect);
+        }
+    }
+}
+
+/// Text painting, shared by both paint paths.
+///
+/// Extracted so the `Ui` and `Painter` routes cannot drift: alignment and
+/// tracking are declared properties, and having two copies of "how a declared
+/// property becomes a glyph position" is how one of them ends up ignoring one.
+fn paint_text(
+    painter: &egui::Painter,
+    rect: Rect,
+    text: &str,
+    font: egui::FontId,
+    col: egui::Color32,
+    here: Inherited,
+) {
+    let (anchor_x, align) = match here.text_align {
+        Some(Align::Center) => (rect.center().x, egui::Align2::CENTER_CENTER),
+        Some(Align::Max) => (rect.right(), egui::Align2::RIGHT_CENTER),
+        // `Align::Min` and absent both mean left — absent is "the widget's own
+        // default", and a text node's own default is left.
+        _ => (rect.left(), egui::Align2::LEFT_CENTER),
+    };
+    let pos = egui::pos2(anchor_x, rect.center().y);
+
+    match here.letter_spacing {
+        // The common path: no tracking declared, so lay the text out the cheap
+        // way rather than building a `LayoutJob` per node.
+        None => {
+            painter.text(pos, align, text, font, col);
+        }
+        Some(px) => {
+            let mut job = egui::text::LayoutJob::single_section(
+                text.to_owned(),
+                egui::TextFormat {
+                    font_id: font,
+                    color: col,
+                    extra_letter_spacing: px,
+                    ..Default::default()
+                },
+            );
+            job.wrap.max_width = f32::INFINITY;
+            let galley = painter.fonts(|f| f.layout_job(job));
+            let size = galley.size();
+            // `painter.galley` takes a TOP-LEFT corner, so the anchor is
+            // resolved by hand — `Align2` does that for `painter.text` and
+            // there is no equivalent for a galley.
+            let origin = egui::pos2(
+                match align {
+                    egui::Align2::CENTER_CENTER => pos.x - size.x * 0.5,
+                    egui::Align2::RIGHT_CENTER => pos.x - size.x,
+                    _ => pos.x,
+                },
+                pos.y - size.y * 0.5,
+            );
+            painter.galley(origin, galley, col);
+        }
+    }
+}
+
+fn solve(el: El, m: Measure<'_>, rect: Rect, inherited: Inherited, out: &mut Rendered) {
     let here = el.style.over(inherited);
     match el.kind {
         Kind::Container { row, children, gap } => {
@@ -706,12 +854,12 @@ fn solve(el: El, ui: Option<&Ui>, rect: Rect, inherited: Inherited, out: &mut Re
             );
             let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
             for c in &children {
-                flex = flex.item(c.as_item(ui, here));
+                flex = flex.item(c.as_item(m, here));
             }
             let solved = flex.solve(inner.size());
             let off = inner.min.to_vec2();
             for (c, r) in children.into_iter().zip(solved) {
-                solve(c, ui, r.translate(off), here, out);
+                solve(c, m, r.translate(off), here, out);
             }
         }
         Kind::Slot { id, .. } => {
@@ -882,6 +1030,161 @@ mod inert_declaration_tests {
         assert!(
             l < c && c < r,
             "align must move the painted anchor: left={l}, center={c}, right={r}.              All three equal means `paint` is ignoring `text_align` again."
+        );
+    }
+}
+
+#[cfg(test)]
+mod painter_only_tests {
+    //! `show_with` — the entry point for surfaces that have a `Painter` and no
+    //! `Ui`, which is most of this app's overlay panels.
+    //!
+    //! These matter more than the `Ui` equivalents: `show_in` had one caller
+    //! and was exercised constantly during development, whereas the painter
+    //! path exists precisely because nobody could reach the component half
+    //! from a bare painter. Untested, it would have been a second unreachable
+    //! half rather than a fix for the first.
+    use super::*;
+    use crate::ui_kit::cascade::{context, Inherited};
+    use crate::ui_kit::widgets::theme::PortableTheme;
+    use std::cell::RefCell;
+
+    /// Run `f` against a real painter with a built font atlas, and return the
+    /// x position of every text shape it painted, left to right.
+    fn painted_xs(f: impl FnOnce(&egui::Painter, &PortableTheme)) -> Vec<f32> {
+        let out = RefCell::new(Vec::new());
+        let f = std::cell::Cell::new(Some(f));
+        let ctx = egui::Context::default();
+        // One throwaway frame so the atlas exists — otherwise every string
+        // measures 0 and a spacer test proves nothing.
+        let _ = ctx.run(Default::default(), |_| {});
+        let _ = ctx.run(Default::default(), |c| {
+            egui::CentralPanel::default().show(c, |ui| {
+                TextStyle::install(ui.style_mut());
+                let painter = ui.painter().clone();
+                if let Some(f) = f.take() {
+                    f(&painter, &PortableTheme::dark());
+                }
+                let layer = ui.layer_id();
+                let mut xs: Vec<f32> = ui.ctx().graphics(|g| {
+                    g.get(layer)
+                        .map(|l| {
+                            l.all_entries()
+                                .filter_map(|cs| match &cs.shape {
+                                    egui::Shape::Text(t) => Some(t.pos.x),
+                                    _ => None,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                });
+                xs.sort_by(f32::total_cmp);
+                *out.borrow_mut() = xs;
+            });
+        });
+        out.into_inner()
+    }
+
+    fn font() -> egui::FontId {
+        egui::FontId::monospace(11.0)
+    }
+
+    /// A painter-only tree paints its text nodes. The bare minimum, and the
+    /// thing that was impossible before `show_with`.
+    #[test]
+    fn a_painter_only_tree_paints_its_text() {
+        let xs = painted_xs(|p, theme| {
+            context::reset_for_frame();
+            El::row()
+                .child(El::text_with_font("LEFT", font()))
+                .child(El::text_with_font("RIGHT", font()))
+                .show_with(p, theme, Rect::from_min_size(egui::pos2(10.0, 0.0), Vec2::new(300.0, 20.0)));
+        });
+        assert_eq!(xs.len(), 2, "both text nodes must paint, got {xs:?}");
+        assert!((xs[0] - 10.0).abs() < 0.01, "first child starts at the rect's left: {xs:?}");
+        assert!(xs[1] > xs[0], "second child is to the right: {xs:?}");
+    }
+
+    /// The spacer takes the slack, so a trailing node is flush right. This is
+    /// the shape every "label … value" row in the overlay panels wants, and
+    /// the one a hand-computed `RIGHT_CENTER at right` gets subtly wrong when
+    /// the row's right edge and the value's anchor are written separately.
+    #[test]
+    fn a_spacer_pushes_the_trailing_node_flush_right() {
+        let with = painted_xs(|p, theme| {
+            context::reset_for_frame();
+            El::row()
+                .child(El::text_with_font("L", font()))
+                .child(El::spacer())
+                .child(El::text_with_font("VALUE", font()))
+                .show_with(p, theme, Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(300.0, 20.0)));
+        });
+        let without = painted_xs(|p, theme| {
+            context::reset_for_frame();
+            El::row()
+                .child(El::text_with_font("L", font()))
+                .child(El::text_with_font("VALUE", font()))
+                .show_with(p, theme, Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(300.0, 20.0)));
+        });
+        assert_eq!(with.len(), 2);
+        assert!(
+            with[1] > without[1] + 100.0,
+            "the spacer must push the trailing node right: with={with:?}, without={without:?}"
+        );
+        assert!(with[1] < 300.0, "and not past the rect: {with:?}");
+    }
+
+    /// The cascade reaches a painter-only tree.
+    ///
+    /// Read from the GALLEY's layout job, not from `override_text_color`:
+    /// `Painter::text` bakes the colour into the job's sections and leaves the
+    /// override `None`. Asserting on the override passed nothing and failed
+    /// loudly, which is the good outcome — a test that looked at the wrong
+    /// field and happened to agree would have been worse.
+    #[test]
+    fn a_declared_colour_reaches_a_painter_only_tree() {
+        let declared = egui::Color32::from_rgb(7, 200, 33);
+        let cols = RefCell::new(Vec::new());
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |_| {});
+        let _ = ctx.run(Default::default(), |c| {
+            egui::CentralPanel::default().show(c, |ui| {
+                TextStyle::install(ui.style_mut());
+                let painter = ui.painter().clone();
+                let theme = PortableTheme::dark();
+                context::reset_for_frame();
+                context::scope(Inherited::default().color(declared), || {
+                    El::row().child(El::text_with_font("X", font())).show_with(
+                        &painter,
+                        &theme,
+                        Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(100.0, 20.0)),
+                    );
+                });
+                let layer = ui.layer_id();
+                *cols.borrow_mut() = ui.ctx().graphics(|g| {
+                    g.get(layer)
+                        .map(|l| {
+                            l.all_entries()
+                                .filter_map(|cs| match &cs.shape {
+                                    egui::Shape::Text(t) => t
+                                        .galley
+                                        .job
+                                        .sections
+                                        .first()
+                                        .map(|sec| sec.format.color),
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                });
+            });
+        });
+        let cols = cols.into_inner();
+        assert_eq!(cols.len(), 1, "one text shape expected, got {}", cols.len());
+        assert_eq!(
+            cols[0], declared,
+            "an ancestor's declared colour must reach a painter-only tree"
         );
     }
 }

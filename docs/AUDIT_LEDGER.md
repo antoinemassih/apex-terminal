@@ -1271,3 +1271,62 @@ flattering the work, and every one was caught by measuring the instrument
 rather than reading its output.
 
 ---
+
+## AT-167 — the component half was unreachable, not unwanted
+
+AT-166 recorded that 73 of 99 `El` nodes were placeholder `slot`s and that
+`El::text`/`button`/`spacer` had no production callers. The obvious reading was
+neglect. The actual reason was structural, and it took three attempts at
+adoption to see it.
+
+`show_in` requires a `&mut Ui`. **Most of this app paints from a bare
+`&egui::Painter`** — every chart-overlay panel (`draw_positions_panel`,
+`draw_trade_plan`, `draw_risk_dash`, `draw_zone_strength`), the pane chrome,
+several list rows. Those surfaces could reach `solve_rect` and nothing else, so
+the component half was not reachable from the majority of its intended callers.
+A system that cannot be called is not adopted for the same reason a system
+nobody wants is not adopted, and the adoption number looks identical.
+
+Three additions, in the order the blockers appeared:
+
+1. **`El::text_with_font`.** `El::text` accepts only `TextStyle` tiers; every
+   existing widget paints with an explicit `FontId` (`prop_at(font_xs())`,
+   `mono_at(size)`, an icon font). Pixel-locked chrome cannot be re-tiered as a
+   side effect of moving its layout. CSS has the same escape — `font-family` is
+   a value, not only a class.
+
+2. **Clipping and a cascading `.color()`/`.align()`.** `show_in` now clips to
+   its rect, as every widget it replaces does through `painter_at`. `.color()`
+   is sugar for a `style()` delta and INHERITS, so a row states its colour once.
+
+3. **`El::show_with(painter, theme, rect)`.** The one that mattered. Internally
+   the tree's font context became a `Measure` enum — `Ui`, `Painter`, or
+   `None` — replacing an `Option<&Ui>` whose two states were "measure" and
+   "collapse text to zero". `Painter::fonts` lays text out, and
+   `TextStyle::font_id()` already resolved a tier without a `Ui`, so the only
+   real losses are per-context tier OVERRIDES (which `text_with_font` sidesteps)
+   and buttons (which need `interact`). An `El::button` in a painter tree
+   records its rect, paints nothing, and trips a `debug_assert` — a node that
+   silently draws nothing is the fail-silent class this codebase has eleven
+   documented forms of, and it was not going to be the twelfth.
+
+Both paint paths now go through ONE `paint_text`. Two copies of "how a declared
+property becomes a glyph position" is how `text_align` gets ignored again.
+
+Result: self-painting nodes 0 → 15, across `SelectableRow`, `ticker_strip`,
+`draw_zone_strength`, `draw_trade_plan` and the positions-panel column headers.
+
+**One migration was declined, and the reason belongs here.** `PanelKeyValueRow`
+looks like an ideal adopter — label left, value right, optional meta. It has a
+pure `solve_key_value_row` with five exact-pixel geometry tests and no external
+callers, so replacing it was available. It was not done: an `El` tree measures
+text through a font stack, so those five assertions would have had to become
+font-metric-dependent, and a widget's layout tests would get worse in exchange
+for a number going up. Adoption that makes the tests worse is adoption theatre.
+
+**A note on the empty statement.** The positions-panel column header ended with
+`p.text(pos2(right, y + 4.0), RIGHT_CENTER, "", …)` — painting no glyphs and
+reserving no space. It had been there long enough to look intentional. The tree
+states the same intent with a spacer that does something.
+
+---
