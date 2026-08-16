@@ -38,6 +38,7 @@ use super::theme::{ComponentTheme, get_ambient_recipes};
 use super::tokens::Size;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::cascade::element::El;
 use crate::ui_kit::sx::{palette_ct, Sx, StyleState, Tone};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::text_style::TextStyle;
@@ -230,6 +231,11 @@ const DRAG_THRESHOLD: f32 = 8.0;
 // truncated when there's truly not enough room.
 const TAB_MIN_WIDTH: f32 = 40.0;
 const CLOSE_HIT: f32 = 16.0;
+/// Which way the label is sized in a given pass of the tab content layout.
+/// See the two-pass note in `paint_one_tab_painter`.
+#[derive(Clone, Copy)]
+enum Item2 { Grow, Fixed(f32) }
+
 const CLOSE_VIS: f32 = 11.0;
 const MOD_DOT_R: f32 = 3.0;
 /// Zed-style active-tab dot (small filled accent circle before the label).
@@ -1113,79 +1119,124 @@ fn paint_one_tab_painter(
     };
     let label_col = alpha(label_col);
 
-    // Layout content left-to-right.
-    let mut cx = rect.left() + pad_x;
+    // Content layout, SOLVED rather than walked.
+    //
+    // This was `cx = left + pad_x` followed by five conditional `cx += w + gap`
+    // steps, and the hand-written reserve below it:
+    //
+    //     let max_label_w = rect.right() - pad_x - cx
+    //         - if badge  { 18.0 + inner_gap } else { 0.0 }
+    //         - if modified { MOD_DOT_R * 2.0 + inner_gap } else { 0.0 }
+    //         - if closable { CLOSE_VIS + inner_gap } else { 0.0 };
+    //
+    // That subtraction is the row's shape restated by hand, and its own comment
+    // records it going wrong: a `|| true` clause made every tab reserve close
+    // space even when not closable, eating ~15 px and producing false ellipsis.
+    // Declaring the shape once means the reserve is a consequence of it.
+    //
+    // TWO PASSES, deliberately. The label flows and the badge sits immediately
+    // after the TEXT, not at the right edge — so pass one asks the solver how
+    // much room the label may have (`grow`), the text is ellipsised to it, and
+    // pass two lays the row out again with the label at its real width. That is
+    // measure-then-layout, the same order a browser resolves this in.
     let cy = rect.center().y;
+    let h = rect.height();
 
-    if let Some(ic) = item.icon {
-        let g = painter.layout_no_wrap(ic.to_string(), font_icon.clone(), label_col);
-        let w = g.rect.width();
-        painter.galley(Pos2::new(cx, cy - g.rect.height() * 0.5), g, label_col);
-        cx += w + inner_gap;
+    let icon_g = item.icon.map(|ic| painter.layout_no_wrap(ic.to_string(), font_icon.clone(), label_col));
+    let icon_w = icon_g.as_ref().map_or(0.0, |g| g.rect.width());
+    let dot_slot = if matches!(treatment, TabTreatment::Line) {
+        ACTIVE_DOT_R * 2.0 + st::gap_2xs()
+    } else {
+        0.0
+    };
+    let badge_s = item.badge.map(|n| if n > 99 { "99+".to_string() } else { n.to_string() });
+    let badge_w = badge_s.as_ref().map(|s| {
+        let g = painter.layout_no_wrap(
+            s.clone(), crate::ui_kit::style::mono_at(st::font_xs_plus()), egui::Color32::PLACEHOLDER);
+        (g.rect.width() + 10.0).max(14.0)
+    });
+    let closable = tab_is_closable(item, false);
+
+    // The trailing pieces and their seams are identical in both passes; only
+    // the label's sizing differs.
+    let row = |label_item: Item2| {
+        let mut e = El::row()
+            .pad_x(pad_x)
+            .child_if(icon_g.is_some(), El::slot("icon", Vec2::new(icon_w, h)));
+        if dot_slot > 0.0 {
+            e = e.child(El::slot("dot", Vec2::new(dot_slot, h))
+                .margin_start(if icon_g.is_some() { inner_gap } else { 0.0 }));
+        }
+        let lead_gap = if dot_slot > 0.0 { 0.0 } else if icon_g.is_some() { inner_gap } else { 0.0 };
+        e = e.child(match label_item {
+            Item2::Grow => El::slot("label", Vec2::new(0.0, h)).grow(1.0).margin_start(lead_gap),
+            Item2::Fixed(w) => El::slot("label", Vec2::new(w, h)).margin_start(lead_gap),
+        });
+        e = e.child_if(badge_w.is_some(),
+            El::slot("badge", Vec2::new(badge_w.unwrap_or(0.0), h)).margin_start(inner_gap));
+        e = e.child_if(item.modified,
+            El::slot("mod", Vec2::new(MOD_DOT_R * 2.0, h)).margin_start(inner_gap));
+        e = e.child_if(closable,
+            El::slot("close", Vec2::new(CLOSE_VIS, h)).margin_start(inner_gap));
+        e.solve_rect(rect)
+    };
+
+    // Pass 1 — how much room may the label have?
+    let max_label_w = row(Item2::Grow).rect("label").width().max(8.0);
+    let text = ellipsize(painter, &item.label, font_label, max_label_w, label_col);
+    let g = painter.layout_no_wrap(text, font_label.clone(), label_col);
+    let lw = g.rect.width();
+    let lh = g.rect.height();
+
+    // Pass 2 — lay out with the label at its ACTUAL width, so what follows it
+    // flows against the text rather than against the reserve.
+    let solved = row(Item2::Fixed(lw));
+
+    if let Some(ig) = icon_g {
+        let r = solved.rect("icon");
+        painter.galley(Pos2::new(r.left(), cy - ig.rect.height() * 0.5), ig, label_col);
     }
 
     // Zed-style active-tab dot — small filled accent circle before the label,
     // Line treatment only. Inactive tabs reserve the same horizontal slot so
     // labels don't shift on selection.
-    if matches!(treatment, TabTreatment::Line) {
-        let slot = ACTIVE_DOT_R * 2.0 + st::gap_2xs();
-        if is_active {
-            let cxd = cx + ACTIVE_DOT_R;
-            painter.circle_filled(
-                Pos2::new(cxd, cy),
-                ACTIVE_DOT_R,
-                alpha(palette_ct(theme).base(Tone::Accent)),
-            );
-        }
-        cx += slot;
+    if dot_slot > 0.0 && is_active {
+        let r = solved.rect("dot");
+        painter.circle_filled(
+            Pos2::new(r.left() + ACTIVE_DOT_R, cy),
+            ACTIVE_DOT_R,
+            alpha(palette_ct(theme).base(Tone::Accent)),
+        );
     }
 
-    // Label (with optional ellipsis). Reserve trailing space only for the
-    // bits actually present on this item — the previous `|| true` clause
-    // forced every tab to reserve close-button space even on non-closable
-    // tabs, eating ~15px and triggering false-positive ellipsis.
-    let max_label_w = rect.right() - pad_x - cx
-        - if item.badge.is_some() { 18.0 + inner_gap } else { 0.0 }
-        - if item.modified { MOD_DOT_R * 2.0 + inner_gap } else { 0.0 }
-        - if tab_is_closable(item, false) { CLOSE_VIS + inner_gap } else { 0.0 };
-    let max_label_w = max_label_w.max(8.0);
+    painter.galley(Pos2::new(solved.rect("label").left(), cy - lh * 0.5), g, label_col);
 
-    let text = ellipsize(painter, &item.label, font_label, max_label_w, label_col);
-    let g = painter.layout_no_wrap(text, font_label.clone(), label_col);
-    let lw = g.rect.width();
-    let lh = g.rect.height();
-    painter.galley(Pos2::new(cx, cy - lh * 0.5), g, label_col);
-    cx += lw + inner_gap;
+    // Badge.
+    if let (Some(s), Some(bw)) = (badge_s, badge_w) {
+        let r = solved.rect("badge");
+        let bh = 14.0;
+        let br = Rect::from_min_size(Pos2::new(r.left(), cy - bh * 0.5), Vec2::new(bw, bh));
+        painter.rect_filled(br, CornerRadius::same(7), alpha(palette_ct(theme).base(Tone::Bear))); // radius: full-round pill (intentional)
+        painter.text(br.center(), Align2::CENTER_CENTER, &s,
+            crate::ui_kit::style::mono_at(st::font_xs_plus()), crate::ui_kit::tokens::contrast_fg(palette_ct(theme).base(Tone::Bear)));
+    }
+
+    // Modified dot.
+    if item.modified {
+        let r = solved.rect("mod");
+        painter.circle_filled(
+            Pos2::new(r.left() + MOD_DOT_R, cy),
+            MOD_DOT_R,
+            alpha(palette_ct(theme).base(Tone::Accent)),
+        );
+        // close-button drawn separately by caller via interact()
+    }
 
     // Active underline (Line treatment) — painted by paint_tabs via the
     // slide path; skip here so the indicator is never double-drawn.
 
     // (Zed parity: no hover underline on inactive Line tabs — the only hover
     // signal is the snap to full-strength label color.)
-
-    // Badge.
-    if let Some(n) = item.badge {
-        let s = if n > 99 { "99+".to_string() } else { n.to_string() };
-        // layout-only galley: width measurement only.
-        let bg = painter.layout_no_wrap(s.clone(), crate::ui_kit::style::mono_at(st::font_xs_plus()), egui::Color32::PLACEHOLDER);
-        let bw = (bg.rect.width() + 10.0).max(14.0);
-        let bh = 14.0;
-        let br = Rect::from_min_size(Pos2::new(cx, cy - bh * 0.5), Vec2::new(bw, bh));
-        painter.rect_filled(br, CornerRadius::same(7), alpha(palette_ct(theme).base(Tone::Bear))); // radius: full-round pill (intentional)
-        painter.text(br.center(), Align2::CENTER_CENTER, &s,
-            crate::ui_kit::style::mono_at(st::font_xs_plus()), crate::ui_kit::tokens::contrast_fg(palette_ct(theme).base(Tone::Bear)));
-        cx += bw + inner_gap;
-    }
-
-    // Modified dot.
-    if item.modified {
-        painter.circle_filled(
-            Pos2::new(cx + MOD_DOT_R, cy),
-            MOD_DOT_R,
-            alpha(palette_ct(theme).base(Tone::Accent)),
-        );
-        // close-button drawn separately by caller via interact()
-    }
 
     // Outline for active in Filled treatment? Match shadcn: subtle border.
     // pill_cr resolved from tab.pill recipe (default = radius_sm).

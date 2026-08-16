@@ -6049,16 +6049,32 @@ mod tests {
 
     /// Wait for the spawned broker thread to record its call. The submit /
     /// cancel / modify paths in `OrderManager` fire-and-forget through
-    /// `std::thread::spawn` so the test must briefly poll. Timeout is
-    /// generous — `MockBroker` does no I/O, so the call typically lands in
-    /// well under 100ms.
+    /// `std::thread::spawn` so the test must briefly poll.
+    ///
+    /// The deadline was 2 s, described as "generous — `MockBroker` does no I/O,
+    /// so the call typically lands in well under 100 ms". Typically is the
+    /// problem: this is WALL CLOCK, and it measures the machine, not the code.
+    /// It failed twice during this session — four tests at once, then one —
+    /// both times while a `cargo build` and the app were running alongside the
+    /// suite, and passed immediately on a quiet machine. A test that fails when
+    /// the box is busy trains people to re-run rather than to read, which is
+    /// how a real failure gets waved through.
+    ///
+    /// 30 s is far beyond any plausible scheduling delay while still bounding a
+    /// genuine hang, and the poll is tightened to 1 ms so the common case is no
+    /// slower. This does not paper over a race: the thing being waited on is a
+    /// `thread::spawn`, and the only question is whether the OS has scheduled
+    /// it yet.
     fn wait_for_mock_call(mock: &Arc<MockBroker>, want: usize) {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         while std::time::Instant::now() < deadline {
             if mock.calls().len() >= want { return; }
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
-        panic!("timeout waiting for {} mock broker calls; got {}", want, mock.calls().len());
+        panic!(
+            "timeout waiting for {want} mock broker calls; got {}",
+            mock.calls().len()
+        );
     }
 
     #[test]
