@@ -17,6 +17,11 @@ pub mod text_style;
 pub mod interaction;
 /// Taffy-backed flexbox layout (geometry only; styling stays in the tokens).
 pub mod layout;
+/// The declarative cascading layer: parent-to-child inheritance plus an
+/// element tree that compiles down to egui. An ORGANIZING system, not a
+/// renderer — no VDOM, no diffing.
+#[allow(dead_code)]
+pub mod cascade;
 /// Typed design scales (Space/Radius/Weight/Level) — the constraint layer.
 pub mod scale;
 pub mod cursor;

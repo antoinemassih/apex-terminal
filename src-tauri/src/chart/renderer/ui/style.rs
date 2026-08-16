@@ -68,6 +68,11 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 /// per-style backing and stay on the `dt_f32!`/`dt_u8!` path.
 #[inline]
 pub fn begin_frame() {
+    // Drop any style scope a previous frame left open. A scope is popped by a
+    // guard, so this should never find anything — but "should never" across a
+    // panicking paint pass is exactly how a whole frame ends up styled as one
+    // subtree, and the reset costs a Vec::clear.
+    crate::ui_kit::cascade::context::reset_for_frame();
     // ── Hot-reload override (one RwLock::read per frame — ~20–50 ns) ──────────
     // If a background watcher has installed a live StyleSystem override, source
     // the per-style dimension tokens (radii, strokes) from it instead of from
