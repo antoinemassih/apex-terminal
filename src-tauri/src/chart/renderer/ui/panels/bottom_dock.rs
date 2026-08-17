@@ -441,15 +441,15 @@ fn draw_notifications(ui: &mut egui::Ui, t: &Theme) {
 
 // ── Formatting helpers ──────────────────────────────────────────────────────
 
+/// Delegates to the ONE compact-number renderer. This was already the closest
+/// of the five to the canonical form; the change is that a negative value now
+/// renders `-$1.23M` rather than `$-1.23M`.
 fn money(v: f64) -> String {
-    let a = v.abs();
-    if a >= 1_000_000.0 { format!("${:.2}M", v / 1e6) }
-    else if a >= 1_000.0 { format!("${:.1}K", v / 1e3) }
-    else { format!("${:.0}", v) }
+    crate::foundation::num_format::money(v)
 }
 
 fn signed_money(v: f64) -> String {
-    if v >= 0.0 { format!("+{}", money(v)) } else { format!("-{}", money(v.abs())) }
+    crate::foundation::num_format::signed_money(v)
 }
 
 fn pnl_col(t: &Theme, v: f64) -> egui::Color32 {

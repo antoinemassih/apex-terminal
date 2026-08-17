@@ -616,13 +616,18 @@ full registry):
 
 ---
 
+## Done since the last snapshot
+
+| Item | Where |
+|------|-------|
+| Numeric formatter consolidation | Five compact-number formatters rendering the same value five ways (`$1.2M` / `1.23M` / `$1.23M` / `1.2M`) → `foundation/num_format.rs`. AT-169 follow-up. |
+| Colour brightening/darkening helpers | Four multiplicative-scale and four lerp implementations → `ui_kit::style::scale_channels` + `widgets::motion::lerp_channels`. AT-169. |
+
 ## Future work (not yet migrated)
 
 | Item | Description |
 |------|-------------|
 | Chart-canvas pixel offsets | Sub-pixel offsets inside the GPU painter — out of UI chrome scope |
 | `FormLayoutTokens` | Proposal to tokenize label widths and row heights in two-column forms |
-| Numeric formatter consolidation | Multiple ad-hoc `format!("{:.2}", x)` / `format_price()` paths — needs a single formatter API |
-| Color brightening/darkening helpers | `gamma_multiply` / manual RGB scaling for hover/active — needs `brighten(c, t)` / `darken(c, t)` helpers |
 | Component height/min-size tokens | Button and row heights currently come from `UiStyle` struct fields, not named tokens |
 | Input field width tokens | Widths passed as literals to `.width(...)` — needs semantic named widths (e.g. `input_width_sm()`) |

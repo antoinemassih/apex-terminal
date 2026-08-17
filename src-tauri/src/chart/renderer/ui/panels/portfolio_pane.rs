@@ -258,8 +258,12 @@ fn positions_table(ui: &mut egui::Ui, t: &Theme, positions: &[Position], net_liq
     });
 }
 
+/// Delegates to the ONE compact-number renderer.
+///
+/// The visible change is the K threshold: this alone used **10_000**, so
+/// `4_500` rendered `4500` here and `4.5K` in every other panel. There was no
+/// stated reason for the difference and it read as an inconsistency, not a
+/// choice.
 fn fmt_money(v: f64) -> String {
-    if v.abs() >= 1_000_000.0 { format!("{:.2}M", v / 1e6) }
-    else if v.abs() >= 10_000.0 { format!("{:.1}K", v / 1e3) }
-    else { format!("{:.0}", v) }
+    crate::foundation::num_format::plain(v)
 }

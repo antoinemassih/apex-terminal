@@ -233,9 +233,8 @@ fn draw_theme_swatches(ui: &mut egui::Ui, th: &Theme) {
     }
 }
 
+/// Delegates to the ONE compact-number renderer. B/M drop to one decimal,
+/// which is what the scanner already showed for the same figures.
 fn human_volume(v: f32) -> String {
-    if v >= 1e9 { format!("{:.2}B", v / 1e9) }
-    else if v >= 1e6 { format!("{:.2}M", v / 1e6) }
-    else if v >= 1e3 { format!("{:.1}K", v / 1e3) }
-    else { format!("{v:.0}") }
+    crate::foundation::num_format::volume(v as f64)
 }

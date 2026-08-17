@@ -1431,3 +1431,53 @@ acceptable" but "there is one implementation and everything else wraps it".
 Mutation-tested — re-introducing a single `c.r() as f32 * k` fails it.
 
 ---
+
+## AT-170 — five renderings of the same number, in a trading terminal
+
+Follow-on from AT-169's colour sweep: the same "one operation, N
+implementations" audit run over numeric formatting. Five compact-number
+formatters, none agreeing.
+
+| Where | `1_234_567` | `4_500` | `-1_234_567` |
+|-------|-------------|---------|--------------|
+| `trading::fmt_notional` | `$1.2M` | `$4.5K` | `$-1234567` (no compaction) |
+| `command_palette::human_volume` | `1.23M` | `4.5K` | `-1234567` |
+| `bottom_dock::money` | `$1.23M` | `$4.5K` | `$-1.23M` |
+| `portfolio_pane::fmt_money` | `1.23M` | `4500` | `-1.23M` |
+| `scanner_panel::fmt_volume` | `1.2M` | `4K` | n/a (`u64`) |
+
+This is not a tidiness finding. A trader reading a P&L in the bottom dock and
+the same figure in the portfolio pane saw `$1.23M` and `1.23M`; a volume in the
+scanner and in the command palette read `1.2M` and `1.23M`. The design system's
+central claim is that a value looks the same wherever it appears, and the five
+formatters broke it in the place a trader looks hardest.
+
+Two of the five thresholded on the RAW value rather than `abs`, so a negative
+figure printed in full: `-1234567` where its positive twin showed `-1.23M`.
+`portfolio_pane` alone used a K threshold of **10_000**, so `4_500` rendered
+`4500` there and `4.5K` everywhere else — with no stated reason.
+
+None of the five handled non-finite input. A live feed hands a panel `NaN` on
+reconnect and all five printed "NaN" straight into a P&L cell, which looks like
+a number. `foundation/num_format` renders an em dash.
+
+Consolidated to one core with three named renderings that differ where the
+DOMAIN differs rather than where the author did: `money` (currency symbol, two
+decimals at M), `plain` (same, no symbol — for panels that label currency in a
+column header), `volume` (reaches B, one decimal, because a share count's
+second decimal is noise). Plus `signed_money`, which also fixes `$-1.2M`
+rendering as `-$1.2M`.
+
+Every call site's visible change is written at the delegation, not buried in a
+diff.
+
+**The duplicate-function sweep that found this also produced a negative
+result worth recording.** A census of every `fn` name defined in three or more
+files surfaced `show_ctx` (×40), `disabled` (×17), `selected` (×11),
+`subscribe_bars` (×9) and similar — all per-type builder methods and trait
+impls, which is what those SHOULD be. `now_ms` (×10) looked like a tenth copy
+of a clock and turned out to be ten thin shims over one
+`foundation::time::now_ms`. Colour and number formatting were the only real
+duplications. The sweep is worth keeping as a periodic check, not as a gate.
+
+---

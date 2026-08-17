@@ -214,10 +214,14 @@ pub(crate) fn cancel_order_with_pair(orders: &mut Vec<OrderLevel>, id: u32) {
     }
 }
 
+/// Delegates to the ONE compact-number renderer.
+///
+/// Two visible changes, stated rather than buried: M now carries two decimals
+/// (`$1.23M`, matching every other money figure in the app instead of `$1.2M`),
+/// and a NEGATIVE notional compacts — this thresholded on the raw value, so
+/// `-1_234_567` printed in full.
 pub(crate) fn fmt_notional(v: f32) -> String {
-    if v >= 1_000_000.0 { format!("${:.1}M", v / 1_000_000.0) }
-    else if v >= 1_000.0 { format!("${:.1}K", v / 1_000.0) }
-    else { format!("${:.0}", v) }
+    crate::foundation::num_format::money(v as f64)
 }
 
 // ─── Account & Positions (from ApexIB) ──────────────────────────────────────

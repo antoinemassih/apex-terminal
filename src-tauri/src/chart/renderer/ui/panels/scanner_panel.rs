@@ -46,11 +46,11 @@ pub(crate) fn apply_scanner(def: &ScannerDef, pool: &[ScanResult]) -> Vec<ScanRe
 }
 
 /// Format volume with K/M/B suffix.
+/// Delegates to the ONE compact-number renderer. K gains a decimal (`4.5K`
+/// rather than `4K`), matching the command palette's rendering of the same
+/// figure.
 fn fmt_volume(v: u64) -> String {
-    if v >= 1_000_000_000 { format!("{:.1}B", v as f64 / 1e9) }
-    else if v >= 1_000_000 { format!("{:.1}M", v as f64 / 1e6) }
-    else if v >= 1_000 { format!("{:.0}K", v as f64 / 1e3) }
-    else { format!("{}", v) }
+    crate::foundation::num_format::volume(v as f64)
 }
 
 /// Draw scanner content into `ui` (used by analysis_panel as a tab).
