@@ -285,16 +285,27 @@ impl<'a> DomRow<'a> {
                     painter.rect_filled(rect, 0.0, col);
                 }
 
-                // Compute column rects.
+                // Column rects — DECLARED, not walked.
+                //
+                // This path paints ONE row (the ladder path is `show_in`, which
+                // already takes a `ColumnLayout` solved once by `dom_panel`),
+                // so a solve here is per-call rather than per-rung and the
+                // measured-cost exemption that kept this file out of the
+                // migration does not apply to it.
                 let total: f32 = cols.iter().map(|c| c.frac).sum::<f32>().max(0.001);
-                let mut x = rect.min.x;
-                let mut col_rects: Vec<(DomColumn, Rect)> = Vec::with_capacity(cols.len());
-                for c in &cols {
-                    let w = rect.width() * (c.frac / total);
-                    let r = Rect::from_min_size(egui::pos2(x, rect.min.y), egui::vec2(w, rect.height()));
-                    col_rects.push((c.kind, r));
-                    x += w;
-                }
+                let solved = {
+                    use crate::ui_kit::layout::{Flex, Item};
+                    let mut f = Flex::row();
+                    for c in &cols {
+                        f = f.item(Item::fixed(rect.width() * (c.frac / total)));
+                    }
+                    f.solve(egui::vec2(rect.width(), rect.height()))
+                };
+                let col_rects: Vec<(DomColumn, Rect)> = cols
+                    .iter()
+                    .zip(solved)
+                    .map(|(c, r)| (c.kind, r.translate(rect.min.to_vec2())))
+                    .collect();
                 let find = |k: DomColumn| col_rects.iter().find(|(kk, _)| *kk == k).map(|(_, r)| *r);
 
                 // Hot path (a ladder paints ~40 rungs/frame): one cascade lookup

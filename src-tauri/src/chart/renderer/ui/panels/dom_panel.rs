@@ -184,7 +184,30 @@ pub(crate) fn draw(
     let remaining = aw - cd - cv - co;
     let cb = remaining * 0.27; let cp = remaining * 0.46; let ca = remaining * 0.27;
     let x0 = inner.left();
-    let xb = x0+cd; let xp = xb+cb; let xa = xp+cp; let xv = xa+ca; let xo = xv+cv;
+    // The six ladder columns, DECLARED and solved once for the whole ladder.
+    //
+    // This was `let xb = x0+cd; let xp = xb+cb; let xa = xp+cp; let xv = xa+ca;
+    // let xo = xv+cv;` — a cursor walk written as a chain of bindings rather
+    // than a `+=`, which is why the cursor-walk ceiling never saw it. Each line
+    // depends on the one before, so inserting a column means editing every
+    // binding after it and getting all of them right.
+    //
+    // Solved ONCE here, not per rung: `show_in` already takes a `ColumnLayout`
+    // for exactly that reason, and this is where that layout is built. A
+    // 40-rung ladder pays one solve, which is the shape AT-176 established.
+    let ladder_cols = {
+        use crate::ui_kit::layout::{Flex, Item};
+        Flex::row()
+            .item(Item::fixed(cd))
+            .item(Item::fixed(cb))
+            .item(Item::fixed(cp))
+            .item(Item::fixed(ca))
+            .item(Item::fixed(cv))
+            .item(Item::fixed(co))
+            .solve(egui::vec2(cd + cb + cp + ca + cv + co, 1.0))
+    };
+    let col_x = |i: usize| x0 + ladder_cols[i].min.x;
+    let (xb, xp, xa, xv, xo) = (col_x(1), col_x(2), col_x(3), col_x(4), col_x(5));
 
     // Header — bigger labels via the design-system tokens. Columns left of
     // PRICE align right (DELTA, BID); columns right of PRICE align left

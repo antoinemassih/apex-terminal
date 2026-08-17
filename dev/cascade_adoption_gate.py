@@ -132,12 +132,33 @@ PATTERNS = {
     # literally stepping YEARS in a date calculation (`brief_feed`,
     # `screenshot_panel`). Excluding integer increments removes that class
     # without weakening the real signal, since no layout step is `+= 3`.
+    # A CURSOR WALK WRITTEN AS CHAINED BINDINGS, which `cursor_walks` cannot
+    # see because there is no `+=` anywhere in it:
+    #
+    #     let xb = x0+cd; let xp = xb+cb; let xa = xp+cp; let xv = xa+ca;
+    #
+    # That is `dom_panel`'s six-column ladder, and it sat in plain sight while
+    # the cursor-walk ceiling read zero for the whole file. Each binding depends
+    # on the one before, so inserting a column means editing every line after it
+    # and getting all of them right — the same fragility as `x += w`, in a form
+    # the instrument was blind to.
+    #
+    # There is exactly one pattern here today (now migrated), so this is a
+    # ceiling at ZERO rather than a backlog. It exists because the blind spot
+    #
+    # The backreference (`\1`) is the whole pattern, not a detail. Without it
+    # the regex only asked whether two `let x = y + …` bindings shared a line,
+    # and flagged `let bid_raw = base + (h1 % 2000); let ask_raw = base + (h2 %
+    # 2000);` — two INDEPENDENT bindings off a common base, which is not a walk
+    # at all. A chain is defined by the second binding reading the first's name.
+    # was real, not because the count is large.
+    "chained_walks": r"let[ ]+([a-z_][a-z0-9_]*)[ ]*=[ ]*[a-z_][a-z0-9_]*[ ]*\+[^;]*;[ ]*let[ ]+[a-z_][a-z0-9_]*[ ]*=[ ]*\1[ ]*\+",
     "cursor_walks":  r"(?<![.\w])(?:x|y|cx|cy|cursor|left_cursor|top_cursor)\s*\+=(?!\s*\d+\s*;)",
 }
 
 # Which way each metric is allowed to move.
 FLOORS = ("el_nodes", "cascade_sites", "declared_rows", "self_painting")
-CEILINGS = ("cursor_walks",)
+CEILINGS = ("cursor_walks", "chained_walks")
 
 TEST_MOD = re.compile(r"#\[cfg\(test\)\]")
 LINE_COMMENT = re.compile(r"//.*")
@@ -197,16 +218,23 @@ def main():
     with io.open(BASELINE, encoding="utf-8") as fh:
         base = json.load(fh)
 
+    # `.get(k, 0)` in the MESSAGE too, not only in the test.
+    #
+    # The comparisons were already defaulted; the f-strings were not, so adding
+    # a metric crashed the gate with a `KeyError` on its first run — the second
+    # time this file has done that. A gate that fails on its own extension is
+    # one people stop extending, and the fix is worthless if it covers only the
+    # half that happened to be exercised.
     failures = []
     for k in FLOORS:
         if now.get(k, 0) < base.get(k, 0):
             failures.append(
-                f"   {k}: {base[k]} -> {now.get(k, 0)}  (FLOOR — adoption went backwards)"
+                f"   {k}: {base.get(k, 0)} -> {now.get(k, 0)}  (FLOOR — adoption went backwards)"
             )
     for k in CEILINGS:
         if now.get(k, 0) > base.get(k, 0):
             failures.append(
-                f"   {k}: {base[k]} -> {now.get(k, 0)}  (CEILING — a new one was added)"
+                f"   {k}: {base.get(k, 0)} -> {now.get(k, 0)}  (CEILING — a new one was added)"
             )
 
     if failures:
@@ -236,7 +264,7 @@ def main():
         f"(El {now['el_nodes']}, of which {now['self_painting']} self-painting; "
         f"cascade {now['cascade_sites']}, declared rows {now['declared_rows']} "
         f"({now['flex_rows']} still Flex), "
-        f"cursor walks {now['cursor_walks']})"
+        f"cursor walks {now['cursor_walks']}, chained {now['chained_walks']})"
     )
     if gained or dropped:
         print(f"Improved — re-baseline to lock in: gained {gained}, walks removed {dropped}")
