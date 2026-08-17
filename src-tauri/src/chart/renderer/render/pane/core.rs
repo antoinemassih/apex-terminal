@@ -1990,19 +1990,29 @@ fn render_chart_pane(
             let pad = 6.0_f32;
             let bar_h = 18.0_f32;
             let y = rect.top() + pt + pad;
-            let mut x = rect.left() + pad;
             let p = ui.painter_at(rect);
-            // TF pill
-            if !chart.timeframe.is_empty() {
-                let tf = chart.timeframe.to_uppercase();
-                let font = mono_xs_plus();
-                let g = p.layout_no_wrap(tf.clone(), font.clone(), t.text);
-                let w = g.size().x + 10.0;
-                let r = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, bar_h));
+            // TF pill | LAST-MARK toggle — declared, so the 4px seam belongs to
+            // the row rather than being added to a cursor inside the pill's
+            // `if`. The toggle's start no longer depends on remembering to
+            // advance in the branch that draws the pill.
+            let tf = chart.timeframe.to_uppercase();
+            let font = mono_xs_plus();
+            let has_tf = !chart.timeframe.is_empty();
+            let tf_w = crate::ui_kit::style::measure_with_painter(&p, &tf, font.clone()).x + 10.0;
+            let toolbar = crate::ui_kit::cascade::El::row()
+                .gap(4.0)
+                .child_if(has_tf, crate::ui_kit::cascade::El::slot("tf", egui::vec2(tf_w, bar_h)))
+                .child(crate::ui_kit::cascade::El::slot("seg", egui::vec2(0.0, bar_h)))
+                .solve_rect(egui::Rect::from_min_size(
+                    egui::pos2(rect.left() + pad, y),
+                    egui::vec2(rect.width() - pad * 2.0, bar_h),
+                ));
+            if has_tf {
+                let r = toolbar.rect("tf");
                 p.rect_filled(r, 3.0, t.bg.gamma_multiply(0.4));
                 p.text(r.center(), egui::Align2::CENTER_CENTER, &tf, font, t.text);
-                x += w + 4.0;
             }
+            let x = toolbar.rect("seg").left();
             // LAST | MARK segmented — the ONE definition.
             //
             // This copy used to set `bar_source_mark` and refetch WITHOUT
@@ -7848,8 +7858,19 @@ fn render_chart_pane(
         // MARK_BARS_PROTOCOL — Last|Mark segmented toggle (option panes only).
         if chart.is_option {
             // The same definition the option toolbar uses.
+            // The badge sits one seam after the toggle. Declared so the two
+            // cannot drift: the toggle reports its own width and the row states
+            // the gap once.
             let total_w = mark_source_segmented(ui, &p, t, chart, x, y, bar_h);
-            x += total_w + 4.0;
+            let after = crate::ui_kit::cascade::El::row()
+                .gap(4.0)
+                .child(crate::ui_kit::cascade::El::slot("seg", egui::vec2(total_w, bar_h)))
+                .child(crate::ui_kit::cascade::El::slot("badge", egui::Vec2::ZERO).grow(1.0))
+                .solve_rect(egui::Rect::from_min_size(
+                    egui::pos2(x, y),
+                    egui::vec2((rect.right() - x).max(total_w), bar_h),
+                ));
+            x = after.rect("badge").left();
             // The badge below shares the toggle's type tier and accent, so
             // they stay a matched pair when either is restyled.
             let font = mono_xs_plus();
@@ -12701,19 +12722,33 @@ fn render_footprint_overlay(
                                 &format!("POC {:.2}", fp_levels[poc_idx].price), hdr_med.clone(), COLOR_AMBER);
 
                             // Row 3: Insight tags (larger, pill-shaped)
-                            let mut tag_x = hx;
+                            // One tag, so no cursor.
+                            //
+                            // `draw_tag` took `x: &mut f32` and advanced it by
+                            // `tw + 6.0`, because it was written for a ROW of
+                            // tags. W0-12 dropped the others — EXHAUSTION,
+                            // TRAPPED and the per-price imbalance reads were
+                            // derived from a fabricated buy/sell split and
+                            // impersonated real tape — leaving exactly one call
+                            // site and a cursor nothing reads afterwards.
+                            //
+                            // Taking the x by value says that: this draws a tag
+                            // at a position, and it is not part of a sequence.
+                            // When W2-06 grounds the dropped tags in live tape
+                            // this becomes a declared row, not a restored
+                            // cursor.
+                            let tag_x = hx;
                             let tag_y = hy + 52.0;
-                            let draw_tag = |painter: &egui::Painter, x: &mut f32, label: &str, col: egui::Color32| {
+                            let draw_tag = |painter: &egui::Painter, x: f32, label: &str, col: egui::Color32| {
                                 let tag_font = mono_2xs();
                                 let galley = painter.layout_no_wrap(label.to_string(), tag_font.clone(), col);
                                 let tw = galley.size().x + 14.0;
                                 let th = 16.0;
-                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(*x, tag_y - th / 2.0), egui::vec2(tw, th)),
+                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x, tag_y - th / 2.0), egui::vec2(tw, th)),
                                     th / 2.0, color_alpha(col, 30));
-                                painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(*x, tag_y - th / 2.0), egui::vec2(tw, th)),
+                                painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(x, tag_y - th / 2.0), egui::vec2(tw, th)),
                                     th / 2.0, egui::Stroke::new(0.5, color_alpha(col, 60)), egui::StrokeKind::Outside);
-                                painter.text(egui::pos2(*x + tw / 2.0, tag_y), egui::Align2::CENTER_CENTER, label, tag_font, col);
-                                *x += tw + 6.0;
+                                painter.text(egui::pos2(x + tw / 2.0, tag_y), egui::Align2::CENTER_CENTER, label, tag_font, col);
                             };
                             // W0-12: EXHAUSTION/TRAPPED and the per-price "X:1 BUY @
                             // price" imbalance tags are derived from the FABRICATED
@@ -12722,7 +12757,7 @@ fn render_footprint_overlay(
                             // tape. Only the wick-geometry insight (REJECTION /
                             // ABSORPTION / INDECISION) is OHLC-real, so it stays.
                             let _ = (exhaustion, trapped); // OHLC-shape-derived, no longer surfaced
-                            if let Some((label, _, col)) = wick_insight { draw_tag(&painter, &mut tag_x, label, col); }
+                            if let Some((label, _, col)) = wick_insight { draw_tag(&painter, tag_x, label, col); }
 
                             // Highlight the candle itself
                             let candle_w = (bs * 0.8).max(4.0);

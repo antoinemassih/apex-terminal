@@ -77,9 +77,23 @@ CHART = (
     "watchlist_row.rs",
 )
 
-# The migration scope: UI and chrome. The chart engine is out by rule, and
-# everything outside these roots is not layout to begin with.
+# The migration scope: UI and chrome. Everything outside these roots is not
+# layout to begin with.
 UI_ROOTS = ("/ui_kit/", "/chart/renderer/ui/", "/chart/renderer/chrome/")
+
+# Files inside an otherwise-exempt directory that ARE in scope.
+#
+# `render/pane/core.rs` was excluded by the `/render/` rule while the standing
+# directive was that the chart engine is sacred. That directive was widened to
+# "fix and migrate layout too", and the file turned out to hold more than
+# guessed widths: three surfaces whose paint pass and hit test computed the same
+# geometry independently and disagreed, plus two copies of the LAST|MARK toggle
+# with different side effects (AT-177).
+#
+# Its walks are now at zero, so it is in scope to KEEP them there. The rest of
+# `/render/` stays out: candle bodies, wicks and axis ticks are data geometry
+# positioned by price, and `.left() + 6.0` there is a bar, not a layout.
+FORCE_IN_SCOPE = ("/chart/renderer/render/pane/core.rs",)
 
 PATTERNS = {
     "el_nodes":      r"\bEl::(?:row|column|text|text_with_font|spacer|button|slot)\(",
@@ -180,10 +194,12 @@ def census():
             # counting `y += 1` stepping YEARS in a date calculation
             # (`data/feeds/brief_feed.rs`). A ceiling that reports date
             # arithmetic as pending layout work is not one anybody will act on.
-            if not any(u in rel for u in UI_ROOTS):
-                continue
-            if any(c in rel for c in CHART):
-                continue
+            forced = any(f in rel for f in FORCE_IN_SCOPE)
+            if not forced:
+                if not any(u in rel for u in UI_ROOTS):
+                    continue
+                if any(c in rel for c in CHART):
+                    continue
             with io.open(path, encoding="utf-8", errors="ignore") as fh:
                 text = fh.read()
             # Tests are not adoption, and a test that exercises the tree should
