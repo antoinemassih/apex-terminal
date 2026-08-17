@@ -177,10 +177,21 @@ impl WelcomeWizard {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = st::gap_sm();
 
-                        // Primary action (Next / Get Started) — rightmost
-                        let next_variant = if self.step == 3 { Variant::Primary } else { Variant::Primary };
+                        // Primary action (Next / Get Started) — rightmost.
+                        //
+                        // Was `if self.step == 3 { Primary } else { Primary }`.
+                        // Somebody meant the final step's button to differ from
+                        // the intermediate ones and the second variant never
+                        // got written; the test read as intentional for as long
+                        // as it survived.
+                        //
+                        // Collapsed rather than guessed at. `Primary` is right
+                        // for BOTH — "Next" and "Get Started" are each the one
+                        // action the step is asking for, and inventing a
+                        // Secondary here would change how the wizard reads on
+                        // no evidence at all.
                         if Button::new(next_label)
-                            .variant(next_variant)
+                            .variant(Variant::Primary)
                             .size(Size::Md)
                             .show(ui, theme)
                             .clicked()

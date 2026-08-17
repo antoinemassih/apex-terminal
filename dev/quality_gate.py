@@ -165,6 +165,33 @@ def _is_text_width_guess(line):
         return False
     return True
 
+# A CONDITIONAL WHOSE BRANCHES ARE THE SAME: `if c { a } else { a }`.
+#
+# Five existed. Each was one of two things and both are worth catching:
+#
+#   * LOST INTENT — someone knew the two cases differed and the second value
+#     never got written. `welcome.rs` chose `Primary` either way for the
+#     wizard's final step; `monitoring.rs` had
+#     `let idx = if filled >= RING_SIZE { i } else { i }`, where the wrapped
+#     case genuinely needed a rotated index. That one was a real bug: the
+#     subsystem "last" column reported whichever frame sat at the highest raw
+#     index rather than the newest, for every session longer than ~5 seconds.
+#
+#   * VESTIGIAL — a test that once selected something and no longer does
+#     (`dom_row`'s `price > 0.0`, `heatmap_pane`'s bull/bear picking one tone
+#     twice, `compute.rs`'s middle strike rung).
+#
+# Neither survives review as written, and neither fails a test: both branches
+# compile and the code does something reasonable. Only a census sees them.
+IDENTICAL_BRANCH_RE = re.compile(
+    r"if\s+[^{}\n]{1,80}?\s*\{\s*([^{}\n;]{1,60}?)\s*\}\s*else\s*\{\s*([^{}\n;]{1,60}?)\s*\}"
+)
+
+
+def _has_identical_branches(line):
+    m = IDENTICAL_BRANCH_RE.search(line)
+    return bool(m) and m.group(1) == m.group(2)
+
 EPRINTLN_RE = re.compile(r"eprintln!\(")
 # COLOUR ARITHMETIC written out by hand: `c.r() as f32 * k`.
 #
@@ -198,6 +225,7 @@ def collect():
         "expect_total": 0,
         "hand_colour_math": 0,
         "text_width_guess": 0,
+        "identical_branches": 0,
         "dead_code_allows": 0,
         "ui_direct_mutation": 0,
         "eprintln_in_data": 0,
@@ -239,6 +267,11 @@ def collect():
         if n_unwrap:
             counts["unwrap_by_dir"][area] = counts["unwrap_by_dir"].get(area, 0) + n_unwrap
         counts["expect_total"] += len(EXPECT_RE.findall(prod))
+        counts["identical_branches"] += sum(
+            1
+            for ln in prod.splitlines()
+            if not COMMENT_LINE_RE.match(ln) and _has_identical_branches(ln)
+        )
         counts["text_width_guess"] += sum(
             1
             for ln in prod.splitlines()
@@ -291,7 +324,7 @@ def check(cur, base):
 
     # scalar ratchets
     for key in ("expect_total", "dead_code_allows", "hand_colour_math",
-                "text_width_guess",
+                "text_width_guess", "identical_branches",
                 "ui_direct_mutation", "eprintln_in_data",
                 "indicator_enum_matches"):
         # A newly-added metric absent from the committed baseline seeds to its

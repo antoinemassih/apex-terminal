@@ -225,9 +225,16 @@ pub(crate) fn render(
                 &cell.symbol, crate::ui_kit::style::prop_at(font_size), t.text);
             // Change %
             if inset.height() > 30.0 {
+                // The colour used to be `if change_pct >= 0.0 { t.text } else
+                // { t.text }` — a bull/bear branch that selected the same tone
+                // twice. Not restored to bull/bear on purpose: the CELL FILL
+                // already encodes the sign (`draw_bg` above is the heat
+                // colour), so tinting the label as well would say it a second
+                // time and fight the fill for contrast. The label's job here is
+                // to be readable ON that fill.
                 painter.text(inset.center() + egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
                     &format!("{:+.1}%", cell.change_pct), crate::ui_kit::style::mono_at(font_size * 0.7),
-                    if cell.change_pct >= 0.0 { t.text } else { t.text });
+                    t.text);
             }
         }
     }

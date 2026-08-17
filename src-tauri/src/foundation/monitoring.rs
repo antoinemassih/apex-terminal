@@ -569,8 +569,26 @@ impl FrameTracker {
         // Collect all span names and accumulate
         let mut totals: std::collections::HashMap<String, (u64, u64, u64, u64)> = std::collections::HashMap::new(); // sum, max, last, count
         let ring_len = self.subsystem_ring.len();
+        // Walk the ring in CHRONOLOGICAL order, oldest first.
+        //
+        // This was `let idx = if filled >= RING_SIZE { i } else { i }` — a
+        // conditional whose two branches were identical, so it always read the
+        // raw index. Both branches being the same is what makes the intent
+        // legible: somebody knew the wrapped case needed a different index and
+        // the expression never got written.
+        //
+        // Sums, maxima and counts are order-independent, so this was invisible
+        // in every column but one: `e.2 = *us` records the LAST value seen, and
+        // "last" is whatever the iteration order says it is. Once the ring
+        // wraps — 300 frames, about five seconds at 60fps — the "last" column
+        // of the subsystem stats reported whichever frame happened to sit at
+        // the highest raw index rather than the most recent one.
+        //
+        // `subsystem_ring_pos` is the NEXT write slot, so it is also the oldest
+        // entry once the ring is full.
+        let start = if filled >= RING_SIZE { self.subsystem_ring_pos } else { 0 };
         for i in 0..filled.min(ring_len) {
-            let idx = if filled >= RING_SIZE { i } else { i };
+            let idx = (start + i) % ring_len;
             for (name, us) in &self.subsystem_ring[idx].spans {
                 let e = totals.entry(name.clone()).or_insert((0, 0, 0, 0));
                 e.0 += us;
@@ -1222,4 +1240,79 @@ pub fn start() {
     }).expect("Failed to spawn monitoring thread");
 
     eprintln!("[monitoring] Profiling started — frame phases, alloc tracking, jank detection, GPU telemetry");
+}
+
+#[cfg(test)]
+mod ring_order_tests {
+    //! `subsystem_stats` walks a ring buffer, and the "last" column depends on
+    //! the order it walks in.
+    //!
+    //! The bug this locks: `let idx = if filled >= RING_SIZE { i } else { i }`
+    //! — a conditional whose branches were identical, so the wrapped case read
+    //! raw indices. Sums, maxima and counts are order-independent, so nothing
+    //! looked wrong; only `last` was, and only after the ring wrapped (300
+    //! frames, about five seconds at 60fps).
+    //!
+    //! Asserted through the public shape rather than the index arithmetic,
+    //! because the arithmetic is what was wrong and a test that mirrored it
+    //! would have agreed with the bug.
+    use super::*;
+
+    fn tracker_with(frames: &[u64]) -> FrameTracker {
+        let mut t = FrameTracker::new();
+        for (n, us) in frames.iter().enumerate() {
+            t.subsystem_ring[t.subsystem_ring_pos] = SubsystemProfile {
+                spans: vec![("render".to_string(), *us)],
+            };
+            t.subsystem_ring_pos = (t.subsystem_ring_pos + 1) % RING_SIZE;
+            t.total_frames = n as u64 + 1;
+        }
+        t
+    }
+
+    fn last_us(t: &FrameTracker) -> u64 {
+        t.subsystem_stats()
+            .spans
+            .iter()
+            .find(|(n, ..)| n == "render")
+            .map(|(_, _, _, last)| *last)
+            .expect("render span")
+    }
+
+    /// Before the ring wraps, the newest frame is the last one written.
+    #[test]
+    fn last_is_the_newest_frame_before_the_ring_wraps() {
+        let t = tracker_with(&[10, 20, 30]);
+        assert_eq!(last_us(&t), 30);
+    }
+
+    /// AFTER it wraps — the case the identical branches got wrong. With
+    /// `RING_SIZE + 2` frames written, the newest value must still be the one
+    /// reported, even though it sits at raw index 1.
+    #[test]
+    fn last_is_the_newest_frame_after_the_ring_wraps() {
+        let frames: Vec<u64> = (0..(RING_SIZE as u64 + 2)).map(|i| i + 1).collect();
+        let newest = *frames.last().unwrap();
+        let t = tracker_with(&frames);
+        assert_eq!(
+            last_us(&t),
+            newest,
+            "after wrapping, `last` must be the most recent frame, not whatever              sits at the highest raw index"
+        );
+    }
+
+    /// The order-independent columns must be unaffected by the fix — this is
+    /// the half that was always right, and a regression here would mean the
+    /// walk started skipping or double-counting entries.
+    #[test]
+    fn max_and_average_are_unchanged_by_the_walk_order() {
+        let frames: Vec<u64> = (0..(RING_SIZE as u64 + 2)).map(|i| i + 1).collect();
+        let t = tracker_with(&frames);
+        let stats = t.subsystem_stats();
+        let (_, avg, max, _) = stats.spans.iter().find(|(n, ..)| n == "render").unwrap();
+        // The ring holds the LAST RING_SIZE frames: values 3..=RING_SIZE+2.
+        let kept: Vec<u64> = frames[frames.len() - RING_SIZE..].to_vec();
+        assert_eq!(*max, *kept.iter().max().unwrap());
+        assert_eq!(*avg, kept.iter().sum::<u64>() / kept.len() as u64);
+    }
 }

@@ -419,7 +419,12 @@ pub fn bs_delta(s: f32, k: f32, t: f32, r: f32, iv: f32, is_call: bool) -> f32 {
 pub fn strike_interval(price: f32) -> f32 {
     // Most liquid options (SPY, QQQ, AAPL, etc.) have $1 strikes
     // Less liquid / lower priced have wider intervals
-    if price < 10.0 { 0.5 } else if price < 25.0 { 1.0 } else { 1.0 }
+    // The `price < 25.0` rung used to return 1.0 and so did the fallback, which
+    // made the test a no-op. Simplified rather than "fixed": there is no
+    // evidence of an intended third interval, the comment above says $1 is the
+    // common case, and inventing a rung here would change simulated strikes on
+    // a guess. Behaviour is identical.
+    if price < 10.0 { 0.5 } else { 1.0 }
     // Note: real chains from IB/ApexIB have exact strike spacing per symbol.
     // This is only used for simulated/fallback data.
 }

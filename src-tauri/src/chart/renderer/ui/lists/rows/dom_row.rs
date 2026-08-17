@@ -342,9 +342,14 @@ impl<'a> DomRow<'a> {
 
                 // ── PRICE column ──
                 if let Some(pr) = find(DomColumn::Price) {
+                    // The `price > 0.0` test returned `fg` either way, so it
+                    // never selected anything. A DOM rung with a non-positive
+                    // price is not a state this ladder renders — the rungs are
+                    // built from a price scale — so there was no second colour
+                    // to restore, only a test to remove.
                     let pc = if is_current { contrast_fg(accent) }
                         else if is_inside { accent }
-                        else if price > 0.0 { fg } else { fg };
+                        else { fg };
                     painter.text(pr.center(), egui::Align2::CENTER_CENTER,
                         &format!("{:.2}", price), f_lg.clone(), pc);
                 }

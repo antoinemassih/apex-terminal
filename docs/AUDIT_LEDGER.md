@@ -1686,3 +1686,53 @@ Excel pastiche). The ratchet only falls, so a new guess anywhere fails it —
 mutation-tested.
 
 ---
+
+## AT-175 — five conditionals whose branches were identical, and one was a real bug
+
+Found while migrating `heatmap_pane`: `if cell.change_pct >= 0.0 { t.text }
+else { t.text }`. A census turned up five:
+
+| Where | Written as | What it was |
+|-------|-----------|-------------|
+| `foundation/monitoring.rs` | `if filled >= RING_SIZE { i } else { i }` | **a real bug** |
+| `chart_widgets`… `welcome.rs` | `if self.step == 3 { Primary } else { Primary }` | lost intent |
+| `dom_row.rs` | `else if price > 0.0 { fg } else { fg }` | vestigial |
+| `heatmap_pane.rs` | `if change_pct >= 0.0 { t.text } else { t.text }` | vestigial |
+| `compute.rs` | `if price < 25.0 { 1.0 } else { 1.0 }` | vestigial rung |
+
+**The monitoring one is a defect, not dead code.** `subsystem_stats` walks a
+300-entry ring; the identical branches meant it always used the raw index, so
+once the ring wrapped it read the frames out of chronological order. Sums,
+maxima and counts are order-independent, which is why nothing looked wrong —
+but `e.2 = *us; // last` records the LAST value seen, and "last" is whatever
+the iteration order says. For every session longer than about five seconds at
+60fps, the "last" column of the subsystem profiler reported whichever frame
+happened to sit at the highest raw index rather than the most recent one.
+
+Both identical branches are what makes the intent legible: somebody knew the
+wrapped case needed a different index and the expression never got written.
+Fixed by starting at `subsystem_ring_pos`, which is the next write slot and
+therefore the oldest entry once full. `ring_order_tests` asserts it through the
+public shape rather than the index arithmetic — mirroring the arithmetic would
+have agreed with the bug — and is mutation-tested against the original.
+
+**The other four were collapsed, not "fixed", and the difference is the
+point.** Each could have been read as a missing second value and filled in with
+a guess. None were:
+
+* `welcome.rs` — `Primary` is right for both. "Next" and "Get Started" are each
+  the one action their step asks for; inventing a `Secondary` would change how
+  the wizard reads on no evidence.
+* `heatmap_pane` — NOT restored to bull/bear. The cell FILL already encodes the
+  sign, so tinting the label would say it twice and fight the fill for
+  contrast. The label's job is to be readable on that fill.
+* `dom_row` — a rung with a non-positive price is not a state the ladder
+  renders; there was no second colour to restore, only a test to remove.
+* `compute.rs` — no evidence of an intended third strike interval, and
+  inventing one would change simulated strikes on a guess.
+
+Neither kind survives review as written, and neither fails a test: both
+branches compile and the result is reasonable. Only a census sees them, so
+there is now a ratchet at zero — mutation-tested.
+
+---
