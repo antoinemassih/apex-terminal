@@ -54,12 +54,21 @@ BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # the UI is for migration. A spreadsheet pane is UI. It stays in the count as
 # pending work.
 #
-# `dom_row` and `watchlist_row` are exempt on MEASURED cost, not on taste.
-# `flex.rs::report_solve_cost_for_a_typical_row` times a 3-item solve at 5.5 us
-# in release. `dom_row` documents itself as painting ~40 rungs per frame, so a
-# per-row solve there is 0.22 ms — 1.3% of a 16.7 ms budget — to replace about
-# three multiplies. The element tree earns its cost on conditional rows built
-# once per frame, not on fixed fractional splits painted forty times.
+# `dom_row` and `watchlist_row` USED to be exempt here on measured per-row cost.
+# They are not any more, and the reasoning that retired the exemption matters
+# more than the exemption did.
+#
+# The cost argument was always about solving PER ROW. `spreadsheet_pane` and
+# then `watchlist_panel::col_at` (AT-176) showed the answer is to solve ONCE for
+# the grid and index — `col_at` was running a full solve on each of five to
+# seven calls per row, ~150 solves a frame, about 5% of a 16.7 ms budget spent
+# re-deriving a constant. `dom_panel` already builds one `ColumnLayout` for the
+# whole ladder, so `dom_row`'s hot path never needed a per-row solve at all.
+#
+# What remains genuinely per-row is `watchlist_row`'s middle columns, because
+# `(s.applicable)(&item_data)` depends on the item — a row with no ATR shows a
+# different set — so there is no single column ladder to hoist. That one pays
+# ~5.5 us x visible rows, stated at the call site rather than hidden here.
 #
 # `chart_widgets` USED to be exempt here, on the strength of its name. That was
 # wrong for the same reason `spreadsheet_pane` was: the rule is that the chart
@@ -73,8 +82,6 @@ CHART = (
     "gpu.rs",
     "/indicators/",
     "tps_overlay.rs",
-    "dom_row.rs",
-    "watchlist_row.rs",
 )
 
 # The migration scope: UI and chrome. Everything outside these roots is not

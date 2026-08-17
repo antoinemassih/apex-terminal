@@ -11,6 +11,7 @@
 
 #![allow(dead_code, unused_imports)]
 
+use crate::ui_kit::cascade::El;
 use egui::{Color32, Rect, Response, Sense, Stroke, Ui, Widget};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -629,17 +630,52 @@ impl<'a> WatchlistRow<'a> {
                     // both fit on a narrow sidebar instead of clipping.
                     let middle_left = (rect.left() + rect.width() * 0.32).max(ind_x + 4.0);
                     let middle_right = rect.right() - price_right_inset - 40.0;
-                    let mut x = middle_left;
                     let gap = 5.0;
-                    for cid in col_buf[..col_len].iter().copied() {
+                    // Which columns apply to THIS item, and how many fit.
+                    //
+                    // Separated from placement on purpose. The walk mixed them:
+                    // it tested `x + w > middle_right` using an `x` that had
+                    // already had a gap added for the previous column, so the
+                    // fit test and the advance disagreed about whether the
+                    // trailing gap counts. Deciding first and placing second
+                    // makes that a single statement.
+                    //
+                    // Solved PER ROW rather than once for the grid, and that is
+                    // a real cost: `flex.rs` times a solve at 5.5 us, so ~40
+                    // visible rows is ~0.2 ms, about 1.3% of a 16.7 ms budget.
+                    // It is per-row because `(s.applicable)(&item_data)` depends
+                    // on the item — a row without an ATR shows a different set
+                    // — so unlike `dom_panel`'s ladder there is no single
+                    // column set to hoist. Stated rather than hidden; if the
+                    // watchlist ever needs that budget back, the fix is to key
+                    // a cached solve on the applicable-set bitmask, not to go
+                    // back to walking.
+                    let fitting: Vec<(WatchlistColumnId, f32)> = {
+                        let mut acc = middle_left;
+                        let mut v = Vec::new();
+                        for cid in col_buf[..col_len].iter().copied() {
+                            let sp = col_spec(cid);
+                            if !(sp.applicable)(&item_data) { continue; }
+                            let w = sp.default_width;
+                            if acc + w > middle_right { break; }
+                            acc += w + gap;
+                            v.push((cid, w));
+                        }
+                        v
+                    };
+                    let cols_solved = fitting
+                        .iter()
+                        .enumerate()
+                        .fold(El::row().gap(gap), |el, (i, (_, w))| {
+                            el.child(El::slot(format!("c{i}"), egui::vec2(*w, rect.height())))
+                        })
+                        .solve_rect(egui::Rect::from_min_max(
+                            egui::pos2(middle_left, rect.top()),
+                            egui::pos2(middle_right, rect.bottom()),
+                        ));
+                    for (i, (cid, _w)) in fitting.iter().copied().enumerate() {
                         let s = col_spec(cid);
-                        if !(s.applicable)(&item_data) { continue; }
-                        let w = s.default_width;
-                        if x + w > middle_right { break; }
-                        let col_rect = egui::Rect::from_min_max(
-                            egui::pos2(x, rect.top()),
-                            egui::pos2(x + w, rect.bottom()),
-                        );
+                        let col_rect = cols_solved.rect(&format!("c{i}"));
                         let mut cctx = ColumnCtx {
                             painter,
                             rect: col_rect,
@@ -659,7 +695,6 @@ impl<'a> WatchlistRow<'a> {
                         } else {
                             (s.render)(&mut cctx);
                         }
-                        x += w + gap;
                     }
                 }
 

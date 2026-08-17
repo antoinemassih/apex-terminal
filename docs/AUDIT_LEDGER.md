@@ -1825,3 +1825,40 @@ effect of drawing a button, and guessed two of its widths.
 exempt by directive as a deliberate Excel pastiche. The chart engine is clean.
 
 ---
+
+## AT-178 — the last two exemptions retired, and why the cost argument was wrong
+
+`dom_row` and `watchlist_row` were exempt from the element-tree migration on
+MEASURED per-row cost: `flex.rs` times a solve at 5.5 µs, a DOM ladder paints
+~40 rungs a frame, so a per-row solve is ~0.22 ms to replace three multiplies.
+The arithmetic was right. The framing was wrong, and it took AT-176 to see it.
+
+**The cost argument was always about solving PER ROW, and per-row was never
+required.** `dom_panel` already builds one `ColumnLayout` for the whole ladder
+and hands it to every rung, so `dom_row`'s hot path never needed a solve at
+all — its only walk was in `show`, which paints a single row. `watchlist_panel`
+was the opposite: `col_at` ran a *full solve on every call*, five to seven times
+per row, ~150 solves a frame, about 5% of a 16.7 ms budget re-deriving a
+constant. The exemption was protecting the file that solved once and had
+nothing to say about the file that solved 150 times.
+
+Both are now in scope and both are at zero.
+
+**One genuinely per-row solve remains, and it is stated at the call site rather
+than hidden in the gate.** `watchlist_row`'s middle columns depend on
+`(s.applicable)(&item_data)` — a row with no ATR shows a different set — so
+there is no single ladder to hoist. It pays ~5.5 µs × visible rows, roughly
+1.3% of a frame. If that budget is ever needed back, the fix is a cached solve
+keyed on the applicable-set bitmask, not a return to walking.
+
+That migration also closed a small disagreement the walk contained: the fit test
+`x + w > middle_right` used an `x` that already had the previous column's gap
+added, so the test and the advance disagreed about whether a trailing gap
+counts. Deciding which columns fit, then placing them, makes it one statement.
+
+**Cursor walks across UI, chrome AND the chart engine are now zero.** The only
+remaining exemption is `tps_overlay.rs` — a deliberate pastiche of Excel's
+chrome, whose literals are Excel's and whose own comment says so, kept out by
+directive because migrating it would make it a worse imitation.
+
+---
