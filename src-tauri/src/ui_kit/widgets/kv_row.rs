@@ -114,50 +114,25 @@ impl KvRow {
 mod tests {
     use super::*;
     use crate::ui_kit::cascade::{context, Inherited};
-    use crate::ui_kit::text_style::TextStyle;
     use crate::ui_kit::widgets::theme::PortableTheme;
-    use std::cell::{Cell, RefCell};
+    use std::cell::Cell;
 
-    /// Paint one row and return (x, colour) for every text shape, left to
-    /// right. Two frames so the font atlas exists — with one, every string
-    /// measures 0 px and a "flush right" assertion proves nothing.
+    use crate::ui_kit::widgets::paint_probe;
+
+    /// Paint one row and return (x, colour) per text run, left to right.
+    /// The two-frame font-atlas dance lives in `paint_probe`, not here — see
+    /// that module for why it is one harness and not six.
     fn painted(f: impl FnOnce(&Painter, &PortableTheme)) -> Vec<(f32, Color32)> {
-        let out = RefCell::new(Vec::new());
-        let f = Cell::new(Some(f));
-        let ctx = egui::Context::default();
-        let _ = ctx.run(Default::default(), |_| {});
-        let _ = ctx.run(Default::default(), |c| {
-            egui::CentralPanel::default().show(c, |ui| {
-                TextStyle::install(ui.style_mut());
-                let p = ui.painter().clone();
-                if let Some(f) = f.take() {
-                    f(&p, &PortableTheme::dark());
-                }
-                let layer = ui.layer_id();
-                let mut v: Vec<(f32, Color32)> = ui.ctx().graphics(|g| {
-                    g.get(layer)
-                        .map(|l| {
-                            l.all_entries()
-                                .filter_map(|cs| match &cs.shape {
-                                    egui::Shape::Text(t) => Some((
-                                        t.pos.x,
-                                        t.galley
-                                            .job
-                                            .sections
-                                            .first()
-                                            .map_or(Color32::PLACEHOLDER, |s| s.format.color),
-                                    )),
-                                    _ => None,
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                });
-                v.sort_by(|a, b| a.0.total_cmp(&b.0));
-                *out.borrow_mut() = v;
-            });
-        });
-        out.into_inner()
+        let cell = Cell::new(Some(f));
+        paint_probe::probe(|ui| {
+            let p = ui.painter().clone();
+            if let Some(f) = cell.take() {
+                f(&p, &PortableTheme::dark());
+            }
+        })
+        .into_iter()
+        .map(|r| (r.left, r.color))
+        .collect()
     }
 
     fn rect() -> Rect {

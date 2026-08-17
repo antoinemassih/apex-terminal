@@ -25,6 +25,8 @@ still excluded, and for the right reason: a fake theme must state literal
 colours (`Color32::from_rgb(1, 2, 3)` as a sentinel), and "fixing" that by
 reaching for a token would make the test depend on the very system it exercises.
 """
+import io
+import os
 import re
 import sys
 
@@ -95,6 +97,58 @@ def test_line_ranges(path):
     ]
 
 
+# A whole FILE that only exists under `cfg(test)`.
+#
+# `paint_probe.rs` is declared `#[cfg(test)] pub mod paint_probe;` — every line
+# in it is test code, but nothing INSIDE it says so, so a per-file scan reads it
+# as production. It was flagged for four `Color32::PLACEHOLDER` sentinels, which
+# is precisely the case the cfg(test) exclusion exists for: a measuring harness
+# must state a literal colour, and "fixing" that by reaching for a token would
+# make the harness depend on the system it is used to test.
+#
+# The documented escape was an `ALLOWED_BASENAMES` entry. A hard-coded basename
+# list is the thing that rots: the next test-only module gets flagged, someone
+# appends another name, and the list stops describing a rule. Reading the module
+# DECLARATION generalises, because that is where the truth already lives.
+MOD_DECL_RE = re.compile(
+    r"#\[cfg\(test\)\]\s*(?:\n\s*(?:///[^\n]*\n\s*)*)?"
+    r"(?:pub(?:\([a-z:]+\))?\s+)?mod\s+([A-Za-z0-9_]+)\s*;"
+)
+
+
+def _test_only_modules(mod_rs):
+    """Module names declared `#[cfg(test)] mod NAME;` in `mod_rs`."""
+    try:
+        with io.open(mod_rs, encoding="utf-8", errors="ignore") as fh:
+            return set(MOD_DECL_RE.findall(fh.read()))
+    except OSError:
+        return set()
+
+
+_TEST_ONLY_CACHE = {}
+
+
+def is_test_only_file(path):
+    """True when `path` is a module its parent declares under `cfg(test)`.
+
+    Goes through `_openable` for the same reason `test_line_ranges` does: the
+    caller is a bash script, so grep emits `/c/Users/...` and native Windows
+    Python cannot open it. Without the translation this returns False for
+    everything and the check silently becomes a no-op — exactly how the
+    line-range filter failed once before, whose only symptom was a baseline
+    rising by the number of test literals in three files.
+    """
+    path = _openable(path)
+    key = os.path.abspath(path)
+    if key in _TEST_ONLY_CACHE:
+        return _TEST_ONLY_CACHE[key]
+    stem = os.path.splitext(os.path.basename(path))[0]
+    parent = os.path.join(os.path.dirname(path), "mod.rs")
+    result = stem in _test_only_modules(parent)
+    _TEST_ONLY_CACHE[key] = result
+    return result
+
+
 def main():
     cache = {}
     out = sys.stdout
@@ -119,6 +173,8 @@ def main():
             out.write(raw)
             continue
 
+        if is_test_only_file(path):
+            continue
         if path not in cache:
             cache[path] = test_line_ranges(path)
         if any(a <= lineno <= b for a, b in cache[path]):
@@ -191,8 +247,42 @@ fn production_three() { let c = Color32::from_rgb(13, 14, 15); }
         for f in failures:
             print("   ", f)
         return 1
+    # ── test-only MODULE files ───────────────────────────────────────────────
+    # A file whose parent declares it `#[cfg(test)] pub mod name;` is entirely
+    # test code, and nothing inside it says so. `paint_probe.rs` was flagged for
+    # four `Color32::PLACEHOLDER` sentinels for exactly that reason.
+    #
+    # Asserted because the alternative on offer was an `ALLOWED_BASENAMES`
+    # entry, and a hard-coded basename list is what rots: the next test-only
+    # module gets flagged, someone appends another name, and the list stops
+    # describing a rule.
+    d = tempfile.mkdtemp()
+    with io.open(os.path.join(d, "mod.rs"), "w", encoding="utf-8") as fh:
+        fh.write("pub mod real;\n#[cfg(test)]\npub mod probe;\n")
+    for name in ("real", "probe"):
+        with io.open(os.path.join(d, name + ".rs"), "w", encoding="utf-8") as fh:
+            fh.write("fn f() { let c = Color32::from_rgb(1, 2, 3); }\n")
+    _TEST_ONLY_CACHE.clear()
+    if not is_test_only_file(os.path.join(d, "probe.rs")):
+        failures.append("a `#[cfg(test)] pub mod` file was not recognised as test-only")
+    if is_test_only_file(os.path.join(d, "real.rs")):
+        failures.append("a plain `pub mod` file was excluded - that would hide real drift")
+    # A doc comment between the attribute and the declaration is normal.
+    with io.open(os.path.join(d, "mod.rs"), "w", encoding="utf-8") as fh:
+        fh.write("#[cfg(test)]\n/// why this is test-only\npub mod probe;\n")
+    _TEST_ONLY_CACHE.clear()
+    if not is_test_only_file(os.path.join(d, "probe.rs")):
+        failures.append("a doc comment between `#[cfg(test)]` and `mod` defeated the match")
+
+    if failures:
+        print("strip_test_hits selftest FAILED:")
+        for f in failures:
+            print("   ", f)
+        return 1
+
     print("strip_test_hits selftest: PASS "
-          "(test module, bare #[test] fn, and production code after both)")
+          "(test module, bare #[test] fn, production code after both, "
+          "and cfg(test)-only module files)")
     return 0
 
 

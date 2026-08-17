@@ -1523,3 +1523,53 @@ containment check alone would have been the sixth instrument this session to
 pass on broken input.
 
 ---
+
+## AT-172 — I duplicated a test harness four times while consolidating duplicates
+
+While AT-169 and AT-170 were merging four colour scales, four colour lerps and
+five number formatters, the tests proving those merges were being written by
+copy-and-paste. The same twenty lines — build a `Context`, run a throwaway
+frame so the font atlas exists, run a second frame with the widget in it, walk
+the layer's shapes, pull the text runs out — appeared independently in
+`cascade::element` (three times), `widgets::kv_row`, `widgets::selectable_row`
+and `widgets::button`. Six copies. Test code is not exempt from the rule it is
+being used to enforce.
+
+`widgets::paint_probe` is now the one harness: `probe(f) -> Vec<Run>` with
+`{left, right, color}` per painted text run, plus `assert_contained`,
+`assert_no_overlap` and `assert_atlas_is_built`. Every copy is gone, including
+the two-frame dance in `panel_section` and the one in `label.rs` — which is
+where the font-atlas fix was FIRST written, long before anything else needed
+it, and where it stayed local while `cascade::element` rediscovered the problem
+the hard way by measuring every string as 0 px for its entire life (AT-166).
+
+Consolidating it also captured two mistakes worth not making twice: read a
+galley's colour from `job.sections`, not `override_text_color` (`Painter::text`
+bakes it into the layout job); and assert overlap separately from containment,
+because the `Button` mutation that broke the fit contract left containment
+passing (AT-171).
+
+**Then the design-system ratchet flagged the new file.** `paint_probe.rs` is
+declared `#[cfg(test)] pub mod paint_probe;`, so every line in it is test code —
+but nothing INSIDE it says so, and `strip_test_hits.py` only knew how to skip
+`#[cfg(test)]` blocks within a file. Four `Color32::PLACEHOLDER` sentinels read
+as production drift, which is exactly what the cfg(test) exclusion exists to
+prevent: a measuring harness must state a literal colour, and "fixing" it by
+reaching for a token would make the harness depend on the system it tests.
+
+The documented escape was an `ALLOWED_BASENAMES` entry. That was declined: a
+hard-coded basename list is the thing that rots — the next test-only module
+gets flagged, someone appends another name, and the list stops describing a
+rule. `strip_test_hits.py` now reads the module DECLARATION, where the truth
+already lives. It excludes exactly two files repo-wide, `paint_probe.rs` and
+`layer_guard.rs`, both genuinely test-only; the ratchet dropped 1066 → 1064
+accordingly.
+
+The first version of that fix silently did nothing, for the third time in this
+file's history: it was handed git-bash MSYS paths that native Windows Python
+cannot open. `_openable` already existed for precisely that, with a docstring
+saying it had failed that way before. Routed through it, and the selftest now
+covers the new rule — mutation-tested, so breaking the lookup fails loudly
+instead of quietly excluding nothing.
+
+---

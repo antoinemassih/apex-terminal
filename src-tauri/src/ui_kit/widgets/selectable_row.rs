@@ -236,45 +236,22 @@ mod painted_geometry_tests {
     //! the solve, because the whole risk of that change is that the tree draws
     //! somewhere the hand-written code did not.
     use super::*;
-    use crate::ui_kit::text_style::TextStyle;
 
-    /// x positions of every text shape painted by one row, left to right.
+    /// x positions of every text run painted by one row, left to right.
+    /// The harness is shared — see `widgets::paint_probe`.
     fn painted_text_xs(icon: Option<&'static str>) -> Vec<f32> {
-        use std::cell::{Cell, RefCell};
-        let out = RefCell::new(Vec::new());
-        let icon = Cell::new(icon);
-        let ctx = egui::Context::default();
-        // One throwaway frame so the font atlas exists — without it every
-        // string measures 0 and this test proves nothing. See
-        // `cascade::element::tests::run`.
-        let _ = ctx.run(Default::default(), |_| {});
-        let _ = ctx.run(Default::default(), |c| {
-            egui::CentralPanel::default().show(c, |ui| {
-                TextStyle::install(ui.style_mut());
-                let theme = super::super::theme::PortableTheme::dark();
-                let mut row = SelectableRow::new("Triangulator", false);
-                if let Some(ic) = icon.get() {
-                    row = row.leading_icon(ic);
-                }
-                row.show(ui, &theme);
-                let layer = ui.layer_id();
-                let mut xs: Vec<f32> = ui.ctx().graphics(|g| {
-                    g.get(layer)
-                        .map(|l| {
-                            l.all_entries()
-                                .filter_map(|cs| match &cs.shape {
-                                    egui::Shape::Text(t) => Some(t.pos.x),
-                                    _ => None,
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                });
-                xs.sort_by(f32::total_cmp);
-                *out.borrow_mut() = xs;
-            });
-        });
-        out.into_inner()
+        let icon = std::cell::Cell::new(icon);
+        crate::ui_kit::widgets::paint_probe::probe(|ui| {
+            let theme = super::super::theme::PortableTheme::dark();
+            let mut row = SelectableRow::new("Triangulator", false);
+            if let Some(ic) = icon.get() {
+                row = row.leading_icon(ic);
+            }
+            row.show(ui, &theme);
+        })
+        .into_iter()
+        .map(|r| r.left)
+        .collect()
     }
 
     /// With no icon the label starts at the row's left padding — the tree must

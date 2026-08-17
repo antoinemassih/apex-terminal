@@ -2141,77 +2141,34 @@ mod fit_paint_agreement_tests {
     //! `measure_content_w` reserves space for it INSIDE `content_w` — an
     //! arrangement that is correct and entirely undefended by anything else.
     use super::*;
-    use crate::ui_kit::text_style::TextStyle;
     use crate::ui_kit::widgets::theme::PortableTheme;
-    use std::cell::RefCell;
 
-    /// Every painted text run, as (left, right) in absolute x.
-    fn painted_spans(build: fn() -> Button<'static>) -> (egui::Rect, Vec<(f32, f32)>) {
-        let out = RefCell::new((egui::Rect::NOTHING, Vec::new()));
-        let ctx = egui::Context::default();
-        // Two frames: the font atlas does not exist on the first, and every
-        // width here would otherwise be zero.
-        let _ = ctx.run(Default::default(), |_| {});
-        let _ = ctx.run(Default::default(), |c| {
-            egui::CentralPanel::default().show(c, |ui| {
-                TextStyle::install(ui.style_mut());
-                let theme = PortableTheme::dark();
-                let w = build().intrinsic_width(ui);
-                // Height is the size tier's own; only width is measured.
-                let h = crate::ui_kit::widgets::tokens::Size::Md.height();
-                let rect = egui::Rect::from_min_size(egui::pos2(30.0, 10.0), Vec2::new(w, h));
-                let painter = ui.painter().clone();
-                let _ = build().show_at(ui, &painter, rect, &theme);
-                let layer = ui.layer_id();
-                let spans: Vec<(f32, f32)> = ui.ctx().graphics(|g| {
-                    g.get(layer)
-                        .map(|l| {
-                            l.all_entries()
-                                .filter_map(|cs| match &cs.shape {
-                                    egui::Shape::Text(t) => {
-                                        Some((t.pos.x, t.pos.x + t.galley.size().x))
-                                    }
-                                    _ => None,
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                });
-                *out.borrow_mut() = (rect, spans);
-            });
+    use crate::ui_kit::widgets::paint_probe::{self, Run};
+
+    /// Paint one button at its own intrinsic width and return what it drew.
+    fn painted(build: fn() -> Button<'static>) -> (egui::Rect, Vec<Run>) {
+        let rect = std::cell::Cell::new(egui::Rect::NOTHING);
+        let runs = paint_probe::probe(|ui| {
+            let theme = PortableTheme::dark();
+            let w = build().intrinsic_width(ui);
+            // Height is the size tier's own; only width is under test.
+            let h = crate::ui_kit::widgets::tokens::Size::Md.height();
+            let r = paint_probe::probe_rect(w, h);
+            rect.set(r);
+            let painter = ui.painter().clone();
+            let _ = build().show_at(ui, &painter, r, &theme);
         });
-        out.into_inner()
+        (rect.get(), runs)
     }
 
     fn assert_contained(name: &str, build: fn() -> Button<'static>) {
-        let (rect, spans) = painted_spans(build);
-        assert!(!spans.is_empty(), "{name}: nothing was painted");
-        for (l, r) in &spans {
-            assert!(
-                *l >= rect.left() - 0.5,
-                "{name}: a run starts at {l}, left of the button ({}). spans={spans:?}",
-                rect.left()
-            );
-            assert!(
-                *r <= rect.right() + 0.5,
-                "{name}: a run ends at {r}, past the button's right edge ({}).                  intrinsic_width under-measured what the paint path draws. spans={spans:?}",
-                rect.right()
-            );
-        }
+        let (rect, runs) = painted(build);
+        paint_probe::assert_contained(name, rect, &runs);
     }
 
-    /// Runs must not overlap either — two texts in the same pixels is the
-    /// visible form of this defect ("the next button painted on top of it").
     fn assert_no_overlap(name: &str, build: fn() -> Button<'static>) {
-        let (_, mut spans) = painted_spans(build);
-        spans.sort_by(|a, b| a.0.total_cmp(&b.0));
-        for w in spans.windows(2) {
-            assert!(
-                w[0].1 <= w[1].0 + 0.5,
-                "{name}: runs overlap — {:?} ends at {} and {:?} starts at {}",
-                w[0], w[0].1, w[1], w[1].0
-            );
-        }
+        let (_, runs) = painted(build);
+        paint_probe::assert_no_overlap(name, &runs);
     }
 
     fn plain() -> Button<'static> { Button::new("Save") }

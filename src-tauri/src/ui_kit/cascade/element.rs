@@ -584,19 +584,12 @@ mod tests {
     /// `label.rs::truncate_tests` already had the fix — run one throwaway
     /// frame, then measure in the next. Hoisted here so the element tree gets
     /// the same guarantee.
+    /// Delegates to `widgets::paint_probe::probe`, which owns the two-frame
+    /// dance. This file wrote it three times before that module existed, while
+    /// the surrounding work was consolidating four colour scales — test code is
+    /// not exempt from the rule it is being used to enforce.
     pub(super) fn run(f: impl FnOnce(&mut Ui)) {
-        let ctx = egui::Context::default();
-        // Frame 1: builds the font atlas. Deliberately does nothing else.
-        let _ = ctx.run(Default::default(), |_| {});
-        let f = Cell::new(Some(f));
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                TextStyle::install(ui.style_mut());
-                if let Some(f) = f.take() {
-                    f(ui);
-                }
-            });
-        });
+        let _ = crate::ui_kit::widgets::paint_probe::probe(f);
     }
 
     fn theme() -> PortableTheme {
@@ -989,10 +982,8 @@ mod inert_declaration_tests {
     #[test]
     fn text_align_changes_the_painted_anchor() {
         fn anchor_x(align: Option<Align>) -> f32 {
-            let got = RefCell::new(f32::NAN);
             let a = Cell::new(align);
-            egui::__run_test_ui(|ui| {
-                TextStyle::install(ui.style_mut());
+            let runs = crate::ui_kit::widgets::paint_probe::probe(|ui| {
                 let theme = PortableTheme::dark();
                 let mut delta = Inherited::default();
                 if let Some(a) = a.get() {
@@ -1006,20 +997,8 @@ mod inert_declaration_tests {
                         Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(300.0, 20.0)),
                     );
                 });
-                let layer = ui.layer_id();
-                let x = ui.ctx().graphics(|g| {
-                    g.get(layer).and_then(|l| {
-                        l.all_entries()
-                            .filter_map(|cs| match &cs.shape {
-                                egui::Shape::Text(ts) => Some(ts.pos.x),
-                                _ => None,
-                            })
-                            .last()
-                    })
-                });
-                *got.borrow_mut() = x.unwrap_or(f32::NAN);
             });
-            got.into_inner()
+            runs.last().map_or(f32::NAN, |r| r.left)
         }
 
         let l = anchor_x(None);
@@ -1052,37 +1031,16 @@ mod painter_only_tests {
     /// Run `f` against a real painter with a built font atlas, and return the
     /// x position of every text shape it painted, left to right.
     fn painted_xs(f: impl FnOnce(&egui::Painter, &PortableTheme)) -> Vec<f32> {
-        let out = RefCell::new(Vec::new());
-        let f = std::cell::Cell::new(Some(f));
-        let ctx = egui::Context::default();
-        // One throwaway frame so the atlas exists — otherwise every string
-        // measures 0 and a spacer test proves nothing.
-        let _ = ctx.run(Default::default(), |_| {});
-        let _ = ctx.run(Default::default(), |c| {
-            egui::CentralPanel::default().show(c, |ui| {
-                TextStyle::install(ui.style_mut());
-                let painter = ui.painter().clone();
-                if let Some(f) = f.take() {
-                    f(&painter, &PortableTheme::dark());
-                }
-                let layer = ui.layer_id();
-                let mut xs: Vec<f32> = ui.ctx().graphics(|g| {
-                    g.get(layer)
-                        .map(|l| {
-                            l.all_entries()
-                                .filter_map(|cs| match &cs.shape {
-                                    egui::Shape::Text(t) => Some(t.pos.x),
-                                    _ => None,
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                });
-                xs.sort_by(f32::total_cmp);
-                *out.borrow_mut() = xs;
-            });
-        });
-        out.into_inner()
+        let cell = std::cell::Cell::new(Some(f));
+        crate::ui_kit::widgets::paint_probe::probe(|ui| {
+            let painter = ui.painter().clone();
+            if let Some(f) = cell.take() {
+                f(&painter, &PortableTheme::dark());
+            }
+        })
+        .into_iter()
+        .map(|r| r.left)
+        .collect()
     }
 
     fn font() -> egui::FontId {
@@ -1144,43 +1102,21 @@ mod painter_only_tests {
     #[test]
     fn a_declared_colour_reaches_a_painter_only_tree() {
         let declared = egui::Color32::from_rgb(7, 200, 33);
-        let cols = RefCell::new(Vec::new());
-        let ctx = egui::Context::default();
-        let _ = ctx.run(Default::default(), |_| {});
-        let _ = ctx.run(Default::default(), |c| {
-            egui::CentralPanel::default().show(c, |ui| {
-                TextStyle::install(ui.style_mut());
-                let painter = ui.painter().clone();
-                let theme = PortableTheme::dark();
-                context::reset_for_frame();
-                context::scope(Inherited::default().color(declared), || {
-                    El::row().child(El::text_with_font("X", font())).show_with(
-                        &painter,
-                        &theme,
-                        Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(100.0, 20.0)),
-                    );
-                });
-                let layer = ui.layer_id();
-                *cols.borrow_mut() = ui.ctx().graphics(|g| {
-                    g.get(layer)
-                        .map(|l| {
-                            l.all_entries()
-                                .filter_map(|cs| match &cs.shape {
-                                    egui::Shape::Text(t) => t
-                                        .galley
-                                        .job
-                                        .sections
-                                        .first()
-                                        .map(|sec| sec.format.color),
-                                    _ => None,
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_default()
-                });
+        let cols: Vec<egui::Color32> = crate::ui_kit::widgets::paint_probe::probe(|ui| {
+            let painter = ui.painter().clone();
+            let theme = PortableTheme::dark();
+            context::reset_for_frame();
+            context::scope(Inherited::default().color(declared), || {
+                El::row().child(El::text_with_font("X", font())).show_with(
+                    &painter,
+                    &theme,
+                    Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(100.0, 20.0)),
+                );
             });
-        });
-        let cols = cols.into_inner();
+        })
+        .into_iter()
+        .map(|r| r.color)
+        .collect();
         assert_eq!(cols.len(), 1, "one text shape expected, got {}", cols.len());
         assert_eq!(
             cols[0], declared,

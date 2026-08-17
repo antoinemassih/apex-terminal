@@ -46,6 +46,10 @@ pub mod toggle_row;
 pub mod theme_preview_card;
 pub mod selectable_row;
 pub mod kv_row;
+/// Test-only: read back what a widget actually painted. See the module docs
+/// for why this is one module and not six copies of the same harness.
+#[cfg(test)]
+pub mod paint_probe;
 pub mod opacity_picker;
 pub mod risk_reward_bar;
 pub mod heatmap_grid;

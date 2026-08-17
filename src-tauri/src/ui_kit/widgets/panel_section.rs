@@ -1135,20 +1135,13 @@ mod tests {
     /// nothing here was wrong, but the next width assertion added to this
     /// module would have been silently vacuous. Same fix as
     /// `cascade::element::tests::run`, where it WAS masking something.
+    /// Delegates to `paint_probe::probe`, which owns the two-frame dance (a
+    /// `Context` has no font atlas on its first frame, so every string
+    /// measures 0 px). These tests are behavioural rather than
+    /// width-dependent, but the harness is the same and there is no reason
+    /// for a fourth copy of it.
     fn run_test_ui(f: impl FnOnce(&mut Ui)) {
-        let ctx = egui::Context::default();
-        let _ = ctx.run(Default::default(), |_| {});
-        // `run` wants `impl FnMut`; hand the FnOnce through a Cell so the
-        // (single) invocation stays compatible.
-        let f = Cell::new(Some(f));
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                TextStyle::install(ui.style_mut());
-                if let Some(f) = f.take() {
-                    f(ui);
-                }
-            });
-        });
+        let _ = crate::ui_kit::widgets::paint_probe::probe(f);
     }
 
     #[test]

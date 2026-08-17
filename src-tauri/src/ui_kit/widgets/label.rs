@@ -200,15 +200,22 @@ mod truncate_tests {
         })
     }
 
+    /// This test is where the two-frame font-atlas fix was FIRST written, long
+    /// before anything else in the repo needed it — and it stayed local, so
+    /// `cascade::element` rediscovered the problem the hard way by measuring
+    /// every string as 0 px for the whole of its life (AT-166). The harness
+    /// now lives in `paint_probe` where the next module can find it.
     #[test]
     fn truncate_elides_long_text_to_one_row() {
-        let ctx = egui::Context::default();
-        let _ = ctx.run(Default::default(), |_| {});
-        let long = layout_truncated(&ctx, "This is a very long label that will never fit here", 40.0);
-        assert!(long.elided, "long text should be elided");
-        assert_eq!(long.rows.len(), 1, "truncate must produce exactly one row");
-        let short = layout_truncated(&ctx, "OK", 400.0);
-        assert!(!short.elided, "short text that fits should not be elided");
+        crate::ui_kit::widgets::paint_probe::probe(|ui| {
+            let ctx = ui.ctx().clone();
+            let long =
+                layout_truncated(&ctx, "This is a very long label that will never fit here", 40.0);
+            assert!(long.elided, "long text should be elided");
+            assert_eq!(long.rows.len(), 1, "truncate must produce exactly one row");
+            let short = layout_truncated(&ctx, "OK", 400.0);
+            assert!(!short.elided, "short text that fits should not be elided");
+        });
     }
 }
 
