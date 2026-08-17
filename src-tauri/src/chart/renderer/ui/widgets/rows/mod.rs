@@ -1,7 +1,7 @@
 //! Row re-export shim.
 //!
 //! Domain-specific rows (`WatchlistRow`, `OrderRow`, `NewsRow`, `DomRow`,
-//! `AlertRow`, `OptionChainRow`) live in `ui::lists::rows` and are re-exported
+//! …) live in `ui::lists::rows` and are re-exported
 //! here for the call sites that still import via this path.
 //!
 //! The generic `ListRow` vehicle that used to live in this file was removed:
@@ -13,17 +13,11 @@
 #![allow(unused_imports)]
 
 // Domain rows moved to lists::rows — re-export for backward compat
-pub mod alert_row {
-    pub use crate::chart::renderer::ui::lists::rows::alert_row::*;
-}
 pub mod dom_row {
     pub use crate::chart::renderer::ui::lists::rows::dom_row::*;
 }
 pub mod news_row {
     pub use crate::chart::renderer::ui::lists::rows::news_row::*;
-}
-pub mod option_chain_row {
-    pub use crate::chart::renderer::ui::lists::rows::option_chain_row::*;
 }
 pub mod order_row {
     pub use crate::chart::renderer::ui::lists::rows::order_row::*;

@@ -1862,3 +1862,43 @@ chrome, whose literals are Excel's and whose own comment says so, kept out by
 directive because migrating it would make it a worse imitation.
 
 ---
+
+## AT-179 — two widgets with no callers, and a census that had to be rebuilt twice
+
+A survey of every widget in `ui_kit/widgets/` and `ui/lists/rows/` for
+production consumers found two with none:
+
+* **`AlertRow`** (155 LOC) — superseded, not unfinished. `alerts_panel`'s own
+  module docs say it uses "`ui_kit::PanelListRow` for alert rows", and it does.
+  The panel migrated to the design-system widget and this was left behind.
+* **`OptionChainRow`** (147 LOC) — outgrown. The chain UI is `render_block` in
+  `watchlist_panel`, which carries strike modes, NMF toggles, saved options,
+  select mode and per-contract subscription publishing. `OptionChainRow` models
+  bid/ask/volume/strike/delta. It cannot be wired without being rewritten into
+  a different widget, at which point it is not this one.
+
+Both were checked against the standing rule — delete what is genuinely useless,
+but re-examine anything unconnected through oversight or unfinished work. One
+was superseded and one was outgrown; neither is a wiring away from use.
+
+**Both carried a file-level `#![allow(dead_code, unused_imports)]`,** which is
+why 302 lines of unreachable widget sat in the tree without a single warning.
+That is the fourth allow this session found hiding the thing it was suppressing
+(after `builtin_recipes`, `overlays::kit::lerp_color`, and the blanket one on
+`pub mod cascade`). A file-level allow is the most effective of them: it hides
+the whole file.
+
+**The census was wrong twice before it was right, in the usual direction.**
+Version one took the FIRST `pub struct` per file and looked for `Type::new` —
+so it reported `ModalResponse`, `PortableTheme`, `Run` and 28 others as unused,
+because it had picked return types and helpers rather than widgets, and because
+`PortableTheme` is built with `::dark()`. Version two checked every `pub struct`
+in a file and any mention of it, which cut 31 candidates to 4 — but still
+flagged `motion` and `text_engine`, which are alive through free functions
+(`motion::lerp_color` has 27 consumers) rather than their structs. Only the
+third reading was true. A census that reports 31 deletions when the answer is 2
+does not get acted on; it gets ignored, which is worse than not running it.
+
+Design-system ratchet 1064 → 1048.
+
+---

@@ -1,10 +1,10 @@
 {
   "dead_code_allows": 46,
   "eprintln_in_data": 0,
-  "expect_total": 58,
+  "expect_total": 56,
   "file_loc": {
     "chart/renderer/gpu.rs": 10973,
-    "chart/renderer/render/pane/core.rs": 13953,
+    "chart/renderer/render/pane/core.rs": 14015,
     "chart/renderer/trading/order_manager.rs": 8393,
     "chart/renderer/ui/chart_widgets.rs": 3352,
     "chart/renderer/ui/style.rs": 5019,
