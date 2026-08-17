@@ -45,6 +45,7 @@ pub mod indicator;
 pub mod toggle_row;
 pub mod theme_preview_card;
 pub mod selectable_row;
+pub mod kv_row;
 pub mod opacity_picker;
 pub mod risk_reward_bar;
 pub mod heatmap_grid;

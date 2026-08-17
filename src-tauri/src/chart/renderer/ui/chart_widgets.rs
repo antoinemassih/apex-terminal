@@ -25,6 +25,7 @@
 
 use egui::{self, Color32, Stroke};
 use crate::ui_kit::cascade::El;
+use crate::ui_kit::widgets::kv_row::KvRow;
 use crate::ui_kit::sx::Tone;
 use super::style::*;
 use super::overlays::indicators::*;
@@ -530,10 +531,13 @@ fn draw_mini_badge(p: &egui::Painter, rect: egui::Rect, kind: ChartWidgetKind,
     p.rect_filled(rect, radius_sm(), color_alpha(t.shadow_color, alpha_soft()));
 
     let (label, value, color) = kind.mini(wd, t);
-    p.text(egui::pos2(lx, cy), egui::Align2::LEFT_CENTER,
-        label, mono_2xs(), color_half(t.dim));
-    p.text(egui::pos2(rect.right() - 4.0, cy), egui::Align2::RIGHT_CENTER,
-        &value, mono_sm(), color);
+    KvRow::new(label, value)
+        .label_font(mono_2xs())
+        .label_color(color_half(t.dim))
+        .value_font(mono_sm())
+        .value_color(color)
+        .show(p, t, egui::Rect::from_min_max(
+            egui::pos2(lx, cy - 8.0), egui::pos2(rect.right() - 4.0, cy + 8.0)));
 }
 
 /// Returns (label, value_string, color) for the mini badge of each widget type.
@@ -1248,10 +1252,14 @@ fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, 
 
     let vr_y = body.bottom() - 14.0;
     let vr_col = if wd.vol_ratio > 1.5 { t.bull } else if wd.vol_ratio > 0.7 { t.dim } else { t.bear };
-    p.text(egui::pos2(body.left() + 12.0, vr_y), egui::Align2::LEFT_CENTER,
-        "RVOL", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(body.right() - 12.0, vr_y), egui::Align2::RIGHT_CENTER,
-        &format!("{:.1}x", wd.vol_ratio), mono_sm(), vr_col);
+    KvRow::new("RVOL", format!("{:.1}x", wd.vol_ratio))
+        .label_font(mono_2xs())
+        .label_color(color_dim(t.dim))
+        .value_font(mono_sm())
+        .value_color(vr_col)
+        .show(p, t, egui::Rect::from_min_max(
+            egui::pos2(body.left() + 12.0, vr_y - 8.0),
+            egui::pos2(body.right() - 12.0, vr_y + 8.0)));
 }
 
 fn draw_volume_profile(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -1405,11 +1413,14 @@ fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     // Labels (left) + values (right).
     for (i, (name, val, color)) in greeks.iter().enumerate() {
         let y = body.top() + 4.0 + i as f32 * row_h + row_h / 2.0;
-        p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
-            *name, mono_sm(), *color);
         let val_str = if val.abs() < 0.01 { format!("{:.3}", val) } else { format!("{:.2}", val) };
-        p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
-            &val_str, mono_lg(), t.text);
+        KvRow::new(*name, val_str)
+            .label_font(mono_sm())
+            .label_color(*color)
+            .value_font(mono_lg())
+            .value_color(t.text)
+            .show(p, t, egui::Rect::from_min_max(
+                egui::pos2(left, y - 8.0), egui::pos2(right, y + 8.0)));
     }
 }
 
@@ -2593,10 +2604,13 @@ fn draw_position_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     let left = body.left() + 10.0;
     let right = body.right() - 10.0;
     let entry_y = body.bottom() - 10.0;
-    p.text(egui::pos2(left, entry_y), egui::Align2::LEFT_CENTER,
-        "ENTRY", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(right, entry_y), egui::Align2::RIGHT_CENTER,
-        &format!("${:.2}", wd.position_avg), mono_sm(), t.text);
+    KvRow::new("ENTRY", format!("${:.2}", wd.position_avg))
+        .label_font(mono_2xs())
+        .label_color(color_dim(t.dim))
+        .value_font(mono_sm())
+        .value_color(t.text)
+        .show(p, t, egui::Rect::from_min_max(
+            egui::pos2(left, entry_y - 8.0), egui::pos2(right, entry_y + 8.0)));
 }
 
 fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -3121,16 +3135,25 @@ fn draw_vix_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     let y = body.top() + 52.0;
 
     let gap_col = if wd.vix_gap_pct.abs() > 5.0 { t.bear } else { t.dim };
-    p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
-        "GAP", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
-        &format!("{:+.1}%", wd.vix_gap_pct), mono_sm(), gap_col);
-
     let conv_col = if wd.vix_convergence > 0.7 { t.bull } else if wd.vix_convergence > 0.3 { t.warn } else { t.bear };
-    p.text(egui::pos2(left, y + 16.0), egui::Align2::LEFT_CENTER,
-        "CONV", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(right, y + 16.0), egui::Align2::RIGHT_CENTER,
-        &format!("{:.0}%", wd.vix_convergence * 100.0), mono_sm(), conv_col);
+    // Two label/value rows through the shared component. `right` is stated
+    // once, as the rows' rect, instead of once per `RIGHT_CENTER` anchor.
+    for (i, (label, value, col)) in [
+        ("GAP", format!("{:+.1}%", wd.vix_gap_pct), gap_col),
+        ("CONV", format!("{:.0}%", wd.vix_convergence * 100.0), conv_col),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let ry = y + i as f32 * 16.0;
+        KvRow::new(label, value)
+            .label_font(mono_2xs())
+            .label_color(color_dim(t.dim))
+            .value_font(mono_sm())
+            .value_color(col)
+            .show(p, t, egui::Rect::from_min_max(
+                egui::pos2(left, ry - 6.0), egui::pos2(right, ry + 6.0)));
+    }
 }
 
 fn draw_signal_dashboard(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -3168,12 +3191,17 @@ fn draw_signal_dashboard(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
         // Status dot
         let dot_col = if row.active { row.color } else { tint(t, Tone::Dim, alpha_muted()) };
         p.circle_filled(egui::pos2(left + 4.0, y), 2.5, dot_col);
-        // Name
-        p.text(egui::pos2(left + 14.0, y), egui::Align2::LEFT_CENTER,
-            row.name, mono_xs(), if row.active { t.text } else { color_dim(t.dim) });
-        // Value
-        p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
-            &row.value, mono_xs(), row.color);
+        // Name + value. The status dot above stays hand-painted: it is a
+        // shape, not text, and a node kind for "circle" would be a node kind
+        // invented to make one call site look uniform.
+        KvRow::new(row.name, row.value.clone())
+            .label_font(mono_xs())
+            .label_color(if row.active { t.text } else { color_dim(t.dim) })
+            .value_font(mono_xs())
+            .value_color(row.color)
+            .show(p, t, egui::Rect::from_min_max(
+                egui::pos2(left + 14.0, y - row_h * 0.5),
+                egui::pos2(right, y + row_h * 0.5)));
     }
 }
 

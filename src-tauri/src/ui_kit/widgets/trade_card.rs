@@ -133,31 +133,32 @@ impl<'a> TradeCard<'a> {
         // now a token instead of a number repeated at nine call sites.
         let baseline = |r: egui::Rect| r.top() + crate::ui_kit::style::gap_xs();
         let right = card_rect.right() - pad;
+        // The rect a row's TEXT is centred in. `show_with` centres vertically,
+        // so the baseline becomes a rect centred on it rather than an anchor
+        // passed to nine separate `painter.text` calls.
+        let band = |r: egui::Rect| {
+            egui::Rect::from_min_max(
+                egui::pos2(r.left(), baseline(r) - 8.0),
+                egui::pos2(right, baseline(r) + 8.0),
+            )
+        };
 
         // Row 1: symbol · side · P&L
         let r1 = rows.rect("r1");
-        let r1_cols = El::row()
-            .child(El::slot("sym", egui::vec2(50.0, ROW1_H)))
-            .child(El::slot("side", egui::vec2(0.0, ROW1_H)).grow(1.0))
-            .solve_rect(r1);
-        p.text(egui::pos2(r1_cols.rect("sym").left(), baseline(r1)), egui::Align2::LEFT_CENTER,
-            entry.symbol, f_mono_sm.clone(), pal.base(Tone::Text));
-        p.text(egui::pos2(r1_cols.rect("side").left(), baseline(r1)), egui::Align2::LEFT_CENTER,
-            entry.side, f_mono_xs.clone(), dir_col);
         let sign = if entry.pnl >= 0.0 { "+" } else { "" };
-        p.text(egui::pos2(right, baseline(r1)), egui::Align2::RIGHT_CENTER,
-            &format!("{}${:.0} ({:+.1}%)", sign, entry.pnl, entry.pnl_pct),
-            f_mono_sm.clone(), pnl_col);
+        El::row()
+            .child(El::text_with_font(entry.symbol, f_mono_sm.clone())
+                .color(pal.base(Tone::Text)).fixed(50.0))
+            .child(El::text_with_font(entry.side, f_mono_xs.clone()).color(dir_col))
+            .child(El::spacer())
+            .child(El::text_with_font(
+                format!("{}${:.0} ({:+.1}%)", sign, entry.pnl, entry.pnl_pct),
+                f_mono_sm.clone(),
+            ).color(pnl_col))
+            .show_with(&p, theme, band(r1));
 
         // Row 2: setup · duration · R-multiple
         let r2 = rows.rect("r2");
-        let r2_cols = El::row()
-            .child(El::slot("setup", egui::vec2(60.0, ROW_H)))
-            .child(El::slot("dur", egui::vec2(30.0, ROW_H)))
-            .child(El::slot("r", egui::vec2(0.0, ROW_H)).grow(1.0))
-            .solve_rect(r2);
-        p.text(egui::pos2(r2_cols.rect("setup").left(), baseline(r2)), egui::Align2::LEFT_CENTER,
-            entry.setup_type, f_mono_sm.clone(), color_subtle(pal.base(Tone::Accent)));
         let dur = if entry.duration_mins >= 1440 {
             format!("{:.0}d", entry.duration_mins as f64 / 1440.0)
         } else if entry.duration_mins >= 60 {
@@ -165,19 +166,30 @@ impl<'a> TradeCard<'a> {
         } else {
             format!("{}m", entry.duration_mins)
         };
-        p.text(egui::pos2(r2_cols.rect("dur").left(), baseline(r2)), egui::Align2::LEFT_CENTER,
-            &dur, f_mono_sm.clone(), color_half(pal.base(Tone::Dim)));
         let r_col = if entry.r_multiple > 0.0 { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
-        p.text(egui::pos2(r2_cols.rect("r").left(), baseline(r2)), egui::Align2::LEFT_CENTER,
-            &format!("{:+.1}R", entry.r_multiple), f_mono_sm.clone(), r_col);
+        El::row()
+            .child(El::text_with_font(entry.setup_type, f_mono_sm.clone())
+                .color(color_subtle(pal.base(Tone::Accent))).fixed(60.0))
+            .child(El::text_with_font(dur, f_mono_sm.clone())
+                .color(color_half(pal.base(Tone::Dim))).fixed(30.0))
+            .child(El::text_with_font(format!("{:+.1}R", entry.r_multiple), f_mono_sm.clone())
+                .color(r_col).grow(1.0))
+            .show_with(&p, theme, band(r2));
 
         // Row 3: entry -> exit prices · timeframe
         let r3 = rows.rect("r3");
-        p.text(egui::pos2(r3.left(), baseline(r3)), egui::Align2::LEFT_CENTER,
-            &format!("{:.2} \u{2192} {:.2}", entry.entry_price, entry.exit_price),
-            f_mono_sm.clone(), color_dim(pal.base(Tone::Dim)));
-        p.text(egui::pos2(right, baseline(r3)), egui::Align2::RIGHT_CENTER,
-            entry.timeframe, f_mono_sm.clone(), color_dim(pal.base(Tone::Dim)));
+        // Both halves are the same dim tone, so it is DECLARED on the row and
+        // inherited — the repetition the cascade exists to remove, and the
+        // first place in this file where two siblings shared a colour.
+        El::row()
+            .color(color_dim(pal.base(Tone::Dim)))
+            .child(El::text_with_font(
+                format!("{:.2} \u{2192} {:.2}", entry.entry_price, entry.exit_price),
+                f_mono_sm.clone(),
+            ))
+            .child(El::spacer())
+            .child(El::text_with_font(entry.timeframe, f_mono_sm.clone()))
+            .show_with(&p, theme, band(r3));
 
         // Optional notes row
         if !entry.notes.is_empty() {
