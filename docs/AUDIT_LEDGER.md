@@ -1330,3 +1330,44 @@ reserving no space. It had been there long enough to look intentional. The tree
 states the same intent with a spacer that does something.
 
 ---
+
+## AT-168 — the design-system doc described a directory that had moved
+
+`docs/DESIGN_SYSTEM.md` is the entry point for anyone working on this system.
+It carried a snapshot date of **2026-05-05**, described the system as spanning
+"three Rust modules", and its file map pointed at
+`src-tauri/src/chart_renderer/ui/widgets/` — a directory that had become
+`ui_kit/widgets/`. Twenty-eight of its paths did not resolve. It said nothing
+about tokens-vs-recipes-vs-layout-vs-cascade-vs-elements, the five layers that
+now exist, and nothing at all about the declarative layer this whole effort was
+for. A developer following it would have gone looking in a directory that was
+not there, and the only way to find out was to try.
+
+Rewritten: a **layers** table (tokens → recipes → layout → cascade → elements),
+an **authoring model** section covering declare-don't-walk, what inherits and
+what does not, the three entry points (`show_in` for a `Ui`, `show_with` for a
+bare `Painter`, `solve_*` mid-migration), and `intrinsic_width` for
+measure-before-place. File map regenerated from the tree; every stale widget
+path remapped to where the code actually lives, with the one file that no
+longer exists anywhere (`perf_hud.rs`) said to be gone rather than pointed at.
+
+**`dev/doc_accuracy_gate.py`** now checks it. Paths must resolve; every builder
+method chained on an `El` tree in an example must exist as a `fn`. It cannot
+check whether the prose is TRUE — a doc can give the wrong reason for a correct
+API and pass — so it bounds the rot rather than eliminating it, and says so.
+
+**The gate passed its own first mutation test, which was the point of running
+one.** Version 1 anchored paths on a `src-tauri/src` prefix and therefore
+checked none of the layer table, which is written crate-relative; and it looked
+only for `Type::method(`, which misses every chained builder call — the exact
+thing that rots in a fluent API. A deliberately corrupted path and a renamed
+`.child_if` both sailed through. It also had to be scoped per-STATEMENT rather
+than per-fence, because the anti-pattern blocks put a ❌ and a ✅ together and
+the ❌ half's `painter.galley(` was being attributed to `El`.
+
+That is the fifth instrument this session to report success on work it was not
+looking at, and the second where the check was written, run, seen to pass, and
+only found hollow because it was deliberately fed a lie. The passing run is not
+the evidence. The failing run on known-bad input is.
+
+---

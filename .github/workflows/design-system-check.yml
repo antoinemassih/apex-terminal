@@ -172,3 +172,11 @@ jobs:
       - name: Run cascade-adoption gate (floors + cursor-walk ceiling)
         if: ${{ !cancelled() }}
         run: python dev/cascade_adoption_gate.py
+
+      # DESIGN_SYSTEM.md carried a snapshot date of 2026-05-05 and a module
+      # table pointing at a widgets directory that had since moved. Nothing
+      # failed; the only way to notice was to follow it and find nothing.
+      # Docs are not exempt from drift just because they are prose.
+      - name: Run doc-accuracy gate (design-system docs describe real code)
+        if: ${{ !cancelled() }}
+        run: python dev/doc_accuracy_gate.py

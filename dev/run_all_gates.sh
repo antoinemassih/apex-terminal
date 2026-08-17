@@ -49,6 +49,7 @@ CHECKS=(
   "python dev/cascade_gate.py"
   "python dev/strip_test_hits.py --selftest"
   "python dev/cascade_adoption_gate.py"
+  "python dev/doc_accuracy_gate.py"
   # quality-gates.yml
   "python dev/quality_gate.py"
 )

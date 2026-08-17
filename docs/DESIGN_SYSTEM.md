@@ -1,17 +1,108 @@
 # Apex Terminal Design System
 
-> **Snapshot date:** 2026-05-05
-> **Migration status:** Post-extraction pass — spacing, font, color, and frame literals migrated. See "Future work" for pending items.
+> **Snapshot date:** 2026-08-17
+> **Migration status:** Tokens, recipes and layout migrated; the declarative
+> cascading layer is in adoption. See "Future work" for pending items.
 
-The design system spans three Rust modules:
+## The layers
 
-| File | What lives there |
-|------|-----------------|
-| `src-tauri/src/design_tokens.rs` | `DesignTokens` struct (all editable token values), sub-structs for each category, `dt_f32!` / `dt_u8!` / `dt_rgba!` macro accessors |
-| `src-tauri/src/chart_renderer/ui/style.rs` | Token accessor functions (`gap_*`, `font_*`, `radius_*`, `stroke_*`, `alpha_*`, `status_*`, `drawing_palette()`), free-function frame helpers, legacy component helpers |
-| `src-tauri/src/chart_renderer/ui/widgets/` | Builder-style widget primitives — one file per family (`frames.rs`, `buttons.rs`, `inputs.rs`, `headers.rs`, `pills.rs`, `tabs.rs`, `menus.rs`, `rows/`, `modal.rs`, `context_menu.rs`, `select.rs`, …) |
+Five, from values upward. Each is usable on its own; each is built on the one
+below it. Nothing here is a parallel system — there is exactly one of each,
+and the gates in `dev/` exist to keep it that way.
 
-The legacy positional-arg helpers in `components.rs` / `components_extra.rs` still work and delegate to the same paint code. New code should prefer the builder API in `widgets/`.
+| Layer | Where | What it answers |
+|-------|-------|-----------------|
+| **Tokens** | `foundation/design_tokens.rs`, `chart/renderer/ui/style.rs` | "How big is a gap? What is the dim tone?" — `gap_md()`, `font_sm()`, `alpha_muted()`, `dt_f32!` |
+| **Recipes** | `ui_kit/sx/recipe_spec.rs`, `design_system/builtin_recipes.rs` | "What does a *card* look like in this style?" — the CSS-class layer, keyed by role (`row.list`, `section.header`) |
+| **Layout** | `ui_kit/layout/{flex,grid}.rs` | "Where do these go?" — Taffy-backed flexbox and grid, solved headlessly |
+| **Cascade** | `ui_kit/cascade/context.rs` | "What colour is this text if nobody said?" — CSS's *inheritable* properties flowing parent → child |
+| **Elements** | `ui_kit/cascade/element.rs` | "What IS this row?" — a declarative tree that solves through Layout and paints through egui |
+
+Above them sit the **widgets** (`ui_kit/widgets/`), builder-style components —
+`Button`, `Label`, `SelectableRow`, `KvRow` — each of which uses the layers
+rather than reimplementing them.
+
+---
+
+## Authoring model: think in CSS and components
+
+This is an **organizing** layer over egui, not a different renderer. There is
+no virtual DOM, no diffing, no reconciler, no component lifecycle. A tree is
+built and consumed inside one frame, exactly as immediate mode already works,
+and compiles down to the same `painter.text` / `painter.rect_filled` calls the
+app made before. What is borrowed from CSS and React is the *authoring* model —
+declaration instead of sequence, inheritance instead of a global lookup.
+
+### Declare the shape; do not walk a cursor
+
+```rust
+// ❌ A sequence of mutations. The gap after the icon lives inside an `if`;
+//    move a line and the row silently changes.
+let mut x = rect.left() + pad;
+if let Some(ic) = icon {
+    painter.text(pos2(x, cy), LEFT_CENTER, ic, icon_font, icon_col);
+    x += icon_w + icon_gap;
+}
+painter.galley(pos2(x, cy - h * 0.5), label, text_col);
+
+// ✅ A shape. The gap is a property of being siblings, so a row with no icon
+//    cannot pay for a seam it does not have.
+El::row()
+    .pad_x(pad)
+    .gap(icon_gap)
+    .color(text_col)                                   // cascades to both
+    .child_if(icon.is_some(), El::text_with_font(icon.unwrap_or(""), icon_font).color(icon_col))
+    .child(El::text_with_font(label, label_font).grow(1.0))
+    .show_in(ui, theme, rect);
+```
+
+`dev/cascade_adoption_gate.py` holds the ceiling at **zero** cursor walks in UI
+and chrome. A new `x += w + gap` there fails CI.
+
+### Inheritance is CSS's inheritance, exactly
+
+`color`, `font-*`, `letter-spacing` and `text-align` flow down. `padding`,
+`margin`, `border`, `width` and `background` do **not** — they belong to the
+element that declares them. That split is mirrored rather than invented,
+because the whole point is that a reader coming from CSS can predict it.
+
+```rust
+cascade::scope(Inherited::default().color(t.dim), || {
+    // every unstyled text node below here is dim
+});
+```
+
+**Absent means "the widget's own default", not "a global default".** With no
+scope open, nothing changes — which is what makes adoption safe, and also what
+makes abandonment invisible, which is why there are adoption *floors* as well
+as ceilings. An explicit `.color()` on a call site always outranks an ancestor.
+
+### Three entry points, by what the surface has
+
+| You have | Call | The tree |
+|----------|------|----------|
+| `&mut Ui` | `show(ui, theme)` / `show_in(ui, theme, rect)` | solves **and paints**; buttons interact |
+| `&Painter` only | `show_with(painter, theme, rect)` | solves **and paints**; buttons are unavailable (they need `interact`) |
+| Either, mid-migration | `solve_in(ui, rect)` / `solve_rect(rect)` | solves only — hands back rects you paint yourself |
+
+`solve_*` is the migration path: a surface with hard-won painting (fades, clip
+invariants, morph animations) moves its *layout* first and its painting later,
+or never. `El::slot("id", size)` reserves a rect for exactly that.
+
+Prefer `El::text` with a `TextStyle` tier for anything new. `El::text_with_font`
+takes an explicit `FontId` and exists for pixel-locked chrome that cannot be
+re-tiered as a side effect of moving its layout — CSS has the same escape,
+where `font-family` is a value and not only a class.
+
+### Measure before you place
+
+```rust
+let w = row.intrinsic_width(ui);   // "does this fit" has an answer up front
+```
+
+Every surface that packs variable-width items — the ticker strip, the tab
+strip — asks this instead of painting and discovering the overflow. Do not
+re-derive it by solving into an infinite rect and reading a probe slot back.
 
 ---
 
@@ -178,7 +269,7 @@ Backed by `DrawingTokens { palette: [Rgba; 4] }` in `DesignTokens`.
 
 ## Theme presets
 
-Themes are `Theme` structs (defined in `chart_renderer/gpu.rs`). Style presets are named separately:
+Themes are `Theme` structs (defined in `chart/renderer/gpu.rs`). Style presets are named separately:
 
 | Preset name | Notes |
 |-------------|-------|
@@ -194,7 +285,7 @@ Switch via `UiStyle::set_preset(preset)`.
 
 Prefer `widgets/` builders over the legacy free-functions in `components.rs`. The builders chain `.theme(t)` and emit the same paint.
 
-### Frames (`widgets/frames.rs`)
+### Frames (`ui_kit/widgets/frames.rs`)
 
 **`PopupFrame`** — context menus, dropdowns, any floating popup.
 ```rust
@@ -250,7 +341,7 @@ DialogSeparator::new(t.toolbar_border).indent(8.0).show(ui);
 
 ---
 
-### Buttons (`widgets/buttons.rs`)
+### Buttons (`ui_kit/widgets/button.rs`)
 
 **`IconBtn`** — icon-only ghost button (close, toolbar icons).
 ```rust
@@ -281,7 +372,7 @@ ui.add(SmallActionBtn::new("Refresh").theme(t))
 
 ---
 
-### Inputs (`widgets/inputs.rs`)
+### Inputs (`ui_kit/widgets/input.rs`)
 
 **`TextInput`** — single-line (or multiline) themed text edit.
 ```rust
@@ -298,7 +389,7 @@ Additional knobs: `.text_color(c)`, `.background_color(c)`, `.id(id)`, `.margin(
 
 ---
 
-### Headers (`widgets/headers.rs`)
+### Headers (`ui_kit/widgets/header.rs`)
 
 All headers accept `.theme(t)` or explicit `.accent(c).dim(c)`.
 
@@ -313,7 +404,7 @@ All headers accept `.theme(t)` or explicit `.accent(c).dim(c)`.
 
 ---
 
-### Pills, Chips & Badges (`widgets/pills.rs`)
+### Pills, Chips & Badges (`ui_kit/widgets/status_pill.rs`)
 
 | Builder | Usage |
 |---------|-------|
@@ -326,7 +417,7 @@ All headers accept `.theme(t)` or explicit `.accent(c).dim(c)`.
 
 ---
 
-### Tabs (`widgets/tabs.rs`)
+### Tabs (`ui_kit/widgets/tabs.rs`)
 
 | Builder | Usage |
 |---------|-------|
@@ -336,7 +427,7 @@ All headers accept `.theme(t)` or explicit `.accent(c).dim(c)`.
 
 ---
 
-### Menus (`widgets/menus.rs`)
+### Menus (`ui_kit/widgets/menu_item.rs`)
 
 | Builder | Usage |
 |---------|-------|
@@ -346,7 +437,7 @@ All headers accept `.theme(t)` or explicit `.accent(c).dim(c)`.
 
 ---
 
-### Context menus & submenus (`widgets/context_menu.rs`)
+### Context menus & submenus (`ui_kit/widgets/context_menu.rs`)
 
 ```rust
 ContextMenu::new()  // top-level context menu container
@@ -364,7 +455,7 @@ MenuDivider          // horizontal separator
 
 ---
 
-### Select / Combobox (`widgets/select.rs`)
+### Select / Combobox (`ui_kit/widgets/select.rs`)
 
 | Builder | Usage |
 |---------|-------|
@@ -379,7 +470,7 @@ MenuDivider          // horizontal separator
 
 ---
 
-### Modal (`widgets/modal.rs`)
+### Modal (`ui_kit/widgets/modal.rs`)
 
 ```rust
 Modal::new(id)
@@ -390,7 +481,7 @@ Modal::new(id)
 
 ---
 
-### List rows (`widgets/rows/`)
+### List rows (`chart/renderer/ui/widgets/rows/`)
 
 **`ListRow`** — generic selectable / hoverable row primitive. Wrap content in the body closure; optionally provide a trailing closure. Adoption is ongoing — use it for new panels, but expect the API to evolve.
 
@@ -400,22 +491,22 @@ Modal::new(id)
 
 | Module | Contents |
 |--------|----------|
-| `widgets/text.rs` | Typed text widgets (body label, muted label, caption, monospace code, numeric display) |
-| `widgets/semantic_label.rs` | `SemanticLabel` — auto-styles based on semantic role |
-| `widgets/status.rs` | Status indicator widgets |
-| `widgets/layout.rs` | Layout helpers (gap widgets, dividers) |
-| `widgets/form.rs` | `FormRow` — label + input aligned in a two-column grid |
-| `widgets/pane.rs` | Pane container helpers |
-| `widgets/toolbar/` | Toolbar-specific widget primitives |
-| `widgets/trading/` | Trading-specific widgets (order entry, DOM) |
-| `widgets/watchlist/` | Watchlist-specific row and strip widgets |
-| `widgets/drawing/` | Drawing-tool UI widgets |
-| `widgets/foundation/` | Low-level primitives (`InputShell`, `InputState`, `InputVariant`, sizes) |
-| `widgets/icons.rs` | Icon glyph constants |
-| `widgets/cards/` | Card container variants |
-| `widgets/perf_hud.rs` | Performance HUD overlay |
-| `widgets/painter_pane.rs` | Chart-pane painter helpers |
-| `widgets/design_mode_panel.rs` | Design-mode inspector panel (internal) |
+| `ui_kit/widgets/label.rs` | Typed text widgets (body label, muted label, caption, monospace code, numeric display) |
+| `ui_kit/widgets/polished_label.rs` | `SemanticLabel` — auto-styles based on semantic role |
+| `ui_kit/widgets/indicator.rs` | Status indicator widgets |
+| `ui_kit/layout/flex.rs` | Layout helpers (gap widgets, dividers) |
+| `ui_kit/widgets/form_row.rs` | `FormRow` — label + input aligned in a two-column grid |
+| `ui_kit/widgets/pane_grid.rs` | Pane container helpers |
+| `chart/renderer/ui/components/toolbar/` | Toolbar-specific widget primitives |
+| `chart/renderer/ui/widgets/trading/` | Trading-specific widgets (order entry, DOM) |
+| `chart/renderer/ui/widgets/watchlist/` | Watchlist-specific row and strip widgets |
+| `chart/renderer/ui/tools/drawing/` | Drawing-tool UI widgets |
+| `chart/renderer/ui/foundation/` | Low-level primitives (`InputShell`, `InputState`, `InputVariant`, sizes) |
+| `ui_kit/icons.rs` | Icon glyph constants |
+| `chart/renderer/ui/widgets/cards/` | Card container variants |
+| `ui_kit/widgets/` (removed — the perf HUD now lives in the design inspector) | Performance HUD overlay |
+| `chart/renderer/ui/chrome/painter_pane.rs` | Chart-pane painter helpers |
+| `foundation/design_inspector.rs` | Design-mode inspector panel (internal) |
 
 ---
 
@@ -445,55 +536,73 @@ These free functions still work. They are the migration source — builders in `
 
 ## Project file map
 
+Regenerated 2026-08-17. `dev/doc_accuracy_gate.py` checks every path below
+still exists — the previous version of this section pointed at
+the old chart_renderer widgets directory long after it became
+`ui_kit/widgets/`, and nothing said so.
+
 ```
 src-tauri/src/
-  design_tokens.rs                — DesignTokens struct + all sub-structs; dt_f32!/dt_u8!/dt_rgba! macros
-  chart_renderer/
-    gpu.rs                        — Theme struct (semantic color fields per-theme)
+  foundation/design_tokens.rs     — DesignTokens struct + sub-structs; dt_f32!/dt_u8!/dt_rgba!
+  design_system/
+    style_system.rs               — StyleSystem (the 9 styles): the shape/feel axis
+    color_scheme.rs               — ColorScheme (the 22 palettes): the colour axis
+    builtin.rs                    — Built-in style definitions (edit HERE to restyle)
+    builtin_recipes.rs            — Authored RecipeSets per built-in style
+    recipes.rs                    — Recipe resolution
+    presets.rs                    — Named preset combinations
+    loader.rs                     — Theme-pack loading
+    hot_reload.rs                 — Live token reload (design-mode)
+    export.rs                     — Token export
+    baseline.rs                   — Migration baselines
+    equivalence_tests.rs          — Legacy-vs-new equivalence guards
+  ui_kit/
+    cascade/
+      mod.rs                      — The declarative cascading layer (see "Authoring model")
+      context.rs                  — Inherited: CSS's inheritable properties, parent -> child
+      element.rs                  — El: the declarative element tree; solve/paint entry points
+    layout/
+      flex.rs                     — Taffy-backed flexbox: Flex, Item, Size, FlexSlots
+      grid.rs                     — Taffy-backed grid: Grid, GridItem, Track
+    sx/
+      recipe_spec.rs              — RecipeSpec/RecipeSet/ColorSpec — the CSS-class layer
+      color.rs                    — palette_ct(), Tone
+      style.rs                    — sx style helpers
+    widgets/                      — 70+ builder-style components, one family per file
+    style.rs                      — Token accessors (gap_*, font_*, radius_*, stroke_*, alpha_*)
+    tokens.rs                     — Token helper re-exports
+    text_style.rs                 — TextStyle tiers (the type ladder)
+    scale.rs                      — Typed design scales (Space/Radius/Weight/Level)
+    interaction.rs                — apply_interaction: the ONE hover/selected/disabled table
+    icons.rs                      — Icon glyph constants
+    inspect.rs                    — Widget inspection hooks (design-mode)
+  chart/renderer/
+    gpu.rs                        — Theme struct (semantic colour fields per theme)
+    theme_impl.rs                 — impl ComponentTheme for Theme (the chart app's bridge)
     ui/
-      style.rs                    — Token accessor functions (gap_*, font_*, radius_*, stroke_*,
-                                    alpha_*, shadow_*, status_*, drawing_palette()),
-                                    free-function frame + component helpers
-      components/                 — Legacy positional-arg component helpers
-      components_extra/           — Legacy extra component helpers
-      widgets/
-        mod.rs                    — Module registry
-        frames.rs                 — PopupFrame, DialogFrame, PanelFrame, CardFrame,
-                                    SidePanelFrame, CompactPanelFrame, TooltipFrame,
-                                    DialogSeparator; BorderAlpha enum
-        buttons.rs                — IconBtn, TradeBtn, SimpleBtn, SmallActionBtn,
-                                    ChromeBtn, ActionBtn
-        inputs.rs                 — TextInput (+ horizontal_align knob)
-        headers.rs                — PanelHeader, PanelHeaderWithClose, DialogHeader,
-                                    DialogHeaderWithClose, PaneHeader, PaneHeaderWithClose
-        pills.rs                  — PillButton, DisplayChip, StatusBadge, RemovableChip,
-                                    KeybindChip, BrandCtaButton
-        tabs.rs                   — TabBar, TabStrip, TabBarWithClose
-        menus.rs                  — MenuTrigger, MenuItem, SidePaneAction
-        context_menu.rs           — ContextMenu, MenuBuilder, MenuItem, MenuItemWithShortcut,
-                                    MenuItemWithIcon, CheckMenuItem, RadioMenuItem, Submenu,
-                                    DangerMenuItem, MenuSection, MenuDivider
-        modal.rs                  — Modal, ModalResponse
-        select.rs                 — Dropdown, DropdownOwned, Combobox, MultiSelect,
-                                    Autocomplete, SegmentedControl, RadioGroup, DropdownActions
-        rows/                     — ListRow (generic selectable row)
-        text.rs                   — Typed text widgets
-        semantic_label.rs         — SemanticLabel
-        status.rs                 — Status indicators
-        layout.rs                 — Layout helpers
-        form.rs                   — FormRow
-        foundation/               — InputShell, InputState, InputVariant, Size, Radius
-        cards/                    — Card container variants
-        toolbar/                  — Toolbar primitives
-        trading/                  — Order entry, DOM widgets
-        watchlist/                — Watchlist row/strip widgets
-        drawing/                  — Drawing-tool UI widgets
-        icons.rs                  — Icon glyph constants
-        pane.rs                   — Pane container helpers
-        painter_pane.rs           — Chart-pane painter helpers
-        perf_hud.rs               — Performance HUD overlay
-        design_mode_panel.rs      — Design inspector panel (internal)
+      style.rs                    — Chart-side token accessors + StyleSettings
+      chart_widgets.rs            — Chart overlay panels (painter-only)
+      chrome/                     — Pane chrome
+      panels/                     — Side panels
+      components/                 — Toolbar and component families
+      lists/                      — Row families (DOM, watchlist, option chain, orders)
+      foundation/                 — Interaction/text-style foundations
 ```
+
+Selected widget families in `ui_kit/widgets/` (76 files; see `mod.rs` for the
+full registry):
+
+| File | Provides |
+|------|----------|
+| `ui_kit/widgets/button.rs` | `Button` — the one button; `show_at` for painter surfaces |
+| `ui_kit/widgets/label.rs` | `Label` — text with tiers, cascade-aware colour |
+| `ui_kit/widgets/kv_row.rs` | `KvRow` — label/value row for painter-only surfaces |
+| `ui_kit/widgets/selectable_row.rs` | `SelectableRow` — clickable menu/dropdown row |
+| `ui_kit/widgets/panel_key_value_row.rs` | `PanelKeyValueRow` — the `Ui`-based label/value row |
+| `ui_kit/widgets/panel_section.rs` | `PanelSection` — collapsible titled section |
+| `ui_kit/widgets/select.rs` | `Select` — the one dropdown |
+| `ui_kit/widgets/modal.rs` | `Modal` — the one modal |
+| `ui_kit/widgets/theme.rs` | `ComponentTheme` trait + `PortableTheme` |
 
 ---
 
