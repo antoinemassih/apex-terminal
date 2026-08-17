@@ -1363,15 +1363,12 @@ pub fn lighten(c: Color32, amount: f32) -> Color32 {
 }
 
 /// Darken a color toward black by `amount` (0.0–1.0). Preserves alpha.
+///
+/// A multiplicative scale by `1 - amount`, so it routes through the one
+/// primitive rather than open-coding the channel loop a third time.
 #[inline]
 pub fn darken(c: Color32, amount: f32) -> Color32 {
-    let amt = (1.0 - amount).clamp(0.0, 1.0);
-    Color32::from_rgba_premultiplied(
-        (c.r() as f32 * amt) as u8,
-        (c.g() as f32 * amt) as u8,
-        (c.b() as f32 * amt) as u8,
-        c.a(),
-    )
+    crate::ui_kit::style::color_scale(c, (1.0 - amount).clamp(0.0, 1.0))
 }
 
 /// Shift each channel of `c` by a fixed amount, clamped to 0..=255. Alpha is
@@ -1404,11 +1401,16 @@ pub fn color_shift(c: Color32, dr: i16, dg: i16, db: i16) -> Color32 {
 /// theme role (`t.bull` / `t.bear` / a price color) and only the shade encodes
 /// magnitude. Keeping it here means those fills stay theme-following instead of
 /// each call site open-coding `Color32::from_rgb(c.r() as f32 * k, …)`.
+///
+/// Shares `scale_channels` with `color_scale` but STAMPS a new alpha
+/// unmultiplied, which is why it is not simply `color_scale(c, f)`: for
+/// `alpha < 255` premultiplied and unmultiplied differ, and these call sites
+/// want the second. The channel math is the same in both; only the alpha
+/// treatment differs, and that difference is the reason this function exists.
 #[inline]
 pub fn color_shade(c: Color32, factor: f32, alpha: u8) -> Color32 {
-    let k = factor.max(0.0);
-    let ch = |v: u8| -> u8 { (v as f32 * k).clamp(0.0, 255.0) as u8 };
-    Color32::from_rgba_unmultiplied(ch(c.r()), ch(c.g()), ch(c.b()), alpha)
+    let (r, g, b) = crate::ui_kit::style::scale_channels(c, factor);
+    Color32::from_rgba_unmultiplied(r, g, b, alpha)
 }
 
 // ─── Semantic interaction-state colors ───────────────────────────────────────
@@ -4943,5 +4945,75 @@ mod control_height_tests {
             [d.control_xs, d.control_sm, d.control_md, d.control_lg, d.control_xl],
             [18.0, 22.0, 28.0, 34.0, 40.0],
         );
+    }
+}
+
+#[cfg(test)]
+mod one_colour_scale_chart_side_tests {
+    //! The chart-side half of the consolidation. See
+    //! `ui_kit::style::one_colour_scale_tests` for the ui_kit half and the
+    //! table of what the four old implementations disagreed about.
+    //!
+    //! These live here and not there because `ui_kit::layer_guard` forbids
+    //! ui_kit from naming the chart layer — the dependency runs
+    //! chart_renderer -> ui_kit, never the reverse. The guard caught the first
+    //! version of these tests violating it, which is the guard being worth
+    //! having.
+    use super::*;
+    use crate::ui_kit::style::color_scale;
+
+    const OPAQUE: Color32 = Color32::from_rgb(200, 130, 60);
+
+    /// `darken(c, a)` is `color_scale(c, 1 - a)` and nothing else.
+    #[test]
+    fn darken_is_the_primitive_with_an_inverted_argument() {
+        for a in [0.0_f32, 0.1, 0.35, 0.65, 1.0] {
+            assert_eq!(
+                darken(OPAQUE, a),
+                color_scale(OPAQUE, 1.0 - a),
+                "darken disagrees at amount={a}"
+            );
+        }
+    }
+
+    /// `color_shade` shares the CHANNEL math and differs only in alpha —
+    /// which is the entire reason it is a separate function.
+    ///
+    /// Asserted at alpha 255, and the first version of this test was WRONG to
+    /// do otherwise. `Color32::from_rgba_unmultiplied` premultiplies on
+    /// construction, so reading `.r()` back off a shade stamped with alpha 120
+    /// returns `scaled_r * 120/255` — it looked like the channel math had
+    /// diverged (80 vs 55) when it was the alpha encoding doing exactly what
+    /// it is for. The test found a bad assumption of mine, not a bad function.
+    #[test]
+    fn color_shade_shares_the_channels_and_only_restamps_alpha() {
+        for f in [0.0_f32, 0.4, 1.0, 2.5] {
+            assert_eq!(
+                color_scale(OPAQUE, f),
+                color_shade(OPAQUE, f, 255),
+                "at full alpha the two must be identical; diverged at f={f}"
+            );
+        }
+        // And the stamp is the point: the input's own alpha is ignored.
+        let translucent = Color32::from_rgba_premultiplied(200, 130, 60, 40);
+        assert_eq!(color_shade(translucent, 1.0, 200).a(), 200);
+    }
+
+    /// `lighten` is a DIFFERENT operation and must not be quietly merged.
+    ///
+    /// It lerps toward white; the primitive multiplies. On a saturated colour
+    /// they diverge sharply, which is why folding them together would have
+    /// been tidying by name rather than by behaviour.
+    #[test]
+    fn lighten_is_not_a_multiplicative_scale() {
+        let lit = lighten(OPAQUE, 0.5);
+        let scaled = color_scale(OPAQUE, 1.5);
+        assert_ne!(
+            (lit.r(), lit.g(), lit.b()),
+            (scaled.r(), scaled.g(), scaled.b()),
+            "if these ever match, the test has stopped distinguishing them"
+        );
+        // Toward white: the SMALLEST channel gains the most.
+        assert!(lit.b() as i32 - OPAQUE.b() as i32 > lit.r() as i32 - OPAQUE.r() as i32);
     }
 }

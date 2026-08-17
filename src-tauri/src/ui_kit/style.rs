@@ -1192,6 +1192,41 @@ pub fn color_alpha_mul(c: Color32, factor: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), new_a)
 }
 
+/// The ONE multiplicative RGB scale: multiply each channel by `factor`,
+/// clamp to 0..=255, keep the alpha.
+///
+/// There were four implementations of this before, none of them agreeing on
+/// the edges:
+///
+/// | Where | Alpha | Rounding | Clamp |
+/// |-------|-------|----------|-------|
+/// | `interaction::brighten_color` | preserved, premultiplied | truncate | `min(255)` |
+/// | `style::darken` | preserved, premultiplied | truncate | none (`1-amount` is clamped instead) |
+/// | `chart…style::color_shade` | STAMPED, unmultiplied | truncate | `clamp(0,255)` |
+/// | `gpu::indicator_default_color::brighten` | DROPPED (`from_rgb`) | **round** | `min(255)` |
+///
+/// Four spellings of "scale the channels" is the same shape as the tab strip's
+/// two spellings of a gap and the spreadsheet's three of a column offset: not
+/// wrong today, wrong the moment one is edited. Everything multiplicative now
+/// routes through the channel math here.
+///
+/// `lighten` is deliberately NOT folded in — it lerps toward white, which is a
+/// different operation and looks different on saturated colours. Consolidating
+/// it would be tidying by name rather than by behaviour.
+#[inline]
+pub fn scale_channels(c: Color32, factor: f32) -> (u8, u8, u8) {
+    let k = factor.max(0.0);
+    let ch = |v: u8| -> u8 { (v as f32 * k).clamp(0.0, 255.0) as u8 };
+    (ch(c.r()), ch(c.g()), ch(c.b()))
+}
+
+/// Scale `c`'s channels by `factor`, keeping its alpha.
+#[inline]
+pub fn color_scale(c: Color32, factor: f32) -> Color32 {
+    let (r, g, b) = scale_channels(c, factor);
+    Color32::from_rgba_premultiplied(r, g, b, c.a())
+}
+
 // ─── Color dimming helpers ───────────────────────────────────────────────────
 // Mirror the chart-app's named multipliers (subtle / muted / half / etc.) so
 // widgets get a portable path to the same dim effect without reaching into
@@ -1717,5 +1752,55 @@ mod two_scale_invariant_tests {
             "control heights clip their own text:
   {}", failures.join("
   "));
+    }
+}
+
+#[cfg(test)]
+mod one_colour_scale_tests {
+    //! There were four implementations of "multiply the RGB channels", and
+    //! they disagreed at the edges: one rounded where three truncated, one
+    //! dropped alpha, one stamped a new one, one clamped differently. None of
+    //! that was visible in a screenshot and none of it failed a test.
+    //!
+    //! These lock the ui_kit half. The chart-side wrappers (`darken`,
+    //! `color_shade`, `lighten`) are asserted against this primitive in
+    //! `chart::renderer::ui::style`, NOT here — `ui_kit::layer_guard` forbids
+    //! ui_kit from naming the chart layer, and it caught the first version of
+    //! this module doing exactly that. The dependency runs one way.
+    use super::*;
+
+    const OPAQUE: Color32 = Color32::from_rgb(200, 130, 60);
+
+    /// `brighten_color` is a thin wrapper and must stay one.
+    #[test]
+    fn brighten_color_is_the_primitive() {
+        for f in [0.0_f32, 0.25, 0.65, 1.0, 1.5, 4.0] {
+            assert_eq!(
+                color_scale(OPAQUE, f),
+                crate::ui_kit::interaction::brighten_color(OPAQUE, f),
+                "brighten_color disagrees at f={f}"
+            );
+        }
+    }
+
+    /// Scaling never overflows a channel, at any factor.
+    #[test]
+    fn a_large_factor_clamps_instead_of_wrapping() {
+        let c = color_scale(Color32::from_rgb(200, 200, 200), 100.0);
+        assert_eq!((c.r(), c.g(), c.b()), (255, 255, 255));
+    }
+
+    /// A negative factor is treated as zero, not as an underflow.
+    #[test]
+    fn a_negative_factor_is_black_not_garbage() {
+        let c = color_scale(OPAQUE, -3.0);
+        assert_eq!((c.r(), c.g(), c.b()), (0, 0, 0));
+    }
+
+    /// Alpha survives the scale — the copy in `gpu.rs` used to drop it.
+    #[test]
+    fn alpha_is_preserved_not_forced_opaque() {
+        let translucent = Color32::from_rgba_premultiplied(100, 100, 100, 77);
+        assert_eq!(color_scale(translucent, 0.5).a(), 77);
     }
 }

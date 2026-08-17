@@ -113,6 +113,20 @@ COMMENT_LINE_RE = re.compile(r"^\s*(?://|\*|/\*)")
 # misconfig surfaces as a persistent in-app indicator, not a one-time console
 # line. Require an open paren so prose mentions in doc-comments don't count.
 EPRINTLN_RE = re.compile(r"eprintln!\(")
+# COLOUR ARITHMETIC written out by hand: `c.r() as f32 * k`.
+#
+# Four implementations of "multiply the RGB channels" existed simultaneously —
+# `interaction::brighten_color`, `style::darken`, `color_shade`, and a local
+# `fn brighten` hidden inside `gpu::indicator_default_color` — and they
+# disagreed at the edges: one rounded where three truncated, one dropped alpha,
+# one stamped a new one. Four spellings of one operation is the same shape as
+# the tab strip's two spellings of a gap: not wrong today, wrong the moment one
+# is edited.
+#
+# Consolidated onto `ui_kit::style::scale_channels`, and this holds it at ZERO.
+# The number is not "few open-coded scales are acceptable" — it is that there
+# is one implementation and everything else is a wrapper over it.
+CHANNEL_MATH_RE = re.compile(r"\.\s*[rgb]\s*\(\s*\)\s*as\s+f32\s*\*")
 # Direct field mutation in ui/: `wl.foo = ` / `watchlist.foo = ` / `chart.foo = `
 # (crude but matches the audit's counting method; excludes ==, +=, <=, >=, !=).
 MUT_RE = re.compile(r"\b(watchlist|wl|chart)\.[a-z_][a-z0-9_]*\s*=\s*[^=]")
@@ -129,6 +143,7 @@ def collect():
     counts = {
         "unwrap_by_dir": {},
         "expect_total": 0,
+        "hand_colour_math": 0,
         "dead_code_allows": 0,
         "ui_direct_mutation": 0,
         "eprintln_in_data": 0,
@@ -170,6 +185,11 @@ def collect():
         if n_unwrap:
             counts["unwrap_by_dir"][area] = counts["unwrap_by_dir"].get(area, 0) + n_unwrap
         counts["expect_total"] += len(EXPECT_RE.findall(prod))
+        counts["hand_colour_math"] += sum(
+            len(CHANNEL_MATH_RE.findall(ln))
+            for ln in prod.splitlines(True)
+            if not COMMENT_LINE_RE.match(ln)
+        )
         counts["dead_code_allows"] += sum(
             len(DEAD_RE.findall(ln)) for ln in lines if not COMMENT_LINE_RE.match(ln)
         )
@@ -211,7 +231,8 @@ def check(cur, base):
             nudges.append(f"unwrap[{area}] {c} < baseline {b} (-{b - c})")
 
     # scalar ratchets
-    for key in ("expect_total", "dead_code_allows", "ui_direct_mutation", "eprintln_in_data",
+    for key in ("expect_total", "dead_code_allows", "hand_colour_math",
+                "ui_direct_mutation", "eprintln_in_data",
                 "indicator_enum_matches"):
         # A newly-added metric absent from the committed baseline seeds to its
         # current value (no spurious first-run failure); --update then locks it.

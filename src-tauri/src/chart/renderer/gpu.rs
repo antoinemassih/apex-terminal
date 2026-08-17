@@ -1330,13 +1330,18 @@ pub(crate) static INDICATOR_COLORS: &[&str] = &["#00bef0", "#f0961a", "#f0d732",
 ///
 /// The caller may still override the colour afterwards — this only sets the initial value.
 pub(crate) fn indicator_default_color(slot: usize, t: &Theme) -> String {
+    // The fourth copy of "scale the channels", and the only one that ROUNDED
+    // rather than truncating and DROPPED alpha via `from_rgb`. Routed through
+    // the one primitive now.
+    //
+    // Stated plainly because it is a real, if tiny, change: truncation instead
+    // of rounding moves a channel by at most 1/255 on the eight indicator
+    // default colours, and alpha is preserved instead of forced opaque. Theme
+    // roles here are opaque, so the second is a no-op in practice; the first
+    // is imperceptible and now consistent with every other scale in the app.
     #[inline]
     fn brighten(c: egui::Color32, factor: f32) -> egui::Color32 {
-        egui::Color32::from_rgb(
-            ((c.r() as f32 * factor).round() as u32).min(255) as u8,
-            ((c.g() as f32 * factor).round() as u32).min(255) as u8,
-            ((c.b() as f32 * factor).round() as u32).min(255) as u8,
-        )
+        crate::ui_kit::style::color_scale(c, factor)
     }
     let c = match slot % 8 {
         0 => t.accent,

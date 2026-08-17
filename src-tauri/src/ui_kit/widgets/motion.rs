@@ -212,16 +212,34 @@ pub fn ease_value(ctx: &Context, id: Id, target: f32, duration: f32) -> f32 {
 #[inline]
 pub fn lerp_f32(a: f32, b: f32, t: f32) -> f32 { a + (b - a) * t }
 
+/// The ONE colour lerp. Returns raw channels so callers can choose their own
+/// alpha treatment without re-deriving the interpolation.
+///
+/// There were FOUR implementations of this before, differing at the edges:
+///
+/// | Where | Alpha | Rounding |
+/// |-------|-------|----------|
+/// | `motion` (this one) | lerped, premultiplied | round |
+/// | `sx::style` | lerped, UNmultiplied | round |
+/// | `overlays::kit` | ignored, forced opaque | **truncate** |
+/// | `chart_widgets` | already delegated here, then `.to_opaque()` | round |
+///
+/// The `chart_widgets` copy is the shape the others should have had: a thin
+/// wrapper stating its own alpha rule over shared arithmetic. The other two
+/// are now the same.
 #[inline]
-pub fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+pub fn lerp_channels(a: Color32, b: Color32, t: f32) -> [u8; 4] {
     let t = t.clamp(0.0, 1.0);
-    let lerp_u8 = |x: u8, y: u8| -> u8 {
+    let l = |x: u8, y: u8| -> u8 {
         (x as f32 + (y as f32 - x as f32) * t).round().clamp(0.0, 255.0) as u8
     };
-    Color32::from_rgba_premultiplied(
-        lerp_u8(a.r(), b.r()), lerp_u8(a.g(), b.g()),
-        lerp_u8(a.b(), b.b()), lerp_u8(a.a(), b.a()),
-    )
+    [l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()), l(a.a(), b.a())]
+}
+
+#[inline]
+pub fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let [r, g, b_, al] = lerp_channels(a, b, t);
+    Color32::from_rgba_premultiplied(r, g, b_, al)
 }
 
 /// Linearly fade alpha from 0 to `c`'s alpha based on t.

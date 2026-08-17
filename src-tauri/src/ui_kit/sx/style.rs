@@ -23,11 +23,15 @@ fn radius_to_u8(r: f32) -> u8 {
     r.clamp(0.0, 255.0).round() as u8
 }
 
+/// UNmultiplied lerp — the sx ramp works in straight alpha.
+///
+/// Shares `motion::lerp_channels` so the interpolation cannot drift; only the
+/// alpha treatment differs, and that difference is the whole reason this
+/// wrapper exists rather than a call to `motion::lerp_color`.
 #[inline]
 fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
-    let t = t.clamp(0.0, 1.0);
-    let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
-    Color32::from_rgba_unmultiplied(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()), l(a.a(), b.a()))
+    let [r, g, b_, al] = crate::ui_kit::widgets::motion::lerp_channels(a, b, t);
+    Color32::from_rgba_unmultiplied(r, g, b_, al)
 }
 
 /// How a box is filled.

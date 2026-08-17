@@ -1371,3 +1371,63 @@ only found hollow because it was deliberately fed a lie. The passing run is not
 the evidence. The failing run on known-bad input is.
 
 ---
+
+## AT-169 — eight implementations of two colour operations
+
+The standing rule for this design system is "there should be only a single one
+and all the others removed". Colour arithmetic had **eight** implementations of
+**two** operations, and every one of them compiled, rendered, and looked right.
+
+**Multiply the RGB channels — four copies:**
+
+| Where | Alpha | Rounding | Clamp |
+|-------|-------|----------|-------|
+| `interaction::brighten_color` | preserved, premultiplied | truncate | `min(255)` |
+| `chart…style::darken` | preserved, premultiplied | truncate | via `1-amount` |
+| `chart…style::color_shade` | STAMPED, unmultiplied | truncate | `clamp(0,255)` |
+| `gpu::indicator_default_color::brighten` (a local `fn`) | DROPPED (`from_rgb`) | **round** | `min(255)` |
+
+**Lerp two colours — four copies:**
+
+| Where | Alpha | Rounding |
+|-------|-------|----------|
+| `widgets::motion` | lerped, premultiplied | round |
+| `sx::style` | lerped, UNmultiplied | round |
+| `overlays::kit` | ignored, forced opaque | **truncate** |
+| `chart_widgets` | already delegating to `motion`, then `.to_opaque()` | round |
+
+Consolidated onto `ui_kit::style::scale_channels` and
+`widgets::motion::lerp_channels`. Everything else is now a thin wrapper stating
+its own alpha rule over shared arithmetic — which is what the `chart_widgets`
+copy already was, and the shape the other six should have had.
+
+Two behaviour changes, both stated rather than buried: `gpu`'s indicator
+palette and `overlays::kit`'s ramps now ROUND where they truncated, moving a
+channel by at most 1/255, and `gpu`'s preserves alpha instead of forcing
+opaque (a no-op in practice — theme roles there are opaque).
+
+**`overlays::kit::lerp_color` carried `#[allow(dead_code)]` captioned "callers
+migrate off chart_widgets' local copy".** It had three callers in
+`viz/charts.rs`, so the allow suppressed nothing; and `chart_widgets` had
+already migrated — to `motion`, not to it. A stale note on a stale allow,
+describing a migration that went somewhere else. Third inert
+`#[allow(dead_code)]` found this session.
+
+**`ui_kit::layer_guard` caught the first version of the tests.** They asserted
+the equivalence from `ui_kit/style.rs`, which meant ui_kit naming
+`chart_renderer` — the dependency runs one way and the guard said so. Split:
+ui_kit asserts its own half, the chart side asserts its wrappers against the
+primitive. That guard earned its keep.
+
+**And a test found a bad assumption of mine, not a bad function.**
+`color_shade_shares_the_channels` compared `.r()` off a shade stamped with
+alpha 120 against `color_scale`'s, and failed 80-vs-55.
+`Color32::from_rgba_unmultiplied` premultiplies on construction, so the
+readback is scaled by 120/255 — the encoding doing exactly its job. Asserted at
+full alpha instead, with the stamping checked separately.
+
+`hand_colour_math` is a new ratchet at **zero**: not "few open-coded scales are
+acceptable" but "there is one implementation and everything else wraps it".
+Mutation-tested — re-introducing a single `c.r() as f32 * k` fails it.
+
+---

@@ -244,12 +244,11 @@ pub fn apply_interaction(
 
 /// Multiply RGB channels by `factor`, clamped to 255. Used by
 /// `HoverTreatment::BrightenColor`.
+///
+/// Delegates to `style::color_scale` — see there for why four copies of this
+/// arithmetic existed and what each of them disagreed about.
 pub fn brighten_color(c: Color32, factor: f32) -> Color32 {
-    let f = factor.max(0.0);
-    let r = ((c.r() as f32 * f).min(255.0)) as u8;
-    let g = ((c.g() as f32 * f).min(255.0)) as u8;
-    let b = ((c.b() as f32 * f).min(255.0)) as u8;
-    Color32::from_rgba_premultiplied(r, g, b, c.a())
+    crate::ui_kit::style::color_scale(c, factor)
 }
 
 #[cfg(test)]

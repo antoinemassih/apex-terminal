@@ -17,6 +17,19 @@ place of it. The census when this gate was written:
     active_style_system()   6      CANON    StyleSystem resolution
     sx::recipes             1      DELETED  a second, cva-style recipe layer
 
+THREE OF THOSE LABELS WERE WRONG, and the table above is kept as-written on
+purpose — it is the census that PRODUCED the mistake. `ComponentTheme`,
+`PortableTheme` and `get_theme()` are canonical, not legacy: the first is the
+widget<->theme trait, the second its default concrete impl, the third the
+LIVE_THEMES accessor that replaced a compile-time const. They were classified
+by counting call sites rather than by reading them, and a high count read as
+"legacy sprawl" when it was wide adoption of the ONE contract.
+
+Left as ceilings they would have failed CI for ADOPTING the design system —
+the most damaging direction an instrument can be wrong in. See the notes on
+each entry in SYSTEMS below for the current, corrected classification; that
+block is the authority, not this table.
+
 `sx::recipes` is the clearest illustration of the failure mode. It was a
 complete parallel recipe engine — 108 lines, its own combinator API — whose
 only consumer was a settings-panel gallery captioned "proof the new styling

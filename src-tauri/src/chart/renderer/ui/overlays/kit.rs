@@ -42,16 +42,21 @@ pub(crate) fn draw_arc(
     }
 }
 
-/// Linear RGB lerp `a`→`b` by `t` (0..1). Used for value-driven colour ramps.
-#[allow(dead_code)] // kit primitive — callers migrate off chart_widgets' local copy
+/// Linear RGB lerp `a`→`b` by `t` (0..1), forced OPAQUE. Used for value-driven
+/// colour ramps, whose endpoints are `tint(...)` colours and whose fills must
+/// land solid.
+///
+/// Shares `motion::lerp_channels`; only the alpha rule is local. It used to
+/// carry its own channel loop, which TRUNCATED where the other three rounded —
+/// so a ramp here could sit one 1/255 step below the same ramp drawn by a
+/// widget. Rounding now, which is the change; it is imperceptible and it is
+/// consistent.
+///
+/// The `#[allow(dead_code)]` this carried ("callers migrate off chart_widgets'
+/// local copy") suppressed nothing: it has three callers in `viz/charts.rs`,
+/// and `chart_widgets` had already migrated — to `motion`, not to here.
 pub(crate) fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
-    let t = t.clamp(0.0, 1.0);
-    let inv = 1.0 - t;
-    Color32::from_rgb(
-        (a.r() as f32 * inv + b.r() as f32 * t) as u8,
-        (a.g() as f32 * inv + b.g() as f32 * t) as u8,
-        (a.b() as f32 * inv + b.b() as f32 * t) as u8,
-    )
+    crate::ui_kit::widgets::motion::lerp_color(a, b, t).to_opaque()
 }
 
 // ── Text ──────────────────────────────────────────────────────────────────────
