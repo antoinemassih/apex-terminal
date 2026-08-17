@@ -2060,3 +2060,53 @@ finally mean what they say — `ComponentTheme` is 256 real consumers, not 337
 mentions of which ~81 were imports.
 
 ---
+
+## AT-183 — an orphaned attribute, green on Windows, 175 errors on Linux
+
+AT-182's import prune broke CI, and the way it broke is worth the entry.
+
+`fetch.rs` had:
+
+```rust
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+use crate::chart_renderer::{ChartCommand, Bar};
+```
+
+The sweep removed the `CommandExt` line — correctly, it was unused — and left
+the `#[cfg]` behind. Rust attaches an attribute to the NEXT item, so it
+re-targeted onto the `ChartCommand, Bar` import. On Windows the cfg is true, the
+import stayed, everything built. On Linux the cfg is false, the import vanished,
+and 175 `cannot find type ChartCommand` errors followed.
+
+**Every local check passed.** All three feature configurations —
+default, `--no-default-features`, `design-mode` — plus `cargo test` and clippy,
+all green, because all of them ran on Windows. `run_all_gates.sh --full` was
+built specifically so a local run means what CI means, and it does not: it runs
+on one platform and CI runs on another. Any `#[cfg(unix)]` or
+`#[cfg(target_os = …)]` branch Windows skips is unverified here. The script now
+says so in its own header, because a runner that claims completeness it does not
+have is worse than one that admits the gap.
+
+Two other things the prune got wrong, both restored:
+
+* It removed `pub(crate) use core::{render_toolbar, ...}` — a **re-export**, not
+  an import. `render_toolbar` is the entry point of the legacy egui render path,
+  so it is unused on the default build and essential on `--no-default-features`.
+  A `pub use` is API surface; its unused-ness is a statement about the current
+  feature set, never about whether it is needed.
+* It removed imports used only by `#[cfg(test)]` modules, because it ran off
+  `cargo check --lib`, which does not compile tests (AT-182).
+
+Three ways for "unused" to be wrong — wrong platform, wrong feature set, wrong
+target — and the sweep hit all three.
+
+**`dev/orphan_attr_gate.py`** now flags any attribute alone on a line and
+separated from its item by a blank line. Deliberately narrow: it ignores
+`#[serde(default)] pub x: T,` (same line), inner `#![...]` attributes, and
+attributes followed by doc comments. A blank line between an attribute and its
+item is nearly always the fingerprint of a deleted item. Mutation-tested against
+the exact `fetch.rs` shape.
+
+---

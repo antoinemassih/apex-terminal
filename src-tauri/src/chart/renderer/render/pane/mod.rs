@@ -39,4 +39,11 @@ pub(crate) mod notice;
 // crate::chart::renderer::render::pane::{render_toolbar, draw_chart}`)
 // keep compiling. As sub-systems get extracted in later waves, their
 // re-exports get added here too.
-pub(crate) use core::{draw_chart};
+// `render_toolbar` is re-exported for the LEGACY egui render path
+// (`--no-default-features`), where it is the entry point. On the default build
+// nothing calls it, so an "unused import" sweep will offer to delete it — and
+// one did, which broke that build in CI while the default build stayed green.
+//
+// A `pub use` is API surface, not an import. Unused-ness of a re-export is a
+// statement about THIS build's features, never about whether it is needed.
+pub(crate) use core::{render_toolbar, draw_chart};

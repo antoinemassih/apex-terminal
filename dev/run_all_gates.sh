@@ -26,6 +26,16 @@
 # `--full` is what CI actually runs. The fast tier is a convenience for a tight
 # edit loop, NOT a substitute: the `--no-default-features` build was broken for
 # six weeks precisely because nobody ran the config they were not editing.
+#
+# ⚠ AND `--full` IS STILL NOT CI. This runs on Windows; CI runs on Linux, and
+# every `#[cfg(unix)]` / `#[cfg(target_os = ...)]` branch that Windows skips is
+# unverified here. That gap has already cost one red build: an orphaned
+# `#[cfg(target_os = "windows")]` re-targeted onto a `use` line, which kept the
+# Windows build green and broke Linux with 175 errors — on all three feature
+# configurations, all of which passed locally.
+#
+# So a green run here means "nothing platform-independent is broken", not
+# "CI will pass". Watch the actual CI run.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -50,6 +60,7 @@ CHECKS=(
   "python dev/strip_test_hits.py --selftest"
   "python dev/cascade_adoption_gate.py"
   "python dev/doc_accuracy_gate.py"
+  "python dev/orphan_attr_gate.py"
   # quality-gates.yml
   "python dev/quality_gate.py"
 )

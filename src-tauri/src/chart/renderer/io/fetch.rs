@@ -3,8 +3,6 @@
 //! All functions spawn background threads and deliver results as `ChartCommand`s
 //! via `crate::send_to_native_chart` or `crate::NATIVE_CHART_TXS`.
 
-#[cfg(target_os = "windows")]
-
 use crate::chart_renderer::{ChartCommand, Bar};
 use crate::chart_renderer::gpu::{OptionRow, db_to_drawing, apexib_url};
 use crate::chart_renderer::{Drawing, DrawingGroup};

@@ -180,3 +180,11 @@ jobs:
       - name: Run doc-accuracy gate (design-system docs describe real code)
         if: ${{ !cancelled() }}
         run: python dev/doc_accuracy_gate.py
+
+      # An attribute separated from its item silently re-targets onto whatever
+      # follows. A `#[cfg(target_os = "windows")]` orphaned by an unused-import
+      # sweep landed on a `use ...{ChartCommand, Bar};`, kept building on
+      # Windows, and failed on Linux with 175 errors.
+      - name: Run orphan-attribute gate
+        if: ${{ !cancelled() }}
+        run: python dev/orphan_attr_gate.py
