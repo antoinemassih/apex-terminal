@@ -22,7 +22,6 @@
 //! Layout: side panel mounted alongside the other R-side panels via
 //! `top_nav.rs::draw_sidebar`. Toggle through `Watchlist.trade_plan_panel_open`.
 
-#![allow(dead_code)]
 
 use egui;
 use crate::ui_kit::sx::Tone;
@@ -81,6 +80,25 @@ pub(crate) fn draw(
     ap: usize,
     t: &Theme,
 ) {
+    // ⚠ THIS PANEL CANNOT CURRENTLY BE OPENED.
+    //
+    // `open_flag()` starts `false`, this returns unless it is `true`, and the
+    // only functions that can set it true — `open()` and `toggle()` — are
+    // called from nowhere in the codebase. `close()` is uncalled too. So the
+    // panel is drawn from `top_nav` every frame and returns here every frame,
+    // and no menu item, command-palette entry or shortcut exists to change
+    // that. (`W::TradePlan` in `chart_controls` is the chart OVERLAY widget,
+    // which is a different surface.)
+    //
+    // Left in place rather than deleted, and NOT wired to an invented trigger:
+    // which control should open it is a product decision, not one to guess from
+    // the call graph. `provenance_pane` already carries a note about
+    // trade_plan_panel APIs "that were NEVER wired", so this is a known gap
+    // rather than a new one.
+    //
+    // The file-level `#![allow(dead_code)]` that hid this is gone; the two
+    // uncallable functions carry their own allow with this reason attached, so
+    // the next person to read them learns the state instead of the suppression.
     if !is_open(watchlist) { return; }
     let sym = panes[ap].symbol.clone();
 
@@ -110,8 +128,14 @@ fn open_flag() -> &'static std::sync::Mutex<bool> {
 pub(crate) fn is_open(_w: &Watchlist) -> bool {
     open_flag().lock().map(|g| *g).unwrap_or(false)
 }
+/// Uncalled — see the note in `draw`. The panel has no trigger, so nothing can
+/// set this flag true and the panel never renders. Kept because the gap is
+/// unfinished wiring, not dead weight.
+#[allow(dead_code)] // no trigger wired; see `draw`
 pub(crate) fn open(_w: &mut Watchlist)   { if let Ok(mut g) = open_flag().lock() { *g = true; } }
+#[allow(dead_code)] // no trigger wired; see `draw`
 pub(crate) fn close(_w: &mut Watchlist)  { if let Ok(mut g) = open_flag().lock() { *g = false; } }
+#[allow(dead_code)] // no trigger wired; see `draw`
 pub(crate) fn toggle(_w: &mut Watchlist) { if let Ok(mut g) = open_flag().lock() { *g = !*g; } }
 
 fn draw_empty(ui: &mut egui::Ui, sym: &str, t: &Theme) {

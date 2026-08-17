@@ -114,6 +114,18 @@ EXPECT_RE = re.compile(r"\.expect\(")
 # The baseline rises to include them. That is not a regression being waved
 # through: it is the count becoming true. It can only fall from here.
 DEAD_RE = re.compile(r"#!?\[allow\([^)]*dead_code")
+# Split by SCOPE, because a single count cannot express "narrower is better".
+#
+# Converting `painter_pane`'s file-level allow into three item-level ones,
+# each carrying the reason it exists, made the suppression strictly smaller
+# and the total go UP — 2 removed, 3 added. The gate fired on an improvement.
+#
+# So the file-level count is its own ceiling and should fall to zero: a
+# blanket allow over a file is never the right shape, because it also covers
+# every item added to that file afterwards. The item-level count is a ceiling
+# too, but a much weaker claim — an item allow with a stated reason is a
+# decision, where a file allow is the absence of one.
+DEAD_FILE_RE = re.compile(r"#!\[allow\([^)]*dead_code")
 # A COMMENT LINE. `dead_code_allows` is a count of attributes, and an attribute
 # written inside prose is not one — but the regex above cannot tell the
 # difference, so three doc comments that merely NAME `#[allow(dead_code)]`
@@ -244,6 +256,7 @@ def collect():
         "text_width_guess": 0,
         "identical_branches": 0,
         "dead_code_allows": 0,
+        "dead_code_allows_file": 0,
         "ui_direct_mutation": 0,
         "eprintln_in_data": 0,
         "indicator_enum_matches": 0,   # W3-01 Stage 4: IndicatorType:: sprawl
@@ -302,6 +315,9 @@ def collect():
         counts["dead_code_allows"] += sum(
             len(DEAD_RE.findall(ln)) for ln in lines if not COMMENT_LINE_RE.match(ln)
         )
+        counts["dead_code_allows_file"] += sum(
+            len(DEAD_FILE_RE.findall(ln)) for ln in lines if not COMMENT_LINE_RE.match(ln)
+        )
         if r.startswith("chart/renderer/ui/") or r == "chart/renderer/gpu.rs":
             counts["ui_direct_mutation"] += len(MUT_RE.findall(text))
         if r.startswith("data/"):
@@ -340,7 +356,7 @@ def check(cur, base):
             nudges.append(f"unwrap[{area}] {c} < baseline {b} (-{b - c})")
 
     # scalar ratchets
-    for key in ("expect_total", "dead_code_allows", "hand_colour_math",
+    for key in ("expect_total", "dead_code_allows", "dead_code_allows_file", "hand_colour_math",
                 "text_width_guess", "identical_branches",
                 "ui_direct_mutation", "eprintln_in_data",
                 "indicator_enum_matches"):

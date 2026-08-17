@@ -15,7 +15,7 @@
 //! top-nav row — they are toolbar-only.
 
 use egui::Margin;
-use super::super::super::style::{self as style, region_frame, region_gap, gap_xs, gap_sm};
+use super::super::super::style::{self as style, region_gap, gap_xs, gap_sm};
 
 type Theme    = crate::chart_renderer::gpu::Theme;
 type Watchlist = crate::chart_renderer::gpu::Watchlist;

@@ -271,6 +271,11 @@ pub(crate) const fn hairline_border_variant(bg: egui::Color32) -> egui::Color32 
     let cb = if cb < 0 { 0 } else if cb > 255 { 255 } else { cb };
     egui::Color32::from_rgb(cr as u8, cg as u8, cb as u8)
 }
+/// Only TRANSITIVELY dead: rustc reports it unused because its consumers
+/// (`CMD_PALETTE_DEFAULT` and friends) are themselves unused. Removing it
+/// breaks those still-present definitions, so the chain has to go together or
+/// not at all — and deleting a colour table on the strength of a transitive
+/// warning is not a change to make in passing.
 pub(crate) const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 /// Premultiplied RGBA — all callers must pass already-premultiplied RGB components.
 pub(crate) const fn rgba_pre(r: u8, g: u8, b: u8, a: u8) -> egui::Color32 { egui::Color32::from_rgba_premultiplied(r, g, b, a) }

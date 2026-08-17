@@ -1916,12 +1916,19 @@ between the `#` and the `[`, so it never matched. The ratchet had been reporting
 The blind spot was precisely the more powerful form: an item-level allow hides
 one item, a file-level allow hides a file.
 
-**Measured, not assumed.** Stripping all 41 and compiling surfaces **316
-warnings**, of which the named dead items are ~68: 30 functions, 13 fields, 13
-constants, 4 methods, 2 structs, 2 enums, 2 associated functions, 1 variant, 1
-type alias. The rest are unused imports, which the same allows also cover. The
-files were restored immediately; the experiment was to size the problem, not to
-fix it in one step.
+**Measured, not assumed — and then re-measured, because the first measurement
+was wrong in the flattering direction.** Stripping all 41 and compiling surfaces
+316 warnings. I first reported "~68 named dead items" from that. That number
+counted every dead-code warning in the build, most of which appear WITHOUT the
+allows too — dead code in a file with no allow already warns. The honest figure
+is the DELTA between the stripped build and the normal one:
+
+> **9 files, 16 items** are genuinely hidden by the remaining file-level allows.
+
+Sizing a problem at four times its real size is the same failure as every other
+instrument in this session, just pointed at a scarier number rather than a
+flattering one. Corrected here rather than left standing. See AT-181 for what
+the 16 turned out to be — including one whole panel that cannot be opened.
 
 The baseline moves 46 → 87. That is not a regression waved through — it is the
 count becoming true, and it can only fall from here. Mutation-tested: adding one
@@ -1937,5 +1944,59 @@ The remaining 32 do suppress something and are a real backlog rather than a
 formality — each needs its hidden items read and either used, deleted, or
 narrowed to an item-level allow with a reason. That is the shape the two deleted
 widgets were found in.
+
+---
+
+## AT-181 — a panel that cannot be opened
+
+AT-180's corrected measurement said the remaining file-level allows genuinely
+hide 16 items across 9 files. Reading them found one that is not dead code at
+all — it is a feature that cannot run.
+
+**`trade_plan_panel` can never be shown.** Its `open_flag()` starts `false`.
+`draw()` returns immediately unless it is `true`. The only functions that can
+set it true — `open()` and `toggle()` — are called from **nowhere**, and so is
+`close()`. `top_nav` calls `draw` every frame and it returns every frame. There
+is no menu item, command-palette entry, keyboard shortcut or button anywhere
+that opens it. (`W::TradePlan` in `chart_controls` is the chart OVERLAY widget,
+a different surface.)
+
+`provenance_pane` already carries a note about trade_plan_panel APIs "that were
+NEVER wired", so the gap was known and never closed.
+
+**Not deleted, and not wired to an invented trigger.** The standing rule is to
+delete what is useless but re-examine what is unconnected through unfinished
+work, and this is plainly the second. Which control should open it is a product
+decision, not one to infer from a call graph. What changed is that the state is
+now *visible*: the file-level allow is gone, the three uncallable functions
+carry item-level allows naming the reason, and `draw` opens with a comment
+saying the panel is unreachable and why.
+
+**`painter_pane` lost six genuinely dead items** — `paint_icon_label_btn`,
+`header_fill`, and four constants including `ICON_BTN_ICON_Y_FRAC` and
+`ICON_BTN_LABEL_BOTTOM_OFFSET` that only that function used. Worth noting
+against my own earlier work: `paint_icon_label_btn` is the function I examined
+in AT-173 and decided not to migrate because its three `fg` uses were a
+parameter rather than a repeated resolution. That analysis was correct and
+irrelevant — the function was dead the whole time, and the file-level allow is
+why neither of us could see it.
+
+**`gpu::rgb` was restored after being deleted.** rustc reported it unused, but
+it is only TRANSITIVELY dead: its consumers (`CMD_PALETTE_DEFAULT` and friends)
+are themselves unused, so removing it broke definitions that are still present.
+The chain has to go together or not at all, and deleting a colour table on a
+transitive warning is not a passing change. The compile caught it; the reason is
+now written at the definition.
+
+**The metric had to be split, because narrowing an allow made the number rise.**
+Converting `painter_pane`'s file-level allow into three item-level ones with
+stated reasons removed 2 and added 3 — strictly smaller suppression, and the
+gate fired on the improvement. `dead_code_allows_file` is now its own ceiling
+and should reach zero: a blanket allow over a file is never the right shape,
+because it also covers everything added to that file later. An item allow with
+a reason is a decision; a file allow is the absence of one.
+
+File-level allows **41 → 30**. Item-level 46 → 49, each addition carrying its
+reason.
 
 ---

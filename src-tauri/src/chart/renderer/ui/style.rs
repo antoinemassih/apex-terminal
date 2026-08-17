@@ -1768,22 +1768,6 @@ impl ButtonGroupBox {
 /// Build an `egui::Frame` for a shell region panel (toolbar / side rail).
 /// `fill` is the region's surface colour. Floats as a rounded bordered card
 /// with `region_gap` outer margin when tiled; flat flush fill otherwise.
-pub(crate) fn region_frame(t: &crate::chart_renderer::gpu::Theme, fill: Color32) -> egui::Frame {
-    let st = current();
-    if st.region_gap <= 0.0 {
-        egui::Frame::NONE.fill(fill)
-    } else {
-        let g = st.region_gap as i8;
-        egui::Frame::NONE
-            .fill(fill)
-            .corner_radius(egui::CornerRadius::same(st.region_radius as u8))
-            .stroke(egui::Stroke::new(
-                stroke_thin(),
-                tint(t, Tone::Border, st.region_border_alpha),
-            ))
-            .outer_margin(egui::Margin::same(g))
-    }
-}
 
 /// Fill + stroke a region card at `card`, with all four corners rounded.
 ///

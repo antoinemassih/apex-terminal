@@ -38,20 +38,13 @@
 //! if let Some(i) = resp.clicked_indicator_remove { /* remove */ }
 //! ```
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
+use egui::{Align2, Color32, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
 use crate::ui_kit::cascade::El;
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
 
-use super::super::style::{
-    alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
-    color_alpha, color_shift, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_md_plus, font_sm, gap_md, gap_sm, gap_xs,
-    mono_2xs, mono_4xs, mono_at, mono_lg, mono_sm, prop_at, prop_md_plus, prop_xs_plus,
-    paint_bevel, paint_gradient_highlight, current_style_bevel_hi,
-    radius_sm, radius_md, stroke_hair, stroke_std, stroke_thin,
-};
+use super::super::style::{alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint, color_alpha, color_shift, color_subtle, color_dim, color_very_dim, contrast_fg, current, font_md, font_sm, gap_md, gap_sm, gap_xs, mono_2xs, mono_at, mono_lg, prop_at, prop_md_plus, prop_xs_plus, radius_sm, radius_md, stroke_hair, stroke_thin};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 
@@ -108,7 +101,6 @@ const ICON_BTN_W_DOM: f32 = 52.0;
 /// Width for the OPTIONS button (longer label — 7 chars).
 const ICON_BTN_W_OPTIONS: f32 = 68.0;
 const ICON_BTN_W_OV: f32 = 80.0;
-const ICON_BTN_W_DRAWING: f32 = 60.0;
 /// Width for the LAYERS (object-tree) button.
 const ICON_BTN_W_LAYERS: f32 = 60.0;
 /// The pane-header right cluster, in paint order: (button, label, icon, MINIMUM width).
@@ -138,12 +130,6 @@ const CHIP_HEIGHT_MAX: f32 = 18.0;
 /// Tab-strip vertical inset (1px gap from header top, height = h - TAB_HEIGHT_INSET).
 const TAB_TOP_INSET: f32 = 1.0;
 const TAB_HEIGHT_INSET: f32 = 2.0;
-/// Active-tab underline thickness — mirrors `dt_f32!(tab.underline_thickness, 2.0)`.
-const TAB_UNDERLINE_THICKNESS: f32 = 2.0;
-/// Vertical icon position inside the icon-label buttons (fraction of rect height).
-const ICON_BTN_ICON_Y_FRAC: f32 = 0.42;
-/// Distance from button bottom to the small label baseline.
-const ICON_BTN_LABEL_BOTTOM_OFFSET: f32 = 3.5;
 /// Inset from header top/bottom for small icon buttons.
 const ICON_BTN_INSET_V: f32 = 6.0;
 
@@ -290,32 +276,6 @@ pub(crate) fn paint_option_badges(
     side_w.map_or(0.0, |w| w + 4.0) + dte_w.map_or(0.0, |w| w + 6.0)
 }
 
-/// Paint an icon-label button (ORDER / DOM / +Tab style). The icon is drawn in
-/// the upper portion, the label (may be empty) along the bottom edge.
-fn paint_icon_label_btn(
-    painter: &egui::Painter,
-    rect: Rect,
-    icon: &str,
-    label: &str,
-    bg: Color32,
-    fg: Color32,
-    border: Color32,
-    icon_font: FontId,
-) {
-    painter.rect_filled(rect, radius_md(), bg);
-    painter.rect_stroke(rect, radius_md(), Stroke::new(stroke_thin(), border), StrokeKind::Outside);
-    if label.is_empty() {
-        painter.text(rect.center(), Align2::CENTER_CENTER, icon, icon_font, fg);
-    } else {
-        let icon_y = rect.top() + rect.height() * ICON_BTN_ICON_Y_FRAC;
-        let label_y = rect.bottom() - ICON_BTN_LABEL_BOTTOM_OFFSET;
-        painter.text(pos2(rect.center().x, icon_y), Align2::CENTER_CENTER, icon, icon_font, fg);
-        painter.text(
-            pos2(rect.center().x, label_y), Align2::CENTER_CENTER, label,
-            mono_4xs(), fg,
-        );
-    }
-}
 
 // ─── Border / chrome system ──────────────────────────────────────────────────
 //
@@ -324,30 +284,6 @@ fn paint_icon_label_btn(
 // every alpha / stroke / luminance decision through `StyleSettings`, so a
 // single token change re-skins the entire header.
 
-/// Paint the pane-header background fill. Active panes get the brighter
-/// `active_header_fill_multiply` tint; inactive panes (when `visible_count > 1`
-/// AND `inactive_header_fill` is on) get the recessed `inactive_header_fill_multiply`.
-fn header_fill(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bool, visible_count: usize) {
-    let st = current();
-    // Background fill (multi-pane only): active panes brighter, inactive recessed.
-    if visible_count > 1 {
-        let mul = if is_active {
-            Some(st.active_header_fill_multiply)
-        } else if st.inactive_header_fill {
-            Some(st.inactive_header_fill_multiply)
-        } else {
-            None
-        };
-        if let Some(mul) = mul {
-            painter.rect_filled(rect, 0.0, theme.bg.gamma_multiply(mul));
-        }
-    }
-    // Gradient highlight + crisp bevel lines — both no-ops when bevel is None.
-    // Gradient: soft white-to-transparent fade matching React's linear-gradient.
-    // Bevel: 1px highlight top + 1px shadow bottom.
-    paint_gradient_highlight(painter, rect, current_style_bevel_hi());
-    paint_bevel(painter, rect, egui::CornerRadius::ZERO);
-}
 
 /// Paint a vertical hairline divider at `cx` inside the header rect. Used
 /// between section clusters (nav cluster, tab/symbol area, indicator chips,
