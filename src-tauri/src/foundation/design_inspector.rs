@@ -3386,7 +3386,13 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
 }
 
 fn preview_btn(ui: &mut Ui, label: &str, fg: Color32, bg: Color32, cr: egui::CornerRadius, sw: f32) {
-    let w = (label.len() as f32 * 6.5 + 16.0).max(48.0);
+    // Measured, not `len() * 6.5` — the preview buttons exist to show what a
+    // style looks like, so sizing them by a constant from a different font is
+    // the one place a guess is guaranteed to mislead.
+    let w = (crate::ui_kit::style::measure_with(ui, label, crate::ui_kit::style::prop_at(
+        crate::ui_kit::style::font_sm(),
+    )).x + 16.0)
+        .max(48.0);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 20.0), egui::Sense::hover());
     ui.painter().rect_filled(rect, cr, bg);
     ui.painter().rect_stroke(rect, cr,

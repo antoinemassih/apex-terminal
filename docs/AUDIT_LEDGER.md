@@ -1631,3 +1631,58 @@ Genuinely open: `msg_tension_panel::draw_ladder`, a three-column row with a bar
 in the middle. Everything else in that list should stay as it is.
 
 ---
+
+## AT-174 — text width guessed from a character count
+
+Six surfaces sized text by multiplying its LENGTH by a pixel constant:
+
+```rust
+let qty_pill_w  = (qty_label.len() as f32 * 6.5 + 10.0).max(30.0);
+let w           = (label.len()     as f32 * 6.5 + 16.0).max(48.0);
+let mut ind_x   = sym_x + symbol.len() as f32 * 8.5 + 6.0;
+let text_size   = Vec2::new(text.len() as f32 * st::font_sm() * 0.6, …);
+p.text(pos2(hdr.left() + 24.0 + label.len() as f32 * 7.0 + 6.0, …), "🔒", …);
+```
+
+Wrong twice over. **Immediately**, for any proportional face — `W` and `i` are
+not the same width, so two labels of equal length need different space, and the
+constant can only ever be an average. **Eventually**, for every face, because
+each constant was measured once against whatever font was current the day it
+was written. That second failure is the pane-header defect that motivated
+`Button::measure_content_w`: a 60px slot sized for a font that had since grown,
+overrun by "LAYERS", with the next control painted on top of it.
+
+All six now measure, with the same font the paint uses. egui caches galleys, so
+measuring a string you are about to paint is a hash lookup rather than a
+shaping pass — in `watchlist_row` the symbol was laid out one line above to be
+drawn.
+
+`ui_kit::style::measure_with_painter` is new: the painter-only twin of
+`measure_with`. Its absence is *why* these guesses existed — most of this app's
+chrome paints from a bare `&Painter` and had no way to measure at all.
+
+`overlay_card_header` is the one fixed by declaring rather than measuring: the
+lock glyph is now a sibling after the label, so it follows the label's real
+extent, and the pinned `24.0` icon column that had to agree with the icon's
+actual width by hand became a fixed first child.
+
+**`watchlist_row` was fixed despite being exempt, and the distinction matters.**
+Its exemption is on measured per-row cost and covers LAYOUT ARITHMETIC — it was
+never a licence to guess a text width. An exemption from a migration is not an
+exemption from correctness.
+
+**The ratchet took three attempts and the first two under-reported.** Count ×
+pitch (`rows.len() as f32 * 30.0`, a stack height) is correct and cannot be
+told from a width guess numerically, so it is told apart by NAME. Version one
+excluded any identifier ending in `s`, which silently dropped `qty_s`, `not_s`,
+`status_s` and `price_s` — all strings, all exactly what the gate is for. A
+ceiling that under-reports lets the thing through. Version two matched suffixes
+only and missed the bare `lines` in `tooltip.rs`, where the usage is legitimate.
+
+Baseline 17, and the number should be read carefully: **in-scope UI and chrome
+is at ZERO**. Every remaining site is in `render/pane/core.rs` (the chart
+engine, out of scope by standing directive) or `tps_overlay.rs` (a deliberate
+Excel pastiche). The ratchet only falls, so a new guess anywhere fails it —
+mutation-tested.
+
+---

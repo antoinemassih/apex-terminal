@@ -151,8 +151,14 @@ impl<'a> Indicator<'a> {
                     label_color,
                 );
                 // Allocate space for the text so egui accounts for its width.
+                //
+                // Measured with the SAME font the line above paints with,
+                // rather than `len() * font_sm() * 0.6`. The 0.6 was an
+                // average-advance guess: a run of `1`s under-allocated and a
+                // run of `W`s overran the allocation, which in a horizontal
+                // layout means the next widget starts on top of this one.
                 let text_size = Vec2::new(
-                    text.len() as f32 * st::font_sm() * 0.6,
+                    st::measure_with(ui, text, TextStyle::MonoSm.font_id_in(ui)).x,
                     st::font_sm() + 2.0,
                 );
                 let _ = ui.allocate_exact_size(text_size, Sense::hover());

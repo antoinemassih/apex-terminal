@@ -537,7 +537,23 @@ impl<'a> WatchlistRow<'a> {
                 };
                 painter.text(egui::pos2(sym_x, cy), egui::Align2::LEFT_CENTER,
                     symbol, sym_font_id.clone(), fg);
-                let mut ind_x = sym_x + symbol.len() as f32 * 8.5 + 6.0;
+                // Measured with the SAME font the symbol was just painted in.
+                //
+                // `symbol.len() as f32 * 8.5` guessed the advance width from a
+                // character count. This row is exempt from the element-tree
+                // migration on measured per-row cost, but that exemption was
+                // about LAYOUT ARITHMETIC — it was never a licence to guess a
+                // text width, and a mis-measured symbol pushes every indicator
+                // after it. `layout_no_wrap` here is one cached galley lookup:
+                // the same string was laid out one line above to paint it.
+                let mut ind_x = sym_x
+                    + crate::ui_kit::style::measure_with_painter(
+                        &painter,
+                        symbol,
+                        sym_font_id.clone(),
+                    )
+                    .x
+                    + 6.0;
 
                 // ── Earnings pill ───────────────────────────────────────
                 if let Some(days) = earnings_days {

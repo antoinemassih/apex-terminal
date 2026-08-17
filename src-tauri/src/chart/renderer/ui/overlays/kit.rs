@@ -236,15 +236,45 @@ pub(crate) fn overlay_card_header(
     p.line_segment(
         [egui::pos2(hdr.left() + crate::ui_kit::style::gap_xs(), hdr.bottom()), egui::pos2(hdr.right() - crate::ui_kit::style::gap_xs(), hdr.bottom())],
         Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
-    // Icon + label (+ lock glyph).
-    p.text(egui::pos2(hdr.left() + crate::ui_kit::style::gap_sm(), hdr.center().y),
-        egui::Align2::LEFT_CENTER, icon, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()), t.accent);
-    p.text(egui::pos2(hdr.left() + 24.0, hdr.center().y),
-        egui::Align2::LEFT_CENTER, label, crate::ui_kit::style::mono_xs(), t.text);
-    if locked {
-        p.text(egui::pos2(hdr.left() + 24.0 + label.len() as f32 * 7.0 + 6.0, hdr.center().y),
-            egui::Align2::LEFT_CENTER, "\u{1F512}", crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xs()), color_half(t.dim));
-    }
+    // Icon | label | lock glyph — DECLARED, so the lock follows the label
+    // instead of being placed at `24.0 + label.len() as f32 * 7.0 + 6.0`.
+    //
+    // That expression guessed the label's width from its character count, at
+    // 7px each. The label is painted in `mono_xs()`, so 7 was a guess at one
+    // font's advance and would be wrong the moment the mono face or its size
+    // changed — and it sat next to a pinned `24.0` icon column that had to
+    // agree with the icon's actual width by hand. As siblings, both
+    // relationships are the row's.
+    crate::ui_kit::cascade::El::row()
+        .child(
+            crate::ui_kit::cascade::El::text_with_font(
+                icon,
+                crate::ui_kit::style::prop_at(crate::ui_kit::style::font_md()),
+            )
+            .color(t.accent)
+            .fixed(24.0 - crate::ui_kit::style::gap_sm()),
+        )
+        .child(
+            crate::ui_kit::cascade::El::text_with_font(label, crate::ui_kit::style::mono_xs())
+                .color(t.text),
+        )
+        .child_if(
+            locked,
+            crate::ui_kit::cascade::El::text_with_font(
+                "\u{1F512}",
+                crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xs()),
+            )
+            .color(color_half(t.dim))
+            .margin_start(6.0),
+        )
+        .show_with(
+            p,
+            t,
+            egui::Rect::from_min_max(
+                egui::pos2(hdr.left() + crate::ui_kit::style::gap_sm(), hdr.top()),
+                egui::pos2(hdr.right(), hdr.bottom()),
+            ),
+        );
 
     let btn_w = 32.0;
     let btn_h = 22.0;

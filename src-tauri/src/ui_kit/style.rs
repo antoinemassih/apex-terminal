@@ -1429,6 +1429,28 @@ pub fn measure_with(ui: &egui::Ui, text: &str, font: egui::FontId) -> egui::Vec2
         .ceil()
 }
 
+/// Intrinsic size of `text` from a bare `Painter` — the painter-only twin of
+/// [`measure_with`].
+///
+/// Most of this app's chrome paints from a `&Painter` and never sees a `Ui`,
+/// and without this those surfaces had no way to measure. What they did
+/// instead was GUESS: `label.len() as f32 * 6.5`, `symbol.len() as f32 * 8.5`,
+/// `text.len() as f32 * font_sm() * 0.6` — a character count times a pixel
+/// constant.
+///
+/// That is wrong twice over. It is wrong immediately for any proportional
+/// font, where `W` and `i` are not the same width, so a label of the same
+/// LENGTH can need very different space. And it is wrong eventually for every
+/// font, because the constant was measured once against whatever face was
+/// current that day — which is the pane-header defect that motivated
+/// `Button::measure_content_w`: a 60px slot sized for a font that had since
+/// grown, overrun by "LAYERS", with the next control painted on top of it.
+pub fn measure_with_painter(p: &egui::Painter, text: &str, font: egui::FontId) -> egui::Vec2 {
+    p.fonts(|f| f.layout_no_wrap(text.to_string(), font, egui::Color32::PLACEHOLDER))
+        .size()
+        .ceil()
+}
+
 /// `FontId` at an explicit size and family — for the per-STYLE cases where the
 /// family itself is a token (e.g. section headers are monospace on editorial
 /// styles, proportional elsewhere). Keeps widgets from constructing `FontId`

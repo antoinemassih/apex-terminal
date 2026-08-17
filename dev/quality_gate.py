@@ -112,6 +112,59 @@ COMMENT_LINE_RE = re.compile(r"^\s*(?://|\*|/\*)")
 # F2: raw stderr in the data/ layer must route through errors_sink/tracing so a
 # misconfig surfaces as a persistent in-app indicator, not a one-time console
 # line. Require an open paren so prose mentions in doc-comments don't count.
+# TEXT WIDTH GUESSED FROM A CHARACTER COUNT: `label.len() as f32 * 6.5`.
+#
+# Wrong twice over. Immediately, for any proportional face, where `W` and `i`
+# are not the same width — so two labels of equal LENGTH need different space.
+# And eventually for every face, because the constant was measured once against
+# whatever font was current that day. That is the pane-header defect that
+# motivated `Button::measure_content_w`: a 60px slot sized for a font that had
+# since grown, overrun by "LAYERS", with the next control painted on top.
+#
+# `ui_kit::style::measure_with` / `measure_with_painter` measure it instead, and
+# egui caches galleys, so measuring a string you are about to paint is a hash
+# lookup rather than a shaping pass.
+#
+# The baseline is NOT zero, and the number should be read carefully: every
+# remaining site is in `render/pane/core.rs` or `tps_overlay.rs`. The first is
+# the chart engine, which is out of scope by standing directive; the second is
+# a deliberate pastiche of Excel's chrome whose literals are Excel's. In-scope
+# UI and chrome is at ZERO. The ratchet only falls, so a new guess anywhere —
+# including in those two files — fails it.
+#
+# COUNT x PITCH is a different thing and must not be caught: `rows.len() as f32
+# * 30.0` is a stack height and is correct. They cannot be told apart
+# numerically, so they are told apart by NAME — a collection reads as a plural
+# or a `_count`, a string does not. The list is deliberately narrow; a false
+# NEGATIVE here just means one guess goes unratcheted, while a false positive
+# would make the gate demand nonsense.
+# EXPLICIT suffixes only. The first version of this also excluded a bare
+# trailing `s`, which silently dropped `qty_s`, `not_s`, `status_s` and
+# `price_s` — all of them STRINGS whose width was being guessed, i.e. exactly
+# what this is for. A ceiling that under-reports lets the thing through, so the
+# list names what it means instead of pattern-matching a plural.
+# Matched as a whole word OR a suffix, so both `self.lines` and `pinned_items`
+# read as collections. Suffix-only missed the bare `lines` in `tooltip.rs`,
+# where `lines.len() * line_h()` is a stack height and entirely correct.
+_COLLECTION_NAME_RE = re.compile(
+    r"(?:^|_)(?:list|items|count|indices|zones|rows|lines|entries|trades)$"
+)
+TEXT_WIDTH_GUESS_RE = re.compile(
+    r"\.(?:len|chars\(\)\.count)\(\)\s*as\s+f32\s*\*"
+)
+
+
+def _is_text_width_guess(line):
+    """True for `<string>.len() as f32 * <n>`, false for count x pitch."""
+    m = TEXT_WIDTH_GUESS_RE.search(line)
+    if not m:
+        return False
+    before = line[: m.start()]
+    ident = re.search(r"([A-Za-z_][A-Za-z0-9_]*)$", before)
+    if ident and _COLLECTION_NAME_RE.search(ident.group(1)):
+        return False
+    return True
+
 EPRINTLN_RE = re.compile(r"eprintln!\(")
 # COLOUR ARITHMETIC written out by hand: `c.r() as f32 * k`.
 #
@@ -144,6 +197,7 @@ def collect():
         "unwrap_by_dir": {},
         "expect_total": 0,
         "hand_colour_math": 0,
+        "text_width_guess": 0,
         "dead_code_allows": 0,
         "ui_direct_mutation": 0,
         "eprintln_in_data": 0,
@@ -185,6 +239,11 @@ def collect():
         if n_unwrap:
             counts["unwrap_by_dir"][area] = counts["unwrap_by_dir"].get(area, 0) + n_unwrap
         counts["expect_total"] += len(EXPECT_RE.findall(prod))
+        counts["text_width_guess"] += sum(
+            1
+            for ln in prod.splitlines()
+            if not COMMENT_LINE_RE.match(ln) and _is_text_width_guess(ln)
+        )
         counts["hand_colour_math"] += sum(
             len(CHANNEL_MATH_RE.findall(ln))
             for ln in prod.splitlines(True)
@@ -232,6 +291,7 @@ def check(cur, base):
 
     # scalar ratchets
     for key in ("expect_total", "dead_code_allows", "hand_colour_math",
+                "text_width_guess",
                 "ui_direct_mutation", "eprintln_in_data",
                 "indicator_enum_matches"):
         # A newly-added metric absent from the committed baseline seeds to its

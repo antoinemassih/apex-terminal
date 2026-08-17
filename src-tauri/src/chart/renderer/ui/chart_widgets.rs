@@ -2453,7 +2453,14 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
 
         // Qty with direction color — pill indicator
         let qty_label = format!("{}{}", if pos.qty > 0 { "+" } else { "" }, pos.qty);
-        let qty_pill_w = (qty_label.len() as f32 * 6.5 + 10.0).max(30.0);
+        // MEASURED, not guessed. `len() * 6.5` is a character count times a
+        // pixel constant: wrong immediately for a proportional face (`W` and
+        // `i` are not the same width) and wrong eventually for every face,
+        // because 6.5 was measured against whatever font was current the day
+        // it was written. Same defect as the pane header's pinned 60px slot.
+        let qty_pill_w = (crate::ui_kit::style::measure_with_painter(p, &qty_label, mono_xs()).x
+            + 10.0)
+            .max(30.0);
         let qty_pill_rect = egui::Rect::from_center_size(
             egui::pos2(left + 70.0 + qty_pill_w * 0.5, y + row_h * 0.5),
             egui::vec2(qty_pill_w, 13.0));
@@ -2643,7 +2650,9 @@ fn draw_position_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 
     // Direction + qty pill
     let pill_text = format!("{} {}x", dir, wd.position_qty.abs());
-    let pill_w = (pill_text.len() as f32 * 6.5 + 12.0).max(48.0);
+    // Measured — see the note on `qty_pill_w`.
+    let pill_w = (crate::ui_kit::style::measure_with_painter(p, &pill_text, mono_xs()).x + 12.0)
+        .max(48.0);
     let pill_rect = egui::Rect::from_center_size(
         egui::pos2(cx, body.top() + 8.0),
         egui::vec2(pill_w, 14.0));
