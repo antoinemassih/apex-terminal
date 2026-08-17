@@ -1683,15 +1683,26 @@ fn draw_confluence(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     for (i, (price, count, dist)) in wd.confluence_zones.iter().enumerate() {
         let y = body.top() + 2.0 + i as f32 * row_h;
 
-        // Price
-        p.text(egui::pos2(body.left() + 6.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            &format!("{:.1}", price), mono_xs(), t.text);
-        // Count badge
-        p.text(egui::pos2(body.left() + 48.0, y + row_h * 0.5), egui::Align2::CENTER_CENTER,
-            &format!("{}x", count), mono_2xs(), t.accent);
-        // Distance
-        p.text(egui::pos2(body.right() - 6.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
-            &format!("{:.1}%", dist), mono_2xs(), color_half(t.dim));
+        // price | count badge | distance — declared. The count sat at a bare
+        // `left + 48.0` while the price started at `left + 6.0`, so the badge
+        // column was a 42px offset written nowhere near the width it was
+        // clearing. As a fixed first column that relationship is stated once.
+        El::row()
+            .child(El::text_with_font(format!("{price:.1}"), mono_xs()).color(t.text).fixed(42.0))
+            .child(El::text_with_font(format!("{count}x"), mono_2xs()).color(t.accent))
+            .child(El::spacer())
+            .child(
+                El::text_with_font(format!("{dist:.1}%"), mono_2xs())
+                    .color(color_half(t.dim)),
+            )
+            .show_with(
+                p,
+                t,
+                egui::Rect::from_min_max(
+                    egui::pos2(body.left() + 6.0, y),
+                    egui::pos2(body.right() - 6.0, y + row_h),
+                ),
+            );
     }
 }
 
@@ -2154,26 +2165,50 @@ fn draw_econ_calendar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
 
 /// Latency widget — frame time + data feed status
 fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
-    let cx = body.center().x;
-
     // Frame time — real, measured from egui's last-frame delta.
     let frame_ms = (p.ctx().input(|i| i.stable_dt) * 1000.0).clamp(0.0, 999.0);
     let frame_col = if frame_ms < 8.0 { t.bull } else if frame_ms < 20.0 { t.warn } else { t.bear };
 
-    p.text(egui::pos2(body.left() + 8.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
-        "RENDER", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(body.left() + 8.0, body.top() + 22.0), egui::Align2::LEFT_CENTER,
-        &format!("{:.1}ms", frame_ms), prop_lg(), frame_col);
     let fps = if frame_ms > 0.0 { 1000.0 / frame_ms } else { 0.0 };
-    p.text(egui::pos2(body.left() + 75.0, body.top() + 22.0), egui::Align2::LEFT_CENTER,
-        &format!("{:.0}fps", fps), mono_2xs(), color_dim(t.dim));
 
-    // Data feed latency — no client-side measurement source yet; show unknown
-    // rather than a fabricated "45ms".
-    p.text(egui::pos2(body.left() + 8.0, body.top() + 40.0), egui::Align2::LEFT_CENTER,
-        "DATA FEED", mono_2xs(), color_dim(t.dim));
-    p.text(egui::pos2(body.left() + 8.0, body.top() + 56.0), egui::Align2::LEFT_CENTER,
-        "-- ms", prop_lg(), color_dim(t.dim));
+    // `color_dim(t.dim)` was resolved FOUR times here, once per label. Declared
+    // on the column it is resolved once and inherited; only the frame-time
+    // value, the one thing that varies with state, states its own.
+    //
+    // Worth being precise about how small this job is: a census of the whole UI
+    // found 17 places where a colour is genuinely RE-RESOLVED rather than held
+    // in a local, and 21 removable repetitions in total. Inheritance is not
+    // where the value of this system lies — it is a free consequence of putting
+    // the paint through the tree.
+    //
+    // The 2px margin before DATA FEED is the one irregular seam in the original
+    // y-ladder (6, 22, 40, 56 — steps of 16, 18, 16). Stated as a margin rather
+    // than smoothed away, because smoothing it would move a pixel for tidiness.
+    El::column()
+        .color(color_dim(t.dim))
+        .child(El::text_with_font("RENDER", mono_2xs()).fixed(16.0))
+        .child(
+            El::row()
+                .child(
+                    El::text_with_font(format!("{frame_ms:.1}ms"), prop_lg())
+                        .color(frame_col)
+                        .fixed(67.0),
+                )
+                .child(El::text_with_font(format!("{fps:.0}fps"), mono_2xs()))
+                .fixed(16.0),
+        )
+        .child(El::text_with_font("DATA FEED", mono_2xs()).fixed(16.0).margin_start(2.0))
+        // No client-side measurement source yet; show unknown rather than a
+        // fabricated "45ms".
+        .child(El::text_with_font("-- ms", prop_lg()).fixed(16.0))
+        .show_with(
+            p,
+            t,
+            egui::Rect::from_min_max(
+                egui::pos2(body.left() + 8.0, body.top() - 2.0),
+                egui::pos2(body.right(), body.bottom()),
+            ),
+        );
 }
 
 /// Options Payoff Chart — P&L curve for a position
@@ -2275,17 +2310,29 @@ fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         p.text(pill_rect.center(), egui::Align2::CENTER_CENTER,
             side, mono_4xs(), col);
 
-        // Contract
-        p.text(egui::pos2(body.left() + 38.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            contract, mono_xs(), t.text);
-
-        // Value
-        p.text(egui::pos2(body.right() - 30.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
-            value, mono_xs(), col);
-
-        // Flow type
-        p.text(egui::pos2(body.right() - 6.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
-            flow_type, mono_4xs(), color_dim(t.dim));
+        // contract | value | flow type — declared. The pill above keeps its own
+        // rect: it is a filled shape with text centred in it, not a text run.
+        //
+        // The three right-hand anchors were `right - 30` and `right - 6`, two
+        // pinned insets that had to stay clear of each other by hand. As
+        // siblings after a spacer, the value ends where the flow type begins.
+        El::row()
+            .child(El::text_with_font(contract, mono_xs()).color(t.text))
+            .child(El::spacer())
+            .child(El::text_with_font(value, mono_xs()).color(col))
+            .child(
+                El::text_with_font(flow_type, mono_4xs())
+                    .color(color_dim(t.dim))
+                    .margin_start(gap_sm()),
+            )
+            .show_with(
+                p,
+                t,
+                egui::Rect::from_min_max(
+                    egui::pos2(body.left() + 38.0, y),
+                    egui::pos2(body.right() - 6.0, y + row_h),
+                ),
+            );
     }
 }
 
@@ -2476,12 +2523,23 @@ fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 }
 
 fn draw_custom(p: &egui::Painter, body: egui::Rect, t: &Theme) {
-    let cx = body.center().x;
+    // `cx` is gone: the column centres its own children now, so the horizontal
+    // midpoint is the tree's business rather than a local the caller keeps.
     let cy = body.center().y;
-    p.text(egui::pos2(cx, cy - 6.0), egui::Align2::CENTER_CENTER,
-        "\u{2699}", prop_xl(), color_very_dim(t.dim));
-    p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
-        "Drag to configure", mono_xs(), color_very_dim(t.dim));
+    // Both halves share one tone — declared on the column, resolved once.
+    El::column()
+        .color(color_very_dim(t.dim))
+        .align(egui::Align::Center)
+        .child(El::text_with_font("\u{2699}", prop_xl()).fixed(20.0))
+        .child(El::text_with_font("Drag to configure", mono_xs()).fixed(20.0))
+        .show_with(
+            p,
+            t,
+            egui::Rect::from_min_max(
+                egui::pos2(body.left(), cy - 16.0),
+                egui::pos2(body.right(), cy + 24.0),
+            ),
+        );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

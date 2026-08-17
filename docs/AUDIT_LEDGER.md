@@ -1573,3 +1573,61 @@ covers the new rule — mutation-tested, so breaking the lookup fails loudly
 instead of quietly excluding nothing.
 
 ---
+
+## AT-173 — the inheritance payoff, measured properly, is small
+
+I said I would redo the cascade-adoption measurement because the first one was
+too narrow — it counted only *consecutive same-colour siblings* and found one
+run in the whole codebase. The second attempt counted, per function, how often
+the same colour expression is passed to a paint call. It found 13 functions and
+33 repetitions, which looked like a real opportunity.
+
+**It was wrong, in the flattering direction, for a reason worth naming.** Most
+of those repeats were BARE LOCALS — `fg`, `col`, `dark`, `icon_fg`, `text_col`.
+A colour held in a local is *already* declared once and used three times. That
+is not the repetition a cascade removes; the cascade removes repetition where
+each leaf independently RE-RESOLVES the colour (`color_dim(t.dim)` written out
+at three call sites).
+
+Filtering to genuine re-resolutions: **17 sites, 21 removable repetitions**,
+and 11 of the 17 are in one file. The first narrow measurement was closer to
+right than I gave it credit for.
+
+**The conclusion is a decision, not a number.** Inheritance is not where the
+value of this system lies, and chasing `cascade::scope` adoption for its own
+sake would be adoption theatre — the same mistake as counting `El::slot` nodes
+and calling the component tree adopted (AT-166). What inheritance IS: a free
+consequence of putting paint through the tree. `El::row().color(x)` covers
+every child, so every surface migrated picks it up without a separate effort.
+
+So the plan changed to match: migrate surfaces, take the cascade with them.
+`draw_latency` is the clearest case — four resolutions of `color_dim(t.dim)`
+became one declaration on the column, with only the frame-time value (the one
+thing that varies with state) stating its own.
+
+Migrated in this pass: `draw_latency`, `draw_custom`, `draw_confluence`,
+`draw_options_flow`. El nodes 126 → 146, self-painting 28 → 43.
+
+**Two pinned-inset relationships fell out.** `draw_confluence` put its count
+badge at a bare `left + 48.0` while its price started at `left + 6.0` — a 42px
+column width written nowhere near the thing it was clearing. `draw_options_flow`
+anchored its value at `right - 30` and its flow type at `right - 6`, two pinned
+insets that had to stay clear of each other by hand. Both are sibling
+relationships now.
+
+**And a census of what is left, so the remaining count is not read as a
+backlog.** Twelve hand-painted label/value pairs remain, and most are not
+migration candidates:
+
+* `screener_heatmap::paint_cell` and `dom_panel`'s tape rows — per-cell and
+  per-row hot paths. Same measured-cost exemption as `dom_row`/`watchlist_row`.
+* `draw_tape_speed` (gauge end-labels), `draw_news_ticker` (dot + headline),
+  `alert_feed::render_badge_feed` (a clipped scrolling message, an ellipsis and
+  a dismiss ×) — matched by the regex, none of them a label/value row.
+* `button`, `input`, `select` internals — widget-internal layouts with their
+  own reasons.
+
+Genuinely open: `msg_tension_panel::draw_ladder`, a three-column row with a bar
+in the middle. Everything else in that list should stay as it is.
+
+---
