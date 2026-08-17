@@ -118,7 +118,16 @@ impl<'a> NewsRow<'a> {
 
                 let mut chip_x = sym_rect.right() + crate::ui_kit::style::gap_xs();
                 for tag in tags.iter() {
-                    let tw = (tag.len() as f32) * 5.0 + 8.0;
+                    // MEASURED. This was `(tag.len() as f32) * 5.0 + 8.0` — a
+                    // character count times a pixel constant, in a PROPORTIONAL
+                    // face where it can only ever be an average.
+                    //
+                    // The guess is load-bearing twice over: it sizes the chip
+                    // AND feeds the overflow test on the next line. Under-guess
+                    // and a tag that does not fit is drawn anyway, past the
+                    // row's right edge; over-guess and a tag that would have fit
+                    // is dropped. Both are silent.
+                    let tw = crate::ui_kit::style::measure_with_painter(&painter, tag, f.clone()).x + 8.0;
                     let tr = egui::Rect::from_min_size(egui::pos2(chip_x, meta_y), egui::vec2(tw, 14.0));
                     if tr.right() > rect.right() - crate::ui_kit::style::gap_lg() { break; }
                     painter.rect_filled(tr, radius_xs(), color_alpha(dim, alpha_ghost()));

@@ -178,8 +178,18 @@ COMMENT_LINE_RE = re.compile(r"^\s*(?://|\*|/\*)")
 _COLLECTION_NAME_RE = re.compile(
     r"(?:^|_)(?:list|items|count|indices|zones|rows|lines|entries|trades)$"
 )
+# NOTE the optional `\)` before the `*`. The first version required the cast to
+# be followed IMMEDIATELY by the multiply, so it matched
+# `tag.len() as f32 * 5.0` and missed `(tag.len() as f32) * 5.0` — the same
+# guess with parentheses. `news_row.rs` had exactly that form, sizing a tag chip
+# from its character count next to an overflow check that breaks when the guess
+# is wrong, and the ratchet read the file as clean.
+#
+# A sub-agent census found it, which is the point worth recording: the gate was
+# green and the defect was there, and no amount of re-running the gate would
+# have surfaced it. A ceiling only holds the shape it can see.
 TEXT_WIDTH_GUESS_RE = re.compile(
-    r"\.(?:len|chars\(\)\.count)\(\)\s*as\s+f32\s*\*"
+    r"\.(?:len|chars\(\)\.count)\(\)\s*as\s+f32\s*\)?\s*\*"
 )
 
 

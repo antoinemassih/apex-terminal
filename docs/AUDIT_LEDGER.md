@@ -2110,3 +2110,74 @@ item is nearly always the fingerprint of a deleted item. Mutation-tested against
 the exact `fetch.rs` shape.
 
 ---
+
+## AT-184 — a sub-agent fan-out, and the worst bug of the session
+
+Six read-only census agents were run in parallel, each on a disjoint class, with
+instructions to show the search that rules out a consumer and to mark anything
+unprovable as UNSURE. Every finding below was verified by hand before acting.
+
+**The headline: indicator Source was ignored on every live bar.**
+
+`recompute_indicators` selects the price series per `ind.source` — Close, Open,
+High, Low, HL2, OHLC4 — the user-facing Source control offered for moving
+averages, RSI, CCI and Bollinger. `update_indicators`'s INCREMENTAL path, which
+runs on every newly-closed bar, hardcoded `.close` in all three of its arms.
+And `is_incrementally_extendable()` is exactly `SMA | WMA | EMA` — precisely the
+indicators that expose that control.
+
+So an SMA configured on High computed correctly, and then appended
+Close-derived values for every bar that closed afterwards. It self-heals on the
+next full recompute — a symbol or timeframe switch — which is what makes it hard
+to notice: the number is wrong until you change something, then briefly right.
+
+Wrong numbers on an indicator a trader reads. Fixed by extracting
+`bar_source_price(bar, source)` as the ONE definition, used both to build the
+full recompute's series and to extend incrementally. A multi-timeframe source
+now forces a full recompute rather than extending from this chart's bars, which
+would have appended values from the wrong timeframe entirely.
+
+**Two text-width guesses my own ratchet could not see.** It required the cast to
+be followed immediately by the multiply, so it matched
+`tag.len() as f32 * 5.0` and missed `(tag.len() as f32) * 5.0`. `news_row`'s tag
+chips used the parenthesised form, and the guess was load-bearing twice — it
+sized the chip AND fed the overflow test on the next line, so an under-guess
+draws a tag past the row's edge and an over-guess drops one that would have fit.
+`table.rs` used it to place the sort glyph after a header label. Both measured
+now; the regex accepts an optional closing paren.
+
+That is the finding worth keeping: **the gate was green and the defect was
+there.** No amount of re-running it would have helped. A ceiling only holds the
+shape it can see, and a second pair of eyes found the shape.
+
+**Also confirmed, not yet acted on** (each verified by hand, listed for the
+record):
+
+* `playbook_store::set_author_handle` — the persisting path — is dead. The
+  user-facing `AppCommand::SetAuthor` routes to `set_author_handle_mem`
+  instead, so the author handle is never written to `author.txt` and is lost on
+  restart. The dead function's own doc comment calls itself "the real settings
+  path".
+* Day-change percent is computed in six places. Four fabricate `0.0` when
+  `prev_close` is unknown, painting a confident green `+0.00%` for absent data;
+  `fetch.rs:2282` divides by zero unguarded; and `toolnav.rs:104` filters those
+  quotes out entirely, documenting the exact rule the others break — "fabricated
+  data, not a placeholder". `gpu.rs::get_change_pct` already returns `Option`
+  and is the right model. Not fixed in this pass: `change_pct` has ~100
+  references and the correct fix changes a field type, which deserves its own
+  commit.
+* `hotkey_editor.rs:105` — the key-binding pill is a real `Button` whose
+  `Response` is dropped, so the obvious click target for rebinding a shortcut
+  does nothing; only the small separate "Edit" label works.
+* `element.rs` — `paint()` and `paint_with()` retype the same Container layout
+  math. The sibling `Kind::Text` arm was already consolidated into one
+  `paint_text` for exactly this reason; the Container arm never was. Mine.
+
+**On the fan-out itself.** The agents were useful precisely where predicted:
+finding things. Every one of the four reports required verification before
+action, and two contained specifics that did not match the code when checked.
+The judgment — is this field dead weight or the middle rung of a semantic set,
+is this unfinished or outgrown — stayed where it had to. What changed is that
+six classes were swept in the time one would have taken.
+
+---

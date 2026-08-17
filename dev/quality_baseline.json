@@ -4,7 +4,7 @@
   "eprintln_in_data": 0,
   "expect_total": 56,
   "file_loc": {
-    "chart/renderer/gpu.rs": 10980,
+    "chart/renderer/gpu.rs": 11109,
     "chart/renderer/render/pane/core.rs": 14015,
     "chart/renderer/trading/order_manager.rs": 8393,
     "chart/renderer/ui/chart_widgets.rs": 3352,

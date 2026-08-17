@@ -1125,6 +1125,32 @@ pub(crate) enum IndicatorType {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum IndicatorCategory { Overlay, Oscillator }
 
+/// The price a bar contributes for indicator `source` — the ONE definition.
+///
+/// `source` is the user-facing Source control (Close/Open/High/Low/HL/OHLC)
+/// offered for moving averages, RSI, CCI and Bollinger.
+///
+/// This exists because the mapping was written twice and only one copy was
+/// right. `recompute_indicators` built per-source `Vec`s and selected between
+/// them; `update_indicators`'s incremental extend — the path that runs on every
+/// newly-closed live bar — hardcoded `.close` in all three of its arms. So an
+/// SMA configured on High computed correctly, then silently appended
+/// Close-derived values for every bar that closed afterwards, until the next
+/// full recompute (a symbol or timeframe switch) snapped it back.
+///
+/// Wrong numbers on a moving average, self-healing on any settings change,
+/// which is exactly what makes it hard to notice.
+pub(crate) fn bar_source_price(b: &Bar, source: u8) -> f32 {
+    match source {
+        1 => b.open,
+        2 => b.high,
+        3 => b.low,
+        4 => (b.high + b.low) / 2.0,
+        5 => (b.open + b.high + b.low + b.close) / 4.0,
+        _ => b.close,
+    }
+}
+
 impl IndicatorType {
     /// Can this indicator be extended one bar at a time, or does appending a
     /// bar require recomputing the whole series?
@@ -3710,12 +3736,14 @@ impl Chart {
     /// Recompute all indicator values from bar data.
     fn recompute_indicators(&mut self) {
         let chart_closes: Vec<f32> = self.bars.iter().map(|b| b.close).collect();
-        let chart_opens: Vec<f32> = self.bars.iter().map(|b| b.open).collect();
-        let chart_highs: Vec<f32> = self.bars.iter().map(|b| b.high).collect();
-        let chart_lows: Vec<f32> = self.bars.iter().map(|b| b.low).collect();
+        // Built through `bar_source_price` so the source mapping is stated
+        // ONCE and the incremental extend below cannot drift from it.
+        let chart_opens: Vec<f32> = self.bars.iter().map(|b| bar_source_price(b, 1)).collect();
+        let chart_highs: Vec<f32> = self.bars.iter().map(|b| bar_source_price(b, 2)).collect();
+        let chart_lows: Vec<f32> = self.bars.iter().map(|b| bar_source_price(b, 3)).collect();
         let chart_volumes: Vec<f32> = self.bars.iter().map(|b| b.volume).collect();
-        let chart_hl2: Vec<f32> = chart_highs.iter().zip(chart_lows.iter()).map(|(h, l)| (h + l) / 2.0).collect();
-        let chart_ohlc4: Vec<f32> = self.bars.iter().map(|b| (b.open + b.high + b.low + b.close) / 4.0).collect();
+        let chart_hl2: Vec<f32> = self.bars.iter().map(|b| bar_source_price(b, 4)).collect();
+        let chart_ohlc4: Vec<f32> = self.bars.iter().map(|b| bar_source_price(b, 5)).collect();
 
         for ind in &mut self.indicators {
             // D1 fix: derive closes from the fetched source-timeframe bars when a
@@ -3891,22 +3919,39 @@ impl Chart {
             return;
         }
 
+        // A MULTI-TIMEFRAME source cannot be extended from this chart's bars —
+        // its series comes from `ind.source_bars`, which advances on its own
+        // schedule. The full recompute handles it; extending here would append
+        // values derived from the wrong timeframe entirely.
+        if self.indicators.iter().any(|i| !i.source_tf.is_empty() && i.source_loaded) {
+            self.recompute_indicators();
+            return;
+        }
+
         // Incremental: extend each indicator for newly added bars
         let old = self.indicator_bar_count;
         self.indicator_bar_count = n;
         for idx in old..n {
-            let close = self.bars[idx].close;
             for ind in &mut self.indicators {
+                // The CONFIGURED source, not Close. Every arm below used
+                // `.close` unconditionally, so a moving average on High/Low/
+                // HL2/OHLC4 silently switched to Close for each newly-closed
+                // bar. See `bar_source_price`.
+                let close = bar_source_price(&self.bars[idx], ind.source);
                 match ind.kind {
                     IndicatorType::SMA | IndicatorType::WMA => {
                         if idx >= ind.period {
                             if ind.kind == IndicatorType::SMA {
-                                let sum: f32 = self.bars[idx+1-ind.period..=idx].iter().map(|b| b.close).sum();
+                                let sum: f32 = self.bars[idx+1-ind.period..=idx]
+                                    .iter().map(|b| bar_source_price(b, ind.source)).sum();
                                 ind.values.push(sum / ind.period as f32);
                             } else {
                                 let denom = (ind.period * (ind.period + 1)) / 2;
                                 let mut s = 0.0;
-                                for j in 0..ind.period { s += self.bars[idx + 1 - ind.period + j].close * (j + 1) as f32; }
+                                for j in 0..ind.period {
+                                    s += bar_source_price(&self.bars[idx + 1 - ind.period + j], ind.source)
+                                        * (j + 1) as f32;
+                                }
                                 ind.values.push(s / denom as f32);
                             }
                         } else { ind.values.push(f32::NAN); }
@@ -10976,5 +11021,89 @@ mod at011_tests {
         assert_eq!(got.len(), 100);
         assert!(got.iter().all(|v| !v.is_nan()),
             "every chart bar at/after the first source bar must carry a value");
+    }
+}
+
+#[cfg(test)]
+mod indicator_source_tests {
+    //! The incremental live-bar extend must honour the same Source the full
+    //! recompute does.
+    //!
+    //! The bug: `recompute_indicators` selected Open/High/Low/HL2/OHLC4 per
+    //! `ind.source`, while `update_indicators`'s incremental path hardcoded
+    //! `.close` in all three of its arms. `is_incrementally_extendable()` is
+    //! exactly SMA/WMA/EMA — precisely the indicators that expose a Source
+    //! control. So a moving average on High computed correctly, then appended
+    //! Close-derived values for every subsequent closed bar, until a symbol or
+    //! timeframe switch triggered a full recompute and snapped it back.
+    //!
+    //! Wrong numbers on an indicator a trader reads, self-healing on any
+    //! settings change. These assert the mapping itself and the two paths'
+    //! agreement, rather than driving a whole Chart, because the mapping is
+    //! what was duplicated.
+    use super::{bar_source_price, Bar};
+
+    fn bar(o: f32, h: f32, l: f32, c: f32) -> Bar {
+        Bar { open: o, high: h, low: l, close: c, volume: 0.0, _pad: 0.0 }
+    }
+
+    /// Each source code selects the price it names.
+    #[test]
+    fn every_source_code_selects_its_own_price() {
+        let b = bar(10.0, 20.0, 5.0, 15.0);
+        assert_eq!(bar_source_price(&b, 0), 15.0, "0 = Close");
+        assert_eq!(bar_source_price(&b, 1), 10.0, "1 = Open");
+        assert_eq!(bar_source_price(&b, 2), 20.0, "2 = High");
+        assert_eq!(bar_source_price(&b, 3), 5.0, "3 = Low");
+        assert_eq!(bar_source_price(&b, 4), 12.5, "4 = HL2");
+        assert_eq!(bar_source_price(&b, 5), 12.5, "5 = OHLC4");
+    }
+
+    /// An unknown code falls back to Close rather than panicking — the field is
+    /// a `u8` read from persisted settings, so a future/corrupt value must
+    /// degrade, not crash.
+    #[test]
+    fn an_unknown_source_falls_back_to_close() {
+        let b = bar(10.0, 20.0, 5.0, 15.0);
+        assert_eq!(bar_source_price(&b, 99), 15.0);
+    }
+
+    /// THE REGRESSION. For a non-Close source the selected price must differ
+    /// from Close — this is the assertion the old incremental path failed,
+    /// because it returned Close no matter what the user chose.
+    #[test]
+    fn a_non_close_source_does_not_silently_return_close() {
+        // Deliberately a bar where every component is distinct, so "accidentally
+        // equal to close" cannot mask a wrong selection.
+        let b = bar(101.0, 110.0, 99.0, 100.0);
+        for source in 1u8..=5 {
+            let v = bar_source_price(&b, source);
+            assert_ne!(
+                v, b.close,
+                "source {source} returned Close ({}) — the incremental extend                  regressed to hardcoding `.close`",
+                b.close
+            );
+        }
+    }
+
+    /// The full recompute builds its source series through the same function,
+    /// so a per-bar extend and a whole-series rebuild cannot disagree.
+    #[test]
+    fn series_built_per_bar_matches_the_whole_series_mapping() {
+        let bars = vec![
+            bar(1.0, 4.0, 0.5, 2.0),
+            bar(2.0, 6.0, 1.5, 3.0),
+            bar(3.0, 8.0, 2.5, 4.0),
+        ];
+        for source in 0u8..=5 {
+            let whole: Vec<f32> = bars.iter().map(|b| bar_source_price(b, source)).collect();
+            for (i, b) in bars.iter().enumerate() {
+                assert_eq!(
+                    whole[i],
+                    bar_source_price(b, source),
+                    "per-bar and whole-series disagree at {i} for source {source}"
+                );
+            }
+        }
     }
 }

@@ -181,7 +181,17 @@ impl<'a, T> Table<'a, T> {
             };
             ui.painter().text(pos, align, c.label, hdr_font.clone(), col_text);
             if active {
-                let gx = if c.right_align { cell.right() - pad - (c.label.len() as f32) * 6.0 - 8.0 } else { cell.left() + pad + (c.label.len() as f32) * 6.0 + 4.0 };
+                // The sort glyph sits just past the header label, so it needs
+                // the label's REAL width. `(label.len() as f32) * 6.0` guessed
+                // it from a character count: a short-but-wide header ("WWW")
+                // pushed the glyph into its own text, a long-but-narrow one
+                // ("Illiquid") left a gap.
+                let label_w = crate::ui_kit::style::measure_with_painter(ui.painter(), c.label, hdr_font.clone()).x;
+                let gx = if c.right_align {
+                    cell.right() - pad - label_w - 8.0
+                } else {
+                    cell.left() + pad + label_w + 4.0
+                };
                 ui.painter().text(egui::pos2(gx, cell.center().y),
                     egui::Align2::CENTER_CENTER,
                     self.state.sort_dir.glyph(), hdr_font.clone(), accent);
