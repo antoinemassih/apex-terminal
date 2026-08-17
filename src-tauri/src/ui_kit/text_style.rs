@@ -4,7 +4,6 @@
 //! size / weight / monospace / line-height live in one place. Sizes come from
 //! `style::font_*` helpers.
 
-#![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Response, RichText, Ui};
 use crate::ui_kit::style::{

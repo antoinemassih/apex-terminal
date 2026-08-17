@@ -23,7 +23,6 @@
 //! top-right corner of the active chart's window. Not a panel — overlays
 //! the panel grid.
 
-#![allow(dead_code)]
 
 use std::collections::{HashSet, VecDeque};
 use crate::chart_renderer::ui::style::tint;

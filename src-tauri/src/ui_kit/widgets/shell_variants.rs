@@ -9,7 +9,6 @@
 //! `chart_renderer::gpu::Theme`: `text`, `dim`, `accent`, `bull`, `bear`, `bg`,
 //! `toolbar_bg`, `toolbar_border`.
 
-#![allow(dead_code, unused_imports)]
 
 use egui::Color32;
 use crate::ui_kit::tokens::*;

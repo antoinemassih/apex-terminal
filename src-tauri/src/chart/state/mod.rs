@@ -9,7 +9,6 @@
 //! Phase 1 is purely the data model — no I/O, no codecs, nothing wired up yet.
 //! The existing `drawings` and `drawing_db` modules continue to work unchanged.
 
-#![allow(dead_code)]
 
 pub mod codec;
 pub mod drawings;

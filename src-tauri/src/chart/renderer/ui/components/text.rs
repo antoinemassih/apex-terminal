@@ -19,7 +19,6 @@
 //! **`border_stroke(t)` / `border_stroke_thin(t)`** — raw `Stroke::new(stroke_std(), t.toolbar_border)`.
 //!   Known files: `watchlist_panel.rs`, `dom_action.rs`, `overlay_manager.rs`.
 
-#![allow(dead_code, unused_imports)]
 
 use egui::{Color32, FontFamily, Response, RichText, Ui, Widget};
 use super::super::style::*;

@@ -1902,3 +1902,40 @@ does not get acted on; it gets ignored, which is worse than not running it.
 Design-system ratchet 1064 → 1048.
 
 ---
+
+## AT-180 — the dead-code ratchet was blind to the strongest form of suppression
+
+AT-179 deleted two widgets that had sat unreachable in the tree without a single
+warning, because each carried a file-level `#![allow(dead_code, unused_imports)]`.
+That prompted the obvious question: how many more are there, and does the gate
+that exists to measure suppression see them?
+
+It did not. `DEAD_RE` was `#\[allow\([^)]*dead_code` — and `#![allow(` has `!`
+between the `#` and the `[`, so it never matched. The ratchet had been reporting
+**46** item-level allows while **41 file-level** ones stood beside it, uncounted.
+The blind spot was precisely the more powerful form: an item-level allow hides
+one item, a file-level allow hides a file.
+
+**Measured, not assumed.** Stripping all 41 and compiling surfaces **316
+warnings**, of which the named dead items are ~68: 30 functions, 13 fields, 13
+constants, 4 methods, 2 structs, 2 enums, 2 associated functions, 1 variant, 1
+type alias. The rest are unused imports, which the same allows also cover. The
+files were restored immediately; the experiment was to size the problem, not to
+fix it in one step.
+
+The baseline moves 46 → 87. That is not a regression waved through — it is the
+count becoming true, and it can only fall from here. Mutation-tested: adding one
+file-level allow now fails the gate.
+
+**Nine of the 41 suppress nothing at all.** `components/mod.rs`,
+`components/text.rs`, `spike_popup.rs`, `state/mod.rs`, `state/codec/mod.rs`,
+`ui_kit/text_style.rs`, `hover_card.rs`, `modal.rs` and `shell_variants.rs` each
+carried a blanket allow over a file with no dead code in it. Removed; the build
+produces zero new warnings in any of them. 87 → 78.
+
+The remaining 32 do suppress something and are a real backlog rather than a
+formality — each needs its hidden items read and either used, deleted, or
+narrowed to an item-level allow with a reason. That is the shape the two deleted
+widgets were found in.
+
+---

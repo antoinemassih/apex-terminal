@@ -1,5 +1,5 @@
 {
-  "dead_code_allows": 46,
+  "dead_code_allows": 78,
   "eprintln_in_data": 0,
   "expect_total": 56,
   "file_loc": {

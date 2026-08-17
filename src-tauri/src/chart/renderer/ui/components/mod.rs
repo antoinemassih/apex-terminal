@@ -8,7 +8,6 @@
 //! metrics). Everything is re-exported here so external callers continue to use
 //! `components::foo` without source changes.
 
-#![allow(dead_code)]
 
 // Original components
 pub mod headers;

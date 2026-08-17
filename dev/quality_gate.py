@@ -96,7 +96,24 @@ def area_of(relpath):
 TEST_CFG_RE = re.compile(r"#\[cfg\([^\n]*\btest\b")
 UNWRAP_RE = re.compile(r"\.unwrap\(\)")
 EXPECT_RE = re.compile(r"\.expect\(")
-DEAD_RE = re.compile(r"#\[allow\([^)]*dead_code")
+# BOTH forms: `#[allow(dead_code)]` on an item AND `#![allow(dead_code)]` at
+# the top of a file.
+#
+# The regex was `#[allow`, which cannot match `#![allow` - `#` is followed by
+# `!`, not `[`. So the ratchet counted 46 item-level allows and was blind to 41
+# FILE-level ones, which are the more powerful kind: each suppresses an entire
+# file rather than one item.
+#
+# That is not hypothetical. `alert_row.rs` and `option_chain_row.rs` sat in the
+# tree with no callers and no warning for exactly this reason (AT-179), and
+# stripping all 41 allows surfaces ~68 named dead items — 30 functions, 13
+# fields, 13 constants, 4 methods, 2 structs, 2 enums — plus a wave of unused
+# imports. The gate meant to measure suppression was blind to the half that
+# suppresses most.
+#
+# The baseline rises to include them. That is not a regression being waved
+# through: it is the count becoming true. It can only fall from here.
+DEAD_RE = re.compile(r"#!?\[allow\([^)]*dead_code")
 # A COMMENT LINE. `dead_code_allows` is a count of attributes, and an attribute
 # written inside prose is not one — but the regex above cannot tell the
 # difference, so three doc comments that merely NAME `#[allow(dead_code)]`

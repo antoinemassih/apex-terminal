@@ -20,7 +20,6 @@
 //! then runs the body inside the modal's own internal Ui. This is an explicit,
 //! documented variance from the "Builder + show(ui, theme)" rule in `CLAUDE.md`.
 
-#![allow(dead_code)]
 
 use egui::{Color32, Context, Id, Pos2, Rect, Stroke, Ui, Vec2};
 

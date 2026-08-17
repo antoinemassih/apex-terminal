@@ -9,7 +9,6 @@
 //! No legacy adapter — we don't preserve old `drawings`/`drawing_groups`
 //! data. The new schema is the truth.
 
-#![allow(dead_code)]
 
 pub mod db;
 

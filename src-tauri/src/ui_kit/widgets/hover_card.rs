@@ -4,7 +4,6 @@
 //! Use case: hover over a symbol → show a card with mini chart + key
 //! stats. Hover over a user avatar → show profile preview.
 
-#![allow(dead_code)]
 
 use egui::{Color32, Rect, Response, Stroke, Ui, Vec2};
 
