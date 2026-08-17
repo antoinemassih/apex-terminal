@@ -1481,3 +1481,45 @@ of a clock and turned out to be ten thin shims over one
 duplications. The sweep is worth keeping as a periodic check, not as a gate.
 
 ---
+
+## AT-171 — the most repeated defect class, finally asserted
+
+"Two mechanisms compute the same value and are free to disagree" is this
+codebase's most repeated defect. The instances on record:
+
+1. The pane header's pinned `ICON_BTN_W_LAYERS = 60.0` vs the real label width
+   — "LAYERS" overran on a wider face, the next button painted over it, the
+   divider landed mid-word. This is what `measure_content_w` was extracted for.
+2. The tab strip's fit test and paint loop disagreeing by 1px per tab.
+3. `spreadsheet_pane`'s three spellings of a column offset.
+4. `panel_list_row`'s `btn_gap` in the width formula and again in the advance.
+5. `painter_pane`'s `gap_sm()` written twice around the +Tab affordance.
+6. Four multiplicative colour scales and four colour lerps (AT-169).
+7. Five compact-number formatters (AT-170).
+8. `kit.rs`'s `TAB_GAP` vs a bare `+ 1.0` in `painter_pane`.
+
+Every one was found by reading, never by a failing test — because each half is
+correct on its own and only their RELATIONSHIP is wrong.
+
+`Button` is the widget where this class first bit, and it had no test for the
+contract. `fit_paint_agreement_tests` asserts it directly: **at intrinsic
+width, everything the button paints lies inside the button, and no two painted
+runs overlap** — across leading icon, label, kbd hint, trailing icon and their
+combinations.
+
+The trailing icon is the interesting case and the reason the test covers it
+specifically. It is painted **flush right, outside the element tree**, at
+`rect.right() - pad_x`, while `measure_content_w` reserves its width **inside**
+`content_w` — which is also what centres the lead/label/kbd block. Those two
+facts have to agree and nothing said so. They do agree; the arrangement is
+correct; it was simply undefended.
+
+**Mutation-tested, and the mutation revealed which half of the test matters.**
+Dropping the trailing icon's contribution from `measure_content_w` left
+`nothing_paints_outside` PASSING — the icon is anchored to the right edge, so
+it stays inside the now-too-narrow button. Only `painted_runs_never_overlap`
+caught it, reporting the label and the caret occupying the same pixels. A
+containment check alone would have been the sixth instrument this session to
+pass on broken input.
+
+---
