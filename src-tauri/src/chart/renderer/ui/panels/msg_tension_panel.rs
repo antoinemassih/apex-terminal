@@ -19,6 +19,7 @@
 //!
 //! Offline: renders SAMPLE DATA with the QQQ−1%/SMH−5%/IGV+8% payoff picture.
 
+use crate::ui_kit::cascade::El;
 use egui;
 use std::sync::{OnceLock, Mutex, atomic::{AtomicBool, Ordering}};
 use super::super::style::*;
@@ -356,7 +357,28 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         }
 
         let mid_y = row_rect.center().y;
-        let bar_origin_x = area.left() + label_w + gap_sm();
+        // The three columns, DECLARED once.
+        //
+        // `bar_origin_x` was `area.left() + label_w + gap_sm()` and the
+        // attainability column was
+        // `area.left() + label_w + gap_sm() + bar_w + gap_sm()` — the same walk
+        // restated with one more term. Two spellings of one column ladder, free
+        // to disagree the moment `label_w` or the seam changes.
+        //
+        // Only the COLUMNS are declared. Everything inside the bar — the band,
+        // the target marker, the labels that sit outside whichever edge the
+        // move lands on — is data geometry positioned by price, not a layout,
+        // and stays exactly as it is.
+        let cols = El::row()
+            .gap(gap_sm())
+            .child(El::slot("label", egui::vec2(label_w, row_h)))
+            .child(El::slot("bar", egui::vec2(bar_w, row_h)))
+            .child(El::slot("attain", egui::vec2(attain_w, row_h)))
+            .solve_rect(egui::Rect::from_min_size(
+                egui::pos2(area.left(), row_rect.top()),
+                egui::vec2(avail_w, row_h),
+            ));
+        let bar_origin_x = cols.rect("bar").left();
         let bar_center_x = bar_origin_x + bar_w / 2.0;
 
         // ── Label ──────────────────────────────────────────────────────────
@@ -423,7 +445,7 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         painter.text(egui::pos2(lbl_x, mid_y + 7.0), lbl_align, &price_label, mono_sm(), t.dim);
 
         // ── Attainability bar (right column) ───────────────────────────────
-        let att_x0 = area.left() + label_w + gap_sm() + bar_w + gap_sm();
+        let att_x0 = cols.rect("attain").left();
         let att_x1 = att_x0 + attain_w;
         let att_inner = attain_w * abs.attainability.clamp(0.0, 1.0);
         // Background.

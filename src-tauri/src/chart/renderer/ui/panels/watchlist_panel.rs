@@ -1813,18 +1813,38 @@ if is_spawn || watchlist.open {
                     // true of the ALIGNMENT and not of the geometry, which was
                     // still stated twice and could drift silently.
                     let col_ws = [col_chk, col_stk, col_bid, col_ask, col_oi];
-                    let col_at = |left: f32, i: usize| -> egui::Rect {
+
+                    // Solved ONCE, then indexed. The closure below used to run
+                    // the whole Taffy solve on every call, and it is called
+                    // five to seven times PER ROW — so a 30-row option chain
+                    // paid ~150 solves a frame to place 30 rows' worth of
+                    // columns that never change between them.
+                    //
+                    // `flex.rs::report_solve_cost_for_a_typical_row` times a
+                    // solve at 5.5 us in release, so that is ~0.8 ms/frame, or
+                    // about 5% of a 16.7 ms budget, spent re-deriving a
+                    // constant. Same fix as `spreadsheet_pane`: solve the
+                    // columns for the grid, share the offsets.
+                    //
+                    // This is also why `dom_row`/`watchlist_row` are exempt
+                    // from the element tree on cost — the exemption is about
+                    // solving PER ROW. Solving once and indexing is the shape
+                    // that makes the cost argument go away.
+                    let col_offsets: Vec<(f32, f32)> = {
                         use crate::ui_kit::layout::{Flex, Item};
                         let mut f = Flex::row().gap(gap);
                         for w in col_ws {
                             f = f.item(Item::fixed(w));
                         }
                         let span: f32 = col_ws.iter().sum::<f32>() + gap * 4.0;
-                        let r = f.solve(egui::vec2(span, 1.0))[i];
-                        egui::Rect::from_min_size(
-                            egui::pos2(left + r.min.x, 0.0),
-                            egui::vec2(r.width(), 1.0),
-                        )
+                        f.solve(egui::vec2(span, 1.0))
+                            .into_iter()
+                            .map(|r| (r.min.x, r.width()))
+                            .collect()
+                    };
+                    let col_at = |left: f32, i: usize| -> egui::Rect {
+                        let (dx, w) = col_offsets[i];
+                        egui::Rect::from_min_size(egui::pos2(left + dx, 0.0), egui::vec2(w, 1.0))
                     };
 
                     let paint_col_hdr = |ui: &mut egui::Ui| {

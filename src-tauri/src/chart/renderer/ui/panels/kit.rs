@@ -704,7 +704,15 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
 
         // Solved positions from a given start. One definition of the row, used
         // by both the fit test and the painting.
-        let solve_tabs = |start_x: f32| -> Vec<Rect> {
+        //
+        // The SOLVE is hoisted out of the closure because it does not depend on
+        // `start_x` — only the translate does. It used to run inside, and the
+        // closure is called at least three times per header (twice by
+        // `fitting_tabs` probing with and without the ordinal, once to paint),
+        // so every panel header re-derived an identical column ladder three
+        // times a frame. Same shape as `watchlist_panel`'s `col_at`, which was
+        // re-solving five widths on each of five calls per row.
+        let tab_base: Vec<Rect> = {
             use crate::ui_kit::layout::{Flex, Item};
             let mut f = Flex::row().gap(TAB_GAP);
             for w in &tab_ws {
@@ -713,7 +721,10 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
             let span: f32 = tab_ws.iter().sum::<f32>()
                 + TAB_GAP * (tab_ws.len().saturating_sub(1)) as f32;
             f.solve(Vec2::new(span, 1.0))
-                .into_iter()
+        };
+        let solve_tabs = |start_x: f32| -> Vec<Rect> {
+            tab_base
+                .iter()
                 .map(|r| r.translate(Vec2::new(start_x, 0.0)))
                 .collect()
         };

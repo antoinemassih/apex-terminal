@@ -1736,3 +1736,45 @@ branches compile and the result is reasonable. Only a census sees them, so
 there is now a ratchet at zero — mutation-tested.
 
 ---
+
+## AT-176 — layout solved repeatedly to re-derive a constant
+
+`spreadsheet_pane` (AT-«cursor-walks») had three spellings of a column offset,
+one of them nested inside a per-row loop. Looking for the same shape elsewhere
+found two more, and one of them is the largest single cost in this session.
+
+**`watchlist_panel::col_at`** ran a full Taffy solve on **every call**, and it
+is called five to seven times per row. A 30-row option chain therefore paid
+~150 solves a frame to place columns that are identical for every row.
+`flex.rs::report_solve_cost_for_a_typical_row` times a solve at 5.5 µs in
+release, so that is roughly **0.8 ms per frame — about 5% of a 16.7 ms
+budget — spent re-deriving a constant**. Solved once, indexed thereafter.
+
+**`kit.rs::solve_tabs`** ran its solve inside a closure whose only varying
+input, `start_x`, is used solely by the translate afterwards. The closure is
+called at least three times per panel header (twice by `fitting_tabs`, probing
+with and without the ordinal prefix, and once to paint), so every header
+re-derived the same tab ladder three times a frame. The solve is hoisted; the
+closure now only translates.
+
+`rail_layout`'s per-column solve was checked and left alone: each column has
+different member heights, so that one is genuinely per-item.
+
+**This retires the objection behind two exemptions.** `dom_row` and
+`watchlist_row` are exempt from the element-tree migration on measured per-row
+cost — the argument being that a solve per row is too expensive to replace a
+few multiplies. That argument was always about solving PER ROW. Solving once
+for the grid and indexing, which is what `spreadsheet_pane` and now
+`watchlist_panel` do, costs one solve regardless of row count. The exemptions
+stand for now because the rows also carry hard-won painting, but the cost
+reason for them is gone and should not be cited again.
+
+Also in this pass: `msg_tension_panel::draw_ladder`'s three-column split is
+declared. Its `att_x0` was
+`area.left() + label_w + gap_sm() + bar_w + gap_sm()` — the same walk as
+`bar_origin_x` restated with one more term, free to disagree the moment
+`label_w` or the seam changed. Only the COLUMNS were declared: the band, the
+target marker and the labels that sit outside whichever edge the move lands on
+are data geometry positioned by price, and stay.
+
+---
