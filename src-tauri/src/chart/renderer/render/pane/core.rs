@@ -5735,6 +5735,9 @@ fn render_chart_pane(
         painter.line_segment([egui::pos2(rect.left(), osc_top - 1.0), egui::pos2(rect.left() + cw, osc_top - 1.0)],
             egui::Stroke::new(1.0, t.toolbar_border));
 
+        // Which oscillator this is, so its label pill stacks instead of being
+        // painted on top of the previous one — see `osc_label_rect`.
+        let mut osc_nth = 0usize;
         for ind in &chart.indicators {
             if !ind.visible || ind.kind.category() != IndicatorCategory::Oscillator { continue; }
             let color = hex_to_color(&ind.color, 1.0);
@@ -6025,14 +6028,8 @@ fn render_chart_pane(
 
             // Clickable label — click to edit, shows [x] delete on hover
             let label_text = ind.display_name();
-            let label_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.left() + 4.0, osc_top + 2.0),
-                // Measured in the SAME font the label is painted with two
-                // lines below. `len() * 6.0` guessed one font's advance from a
-                // character count; a longer display name overran the pill and
-                // the hover [x] landed on top of the text.
-                egui::vec2(crate::ui_kit::style::measure_with_painter(&painter, &label_text, mono_xs()).x + 20.0, 14.0),
-            );
+            let label_rect = osc_label_rect(&painter, rect, osc_top, osc_nth, &label_text);
+            osc_nth += 1;
             let label_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| label_rect.contains(p));
             let label_bg = if label_hovered { t.toolbar_border.gamma_multiply(0.5) } else { egui::Color32::TRANSPARENT };
             painter.rect_filled(label_rect, 2.0, label_bg);
@@ -6065,14 +6062,13 @@ fn render_chart_pane(
             if let Some(pos) = osc_resp.interact_pointer_pos() {
                 // Check if clicked on a label's [x] delete button
                 let mut deleted_id: Option<u32> = None;
-                let mut label_y_offset = 0.0_f32;
+                let mut osc_nth = 0usize;
                 for ind in &chart.indicators {
                     if !ind.visible || ind.kind.category() != IndicatorCategory::Oscillator { continue; }
                     let label_text = ind.display_name();
-                    let label_rect = egui::Rect::from_min_size(
-                        egui::pos2(rect.left() + 4.0, osc_top + 2.0 + label_y_offset),
-                        egui::vec2(label_text.len() as f32 * 6.0 + 20.0, 14.0),
-                    );
+                    // The SAME rect the paint pass draws — see `osc_label_rect`.
+                    let label_rect = osc_label_rect(ui.painter(), rect, osc_top, osc_nth, &label_text);
+                    osc_nth += 1;
                     let x_rect = egui::Rect::from_min_size(
                         egui::pos2(label_rect.right() - 12.0, label_rect.top()),
                         egui::vec2(12.0, 14.0),
@@ -6085,7 +6081,7 @@ fn render_chart_pane(
                         chart.editing_indicator = Some(ind.id);
                         break;
                     }
-                    label_y_offset += 16.0;
+
                 }
                 if let Some(id) = deleted_id {
                     chart.indicators.retain(|i| i.id != id);
@@ -8024,6 +8020,9 @@ fn render_chart_pane(
 
     // Hit-test helpers (used for hover cursors, click selection, drag initiation)
     let ts_ref = &chart.timestamps;
+    // A `Context` clone (cheap — it is an Arc handle) so the hit tests below
+    // can MEASURE text. Without one they had no font stack and guessed.
+    let hit_ctx = ui.ctx().clone();
     let hit_drawing = |px: f32, py_pos: f32, drawings: &[Drawing]| -> Option<(String, i32)> {
         for d in drawings.iter().rev() {
             match &d.kind {
@@ -8202,8 +8201,20 @@ fn render_chart_pane(
                 DrawingKind::TextNote{price,time,text,font_size} => {
                     let x = bx(SignalDrawing::time_to_bar(*time, ts_ref));
                     let y = py(*price);
-                    let w = text.len() as f32 * font_size * 0.5;
-                    let h = font_size * 1.3;
+                    // Measured with the SAME font and layout call the paint
+                    // pass uses for this note's selection rect (`prop_at`,
+                    // `layout_no_wrap`). It used to be
+                    // `text.len() as f32 * font_size * 0.5` — half an em per
+                    // character, which is an average for a proportional face
+                    // and wrong for any particular string. A note reading
+                    // "IIII" was clickable well past its glyphs; one reading
+                    // "WWWW" stopped being clickable before its end.
+                    let size = hit_ctx.fonts(|f| {
+                        f.layout_no_wrap(text.clone(), prop_at(*font_size), egui::Color32::PLACEHOLDER)
+                            .size()
+                    });
+                    let w = size.x;
+                    let h = size.y;
                     if px >= x - 5.0 && px <= x + w + 5.0 && py_pos >= y - 5.0 && py_pos <= y + h + 5.0 {
                         return Some((d.id.clone(), -1));
                     }
@@ -9780,11 +9791,64 @@ fn render_chart_pane(
         let cur_bar = chart.replay_bar_count;
         let btn_size = egui::vec2(22.0, 20.0);
         let btn_y = replay_rect.top() + (replay_h - btn_size.y) * 0.5;
-        let mut cx = replay_rect.left() + 8.0;
 
-        let replay_btn = |ui: &mut egui::Ui, cx: &mut f32, icon: &str, tooltip: &str| -> bool {
-            let r = egui::Rect::from_min_size(egui::pos2(*cx, btn_y), btn_size);
-            *cx += btn_size.x + 2.0;
+        // The replay bar, DECLARED.
+        //
+        // It was a `cx` walked through a `|ui, cx: &mut f32, ..|` closure that
+        // advanced the caller's cursor as a side effect of drawing a button —
+        // the exact shape the element tree exists to replace, and the reason
+        // adding a control here meant getting five `cx +=` sites right.
+        //
+        // Two of those advances also GUESSED their width from a character
+        // count (`label.len() * 6.0`, `counter_text.len() * 6.0`), so the speed
+        // buttons and the progress bar's start both moved with the font.
+        // Measured now, in the font each cell paints with.
+        const REPLAY_BTNS: usize = 5;
+        let speeds: &[(f32, &str)] = &[(0.5, "0.5x"), (1.0, "1x"), (2.0, "2x"), (5.0, "5x"), (10.0, "10x")];
+        let counter_text = format!("Bar {} / {}", cur_bar, total_bars);
+        let bar_slots = {
+            let m = |t: &str, f: egui::FontId| {
+                crate::ui_kit::style::measure_with_painter(ui.painter(), t, f).x
+            };
+            let mut row = crate::ui_kit::cascade::El::row().gap(2.0);
+            for i in 0..REPLAY_BTNS {
+                row = row.child(crate::ui_kit::cascade::El::slot(
+                    format!("b{i}"), egui::vec2(btn_size.x, btn_size.y),
+                ));
+            }
+            for (i, (_, label)) in speeds.iter().enumerate() {
+                row = row.child(
+                    crate::ui_kit::cascade::El::slot(
+                        format!("s{i}"), egui::vec2(m(label, mono_xs()) + 8.0, btn_size.y),
+                    )
+                    // The 6px seam between the transport buttons and the speed
+                    // group, which used to be a bare `cx += 6.0`.
+                    .margin_start(if i == 0 { 6.0 } else { 0.0 }),
+                );
+            }
+            row = row.child(
+                crate::ui_kit::cascade::El::slot(
+                    "counter", egui::vec2(m(&counter_text, mono_2xs()), btn_size.y),
+                )
+                .margin_start(8.0),
+            );
+            row = row.child(
+                crate::ui_kit::cascade::El::slot("progress", egui::Vec2::ZERO)
+                    .grow(1.0)
+                    .margin_start(16.0),
+            );
+            row.solve_rect(egui::Rect::from_min_max(
+                egui::pos2(replay_rect.left() + 8.0, btn_y),
+                egui::pos2(replay_rect.right() - 12.0, btn_y + btn_size.y),
+            ))
+        };
+        let mut btn_i = 0usize;
+
+        let replay_btn = |ui: &mut egui::Ui, i: &mut usize, icon: &str, tooltip: &str| -> bool {
+            // Takes its slot INDEX, not a cursor to advance. The button no
+            // longer moves anything by drawing itself.
+            let r = egui::Rect::from_min_size(bar_slots.rect(&format!("b{i}")).min, btn_size);
+            *i += 1;
             let resp = ui.allocate_rect(r, egui::Sense::click());
             let hovered = resp.hovered();
             let col = if hovered { t.text } else { t.dim.gamma_multiply(0.8) };
@@ -9798,41 +9862,37 @@ fn render_chart_pane(
             resp.clicked()
         };
 
-        if replay_btn(ui, &mut cx, Icon::SKIP_BACK, "Jump to start (Home)") {
+        if replay_btn(ui, &mut btn_i, Icon::SKIP_BACK, "Jump to start (Home)") {
             chart.replay_bar_count = 1;
             chart.replay_playing = false;
             chart.indicator_bar_count = 0;
             chart.vs = 0.0;
         }
-        if replay_btn(ui, &mut cx, Icon::CARET_LEFT, "Step back (Left)") {
+        if replay_btn(ui, &mut btn_i, Icon::CARET_LEFT, "Step back (Left)") {
             chart.replay_bar_count = chart.replay_bar_count.saturating_sub(1).max(1);
             chart.indicator_bar_count = 0;
             chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         }
         let play_icon = if chart.replay_playing { Icon::PAUSE } else { Icon::PLAY };
         let play_tip = if chart.replay_playing { "Pause (Space)" } else { "Play (Space)" };
-        if replay_btn(ui, &mut cx, play_icon, play_tip) {
+        if replay_btn(ui, &mut btn_i, play_icon, play_tip) {
             chart.replay_playing = !chart.replay_playing;
             if chart.replay_playing { chart.replay_last_step = None; }
         }
-        if replay_btn(ui, &mut cx, Icon::CARET_RIGHT, "Step forward (Right)") {
+        if replay_btn(ui, &mut btn_i, Icon::CARET_RIGHT, "Step forward (Right)") {
             chart.replay_bar_count = (chart.replay_bar_count + 1).min(total_bars);
             chart.indicator_bar_count = 0;
             chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         }
-        if replay_btn(ui, &mut cx, Icon::SKIP_FORWARD, "Jump to end (End)") {
+        if replay_btn(ui, &mut btn_i, Icon::SKIP_FORWARD, "Jump to end (End)") {
             chart.replay_bar_count = total_bars;
             chart.replay_playing = false;
             chart.indicator_bar_count = 0;
             chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         }
 
-        cx += 6.0;
-        let speeds: &[(f32, &str)] = &[(0.5, "0.5x"), (1.0, "1x"), (2.0, "2x"), (5.0, "5x"), (10.0, "10x")];
-        for &(spd, label) in speeds {
-            let lw = label.len() as f32 * 6.0 + 8.0;
-            let sr = egui::Rect::from_min_size(egui::pos2(cx, btn_y), egui::vec2(lw, btn_size.y));
-            cx += lw + 2.0;
+        for (i, &(spd, label)) in speeds.iter().enumerate() {
+            let sr = bar_slots.rect(&format!("s{i}"));
             let resp = ui.allocate_rect(sr, egui::Sense::click());
             let is_active = (chart.replay_speed - spd).abs() < 0.01;
             let col = if is_active { t.bull } else if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.6) };
@@ -9851,21 +9911,18 @@ fn render_chart_pane(
             }
         }
 
-        cx += 8.0;
-        let counter_text = format!("Bar {} / {}", cur_bar, total_bars);
         ui.painter().text(
-            egui::pos2(cx, replay_rect.center().y),
+            egui::pos2(bar_slots.rect("counter").left(), replay_rect.center().y),
             egui::Align2::LEFT_CENTER,
             &counter_text,
             mono_2xs(),
             t.dim.gamma_multiply(0.9),
         );
-        cx += counter_text.len() as f32 * 6.0 + 16.0;
-
-        let progress_w = (replay_rect.right() - cx - 12.0).max(40.0);
+        let progress_slot = bar_slots.rect("progress");
+        let progress_w = progress_slot.width().max(40.0);
         let progress_h = 6.0_f32;
         let progress_rect = egui::Rect::from_min_size(
-            egui::pos2(cx, replay_rect.center().y - progress_h * 0.5),
+            egui::pos2(progress_slot.left(), replay_rect.center().y - progress_h * 0.5),
             egui::vec2(progress_w, progress_h),
         );
         ui.painter().rect_filled(progress_rect, 3.0, color_alpha(t.dim, 40));
@@ -13862,4 +13919,35 @@ mod order_badge_geometry_tests {
             );
         });
     }
+}
+
+/// The clickable rect of an oscillator's label pill — ONE definition, used by
+/// the paint pass and by the click/delete hit test.
+///
+/// These were two independent expressions and they disagreed in two ways.
+///
+/// The width: paint measured the label, the hit test computed
+/// `label.len() as f32 * 6.0 + 20.0`, so the pill's hover fill and its click
+/// target were different sizes for any name whose glyphs are not 6px wide.
+///
+/// The Y, which is the worse one: the hit test stacked each oscillator's pill
+/// by 16px (`label_y_offset += 16.0`) while the paint drew EVERY pill at the
+/// same `osc_top + 2.0`. Oscillators share one region, so with two of them the
+/// labels were painted on top of each other — unreadable — and the second
+/// one's click target sat 16px lower, over nothing. The stacking is clearly
+/// the intent; the paint side simply never got it.
+fn osc_label_rect(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    osc_top: f32,
+    nth: usize,
+    label: &str,
+) -> egui::Rect {
+    egui::Rect::from_min_size(
+        egui::pos2(rect.left() + 4.0, osc_top + 2.0 + nth as f32 * 16.0),
+        egui::vec2(
+            crate::ui_kit::style::measure_with_painter(painter, label, mono_xs()).x + 20.0,
+            14.0,
+        ),
+    )
 }

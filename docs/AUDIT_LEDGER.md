@@ -1778,3 +1778,50 @@ target marker and the labels that sit outside whichever edge the move lands on
 are data geometry positioned by price, and stay.
 
 ---
+
+## AT-177 — the chart engine, opened for migration, had paint/hit-test disagreements
+
+The standing directive was that the chart engine is sacred. That was widened to
+"fix and migrate layout too", so `render/pane/core.rs` came into scope. What
+was expected: guessed text widths. What was actually there: **three surfaces
+whose paint pass and hit test computed the same geometry independently, and
+disagreed.**
+
+**The order badge** — `[B/S] [QTY] [notional] [STATUS] [SEND?] [X]` — had its
+width in THREE places: the paint pass, the badge-button hit test, and the
+order-line drag hit test. The third carried the comment "Recompute badge
+geometry to match rendering". Both hit tests hard-coded the status cell as
+`if is_draft { "DRAFT" } else { "LIVE" }` while the paint pass renders the full
+lifecycle (`SEND…`, `CXL…`, `MOD…`, `PART`, `FILL`, `??`), so for any order not
+exactly Draft or Working the clickable region was a different width from the
+badge on screen: X and SEND sat off their targets, and the drag-exclusion zone
+did not match the badge it excluded. One `order_badge_metrics` now.
+
+**The oscillator label pill** was worse, and in a way a width fix would have
+hidden. Paint and hit test disagreed on WIDTH (measured vs `len() * 6.0`) and
+on **Y**: the hit test stacked each pill by 16px, the paint drew every pill at
+the same `osc_top + 2.0`. Oscillators share one region, so with two of them the
+labels were painted on top of each other — unreadable — and the second's click
+target sat 16px below, over nothing. The stacking is plainly the intent and the
+paint side never got it. One `osc_label_rect` now, and the labels stack.
+
+**The `TextNote` hit box** guessed `text.len() * font_size * 0.5` — half an em
+per character — while the paint pass, ten lines away, already measured properly
+with `layout_no_wrap` for its selection rect. A note reading "IIII" was
+clickable well past its glyphs; "WWWW" stopped being clickable before its end.
+
+**The near-miss is the lesson.** Converting only the paint sites to measured
+widths — which is exactly what "fix the guessed widths" looks like from outside
+— would have left three hit tests computing stale formulas against geometry
+that had moved. I would have turned a consistent-but-wrong pair into an
+inconsistent one, and nothing would have failed. Each of these was found by
+asking "who else computes this?" before changing anything.
+
+Also declared: the replay bar, which walked a `cx` through a
+`|ui, cx: &mut f32, ..|` closure that advanced the caller's cursor as a side
+effect of drawing a button, and guessed two of its widths.
+
+`text_width_guess` 17 → **2**, and both survivors are in `tps_overlay.rs`,
+exempt by directive as a deliberate Excel pastiche. The chart engine is clean.
+
+---

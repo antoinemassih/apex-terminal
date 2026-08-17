@@ -4,7 +4,7 @@
   "expect_total": 58,
   "file_loc": {
     "chart/renderer/gpu.rs": 10973,
-    "chart/renderer/render/pane/core.rs": 13865,
+    "chart/renderer/render/pane/core.rs": 13953,
     "chart/renderer/trading/order_manager.rs": 8393,
     "chart/renderer/ui/chart_widgets.rs": 3352,
     "chart/renderer/ui/style.rs": 5019,
@@ -14,7 +14,7 @@
   "hand_colour_math": 0,
   "identical_branches": 0,
   "indicator_enum_matches": 151,
-  "text_width_guess": 6,
+  "text_width_guess": 2,
   "ui_direct_mutation": 265,
   "unwrap_by_dir": {
     "chart_other": 2,
