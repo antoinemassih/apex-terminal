@@ -15,7 +15,6 @@
 //! Default delay: 400ms. Fade-in: motion::FAST. Disappears immediately on
 //! hover-out (no fade-out — feels snappier).
 
-#![allow(dead_code)]
 
 use egui::{Color32, Pos2, Rect, Response, Stroke, Ui, Vec2};
 
@@ -360,7 +359,7 @@ impl<'a> PainterTooltip<'a> {
         theme: &dyn ComponentTheme,
     ) -> Rect {
         use crate::ui_kit::tokens::{
-            alpha_tint, color_alpha, font_sm, stroke_thin,
+            alpha_tint, color_alpha, stroke_thin,
         };
         let rect = Rect::from_min_size(top_left, self.measure());
         paint_tooltip_card(painter, rect, theme);

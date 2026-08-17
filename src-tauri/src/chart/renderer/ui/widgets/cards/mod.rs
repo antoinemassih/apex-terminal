@@ -11,7 +11,6 @@
 //! of the base `Card` and add domain-specific fields (tags, sparklines,
 //! deltas, etc.).
 
-#![allow(dead_code, unused_imports)]
 
 // WS-C cleanup: the Wave-5 façade re-exports (earnings/event/news/play/
 // playbook/signal/stat/trade) were deleted — never adopted, 0 call sites. Only
@@ -21,7 +20,7 @@ pub mod metric_card { pub use crate::chart::renderer::ui::lists::cards::metric_c
 
 pub use metric_card::MetricCard;
 
-use egui::{Color32, RichText, Stroke, Ui};
+use egui::{Color32, RichText, Ui};
 use super::super::style::*;
 use super::super::components::frames_widget::CardFrame;
 use crate::ui_kit::widgets::CardVariant;

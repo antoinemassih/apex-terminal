@@ -10,7 +10,7 @@
 //!     .closable(true)
 //!     .show(ui, theme);
 
-use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
+use egui::{Color32, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};

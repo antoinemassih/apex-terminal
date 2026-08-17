@@ -29,10 +29,10 @@
 //!
 //! Sister widgets: `PanelLoading`, `PanelSection`, `Alert`.
 
-use egui::{Align, FontId, Layout, RichText, Ui};
+use egui::{Align, Layout, RichText, Ui};
 
 use crate::ui_kit::tokens::{
-    color_muted, font_xl, font_xs, gap_md, gap_xs,
+    color_muted, font_xs, gap_md, gap_xs,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::text_style::TextStyle;

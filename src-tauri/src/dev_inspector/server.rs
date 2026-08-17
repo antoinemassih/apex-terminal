@@ -1737,7 +1737,6 @@ fn handle_run_suite(
 /// machine-readable + human-readable artifact the fixing systems consume.
 /// Returns the markdown path (or empty on write failure).
 fn write_bug_report(bugs: &[serde_json::Value], total: usize, passed: usize, failed: usize) -> String {
-    use std::io::Write;
     let dir = std::path::Path::new(SCENARIO_DIR).parent()
         .unwrap_or_else(|| std::path::Path::new("dev"));
     let json_path = dir.join("bug_report.json");

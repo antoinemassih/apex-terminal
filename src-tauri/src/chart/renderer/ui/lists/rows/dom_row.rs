@@ -19,7 +19,6 @@
 //! person their changes here are inert, which is the most expensive kind of
 //! stale comment: it does not just fail to help, it argues against looking.
 
-#![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Painter, Rect, Response, Sense, Stroke, StrokeKind, Ui};
 use super::super::super::style::*;
@@ -137,7 +136,6 @@ pub struct DomRow<'a> {
     current_price: bool,
     imbalance: f32, // -1..=1, positive = ask side, negative = bid side
     height: f32,
-    price_fmt: &'a str,
     columns: Option<&'a [ColumnSpec]>,
     orders: &'a [OrderBadge],
     show_numbers: bool,
@@ -183,7 +181,6 @@ impl<'a> DomRow<'a> {
             // while the row paints `MonoMd`.
             height: crate::chart_renderer::ui::style::style_row_height()
                 .max(dom_row_min_height()),
-            price_fmt: "{:.2}",
             columns: None, orders: &[],
             show_numbers: true,
             theme: None,

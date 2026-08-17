@@ -28,12 +28,12 @@
 //!
 //! Sister widgets: `MetricRow`, `PanelListRow`, `PanelSection`.
 
-use egui::{FontId, Pos2, Rect, Sense, Ui, Vec2};
+use egui::{Pos2, Rect, Sense, Ui, Vec2};
 
 use super::panel_section::Tone;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use crate::ui_kit::tokens::{
-    color_alpha, color_muted, font_xs, gap_xs,
+    color_alpha, color_muted, gap_xs,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::text_style::TextStyle;

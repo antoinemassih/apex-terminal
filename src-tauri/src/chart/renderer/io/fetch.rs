@@ -4,7 +4,6 @@
 //! via `crate::send_to_native_chart` or `crate::NATIVE_CHART_TXS`.
 
 #[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 
 use crate::chart_renderer::{ChartCommand, Bar};
 use crate::chart_renderer::gpu::{OptionRow, db_to_drawing, apexib_url};

@@ -12,7 +12,7 @@
 //!     .show(ui, theme);
 //! ```
 
-use egui::{CornerRadius, FontId, Margin, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{Margin, Response, Sense, StrokeKind, Ui, Vec2};
 
 use super::motion;
 use super::theme::ComponentTheme;

@@ -57,7 +57,7 @@ pub(crate) fn render_heat_panel(
     ui.horizontal(|ui| {
         {
             let mut cur: &'static str = HEAT_OPTS.iter().map(|&(v, _)| v).find(|&s| s == watchlist.heat.index.as_str()).unwrap_or("Watchlist");
-            if super::super::inputs::select::Dropdown::new("heat_idx")
+            if super::super::inputs::select::Dropdown::new()
                 .options(HEAT_OPTS)
                 .width(100.0)
                 .theme(t)

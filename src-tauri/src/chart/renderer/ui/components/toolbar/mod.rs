@@ -13,7 +13,6 @@
 //!
 //! `top_nav` — the top navigation toolbar panel, extracted from `gpu.rs`.
 
-#![allow(dead_code, unused_imports)]
 
 pub mod top_nav;
 pub mod chart_controls;
@@ -24,10 +23,10 @@ pub mod toolnav;
 pub mod alert_feed;
 pub mod workspace_rail;
 
-use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
+use egui::{Color32, Response, Ui};
 use super::super::style::*;
 use crate::ui_kit::widgets::Button as KitButton;
-use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::widgets::tokens::{Size as KitSize};
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {

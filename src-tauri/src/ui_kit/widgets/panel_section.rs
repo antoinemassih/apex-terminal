@@ -62,13 +62,12 @@
 //!   `kit::PanelHeader`.
 //! - Form-field grouping with input gutters — use `FormSection`.
 
-use crate::ui_kit::sx::recipe_spec::AlphaTier;
 use egui::{Color32, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
 use super::tooltip::Tooltip;
 use super::theme::{active_theme, get_ambient_recipes};
-use crate::ui_kit::layout::{Align as FlexAlign, Flex, FlexSlots, Item, SolvedSlots};
+use crate::ui_kit::layout::{Align as FlexAlign, Flex, FlexSlots, Item};
 use crate::ui_kit::tokens::{
     color_alpha, font_sm, font_xs, gap_lg, gap_sm, gap_xs, radius_xs, stroke_thin,
 };

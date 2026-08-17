@@ -215,7 +215,7 @@ pub fn show_drawing_properties_bar_ui(
         }
         grp_opts.push((NEW_GROUP_SENTINEL.to_string(), format!("{} New Group...", Icon::PLUS)));
         let mut grp_sel = sel_draw.group_id.clone();
-        if crate::chart_renderer::ui::inputs::select::DropdownOwned::new(&format!("group_{pane_idx}"))
+        if crate::chart_renderer::ui::inputs::select::DropdownOwned::new()
             .options(grp_opts)
             .width(80.0)
             .theme(t)

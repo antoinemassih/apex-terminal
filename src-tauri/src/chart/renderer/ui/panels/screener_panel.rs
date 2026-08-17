@@ -36,7 +36,6 @@
 //! panel open flag). Persistence is handled separately (see `save`/`load` at
 //! the bottom of this file).
 
-#![allow(dead_code)]
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -54,7 +53,7 @@ use crate::ui_kit::widgets::{
     SearchInput, Tag, TagTone, Tooltip, TrailingBtn, TrailingTone,
 };
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
-use crate::chart_renderer::commands::{self, AppCommand, UiCtx};
+use crate::chart_renderer::commands::{self, AppCommand};
 
 // ─── Tab enum ─────────────────────────────────────────────────────────────────
 
@@ -570,7 +569,6 @@ fn draw_screen_rows(
     pending_load_id:   &mut Option<String>,
     pending_slot_set:  &mut Option<(u8, String)>,
 ) {
-    use crate::chart_renderer::ui::style::*;
 
     for screen in screens {
         // Derive the hotkey slot number for this screen (1-indexed), if any.

@@ -2,7 +2,6 @@
 //! Migrated to `RowShell` (painter mode). Cancel-button click is captured
 //! through a `Cell<bool>` shared with the painter body.
 
-#![allow(dead_code, unused_imports)]
 
 use std::cell::Cell;
 use egui::{Color32, Response, Ui};

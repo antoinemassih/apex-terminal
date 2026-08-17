@@ -139,8 +139,8 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     use std::collections::{HashMap, HashSet};
     use egui::{Id, Rect, Align2, CornerRadius, Stroke, StrokeKind, LayerId, pos2, vec2};
     use crate::chart_renderer::ui::style::{
-        font_sm, font_md, gap_sm, gap_xs, color_alpha, contrast_fg,
-        ALPHA_SECONDARY_TEXT, ALPHA_INTERACTIVE, radius_md, r_pill,
+        font_sm, gap_sm, gap_xs, color_alpha, contrast_fg,
+        ALPHA_SECONDARY_TEXT, ALPHA_INTERACTIVE, r_pill,
     };
     use crate::ui_kit::icons::Icon;
 

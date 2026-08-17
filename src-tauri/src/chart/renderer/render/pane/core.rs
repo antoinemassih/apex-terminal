@@ -1104,7 +1104,7 @@ fn render_chart_pane(
                             let tpl_opts: Vec<(String, String)> =
                                 template_names.iter().map(|n| (n.clone(), n.clone())).collect();
                             let mut tpl_sel = cur_template.clone();
-                            if crate::chart_renderer::ui::inputs::select::DropdownOwned::new(&tpl_id)
+                            if crate::chart_renderer::ui::inputs::select::DropdownOwned::new()
                                 .options(tpl_opts)
                                 .width(140.0)
                                 .theme(t)
@@ -1456,7 +1456,7 @@ fn render_chart_pane(
                             let tpl_opts: Vec<(String, String)> =
                                 templates_snapshot.iter().map(|n| (n.clone(), n.clone())).collect();
                             let mut tpl_sel = cur.clone();
-                            if crate::chart_renderer::ui::inputs::select::DropdownOwned::new(&tpl_id)
+                            if crate::chart_renderer::ui::inputs::select::DropdownOwned::new()
                                 .options(tpl_opts)
                                 .width(140.0)
                                 .theme(t)

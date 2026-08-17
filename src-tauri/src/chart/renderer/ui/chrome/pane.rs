@@ -8,14 +8,12 @@
 //!
 //! See ui/widgets/mod.rs for the rationale.
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
+use egui::{Color32, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::components::pane_header_bar;
-use super::super::components::PaneHeader;
 use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::Variant};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::{Tag, TagTone};
@@ -198,6 +196,13 @@ pub struct PaneStatusStrip {
     loading:      bool,
     data_quality: Option<DataQuality>,
     bull:         Color32,
+    /// Unread today. Kept because this is a bull/warn/bear/dim SET taken from
+    /// the theme in one place — dropping the middle rung would leave a caller
+    /// that wants an amber data-quality state reaching past the struct for it,
+    /// which is how the colour sprawl in AT-169 started. Deleting one member of
+    /// a semantic triple is not the same kind of cleanup as deleting a stray
+    /// helper.
+    #[allow(dead_code)] // completes the bull/warn/bear triple
     warn:         Color32,
     bear:         Color32,
     dim:          Color32,

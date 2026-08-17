@@ -11,7 +11,7 @@
 //! }
 //! ```
 
-use egui::{Color32, Response, Sense, Ui};
+use egui::{Response, Sense, Ui};
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;

@@ -19,9 +19,8 @@
 //!     });
 //! ```
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{Color32, CornerRadius, Pos2, Sense, Stroke, StrokeKind, Ui, Vec2};
 use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::widgets::{Button, Tooltip, tokens::Variant};

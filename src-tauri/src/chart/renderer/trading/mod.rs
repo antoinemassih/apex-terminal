@@ -14,7 +14,6 @@ pub(crate) mod paper;
 pub(crate) mod broker;
 
 use std::sync::{Mutex, OnceLock};
-use crate::chart_renderer::ui::style::COLOR_PROFIT_GREEN;
 use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 use crate::data::connectivity::Backoff;
 

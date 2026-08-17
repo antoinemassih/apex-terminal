@@ -4,8 +4,8 @@
 //! reference. Universal primitive: every style renders it; only the surrounding
 //! cluster styling (radius, fill) and the palette bull/bear colours vary.
 
-use egui::{Align2, Color32, FontId, Rect, Sense, Ui, Vec2};
-use super::super::super::style::{font_sm, font_xs, gap_md, gap_sm, color_subtle, mono_sm};
+use egui::{Color32, Rect, Sense, Ui, Vec2};
+use super::super::super::style::{font_sm, gap_md, gap_sm, color_subtle, mono_sm};
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -26,7 +26,6 @@ pub struct TickerStripResponse {
 /// laid out left-to-right; the strip clips to `ui.available_width()`.
 pub fn ticker_strip(ui: &mut Ui, t: &Theme, entries: &[TickerEntry]) -> TickerStripResponse {
     use crate::ui_kit::cascade::El;
-    use crate::ui_kit::layout::{Flex, Item};
 
     let mut clicked: Option<String> = None;
     let avail = ui.available_size_before_wrap();

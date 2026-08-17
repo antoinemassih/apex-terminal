@@ -6,15 +6,14 @@
 //! Visual rule: CHART PAINT IS SACRED. None of these touch the chart canvas;
 //! they only compose UI chrome around it.
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, RichText, Sense, Ui, Vec2};
+use egui::{Color32, RichText, Sense, Ui};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as UiButton};
 use crate::ui_kit::widgets::tokens::Variant as UiVariant;
 use super::super::style::{
     self, color_alpha, color_dim, color_muted, split_divider,
-    gap_sm, gap_md, gap_lg, gap_xs, GAP_SM, GAP_MD, GAP_LG,
+    gap_sm, gap_md, gap_xs, GAP_SM, GAP_MD, GAP_LG,
     font_md, font_sm, font_2xl, gap_3xl, alpha_muted,
 };
 

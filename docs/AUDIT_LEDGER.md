@@ -2000,3 +2000,63 @@ File-level allows **41 → 30**. Item-level 46 → 49, each addition carrying it
 reason.
 
 ---
+
+## AT-182 — file-level dead-code allows reach zero
+
+AT-180 found 41 `#![allow(dead_code, unused_imports)]` at file scope, invisible
+to the ratchet that exists to measure suppression. AT-181 cleared eleven. This
+clears the rest.
+
+**41 → 0.** Total allows 79 → 53, all of them item-level now, and
+`dead_code_allows_file` is a ceiling at zero: a blanket allow over a file is
+never the right shape, because it also covers everything added to that file
+later.
+
+What the 30 remaining were actually hiding, once measured as a delta against the
+normal build rather than a raw warning count: **38 items, of which 32 were
+unused imports.** The suppression was overwhelmingly import rot, not dead code.
+Removing the allows and pruning what they hid touched 64 files.
+
+The six real items were each decided rather than swept:
+
+* `dom_row::price_fmt` — initialised to `"{:.2}"`, never read, no setter.
+  Deleted.
+* `semantic_label::Theme` — an unused type alias. Deleted.
+* `chrome::pane::warn` — KEPT with a reason. It is the middle rung of a
+  bull/warn/bear/dim set taken from the theme in one place; dropping it would
+  leave the next caller who wants an amber state reaching past the struct, which
+  is how the colour sprawl in AT-169 started.
+* `screener_build::CatalogEntry::source` — KEPT. It is parsed from the catalog
+  JSON, so deleting the field means the deserialiser silently stops reading a
+  field the server still sends. Read it or drop it from the contract; do not
+  quietly stop parsing it.
+* `gpu::rgb` / `rgba_pre` — KEPT. Only transitively dead (AT-181).
+
+**And one lying parameter.** `Dropdown::new(id_salt)` and
+`DropdownOwned::new(id_salt)` took an id salt, stored it, and never read it —
+`show` delegates to `ui_kit::Select`, which derives identity from `ui` like any
+egui widget, so the salt became vestigial when those were migrated to delegate.
+Eleven call sites were passing distinct strings ("heat_idx",
+"spread_strategy_combo", `format!("group_{pane_idx}")`) in the reasonable belief
+that identity depended on them. A parameter that looks load-bearing and is
+ignored is the same defect class as a button that looks pressable and does
+nothing. Removed from both signatures and all eleven call sites.
+
+**Two instrument corrections on the way.**
+
+The import pruner ran off `cargo check --lib`, which does not compile test
+modules, so it removed imports that only tests use — `AlphaTier` in
+`recipes.rs` and the whole import block of `gpu.rs::tab_cache_lru_tests`. The
+lib built clean and `cargo test` did not. Restored; the lesson is that "unused"
+from a lib-only check is not "unused".
+
+The single-system census counted `use` lines as consumers. Removing two dead
+`use ...ComponentTheme;` lines dropped it 339 → 337 and tripped the FLOOR — the
+gate reporting a cleanup as abandonment of the layer everything migrates to.
+Exactly the shape of `flex_rows` firing when a `Flex::row()` became an
+`El::row()` (AT-173): a census that counts mentions punishes anything that
+tidies the mentions. `use` lines are excluded now, which also means the numbers
+finally mean what they say — `ComponentTheme` is 256 real consumers, not 337
+mentions of which ~81 were imports.
+
+---

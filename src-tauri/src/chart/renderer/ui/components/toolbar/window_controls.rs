@@ -14,7 +14,7 @@ use crate::chart_renderer::gpu::{
     CLOSE_REQUESTED, TB_BTN_CLICKED, save_state,
 };
 use crate::chart_renderer::ui::style::{
-    color_alpha, color_subtle, contrast_fg, stroke_std, BTN_ICON_LG,
+    color_subtle, contrast_fg, stroke_std, BTN_ICON_LG,
 };
 
 /// Render the three custom window controls (Close, Maximize/Restore, Minimize).

@@ -172,7 +172,7 @@ if is_spawn || watchlist.open {
                             let active_name = wl_names.get(active_idx).cloned().unwrap_or_else(|| "Default".into());
                             let wl_opts: Vec<(usize, String)> = wl_names.iter().enumerate()
                                 .map(|(i, n)| (i, n.clone())).collect();
-                            let (_, combo_resp) = super::super::inputs::select::DropdownOwned::new("wl_selector")
+                            let (_, combo_resp) = super::super::inputs::select::DropdownOwned::new()
                                 .options(wl_opts)
                                 .width(ui.available_width() - right_cluster_w - plus_w)
                                 .font_size(9.0)
@@ -1639,7 +1639,7 @@ if is_spawn || watchlist.open {
                         ui.add_space(chain_row_inset());
                         dim_label(ui, "DTE", t.dim);
                         let mut cur_dte = watchlist.chain.far_dte;
-                        if super::super::inputs::select::Dropdown::new("far_dte")
+                        if super::super::inputs::select::Dropdown::new()
                             .options(&dte_opts)
                             .width(100.0)
                             .theme(t)
@@ -2178,7 +2178,7 @@ if is_spawn || watchlist.open {
                                     sm_opts.push((StrikeMode::Pct(pi as u8), format!("{}%", pct)));
                                 }
                                 sm_opts.push((StrikeMode::StdDev, "Std Dev".into()));
-                                super::super::inputs::select::DropdownOwned::new("sm_0")
+                                super::super::inputs::select::DropdownOwned::new()
                                     .options(sm_opts)
                                     .width(40.0)
                                     .font_size(8.0)
@@ -2239,7 +2239,7 @@ if is_spawn || watchlist.open {
                                     sm_opts.push((StrikeMode::Pct(pi as u8), format!("{}%", pct)));
                                 }
                                 sm_opts.push((StrikeMode::StdDev, "Std Dev".into()));
-                                super::super::inputs::select::DropdownOwned::new("sm_f")
+                                super::super::inputs::select::DropdownOwned::new()
                                     .options(sm_opts)
                                     .width(40.0)
                                     .font_size(8.0)

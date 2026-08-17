@@ -32,7 +32,7 @@
 //!     .show(ui, theme);
 
 use egui::{
-    CornerRadius, FontId, Key, Margin, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2,
+    Key, Margin, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2,
 };
 
 use super::motion;

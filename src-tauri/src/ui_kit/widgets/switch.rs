@@ -11,7 +11,7 @@
 //!   let mut enabled = true;
 //!   ui.add(Switch::new(&mut enabled).label("Outside RTH"));
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
+use egui::{Color32, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::motion;
 use super::theme::ComponentTheme;

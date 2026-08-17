@@ -1,15 +1,15 @@
 {
-  "dead_code_allows": 79,
-  "dead_code_allows_file": 30,
+  "dead_code_allows": 53,
+  "dead_code_allows_file": 0,
   "eprintln_in_data": 0,
   "expect_total": 56,
   "file_loc": {
-    "chart/renderer/gpu.rs": 10978,
+    "chart/renderer/gpu.rs": 10980,
     "chart/renderer/render/pane/core.rs": 14015,
     "chart/renderer/trading/order_manager.rs": 8393,
     "chart/renderer/ui/chart_widgets.rs": 3352,
     "chart/renderer/ui/style.rs": 5003,
-    "dev_inspector/server.rs": 2809,
+    "dev_inspector/server.rs": 2808,
     "foundation/design_inspector.rs": 3413
   },
   "hand_colour_math": 0,

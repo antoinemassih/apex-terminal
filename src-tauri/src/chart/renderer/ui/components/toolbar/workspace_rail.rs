@@ -24,7 +24,7 @@ use crate::ui_kit::icons::Icon;
 use crate::ui_kit::sx::Tone;
 use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::chart_renderer::ui::style::{
-    tint, font_xs, font_sm, gap_xs, gap_sm, stroke_std, radius_sm, contrast_fg,
+    tint, font_xs, gap_xs, gap_sm, stroke_std, contrast_fg,
 };
 
 const COLLAPSED_W: f32 = 52.0;

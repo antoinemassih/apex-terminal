@@ -7,9 +7,8 @@
 //!   - Owns its own open/closed state via &mut bool.
 //!   - Larger / richer content; padding gap_sm.
 
-#![allow(dead_code)]
 
-use egui::{Color32, Id, Key, Rect, Stroke, Ui, Vec2};
+use egui::{Id, Key, Rect, Stroke, Ui, Vec2};
 
 use super::motion;
 use super::placement::{compute as compute_placement, Placement, Side};

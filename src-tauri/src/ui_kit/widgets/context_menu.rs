@@ -19,12 +19,10 @@
 //! to the original `&dyn ComponentTheme`. This is an explicit, documented
 //! variance from the "Builder + show(ui, theme)" rule in `CLAUDE.md`.
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Align2, Color32, FontId, Id, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
+use egui::{Align2, Color32, Id, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use super::theme::{ComponentTheme, PortableTheme};
-use crate::ui_kit::sx::{palette_ct, Tone};
 use super::motion;
 
 use crate::ui_kit::widgets::frames::{BorderAlpha, PopupFrame};

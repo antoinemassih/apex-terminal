@@ -2,7 +2,6 @@
 //! egui handles UI + chart painting. winit handles window on non-main thread.
 
 use std::sync::{mpsc, Arc, Mutex};
-use std::fmt::Write as FmtWrite;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -276,8 +275,13 @@ pub(crate) const fn hairline_border_variant(bg: egui::Color32) -> egui::Color32 
 /// breaks those still-present definitions, so the chain has to go together or
 /// not at all — and deleting a colour table on the strength of a transitive
 /// warning is not a change to make in passing.
+#[allow(dead_code)] // transitively dead — see the note above
 pub(crate) const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 /// Premultiplied RGBA — all callers must pass already-premultiplied RGB components.
+///
+/// Transitively dead for the same reason as `rgb` above: its consumers are
+/// themselves unused, so it goes when that chain goes.
+#[allow(dead_code)] // transitively dead — see `rgb`
 pub(crate) const fn rgba_pre(r: u8, g: u8, b: u8, a: u8) -> egui::Color32 { egui::Color32::from_rgba_premultiplied(r, g, b, a) }
 
 /// UI style presets — placeholder names for now. Selected style is shown
@@ -328,7 +332,6 @@ fn compact_adjusted(base: f32, wl: &Watchlist, floor: f32) -> f32 {
 /// Style-aware non-tabs pane header height. Mirrors `PaneHeaderSize::header_h`
 /// but lets specific styles tweak vertical density.
 pub(crate) fn pane_header_h(wl: &Watchlist) -> f32 {
-    use crate::chart_renderer::PaneHeaderSize;
     let base = wl.pane_header_size.header_h();
     // Per-style compact adjustment comes from the STYLE, not from a match on
     // its index — see `Chrome::pane_header_compact_adjust`. The floor stays
@@ -469,7 +472,6 @@ fn paint_pane_card_frames(ctx: &egui::Context, panes: &[Chart], layout: Layout, 
 
 /// Style-aware tabs pane header height. Mirrors `PaneHeaderSize::tabs_header_h`.
 pub(crate) fn pane_tabs_header_h(wl: &Watchlist) -> f32 {
-    use crate::chart_renderer::PaneHeaderSize;
     let base = wl.pane_header_size.tabs_header_h();
     let style_adj = compact_adjusted(base, wl, 20.0);
     (style_adj * super::ui::style::current().header_height_scale).max(16.0)
@@ -649,7 +651,7 @@ use super::ui::style::{
     alpha_muted, alpha_dim, alpha_strong, alpha_active,
 };
 use super::ui::style as style;
-use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r, compute_obv};
+use super::compute::{detect_divergences, compute_atr};
 
 // compute_sma, compute_ema — now in compute.rs
 

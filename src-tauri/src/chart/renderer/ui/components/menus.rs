@@ -1,11 +1,9 @@
 //! Builder + impl Widget primitives — menus family.
 //! See ui/widgets/mod.rs for the rationale.
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
+use egui::{Color32, Response, Stroke, Ui, Widget};
 use super::super::style::*;
-use super::semantic_label::{SemanticLabel, LabelVariant};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 

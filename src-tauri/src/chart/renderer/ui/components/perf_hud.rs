@@ -5,7 +5,7 @@
 //! spans, allocation counts, GPU/CPU/RAM stats, and recent jank events.
 
 use egui::{Color32, RichText};
-use super::super::style::{font_xs, font_sm, color_alpha, alpha_solid, radius_sm, stroke_std, gap_xs, gap_sm};
+use super::super::style::{color_alpha, alpha_solid, radius_sm, stroke_std, gap_xs, gap_sm};
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> crate::chart_renderer::gpu::Theme {

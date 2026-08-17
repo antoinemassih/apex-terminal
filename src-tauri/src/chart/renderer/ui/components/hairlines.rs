@@ -1,7 +1,7 @@
 //! Horizontal and vertical hairline dividers.
 
 use super::super::style::*;
-use egui::{self, Color32, Pos2, Sense, Stroke, Ui, Vec2};
+use egui::{self, Color32, Pos2, Stroke, Ui};
 
 /// Snap a 1px-ish divider to the physical pixel grid so it renders crisp at
 /// fractional DPI (HiDPI) instead of blurring across two rows. Returns the

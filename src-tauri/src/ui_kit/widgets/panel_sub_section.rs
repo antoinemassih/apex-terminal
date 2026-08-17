@@ -46,7 +46,7 @@
 //! - For freeform expand/collapse with a normal-case title — use
 //!   `Disclosure`.
 
-use egui::{CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item, FlexSlots};

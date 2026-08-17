@@ -30,7 +30,7 @@
 //! The re-exports keep every `bug_anchor::…` call site (and the `bug_anchor!`
 //! macro) compiling unchanged.
 
-use egui::{Align2, Color32, FontId, Rect, Sense, Stroke};
+use egui::{Align2, Color32, Rect, Sense, Stroke};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 

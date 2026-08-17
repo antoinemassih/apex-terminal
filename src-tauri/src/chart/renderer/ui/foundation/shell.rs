@@ -4,9 +4,8 @@
 //!
 //! Wave 4.5b will migrate existing widgets onto these shells.
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Margin, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{Color32, Margin, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 use super::super::style::*;
 use super::interaction::{apply_interaction, InteractionState, InteractionTokens};

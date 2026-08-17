@@ -39,4 +39,4 @@ pub(crate) mod notice;
 // crate::chart::renderer::render::pane::{render_toolbar, draw_chart}`)
 // keep compiling. As sub-systems get extracted in later waves, their
 // re-exports get added here too.
-pub(crate) use core::{render_toolbar, draw_chart};
+pub(crate) use core::{draw_chart};

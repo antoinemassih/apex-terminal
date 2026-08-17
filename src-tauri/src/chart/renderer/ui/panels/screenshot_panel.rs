@@ -10,7 +10,6 @@
 //! as secondary, and a trailing delete-X + View button.
 
 use egui;
-use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, Tooltip};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};

@@ -14,7 +14,7 @@
 //!     .compact(true).show(ui, theme);
 //! ```
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 use super::theme::ComponentTheme;

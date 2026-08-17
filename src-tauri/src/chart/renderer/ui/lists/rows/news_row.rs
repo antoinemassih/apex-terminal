@@ -3,7 +3,6 @@
 //! wrapping retains exact pixel control while sharing shell-level
 //! hover/selected/focus paint.
 
-#![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Response, Ui};
 use super::super::super::style::*;

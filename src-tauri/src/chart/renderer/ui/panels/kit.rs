@@ -18,20 +18,18 @@
 //! - InputRow: leading dim label + Input, fixed compact height.
 //! - DualAction: two equal-width tone-colored ghost buttons side-by-side.
 
-#![allow(dead_code)]
 
-use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 use crate::ui_kit::cascade::El;
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone as SxTone;
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 
 use super::super::style::{
-    alpha_ghost, alpha_line, alpha_soft, alpha_subtle,
+    alpha_ghost, alpha_line, alpha_soft, 
     color_alpha, color_dim, current, font_xs, gap_md, gap_sm, gap_xs,
     section_header_font_id, style_label_case, stroke_thin,
 };
-use super::super::components::text::SectionLabel;
 use crate::chart_renderer::gpu::{Theme, Watchlist};
 use crate::ui_kit::widgets::{Button, tokens::{Size as KitSize, Variant}};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;

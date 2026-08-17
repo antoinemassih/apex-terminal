@@ -166,6 +166,22 @@ def census():
             text = production_text(os.path.join(root, f))
             if not text:
                 continue
+            # `use` lines are not CONSUMERS.
+            #
+            # An import is a declaration of intent to use something, and an
+            # UNUSED import is not even that. Removing two dead
+            # `use ...ComponentTheme;` lines dropped the count 339 -> 337 and
+            # tripped the FLOOR, so the gate reported a cleanup as abandonment
+            # of the layer everything is migrating to.
+            #
+            # Same shape as `flex_rows` firing when a `Flex::row()` became an
+            # `El::row()` (AT-173): a census that counts MENTIONS rather than
+            # uses punishes anything that tidies the mentions.
+            text = "\n".join(
+                ln
+                for ln in text.split("\n")
+                if not ln.lstrip().startswith("use ")
+            )
             for name, rx in compiled.items():
                 counts[name] += len(rx.findall(text))
     return counts

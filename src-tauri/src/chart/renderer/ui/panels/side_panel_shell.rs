@@ -37,7 +37,6 @@
 //! - [`PanelFooter`](super::panel_footer::PanelFooter) — sticky bottom
 //!   action band (primary/secondary + meta).
 
-#![allow(dead_code)]
 
 use std::ops::RangeInclusive;
 use crate::ui_kit::sx::Tone;

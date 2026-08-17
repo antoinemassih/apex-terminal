@@ -5,7 +5,7 @@
 //!   ui.add(Kbd::new("Ctrl+K"));
 //!   ui.add(Kbd::sequence(&["Cmd", "Shift", "P"]));
 
-use egui::{FontId, Response, Sense, Ui, Vec2, Widget};
+use egui::{Response, Sense, Ui, Vec2, Widget};
 
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 

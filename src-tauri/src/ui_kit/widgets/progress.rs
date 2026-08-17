@@ -11,7 +11,7 @@
 //!   ui.add(Progress::circular(0.5).size(Size::Lg));
 //!   ui.add(Progress::circular_indeterminate());
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
+use egui::{Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};

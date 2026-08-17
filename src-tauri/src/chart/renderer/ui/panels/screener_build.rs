@@ -92,7 +92,6 @@
 //! Both use `reqwest::blocking` on a background thread (same pattern as
 //! `msg_tension_panel.rs`).
 
-#![allow(dead_code)]
 
 use std::sync::{OnceLock, Mutex, atomic::{AtomicBool, AtomicU32, Ordering}};
 
@@ -171,6 +170,13 @@ const BUILTIN_CLASSES: &[&str] = &["stocks", "options"];
 struct CatalogEntry {
     key:    String,   // DSL key fed to condition JSON
     label:  String,   // user-facing label
+    /// Parsed from the catalog JSON and not yet read. Kept rather than dropped
+    /// because it is DATA the server sends — deleting the field means the
+    /// deserialiser silently discards a field the catalog contract still
+    /// carries, and the next person to want "group the catalog by source" has
+    /// to rediscover that it was already there. Read it or drop it from the
+    /// contract; do not quietly stop parsing it.
+    #[allow(dead_code)] // part of the catalog contract; not yet surfaced in the UI
     source: String,   // "indicator" | "signal" | "price"
 }
 

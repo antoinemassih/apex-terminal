@@ -36,24 +36,14 @@
 //! `PaneState<T>` derives `serde::{Serialize, Deserialize}` when `T` does.
 //! Persist the full state to disk to restore workspace layouts across sessions.
 
-use egui::{
-    Color32, CornerRadius, CursorIcon, Pos2, Rect, Sense, Stroke, Ui, Vec2,
-};
 use serde::{Deserialize, Serialize};
 
-use super::theme::ComponentTheme;
-use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
-use crate::ui_kit::sx::{palette_ct, Tone};
 // ContextMenu / MenuItem / DangerMenuItem are available for future enhancement
 // (Tier B: themed context menus). For now we use egui's built-in context_menu
 // with plain Button rows — removes a borrow-conflict between the closure's &mut Ui
 // and the ContextMenu::show(&mut Ui) sub-call.
 #[allow(unused_imports)]
 use super::context_menu::{ContextMenu, DangerMenuItem, MenuItem};
-use super::motion;
-use crate::ui_kit::tokens as st;
-use crate::ui_kit::text_style::TextStyle;
-use crate::ui_kit::interaction::{apply_interaction, InteractionState, InteractionTokens};
 
 // ─── Identifiers ─────────────────────────────────────────────────────────────
 

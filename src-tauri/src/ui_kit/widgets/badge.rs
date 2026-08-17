@@ -6,7 +6,7 @@
 //!   ui.add(Badge::count(150).max(99));     // "99+"
 //!   ui.add(Badge::dot().tone(TagTone::Warn));
 
-use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
+use egui::{Color32, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::tag::TagTone;
 use super::theme::ComponentTheme;

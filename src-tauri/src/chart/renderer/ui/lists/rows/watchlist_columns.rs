@@ -7,7 +7,6 @@
 //! that paints into an x-slice rect. The row widget allocates rects across the
 //! middle area and dispatches to each column's render fn in order.
 
-#![allow(dead_code)]
 
 use egui::{Color32, Painter, Rect, Stroke};
 use serde::{Deserialize, Serialize};

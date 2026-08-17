@@ -17,7 +17,7 @@
 
 use crate::chart_renderer::gpu::{Chart, Theme};
 use crate::chart_renderer::ui::style::{
-    color_alpha, font_md, font_sm, mono_2xs, stroke_std, stroke_thin,
+    color_alpha, mono_2xs, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
 

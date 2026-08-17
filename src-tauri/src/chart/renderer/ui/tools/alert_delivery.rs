@@ -129,7 +129,7 @@ fn show_toast(symbol: &str, message: &str) {
         let title = format!("APEX alert — {symbol}");
         let body = message.to_string();
         crate::foundation::guard::spawn_guarded("alert_toast", move || {
-            use tauri_winrt_notification::{Duration, Sound, Toast};
+            use tauri_winrt_notification::{Duration, Toast};
             // POWERSHELL_APP_ID is the standard AppUserModelID fallback for an
             // app that hasn't registered its own AUMID (that comes with the
             // installer, W4-07). Without a valid AUMID Windows silently drops

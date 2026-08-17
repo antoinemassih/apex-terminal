@@ -9,10 +9,9 @@
 //! Built on `RowShell` painter mode — the body owns painter geometry while
 //! the shell handles base fill + hover/selected overlays.
 
-#![allow(dead_code, unused_imports)]
 
 use crate::ui_kit::cascade::El;
-use egui::{Color32, Rect, Response, Sense, Stroke, Ui, Widget};
+use egui::{Color32, Rect, Response, Sense, Stroke, Ui};
 use std::cell::RefCell;
 use std::rc::Rc;
 use super::super::super::style::*;

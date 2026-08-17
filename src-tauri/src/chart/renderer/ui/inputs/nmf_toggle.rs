@@ -8,7 +8,6 @@
 //! NmfToggle::new(&mut watchlist.chain.near_nmf).theme(t).show(ui);
 //! ```
 
-#![allow(dead_code)]
 
 use egui::Ui;
 use crate::chart_renderer::gpu::Theme;

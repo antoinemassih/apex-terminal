@@ -29,7 +29,7 @@
 //! affix support.
 
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Margin, Rect, Sense, Stroke, Ui, Vec2,
+    Align2, Color32, FontId, Margin, Rect, Sense, Stroke, Ui, Vec2,
 };
 
 use super::theme::ComponentTheme;

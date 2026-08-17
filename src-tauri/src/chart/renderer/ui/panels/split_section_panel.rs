@@ -37,7 +37,6 @@
 //! - [`PanelFooter`](super::panel_footer::PanelFooter) — sticky bottom
 //!   actions.
 
-#![allow(dead_code)]
 
 use std::ops::RangeInclusive;
 use crate::chart_renderer::ui::style::tint;
@@ -54,7 +53,6 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::tokens::{
     alpha_faint, split_divider, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::chart_renderer::gpu::Theme;
 // SplitSection / Watchlist / pane_tabs_header_h / panel_action_btn come from
 // chart-app code — this file lives in chart_renderer now, so import directly.

@@ -9,14 +9,9 @@
 //! - [`SemanticLabel::into_rich_text`] — produces a `RichText` for embedding inside
 //!                                       `Button::new(...)`, `selectable_label`, etc.
 
-#![allow(dead_code)]
 
 use egui::{Color32, Response, RichText, Ui};
 use super::super::style::{font_sm, font_md, font_lg};
-
-// ─── Theme alias ─────────────────────────────────────────────────────────────
-
-type Theme = crate::chart_renderer::gpu::Theme;
 
 // ─── LabelVariant ────────────────────────────────────────────────────────────
 

@@ -13,9 +13,8 @@
 //!     .show(ui);
 //! ```
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, RichText, Stroke, Ui, Vec2};
+use egui::{Response, RichText, Ui, Vec2};
 use super::super::style::*;
 use crate::ui_kit::widgets::{Button, Input, tokens::Variant};
 

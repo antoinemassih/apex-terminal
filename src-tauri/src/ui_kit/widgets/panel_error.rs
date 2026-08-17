@@ -34,9 +34,9 @@
 //!
 //! Sister widgets: [`PanelEmpty`], [`PanelLoading`], [`Alert`].
 
-use egui::{Align, FontId, Layout, RichText, Ui};
+use egui::{Align, Layout, RichText, Ui};
 
-use crate::ui_kit::tokens::{color_muted, font_xl, gap_md, gap_sm, gap_xs};
+use crate::ui_kit::tokens::{color_muted, gap_md, gap_sm, gap_xs};
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::text_style::TextStyle;

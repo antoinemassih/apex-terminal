@@ -36,7 +36,7 @@
 //!
 //! Sister widgets: [`Tag`], [`Badge`], [`Indicator`], [`Alert`].
 
-use egui::{FontId, Sense, Ui, Vec2};
+use egui::{Sense, Ui, Vec2};
 
 use crate::ui_kit::layout::{Align as FlexAlign, Flex, Item};
 

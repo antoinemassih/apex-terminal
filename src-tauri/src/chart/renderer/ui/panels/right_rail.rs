@@ -31,7 +31,7 @@ use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
 use super::rail_layout::{RailHeight, compute_rail_rects, pack_columns};
 use super::side_panel_shell::{RailSlot, take_size_cycle};
-use super::super::style::{region_gap, color_alpha, alpha_solid, alpha_heavy};
+use super::super::style::{region_gap, color_alpha, alpha_solid};
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder};
 
 type Theme = crate::chart_renderer::gpu::Theme;

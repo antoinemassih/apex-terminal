@@ -6,7 +6,6 @@
 //! handles header click → sort state, vertical scroll, striping, and an
 //! optional first checkbox column.
 
-#![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Response, Sense, Stroke, Ui};
 use super::super::super::style::*;

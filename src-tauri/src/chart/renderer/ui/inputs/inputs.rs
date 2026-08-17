@@ -1,9 +1,8 @@
 //! Builder + impl Widget primitives — inputs family.
 //! See ui/widgets/mod.rs for the rationale.
 
-#![allow(dead_code, unused_imports, deprecated)]
 
-use egui::{Color32, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
+use egui::{Color32, Sense, Ui};
 use super::super::style::*;
 use super::super::super::gpu::Theme;
 

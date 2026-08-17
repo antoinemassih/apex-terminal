@@ -9,13 +9,12 @@
 //! These additions are NEW only — call sites are not migrated yet (Wave 5).
 //! Inner controls should be built from `widgets::{text, inputs}` primitives.
 
-#![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Vec2};
 use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{FormRow, Tooltip};
+use crate::ui_kit::widgets::{Tooltip};
 
 // Shorthand for the Theme type used across the codebase.
 type Theme = crate::chart_renderer::gpu::Theme;

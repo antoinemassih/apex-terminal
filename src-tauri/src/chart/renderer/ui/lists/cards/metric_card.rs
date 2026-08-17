@@ -2,9 +2,8 @@
 //!
 //! Wave 4.5d: migrated onto `CardShell`. Public API unchanged.
 
-#![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Margin, RichText, Ui};
+use egui::{Margin, RichText, Ui};
 use super::super::super::style::*;
 use crate::chart::renderer::ui::foundation::shell::CardShell;
 

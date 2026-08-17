@@ -8,7 +8,6 @@
 //! let frame = PanelFrame::new(bg, border).theme(t).build();
 //! ```
 
-#![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Stroke};
 use super::super::style::*;

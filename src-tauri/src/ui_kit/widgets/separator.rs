@@ -6,7 +6,7 @@
 //!   ui.add(Separator::horizontal().with_label("Active orders"));
 //!   ui.add(Separator::vertical());
 
-use egui::{FontId, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
+use egui::{Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;

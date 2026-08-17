@@ -299,7 +299,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     let strat_opts: Vec<(SpreadStrategy, &'static str)> = SpreadStrategy::all()
                         .iter().map(|s| (*s, s.label())).collect();
                     let mut cur_strat = watchlist.spread_state.strategy;
-                    if super::super::inputs::select::Dropdown::new("spread_strategy_combo")
+                    if super::super::inputs::select::Dropdown::new()
                         .options(&strat_opts)
                         .width(180.0)
                         .theme(t)
@@ -393,7 +393,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             let expiry_id = format!("leg_expiry_{}", idx);
                             let opts: Vec<(&'static str, &'static str)> = EXPIRY_OPTIONS.iter().map(|&s| (s, s)).collect();
                             let mut cur: &'static str = EXPIRY_OPTIONS.iter().copied().find(|&s| s == leg.expiry.as_str()).unwrap_or("0DTE");
-                            if super::super::inputs::select::Dropdown::new(&expiry_id)
+                            if super::super::inputs::select::Dropdown::new()
                                 .options(&opts)
                                 .width(52.0)
                                 .theme(t)

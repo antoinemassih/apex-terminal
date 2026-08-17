@@ -11,15 +11,10 @@
 //!
 //! See ui/widgets/mod.rs for the rationale.
 
-#![allow(dead_code, unused_imports)]
 
-use std::collections::HashSet;
-use std::hash::Hash;
 
-use egui::{Color32, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
+use egui::{Color32, Response, RichText, Stroke, Ui};
 use super::super::style::*;
-use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::SearchInput;
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
@@ -34,13 +29,12 @@ fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
 /// ```ignore
 /// let mut chart_kind = ChartKind::Candle;
 /// let opts = [(ChartKind::Candle, "Candle"), (ChartKind::Line, "Line")];
-/// if Dropdown::new("dd_chart_kind").options(&opts).theme(t).show(ui, &mut chart_kind) {
+/// if Dropdown::new().options(&opts).theme(t).show(ui, &mut chart_kind) {
 ///     // changed
 /// }
 /// ```
 #[must_use = "Dropdown must be rendered via `.show(ui, &mut value)`"]
 pub struct Dropdown<'a, T: PartialEq + Copy> {
-    id_salt: &'a str,
     label: Option<&'a str>,
     options: &'a [(T, &'a str)],
     width: Option<f32>,
@@ -49,9 +43,18 @@ pub struct Dropdown<'a, T: PartialEq + Copy> {
 }
 
 impl<'a, T: PartialEq + Copy> Dropdown<'a, T> {
-    pub fn new(id_salt: &'a str) -> Self {
+    /// No id salt.
+    ///
+    /// This took one and stored it without ever reading it. `show` delegates to
+    /// `ui_kit::widgets::Select`, which derives its identity from `ui` the way
+    /// egui does for every other widget, so the salt became vestigial when this
+    /// was migrated to delegate — and callers went on passing distinct strings
+    /// ("heat_idx", "spread_strategy_combo") in the reasonable belief that
+    /// identity depended on them. A parameter that looks load-bearing and is
+    /// ignored is the same defect class as a button that looks pressable and
+    /// does nothing.
+    pub fn new() -> Self {
         Self {
-            id_salt,
             label: None,
             options: &[],
             width: None,
@@ -351,7 +354,6 @@ impl<'a, T: PartialEq + Copy> Default for SegmentedControl<'a, T> {
 /// Returns `true` from `.show(...)` if the selected value changed.
 #[must_use = "DropdownOwned must be rendered via `.show(ui, &mut value)` or `.show_resp(...)`"]
 pub struct DropdownOwned<'a, T: Clone + PartialEq> {
-    id_salt: &'a str,
     label: Option<&'a str>,
     options: Vec<(T, String)>,
     width: Option<f32>,
@@ -363,9 +365,9 @@ pub struct DropdownOwned<'a, T: Clone + PartialEq> {
 }
 
 impl<'a, T: Clone + PartialEq> DropdownOwned<'a, T> {
-    pub fn new(id_salt: &'a str) -> Self {
+    /// No id salt — see `Dropdown::new` for why it was removed.
+    pub fn new() -> Self {
         Self {
-            id_salt,
             label: None,
             options: Vec::new(),
             width: None,

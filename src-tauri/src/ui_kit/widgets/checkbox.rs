@@ -12,7 +12,7 @@
 //!
 //!   ui.add(Checkbox::tri(&mut tri_state).label("Select all"));
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
+use egui::{Color32, Pos2, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
 
 use super::motion;
 use super::theme::ComponentTheme;

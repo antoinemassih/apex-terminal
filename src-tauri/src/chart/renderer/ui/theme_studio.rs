@@ -50,7 +50,7 @@ use crate::{
     chart_renderer::{
         gpu::Theme,
         ui::style::{
-            gap_lg, gap_md, gap_sm, gap_xs, radius_sm,
+            gap_lg, gap_md, gap_sm, gap_xs, 
             stroke_thin,
         },
     },
@@ -68,7 +68,7 @@ use crate::{
         assets::AssetRegistry,
         widgets::{
             theme::{
-                set_ambient_recipes, set_ambient_theme, PortableTheme,
+                set_ambient_recipes, PortableTheme,
             },
             tokens::{Size, Variant},
             Badge, Button, Input, PanelListRow, PanelSection, Tag, TagTone, Tabs, Tooltip,

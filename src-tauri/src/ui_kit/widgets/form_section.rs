@@ -17,7 +17,7 @@
 //!     .show(ui, theme);
 //! ```
 
-use egui::{CornerRadius, Response, Stroke, Ui};
+use egui::{Response, Stroke, Ui};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};

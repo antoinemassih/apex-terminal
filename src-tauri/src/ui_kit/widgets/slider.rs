@@ -14,7 +14,7 @@
 //!     .label("Qty")
 //!     .show(ui, theme);
 
-use egui::{Color32, CornerRadius, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
+use egui::{Color32, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::motion;
 use super::theme::ComponentTheme;

@@ -13,7 +13,6 @@
 //!   - Community — Phase-1 stub; the seam for a future homelab sharing API.
 
 use egui;
-use super::super::style::*;
 use crate::chart_renderer::gpu::{
     Chart, Layout, Theme, Watchlist,
     list_workspaces, save_workspace, delete_workspace, pane_tabs_header_h,
