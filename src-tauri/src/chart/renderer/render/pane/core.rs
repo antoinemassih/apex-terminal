@@ -2003,42 +2003,13 @@ fn render_chart_pane(
                 p.text(r.center(), egui::Align2::CENTER_CENTER, &tf, font, t.text);
                 x += w + 4.0;
             }
-            // LAST | MARK segmented
-            let font = mono_xs_plus();
-            let parts = [("LAST", false), ("MARK", true)];
-            let part_w = 36.0_f32;
-            let total_w = part_w * parts.len() as f32;
-            let outer = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(total_w, bar_h));
-            p.rect_filled(outer, 3.0, t.bg.gamma_multiply(0.4));
-            p.rect_stroke(outer, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Inside);
-            let mark_color = t.bear;
-            for (idx, (label, is_mark)) in parts.iter().enumerate() {
-                let r = egui::Rect::from_min_size(
-                    egui::pos2(x + part_w * idx as f32, y), egui::vec2(part_w, bar_h));
-                let resp = ui.allocate_rect(r, egui::Sense::click());
-                let active = chart.bar_source_mark == *is_mark;
-                let hovered = resp.hovered();
-                let bg_col = if active {
-                    if *is_mark { color_alpha(mark_color, 70) } else { color_alpha(t.accent, 60) }
-                } else if hovered {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    t.bg.gamma_multiply(0.55)
-                } else { egui::Color32::TRANSPARENT };
-                let fg_col = if active {
-                    if *is_mark { mark_color } else { t.accent }
-                } else { t.dim.gamma_multiply(0.95) };
-                if bg_col != egui::Color32::TRANSPARENT { p.rect_filled(r, 3.0, bg_col); }
-                p.text(r.center(), egui::Align2::CENTER_CENTER, *label, font.clone(), fg_col);
-                if resp.clicked() && chart.bar_source_mark != *is_mark {
-                    chart.bar_source_mark = *is_mark;
-                    let occ = chart.option_contract.clone();
-                    let display_sym = chart.symbol.clone();
-                    let tf = chart.timeframe.clone();
-                    if !occ.is_empty() && crate::apex_data::is_enabled() {
-                        fetch_option_bars_background(occ, display_sym, tf, *is_mark);
-                    }
-                }
-            }
+            // LAST | MARK segmented — the ONE definition.
+            //
+            // This copy used to set `bar_source_mark` and refetch WITHOUT
+            // clearing the bar buffers, so toggling here left the previous
+            // source's bars in place to be drawn alongside the incoming ones.
+            // See `mark_source_segmented`.
+            let _ = mark_source_segmented(ui, &p, t, chart, x, y, bar_h);
         }
         // Empty / loading panes still need to be selectable — without this the
         // bar-rendering early-return skips the interaction code that sets
@@ -7876,54 +7847,14 @@ fn render_chart_pane(
         let p = ui.painter_at(rect);
         // MARK_BARS_PROTOCOL — Last|Mark segmented toggle (option panes only).
         if chart.is_option {
-            let seg_h = bar_h;
-            let font = mono_xs_plus();
-            let parts = [("LAST", false), ("MARK", true)];
-            let part_w = 36.0_f32;
-            let total_w = part_w * parts.len() as f32;
-            let outer = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(total_w, seg_h));
-            // Subtle frame
-            p.rect_filled(outer, 3.0, t.bg.gamma_multiply(0.4));
-            p.rect_stroke(outer, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Inside);
-            let mark_color = t.bear; // red-ish accent for MARK
-            for (idx, (label, is_mark)) in parts.iter().enumerate() {
-                let r = egui::Rect::from_min_size(
-                    egui::pos2(x + part_w * idx as f32, y), egui::vec2(part_w, seg_h));
-                let resp = ui.allocate_rect(r, egui::Sense::click());
-                let active = chart.bar_source_mark == *is_mark;
-                let hovered = resp.hovered();
-                let bg_col = if active {
-                    if *is_mark { color_alpha(mark_color, 70) } else { color_alpha(t.accent, 60) }
-                } else if hovered {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    t.bg.gamma_multiply(0.55)
-                } else {
-                    egui::Color32::TRANSPARENT
-                };
-                let fg_col = if active {
-                    if *is_mark { mark_color } else { t.accent }
-                } else { t.dim.gamma_multiply(0.95) };
-                if bg_col != egui::Color32::TRANSPARENT { p.rect_filled(r, 3.0, bg_col); }
-                p.text(r.center(), egui::Align2::CENTER_CENTER, *label, font.clone(), fg_col);
-                if resp.clicked() && chart.bar_source_mark != *is_mark {
-                    // Toggle source: clear bars, swap WS subs, refetch history.
-                    chart.bar_source_mark = *is_mark;
-                    chart.bars.clear();
-                    chart.timestamps.clear();
-                    chart.indicator_bar_count = 0;
-                    chart.vol_analytics_computed = 0;
-                    chart.history_exhausted = false;
-                    let occ = chart.option_contract.clone();
-                    let display_sym = chart.symbol.clone();
-                    let tf = chart.timeframe.clone();
-                    let new_mark = chart.bar_source_mark;
-                    if !occ.is_empty() && crate::apex_data::is_enabled() {
-                        // fetch_option_bars_background flips the WS subs internally.
-                        fetch_option_bars_background(occ, display_sym, tf, new_mark);
-                    }
-                }
-            }
+            // The same definition the option toolbar uses.
+            let total_w = mark_source_segmented(ui, &p, t, chart, x, y, bar_h);
             x += total_w + 4.0;
+            // The badge below shares the toggle's type tier and accent, so
+            // they stay a matched pair when either is restyled.
+            let font = mono_xs_plus();
+            let mark_color = t.bear;
+            let seg_h = bar_h;
             // Persistent MARK indicator badge (per spec §"Visual hint") — visible
             // even when the segmented control is offscreen / scrolled.
             if chart.bar_source_mark {
@@ -13950,4 +13881,100 @@ fn osc_label_rect(
             14.0,
         ),
     )
+}
+
+
+/// The LAST | MARK bar-source toggle — ONE definition. Returns its total width
+/// so the caller can advance past it.
+///
+/// This existed TWICE, ~6000 lines apart, drawn identically (`part_w = 36.0`,
+/// the same colours, the same hover rules) — and with different SIDE EFFECTS.
+///
+/// The copy in the option toolbar set `bar_source_mark` and refetched. The copy
+/// in the timeframe row also cleared `bars`, `timestamps`,
+/// `indicator_bar_count`, `vol_analytics_computed` and `history_exhausted`,
+/// under the comment "Toggle source: clear bars, swap WS subs, refetch
+/// history."
+///
+/// So toggling from one control swapped the source cleanly and toggling from
+/// the other left the previous source's bars in the buffer, to be drawn
+/// alongside and appended to by the incoming feed. Same control, same label,
+/// two different behaviours depending on which one the user happened to click.
+///
+/// The clearing version is kept: its comment states the intent, and a source
+/// swap that does not discard the old source's bars is not a swap.
+fn mark_source_segmented(
+    ui: &mut egui::Ui,
+    p: &egui::Painter,
+    t: &Theme,
+    chart: &mut Chart,
+    x: f32,
+    y: f32,
+    h: f32,
+) -> f32 {
+    let font = mono_xs_plus();
+    let parts = [("LAST", false), ("MARK", true)];
+    let part_w = 36.0_f32;
+    // Declared rather than `x + part_w * idx`: the segments are siblings, and
+    // the outer frame is exactly their extent instead of a separate product.
+    let seg = parts
+        .iter()
+        .enumerate()
+        .fold(crate::ui_kit::cascade::El::row(), |el, (i, _)| {
+            el.child(crate::ui_kit::cascade::El::slot(
+                format!("p{i}"),
+                egui::vec2(part_w, h),
+            ))
+        })
+        .solve_rect(egui::Rect::from_min_size(
+            egui::pos2(x, y),
+            egui::vec2(part_w * parts.len() as f32, h),
+        ));
+
+    let total_w = part_w * parts.len() as f32;
+    let outer = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(total_w, h));
+    p.rect_filled(outer, 3.0, t.bg.gamma_multiply(0.4));
+    p.rect_stroke(outer, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Inside);
+
+    let mark_color = t.bear; // red-ish accent for MARK
+    for (idx, (label, is_mark)) in parts.iter().enumerate() {
+        let r = seg.rect(&format!("p{idx}"));
+        let resp = ui.allocate_rect(r, egui::Sense::click());
+        let active = chart.bar_source_mark == *is_mark;
+        let hovered = resp.hovered();
+        let bg_col = if active {
+            if *is_mark { color_alpha(mark_color, 70) } else { color_alpha(t.accent, 60) }
+        } else if hovered {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            t.bg.gamma_multiply(0.55)
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        let fg_col = if active {
+            if *is_mark { mark_color } else { t.accent }
+        } else {
+            t.dim.gamma_multiply(0.95)
+        };
+        if bg_col != egui::Color32::TRANSPARENT { p.rect_filled(r, 3.0, bg_col); }
+        p.text(r.center(), egui::Align2::CENTER_CENTER, *label, font.clone(), fg_col);
+
+        if resp.clicked() && chart.bar_source_mark != *is_mark {
+            // Toggle source: clear bars, swap WS subs, refetch history.
+            chart.bar_source_mark = *is_mark;
+            chart.bars.clear();
+            chart.timestamps.clear();
+            chart.indicator_bar_count = 0;
+            chart.vol_analytics_computed = 0;
+            chart.history_exhausted = false;
+            let occ = chart.option_contract.clone();
+            let display_sym = chart.symbol.clone();
+            let tf = chart.timeframe.clone();
+            let new_mark = chart.bar_source_mark;
+            if !occ.is_empty() && crate::apex_data::is_enabled() {
+                // fetch_option_bars_background flips the WS subs internally.
+                fetch_option_bars_background(occ, display_sym, tf, new_mark);
+            }
+        }
+    }
+    total_w
 }
