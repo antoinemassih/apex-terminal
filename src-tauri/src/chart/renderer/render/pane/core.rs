@@ -6027,7 +6027,11 @@ fn render_chart_pane(
             let label_text = ind.display_name();
             let label_rect = egui::Rect::from_min_size(
                 egui::pos2(rect.left() + 4.0, osc_top + 2.0),
-                egui::vec2(label_text.len() as f32 * 6.0 + 20.0, 14.0),
+                // Measured in the SAME font the label is painted with two
+                // lines below. `len() * 6.0` guessed one font's advance from a
+                // character count; a longer display name overran the pill and
+                // the hover [x] landed on top of the text.
+                egui::vec2(crate::ui_kit::style::measure_with_painter(&painter, &label_text, mono_xs()).x + 20.0, 14.0),
             );
             let label_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| label_rect.contains(p));
             let label_bg = if label_hovered { t.toolbar_border.gamma_multiply(0.5) } else { egui::Color32::TRANSPARENT };
@@ -6187,7 +6191,7 @@ fn render_chart_pane(
                 if is_bullish { "Bull Div" } else { "Bear Div" }
             };
             // Label background pill
-            let label_w = label.len() as f32 * 5.0 + 8.0;
+            let label_w = crate::ui_kit::style::measure_with_painter(&painter, label, mono_3xs()).x + 8.0;
             let pill = egui::Rect::from_center_size(
                 egui::pos2(mid_x, mid_y - 8.0), egui::vec2(label_w, 12.0));
             painter.rect_filled(pill, 3.0,
@@ -8214,13 +8218,13 @@ fn render_chart_pane(
             if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
             let oy = py(order.price);
             if (pos.y - oy).abs() < 14.0 && pos.x < yaxis_x_left {
-                // Compute approximate badge bounds
-                let qty_s = format!("{}", order.qty);
-                let not_s = fmt_notional(order.notional());
-                let is_d = order.status == OrderStatus::Draft;
-                let tw = 20.0 + qty_s.len() as f32 * 9.0 + 12.0 + not_s.len() as f32 * 9.0 + 12.0
-                    + (if is_d { "DRAFT" } else { "LIVE" }).len() as f32 * 6.0 + 8.0
-                    + if is_d { 38.0 } else { 0.0 } + 22.0 + 4.0;
+                // EXACT badge bounds, from the one definition the paint pass
+                // uses. This used to say "approximate" and compute its own
+                // width from character counts, with the status cell hard-coded
+                // to DRAFT-or-LIVE — so for a pending or partially-filled
+                // order the drag-exclusion zone was a different width from the
+                // badge it was excluding.
+                let tw = order_badge_metrics(&painter, order).total_w;
                 let bx = rect.left() + cw * 0.60 - tw * 0.5;
                 // Only start drag outside the badge
                 if pos.x < bx || pos.x > bx + tw {
@@ -9318,16 +9322,17 @@ fn render_chart_pane(
                     let oy = py(order.price);
                     let is_draft_o = order.status == OrderStatus::Draft;
                     let badge_h = 24.0_f32;
-                    // Recompute badge geometry to match rendering
-                    let qty_s = format!("{}", order.qty);
-                    let not_s = fmt_notional(order.notional());
-                    let status_s = if is_draft_o { "DRAFT" } else { "LIVE" };
-                    let side_w = 20.0_f32; let qty_w = qty_s.len() as f32 * 9.0 + 12.0;
-                    let not_w = not_s.len() as f32 * 9.0 + 12.0;
-                    let status_w = status_s.len() as f32 * 6.0 + 8.0;
-                    let send_w = if is_draft_o { 38.0_f32 } else { 0.0 };
-                    let x_btn_w = 22.0_f32;
-                    let total_w = side_w + qty_w + not_w + status_w + send_w + x_btn_w + 4.0;
+                    // The SAME geometry the paint pass uses, not a copy of it.
+                    // This block used to carry the comment "Recompute badge
+                    // geometry to match rendering" — an acknowledgement that it
+                    // had to be kept in sync by hand, and it was not: the
+                    // status cell was hard-coded to DRAFT-or-LIVE, so the X and
+                    // SEND buttons sat off their targets for every pending or
+                    // partially-filled order.
+                    let bm = order_badge_metrics(&painter, order);
+                    let (side_w, qty_w, x_btn_w, total_w) =
+                        (bm.side_w, bm.qty_w, bm.x_btn_w, bm.total_w);
+                    let send_w = bm.send_w;
                     let bx = rect.left() + cw * 0.60 - total_w * 0.5;
                     let by = oy - badge_h * 0.5;
 
@@ -11863,7 +11868,7 @@ fn render_play_lines_overlay(
             let badge_h = 20.0;
 
             let kind_w = if kind_label.len() > 1 { 24.0 } else { 18.0 };
-            let price_w = price_str.len() as f32 * 8.0 + 10.0;
+            let price_w = crate::ui_kit::style::measure_with_painter(&painter, &price_str, mono_xs()).x + 10.0;
             let label_w = 32.0; // "PLAY"
             let total_w = kind_w + price_w + label_w;
             let bx = rect.left() + cw * 0.50 - total_w * 0.5;
@@ -13086,25 +13091,16 @@ fn render_order_lines(
         let notional_str = fmt_notional(order.notional());
         // Surface the lifecycle state in the badge label so the operator can
         // disambiguate at a glance (especially the pending/unknown variants).
-        let status_label = match order.state {
-            OrderState::Draft         => "DRAFT",
-            OrderState::PendingSubmit => "SEND…",
-            OrderState::PendingCancel => "CXL…",
-            OrderState::PendingModify => "MOD…",
-            OrderState::Working       => "LIVE",
-            OrderState::PartialFill   => "PART",
-            OrderState::Filled        => "FILL",
-            OrderState::Unknown       => "??",
-            // Cancelled/Rejected are filtered out above; default just in case.
-            OrderState::Cancelled | OrderState::Rejected => "X",
-        };
-        let side_w = 20.0;
-        let qty_w = qty_str.len() as f32 * 9.0 + 12.0;
-        let notional_w = notional_str.len() as f32 * 9.0 + 12.0;
-        let status_w = status_label.len() as f32 * 6.0 + 8.0;
-        let send_w = if is_draft { 38.0 } else { 0.0 };
-        let x_btn_w = 22.0;
-        let total_w = side_w + qty_w + notional_w + status_w + send_w + x_btn_w + 4.0;
+        // One definition, shared with both hit tests — see
+        // `order_badge_metrics`. Widths are MEASURED in the font each cell
+        // paints with; they used to be `qty.len() * 9.0` and friends, three
+        // guesses at two fonts' advances summed into the badge's total, so any
+        // one of them being wrong shifted every cell after it.
+        let bm = order_badge_metrics(&painter, order);
+        let status_label = bm.status_label;
+        let (side_w, qty_w, notional_w, status_w, send_w, x_btn_w, total_w) = (
+            bm.side_w, bm.qty_w, bm.notional_w, bm.status_w, bm.send_w, bm.x_btn_w, bm.total_w,
+        );
         // Position badge ~60% from left (shifted 40px left from 2/3)
         let bx = rect.left() + cw * 0.60 - total_w * 0.5;
         let by = y - badge_h * 0.5;
@@ -13695,5 +13691,175 @@ fn render_divergence_lines_overlay(
                 painter.circle_filled(egui::pos2(x1, y1), 2.5, line_color);
             }
         }
+    }
+}
+
+
+// ─── Order badge geometry — ONE definition ──────────────────────────────────
+//
+// The badge `[B/S] [QTY] [notional] [STATUS] [SEND?] [X]` had its width
+// computed in THREE places: the paint pass, the badge-button hit test, and the
+// order-line drag hit test. The third carried the comment "Recompute badge
+// geometry to match rendering", which is an acknowledgement that it is a copy
+// that has to be kept in sync — and it was not.
+//
+// Both hit tests hard-coded the status cell as `if is_draft { "DRAFT" } else
+// { "LIVE" }`, while the paint pass renders the full lifecycle
+// (`SEND…`, `CXL…`, `MOD…`, `PART`, `FILL`, `??`). So for any order that was
+// not exactly Draft or Working, the clickable region was a different width
+// from the badge actually drawn — the X and SEND buttons sat off their
+// targets, and the drag-exclusion zone did not match the badge it was
+// excluding.
+//
+// All three now call this. Widths are MEASURED in the font each cell paints
+// with, rather than `qty.len() * 9.0`.
+
+/// The status text a badge shows for `state` — the same mapping the paint pass
+/// uses, so a hit test cannot disagree with what is on screen.
+fn order_badge_status_label(state: OrderState) -> &'static str {
+    match state {
+        OrderState::Draft         => "DRAFT",
+        OrderState::PendingSubmit => "SEND…",
+        OrderState::PendingCancel => "CXL…",
+        OrderState::PendingModify => "MOD…",
+        OrderState::Working       => "LIVE",
+        OrderState::PartialFill   => "PART",
+        OrderState::Filled        => "FILL",
+        OrderState::Unknown       => "??",
+        // Cancelled/Rejected are filtered out before painting; default anyway.
+        OrderState::Cancelled | OrderState::Rejected => "X",
+    }
+}
+
+struct OrderBadgeMetrics {
+    side_w: f32,
+    qty_w: f32,
+    notional_w: f32,
+    status_w: f32,
+    send_w: f32,
+    x_btn_w: f32,
+    total_w: f32,
+    status_label: &'static str,
+}
+
+fn order_badge_metrics(painter: &egui::Painter, order: &OrderLevel) -> OrderBadgeMetrics {
+    let m = |t: &str, f: egui::FontId| crate::ui_kit::style::measure_with_painter(painter, t, f).x;
+    let status_label = order_badge_status_label(order.state);
+    let side_w = 20.0;
+    let qty_w = m(&format!("{}", order.qty), mono_md()) + 12.0;
+    let notional_w = m(&fmt_notional(order.notional()), mono_md()) + 12.0;
+    let status_w = m(status_label, mono_xs()) + 8.0;
+    let send_w = if order.status == OrderStatus::Draft { 38.0 } else { 0.0 };
+    let x_btn_w = 22.0;
+    OrderBadgeMetrics {
+        side_w, qty_w, notional_w, status_w, send_w, x_btn_w,
+        total_w: side_w + qty_w + notional_w + status_w + send_w + x_btn_w + 4.0,
+        status_label,
+    }
+}
+
+#[cfg(test)]
+mod order_badge_geometry_tests {
+    //! The badge's width had THREE definitions — the paint pass and two hit
+    //! tests — and the third carried the comment "Recompute badge geometry to
+    //! match rendering", which is an acknowledgement that it was a copy needing
+    //! manual sync. It was out of sync: both hit tests hard-coded the status
+    //! cell as DRAFT-or-LIVE while the paint pass renders the full lifecycle,
+    //! so for any pending or partially-filled order the clickable region was a
+    //! different width from the badge on screen.
+    //!
+    //! These assert the properties that made that possible, so a fourth copy
+    //! or a silently-added cell fails rather than drifting.
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+
+    fn order(state: OrderState, qty: u32) -> OrderLevel {
+        OrderLevel {
+            id: 1,
+            side: OrderSide::Buy,
+            price: 100.0,
+            qty,
+            status: if state == OrderState::Draft { OrderStatus::Draft } else { OrderStatus::Placed },
+            state,
+            pair_id: None,
+            option_symbol: None,
+            option_con_id: None,
+            trail_amount: None,
+            trail_percent: None,
+            filled_ratio: 0.0,
+        }
+    }
+
+    const ALL_STATES: [OrderState; 9] = [
+        OrderState::Draft, OrderState::PendingSubmit, OrderState::PendingCancel,
+        OrderState::PendingModify, OrderState::Working, OrderState::PartialFill,
+        OrderState::Filled, OrderState::Unknown, OrderState::Cancelled,
+    ];
+
+    /// `total_w` must be the sum of the cells. A cell added without updating
+    /// the total is the silent way this drifts back apart.
+    #[test]
+    fn the_total_is_the_sum_of_its_cells() {
+        paint_probe::probe(|ui| {
+            let p = ui.painter().clone();
+            for st in ALL_STATES {
+                let m = order_badge_metrics(&p, &order(st, 100));
+                let sum = m.side_w + m.qty_w + m.notional_w + m.status_w + m.send_w + m.x_btn_w + 4.0;
+                assert!(
+                    (m.total_w - sum).abs() < 0.01,
+                    "{st:?}: total_w {} != sum of cells {sum}",
+                    m.total_w
+                );
+            }
+        });
+    }
+
+    /// Every lifecycle state has its own label. The hit tests used to collapse
+    /// all nine onto two, which is precisely how their widths diverged from the
+    /// painted badge.
+    #[test]
+    fn every_state_has_a_label_and_pending_states_are_not_collapsed() {
+        let labels: Vec<&str> = ALL_STATES.iter().copied().map(order_badge_status_label).collect();
+        for (st, l) in ALL_STATES.iter().zip(&labels) {
+            assert!(!l.is_empty(), "{st:?} has no badge label");
+        }
+        let pending = [
+            order_badge_status_label(OrderState::PendingSubmit),
+            order_badge_status_label(OrderState::PendingCancel),
+            order_badge_status_label(OrderState::PendingModify),
+        ];
+        for p in pending {
+            assert_ne!(p, "DRAFT", "a pending state must not render as DRAFT");
+            assert_ne!(p, "LIVE", "a pending state must not render as LIVE");
+        }
+    }
+
+    /// The widths are MEASURED, not constant: a longer quantity must widen the
+    /// badge. `qty.len() as f32 * 9.0` also passed this, so it is paired with
+    /// the font check below.
+    #[test]
+    fn a_longer_quantity_widens_the_badge() {
+        paint_probe::probe(|ui| {
+            let p = ui.painter().clone();
+            let small = order_badge_metrics(&p, &order(OrderState::Working, 1)).total_w;
+            let large = order_badge_metrics(&p, &order(OrderState::Working, 1_000_000)).total_w;
+            assert!(large > small, "badge must grow with its content: {small} -> {large}");
+        });
+    }
+
+    /// …and measured against a REAL font: two strings of the same character
+    /// count but different glyph widths must not be assumed equal. This is the
+    /// assertion a character-count guess cannot pass.
+    #[test]
+    fn width_follows_glyphs_not_character_count() {
+        paint_probe::probe(|ui| {
+            let p = ui.painter().clone();
+            let narrow = crate::ui_kit::style::measure_with_painter(&p, "1111", mono_md()).x;
+            let wide = crate::ui_kit::style::measure_with_painter(&p, "WWWW", prop_lg()).x;
+            assert!(
+                wide > narrow,
+                "measurement must follow glyphs, not length: '1111' {narrow} vs 'WWWW' {wide}"
+            );
+        });
     }
 }
