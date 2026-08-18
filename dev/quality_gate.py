@@ -333,6 +333,32 @@ def _fabricated_ratios(prod):
     return seen
 
 
+# A LITERAL INSET FROM A WIDGET BODY'S EDGE: `body.top() + 18.0`.
+#
+# The on-chart overlay widgets placed everything by hand from the raw `body`
+# rect: 142 such expressions across 45 widget bodies, using TWENTY-SIX distinct
+# constants (2, 4, 6, 8, 10, 12, 14, 18, 36, 50, ...). Two widgets sitting side
+# by side on the same chart had visibly different internal padding, chosen by
+# whoever wrote each one, and a reader could not recover why.
+#
+# It is also functionally broken. `Settings -> Density` (Tight 0.75 / Standard
+# 1.0 / Loose 1.25) is a real, persisted, user-facing control, and every spacing
+# token multiplies through `spacing_scale_override()`. A literal does not.
+# `chart_widgets.rs` referenced a spacing token exactly ONCE in 3,348 lines, so
+# changing Density reflowed every panel in the app and left all 45 chart widgets
+# exactly where they were.
+#
+# The replacement is `overlays::kit::{body_content, body_footer, stat}`, which
+# hand back token-derived geometry. This is a CEILING, not a floor at zero: the
+# remaining expressions are being converted widget by widget, and some are
+# genuine per-widget layout (a bar's height, a grid's row pitch) rather than
+# padding. It exists so the population cannot grow while that work proceeds.
+BODY_INSET_RE = re.compile(r"\bbody\.(?:left|right|top|bottom)\(\)\s*[-+]\s*[0-9]+\.[0-9]+")
+
+# Only the overlay-widget surface owns a `body` rect in this sense.
+BODY_INSET_FILES = ("/ui/chart_widgets.rs", "/ui/overlays/")
+
+
 INDICATOR_ENUM_RE = re.compile(r"IndicatorType::")
 
 
@@ -387,6 +413,7 @@ def collect():
         "eprintln_in_data": 0,
         "indicator_enum_matches": 0,   # W3-01 Stage 4: IndicatorType:: sprawl
         "fabricated_ratio": 0,         # AT-186: `if base > 0.0 { a/base } else { 0.0 }`
+        "overlay_body_insets": 0,      # AT-187: `body.top() + 18.0` vs a spacing token
         "file_loc": {},   # relpath -> loc (only for files over soft ceiling)
     }
     for path in iter_rs_files():
@@ -423,6 +450,8 @@ def collect():
             if not COMMENT_LINE_RE.match(ln) and _has_identical_branches(ln)
         )
         counts["fabricated_ratio"] += _fabricated_ratios(prod)
+        if any(k in "/" + r for k in BODY_INSET_FILES):
+            counts["overlay_body_insets"] += len(BODY_INSET_RE.findall(prod))
         counts["text_width_guess"] += sum(
             1
             for ln in prod.splitlines()
@@ -480,7 +509,8 @@ def check(cur, base):
     for key in ("expect_total", "dead_code_allows", "dead_code_allows_file", "hand_colour_math",
                 "text_width_guess", "identical_branches",
                 "ui_direct_mutation", "eprintln_in_data",
-                "indicator_enum_matches", "fabricated_ratio"):
+                "indicator_enum_matches", "fabricated_ratio",
+                "overlay_body_insets"):
         # A newly-added metric absent from the committed baseline seeds to its
         # current value (no spurious first-run failure); --update then locks it.
         c = cur[key]
@@ -503,8 +533,81 @@ def check(cur, base):
     return failures, nudges, infos
 
 
+# Every pattern in this file, with a sample it MUST match and one it must NOT.
+#
+# This exists because `BODY_INSET_RE` was written with a `` that collapsed
+# into a literal BACKSPACE character (0x08) on its way into the source. The
+# pattern printed correctly, compiled without error, and matched nothing — so
+# the metric read 0, and 0 was about to be committed as its baseline. A ceiling
+# of 0 on a regex that can never match is a gate that passes forever while
+# reporting success, which is worse than no gate at all.
+#
+# The same failure mode has now appeared four times in this codebase's tooling
+# under different disguises. A regex that cannot be shown to match anything is
+# not a check; it is a decoration. Every pattern here has to prove it works.
+PATTERN_SELFTESTS = [
+    ("BODY_INSET_RE", lambda: BODY_INSET_RE,
+     ["    let bar_y = body.top() + 50.0;", "body.right() - 8.0"],
+     ["let x = other.top() + 4.0;", "body.top() + gap_sm()"]),
+    ("TEXT_WIDTH_GUESS_RE", lambda: TEXT_WIDTH_GUESS_RE,
+     ["let w = tag.len() as f32 * 5.0;", "let w = (tag.len() as f32) * 6.5;"],
+     ["let w = measure(tag);"]),
+    ("FABRICATED_RATIO_RE", lambda: FABRICATED_RATIO_RE,
+     ["if prev > 0.0 { (p - prev) / prev * 100.0 } else { 0.0 }"],
+     ["if prev > 0.0 { compute(prev) } else { 0.0 }"]),
+    ("DEAD_RE", lambda: DEAD_RE, ["#[allow(dead_code)]"], ["// #[allow(dead)]x"]),
+    ("DEAD_FILE_RE", lambda: DEAD_FILE_RE, ["#![allow(dead_code)]"], ["#[allow(dead_code)]"]),
+    ("UNWRAP_RE", lambda: UNWRAP_RE, ["let x = y.unwrap();"], ["let x = y.unwrap_or(3);"]),
+    ("EXPECT_RE", lambda: EXPECT_RE, ['let x = y.expect("m");'], ["let x = y.unwrap();"]),
+    ("INDICATOR_ENUM_RE", lambda: INDICATOR_ENUM_RE, ["IndicatorType::Sma"], ["Indicator::Sma"]),
+]
+
+
+def _selftest():
+    bad = []
+    for name, get, positives, negatives in PATTERN_SELFTESTS:
+        try:
+            rx = get()
+        except NameError:
+            bad.append(f"{name}: not defined")
+            continue
+        if chr(8) in rx.pattern or chr(12) in rx.pattern:
+            bad.append(
+                f"{name}: pattern contains a literal control character "
+                f"({rx.pattern!r}) - a backslash escape was eaten before it "
+                f"reached the source"
+            )
+        for sample in positives:
+            if not rx.search(sample):
+                bad.append(f"{name}: MUST match but does not: {sample!r}")
+        for sample in negatives:
+            if rx.search(sample):
+                bad.append(f"{name}: must NOT match but does: {sample!r}")
+    if bad:
+        print("QUALITY-GATE PATTERN SELFTEST FAILED\n")
+        for b in bad:
+            print(f"   {b}")
+        print(
+            "\nA pattern that matches nothing makes its metric read 0, and a "
+            "\nbaseline of 0 on a dead pattern is a gate that passes forever "
+            "\nwhile reporting success."
+        )
+        return 1
+    print(f"quality-gate pattern selftest: PASS ({len(PATTERN_SELFTESTS)} patterns)")
+    return 0
+
+
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    if arg == "--selftest":
+        return _selftest()
+
+    # Never report on a broken instrument. A dead pattern silently zeroes its
+    # metric, and `--update` would then bake that zero in as the baseline.
+    if _selftest() != 0:
+        return 1
+
     cur = collect()
 
     if arg == "--show":

@@ -62,6 +62,7 @@ CHECKS=(
   "python dev/doc_accuracy_gate.py"
   "python dev/orphan_attr_gate.py"
   # quality-gates.yml
+  "python dev/quality_gate.py --selftest"
   "python dev/quality_gate.py"
 )
 

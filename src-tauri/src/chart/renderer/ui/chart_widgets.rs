@@ -30,8 +30,9 @@ use crate::ui_kit::sx::Tone;
 use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
-    draw_arc, hero_number, sub_label, radial_gauge, radial_gauge_stacked, metric_row,
+    draw_arc, hero_number, sub_label, stat, radial_gauge, radial_gauge_stacked, metric_row,
     overlay_card_frame, overlay_card_header, overlay_header_ctx_rect, progress_bar,
+    body_footer, body_footer_kv, body_footer_text,
 };
 use super::overlays::registry::OverlayWidget;
 use super::overlays::viz::charts::{
@@ -1217,10 +1218,7 @@ fn draw_momentum_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
     radial_gauge(p, egui::pos2(cx, cy - 4.0), r, rsi / 100.0, &format!("{:.0}", rsi), zone, rsi_color, t);
 
     let mom_col = if mom > 0.0 { t.bull } else { t.bear };
-    p.text(egui::pos2(body.right() - 8.0, body.bottom() - 6.0), egui::Align2::RIGHT_CENTER,
-        &format!("{:+.1}%", mom), mono_xs(), mom_col);
-    p.text(egui::pos2(body.left() + 8.0, body.bottom() - 6.0), egui::Align2::LEFT_CENTER,
-        "ROC", mono_2xs(), color_dim(t.dim));
+    body_footer_kv(p, body, "ROC", &format!("{:+.1}%", mom), mom_col, t);
 }
 
 fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -1320,8 +1318,7 @@ fn draw_session_timer(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         Stroke::new(stroke_extra_thick(), progress_color), 40);
 
     let time_str = format!("{:02}:{:02}:{:02}", h, m, s);
-    hero_number(p, egui::pos2(cx, body.top() + 48.0), &time_str, t.text);
-    sub_label(p, egui::pos2(cx, body.top() + 66.0), "TO CLOSE", t.dim);
+    stat(p, egui::pos2(cx, body.top() + 48.0), &time_str, "TO CLOSE", t.text, t.dim);
 }
 
 fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -1601,8 +1598,7 @@ fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     // Alignment score bottom-right
     let pct = bull_count as f32 / total as f32 * 100.0;
     let sc = if pct > 70.0 { t.bull } else if pct > 40.0 { t.warn } else { t.bear };
-    p.text(egui::pos2(body.right() - 6.0, body.bottom() - 8.0), egui::Align2::RIGHT_CENTER,
-        &format!("{:.0}%", pct), prop_lg(), sc);
+    body_footer_text(p, body, &format!("{:.0}%", pct), egui::Align2::RIGHT_CENTER, prop_lg(), sc);
 }
 
 /// Volume Shelf — horizontal bars ranked by volume (chart4 stacked bars style)
@@ -1724,9 +1720,9 @@ fn draw_flow_compass(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     }
 
     // Center label
-    p.text(egui::pos2(cx, body.bottom() - 8.0), egui::Align2::CENTER_CENTER,
+    body_footer_text(p, body,
         if bias > 2.0 { "BULLISH FLOW" } else if bias < -2.0 { "BEARISH FLOW" } else { "NEUTRAL" },
-        mono_2xs(), needle_col);
+        egui::Align2::CENTER_CENTER, mono_2xs(), needle_col);
 }
 
 /// Volatility Regime — concentric rings (like RSI Multi but for vol metrics)
@@ -1790,7 +1786,8 @@ fn draw_momentum_heat(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         p.text(egui::pos2(cxp, grid.center().y), egui::Align2::CENTER_CENTER,
             &format!("{:+.0}", roc), mono_2xs(),
             if intensity > 0.5 { shadow_color_alpha(t, 200) } else { t.text });
-        p.text(egui::pos2(cxp, body.bottom() - 6.0), egui::Align2::CENTER_CENTER,
+        // Per-column x, but the shared caption baseline.
+        p.text(egui::pos2(cxp, body_footer(body).center().y), egui::Align2::CENTER_CENTER,
             labels[i], mono_4xs(), color_half(t.dim));
     }
 }
@@ -2590,8 +2587,7 @@ fn draw_correlation(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     sub_label(p, egui::pos2(cx, gauge_cy + 32.0), label, color);
 
     // vs SPY label
-    p.text(egui::pos2(cx, body.bottom() - 6.0), egui::Align2::CENTER_CENTER,
-        "vs SPY", mono_2xs(), color_very_dim(t.dim));
+    body_footer_text(p, body, "vs SPY", egui::Align2::CENTER_CENTER, mono_2xs(), color_very_dim(t.dim));
 }
 
 fn draw_dark_pool(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -2603,9 +2599,8 @@ fn draw_dark_pool(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     let ratio_col = if ratio_pct > 40.0 { COLOR_PURPLE } // purple = heavy dark pool
         else if ratio_pct > 20.0 { t.accent }
         else { t.dim };
-    hero_number(p, egui::pos2(body.center().x, body.top() + 18.0),
-        &format!("{:.0}%", ratio_pct), ratio_col);
-    sub_label(p, egui::pos2(body.center().x, body.top() + 36.0), "DARK POOL", t.dim);
+    stat(p, egui::pos2(body.center().x, body.top() + 18.0),
+        &format!("{:.0}%", ratio_pct), "DARK POOL", ratio_col, t.dim);
 
     // Volume spike bars — kit primitive, per-bar intensity gradient (dim→purple).
     let st = ChartStyle::resolve(t);
@@ -2623,8 +2618,7 @@ fn draw_dark_pool(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 
     // "Unusual" label if high ratio
     if ratio_pct > 30.0 {
-        p.text(egui::pos2(right, body.bottom() - 6.0), egui::Align2::RIGHT_CENTER,
-            "UNUSUAL", mono_2xs(), COLOR_PURPLE);
+        body_footer_text(p, body, "UNUSUAL", egui::Align2::RIGHT_CENTER, mono_2xs(), COLOR_PURPLE);
     }
 }
 
@@ -2696,12 +2690,9 @@ fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
         else if wd.earnings_days == 1 { "TOMORROW".into() }
         else { format!("{} DAYS", wd.earnings_days) };
 
-    hero_number(p, egui::pos2(cx, body.top() + 16.0), &days_str, urgency_col);
-
-    // Label
-    let detail = if wd.earnings_label.is_empty() { "EARNINGS".into() }
+    let detail: String = if wd.earnings_label.is_empty() { "EARNINGS".into() }
         else { wd.earnings_label.clone() };
-    sub_label(p, egui::pos2(cx, body.top() + 34.0), &detail, urgency_col);
+    stat(p, egui::pos2(cx, body.top() + 16.0), &days_str, &detail, urgency_col, urgency_col);
 
     // Expected move bar (approximation: ATR * 2 as implied move)
     if wd.atr > 0.0 && wd.last_close > 0.0 {
@@ -2976,16 +2967,13 @@ fn draw_precursor_alert(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         "\u{26A1}", prop_lg(), dir_col);
 
     // Score
-    hero_number(p, egui::pos2(cx, body.top() + 34.0), &format!("{:.0}", wd.precursor_score), dir_col);
-
-    // Direction
-    sub_label(p, egui::pos2(cx, body.top() + 52.0), dir_label, dir_col);
+    stat(p, egui::pos2(cx, body.top() + 34.0),
+        &format!("{:.0}", wd.precursor_score), dir_label, dir_col, dir_col);
 
     // Description (truncated)
     if !wd.precursor_desc.is_empty() {
         let desc: String = wd.precursor_desc.chars().take(30).collect();
-        p.text(egui::pos2(cx, body.bottom() - 8.0), egui::Align2::CENTER_CENTER,
-            &desc, mono_2xs(), color_dim(t.dim));
+        body_footer_text(p, body, &desc, egui::Align2::CENTER_CENTER, mono_2xs(), color_dim(t.dim));
     }
 }
 
@@ -3062,9 +3050,8 @@ fn draw_change_points(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
     let cx = body.center().x;
 
-    hero_number(p, egui::pos2(cx, body.top() + 18.0),
-        &format!("{}", wd.change_points_count), t.accent);
-    sub_label(p, egui::pos2(cx, body.top() + 36.0), "REGIME SHIFTS", t.dim);
+    stat(p, egui::pos2(cx, body.top() + 18.0),
+        &format!("{}", wd.change_points_count), "REGIME SHIFTS", t.accent, t.dim);
 
     if !wd.change_points_latest.is_empty() {
         p.text(egui::pos2(cx, body.top() + 54.0), egui::Align2::CENTER_CENTER,
@@ -3175,9 +3162,8 @@ fn draw_pattern_scanner(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         mono_xs(), pat_col);
 
     // Total count
-    p.text(egui::pos2(cx, body.bottom() - 10.0), egui::Align2::CENTER_CENTER,
-        &format!("{} patterns detected", wd.pattern_count),
-        mono_2xs(), color_dim(t.dim));
+    body_footer_text(p, body, &format!("{} patterns detected", wd.pattern_count),
+        egui::Align2::CENTER_CENTER, mono_2xs(), color_dim(t.dim));
 }
 
 fn draw_vix_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -3189,8 +3175,7 @@ fn draw_vix_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
         else { t.bull };
 
     // VIX spot hero
-    hero_number(p, egui::pos2(cx, body.top() + 18.0), &format!("{:.1}", wd.vix_spot), vix_col);
-    sub_label(p, egui::pos2(cx, body.top() + 36.0), "VIX SPOT", t.dim);
+    stat(p, egui::pos2(cx, body.top() + 18.0), &format!("{:.1}", wd.vix_spot), "VIX SPOT", vix_col, t.dim);
 
     // Gap % and convergence
     let left = body.left() + 10.0;
@@ -3279,9 +3264,8 @@ fn draw_divergence_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData,
         return;
     }
 
-    hero_number(p, egui::pos2(cx, body.top() + 18.0),
-        &format!("{}", wd.divergence_count), t.warn);
-    sub_label(p, egui::pos2(cx, body.top() + 36.0), "ACTIVE DIVERGENCES", t.dim);
+    stat(p, egui::pos2(cx, body.top() + 18.0),
+        &format!("{}", wd.divergence_count), "ACTIVE DIVERGENCES", t.warn, t.dim);
 }
 
 fn draw_conviction_meter(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {

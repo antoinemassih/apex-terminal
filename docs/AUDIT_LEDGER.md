@@ -2335,3 +2335,81 @@ frame, stored, and never read — the underscore prefix was someone silencing th
 warning rather than deleting the fields.
 
 ---
+
+## AT-187 — The overlay kit centralised drawing but not placement
+
+`overlays/kit.rs` opens by describing itself as "step 1 of the overlay system":
+the shared primitives (`hero_number`, `sub_label`, `radial_gauge`,
+`progress_bar`) that ~45 on-chart widget bodies draw with, instead of each one
+hand-painting. That step worked. The one after it never happened, and the reason
+is visible in every signature: each primitive takes an absolute `Pos2`. The kit
+owns what a thing LOOKS like and nothing owns where it GOES.
+
+So every body still computed its own placement from the raw `body` rect:
+
+* **142 hand-written edge insets** across **26 distinct constants** — 2, 4, 6,
+  8, 10, 12, 14, 18, 36, 50 and more. Two widgets side by side on the same chart
+  had visibly different internal padding, picked by whoever wrote each one.
+* **Eight bottom captions** at `body.bottom() - 6.0`, `- 8.0` and `- 10.0`.
+  Three constants for one intention.
+* **Nine widgets hand-wrote a hero-number-plus-caption stack**, five of them
+  with exactly `+ 18.0` between the lines — while the kit's own `stat()` helper
+  did the same thing at `+ 22.0` and had **zero callers**. The kit held one
+  spelling of the relationship, the call sites held another, they disagreed by
+  4px, and nothing used the kit's. A primitive that does not fit its callers is
+  not a primitive; `stat()` also forced one colour on both lines, which is why
+  nine bodies wrote the pair out by hand.
+
+### This was broken, not untidy
+
+`Settings → Density` (Tight 0.75 / Standard 1.0 / Loose 1.25) is a real,
+persisted, user-facing control, and every spacing token multiplies through
+`spacing_scale_override()`. A literal `8.0` does not. `chart_widgets.rs`
+referenced a spacing token **once** in 3,348 lines — so changing Density
+reflowed every panel in the app and left all 45 chart widgets exactly where they
+were. `density_moves_the_widget_geometry` now asserts the opposite, and fails if
+a literal comes back.
+
+### What was added, and what deliberately was not
+
+`body_content`, `body_footer`, `body_footer_text` and `body_footer_kv` hand back
+token-derived geometry, so a body states its structure and never an inset.
+`stat()` was rebuilt with two colours and a token gap and now has seven callers.
+
+`body_footer_kv` is an `El` tree, because a label pushed flush right by a spacer
+is structure worth solving. `stat()` deliberately is **not**: two centred lines
+need a token and an addition, and a Taffy solve plus font measurement per widget
+per frame on the chart's paint path would buy nothing. The system is for where
+structure exists, not for everywhere.
+
+Delta in `chart_widgets.rs`: raw `painter.text()` 104 → 96, body-edge insets
+142 → 123, hand-written `hero_number` 13 → 6. `overlay_body_insets` ratchets the
+rest at 124 so the population cannot grow while the remaining widgets convert.
+
+The degenerate-body test earned its place on the first run: `body_content`
+originally guarded with `.intersect(body)`, which does not un-invert a rect —
+an inverted rect intersected with anything is still inverted, every downstream
+`width()` goes negative, and the row paints backwards.
+
+### The gate that counted nothing
+
+`BODY_INSET_RE` was written with a `\b` that collapsed into a literal BACKSPACE
+(0x08) before it reached the source. The pattern printed correctly, compiled
+without error, and matched nothing. The metric read **0** — and 0 was one command
+away from being committed as its baseline. A ceiling of 0 on a regex that can
+never match is a gate that passes forever while reporting success, which is
+worse than no gate at all.
+
+`quality_gate.py --selftest` now proves every pattern in the file against a
+sample it must match and one it must not, rejects any pattern containing a
+control character, and the normal path refuses to report or re-baseline if the
+selftest fails. Verified by reintroducing the backspace: exits 1, names the
+pattern, and prints the offending repr.
+
+That is the fourth time in this codebase's tooling that an instrument reported a
+flattering number — after the truncated-file ratchet (AT-186), the parenthesised
+text-width cast, and the `#[allow` regex that could not see `#![allow`. The
+pattern is consistent enough to state as a rule: **a check that has never been
+shown to fail has not been shown to work.**
+
+---

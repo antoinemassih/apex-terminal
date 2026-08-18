@@ -135,9 +135,45 @@ pub(crate) fn radial_gauge_stacked(
 
 /// Big value + caption (no ring), centred at `center` — the non-gauge "stat".
 #[allow(dead_code)] // kit primitive — for the stat-style overlays migrating next
-pub(crate) fn stat(p: &egui::Painter, center: egui::Pos2, value: &str, caption: &str, color: Color32) {
-    hero_number(p, center, value, color);
-    sub_label(p, egui::pos2(center.x, center.y + 22.0), caption, color);
+/// A hero number with a caption beneath it — the overlay KPI stack.
+///
+/// # Why this had no callers
+///
+/// It had `+ 22.0` between the two lines and gave both the same colour. Nine
+/// widget bodies wanted a different colour for each and wrote the pair out by
+/// hand instead, five of them with `+ 18.0`. So the kit held one spelling of
+/// the relationship, the call sites held another, they disagreed by 4px, and
+/// nothing used the kit's. A primitive that does not fit its callers is not a
+/// primitive.
+///
+/// Both problems are fixed here: two colours, and the gap comes from the
+/// spacing scale so `Settings -> Density` moves it. `hero_center` is the
+/// hero's centre, matching what the call sites already computed.
+///
+/// Deliberately NOT an `El` column. The tree earns its keep where there is
+/// structure to solve — see `body_footer_kv`, which needs a spacer to push a
+/// value flush right. Two centred lines need a token and an addition, and a
+/// Taffy solve plus font measurement per widget per frame on the chart's paint
+/// path would buy nothing here.
+pub(crate) fn stat(
+    p: &egui::Painter, hero_center: egui::Pos2, value: &str, caption: &str,
+    value_color: Color32, caption_color: Color32,
+) {
+    hero_number(p, hero_center, value, value_color);
+    sub_label(
+        p,
+        egui::pos2(hero_center.x, hero_center.y + hero_caption_gap()),
+        caption,
+        caption_color,
+    );
+}
+
+/// The vertical distance from a hero number's centre to its caption's centre.
+///
+/// One definition, on the spacing scale. It was `22.0` in the kit and `18.0` at
+/// five call sites.
+pub(crate) fn hero_caption_gap() -> f32 {
+    crate::ui_kit::style::gap_lg() + crate::ui_kit::style::gap_2xs()
 }
 
 /// A labelled metric row: dim `label` (left) + `value` (right) + a thin
@@ -324,5 +360,199 @@ pub(crate) fn progress_bar(
     if w > 0.5 {
         let fill = egui::Rect::from_min_size(rect.min, egui::vec2(w, rect.height()));
         p.rect_filled(fill, cr, color);
+    }
+}
+
+// ── Body geometry (step 2: the kit centralised drawing, not placement) ────────
+//
+// Every primitive above takes an absolute `Pos2`, so each of the ~45 widget
+// bodies still computed its own placement from the raw `body` rect. The result
+// was 142 hand-written edge insets across twelve distinct magic paddings — 2,
+// 4, 6, 8, 10, 12, 14, 18, 36, 50 — chosen per widget by whoever wrote it. Two
+// widgets sitting side by side on the same chart had visibly different internal
+// padding for no reason a reader could recover.
+//
+// That is not only untidy, it is BROKEN. `Settings → Density` (Tight 0.75 /
+// Standard 1.0 / Loose 1.25) is a real, persisted, user-facing control, and
+// every spacing token multiplies through `spacing_scale_override()`. A literal
+// `8.0` does not. `chart_widgets.rs` referenced a spacing token exactly ONCE in
+// 3,348 lines, so changing Density reflowed every panel in the app and left all
+// 45 chart widgets exactly as they were.
+//
+// These helpers hand back token-derived sub-rects so a widget body states its
+// STRUCTURE (header / hero / footer) and never an inset.
+
+/// The padded content area of a widget body.
+///
+/// One token, one padding, everywhere. `gap_sm` (8px at Standard density) is
+/// the value 21 of the 142 insets already used; it is the plurality choice and
+/// the one that needed the least visual change to adopt.
+pub(crate) fn body_content(body: egui::Rect) -> egui::Rect {
+    // Clamp the padding to half the smaller dimension. A body narrower than
+    // twice its padding would otherwise produce an INVERTED rect (min > max):
+    // `Rect` tolerates that silently, every downstream `width()` goes negative,
+    // and the row paints backwards. `.intersect(body)` does NOT fix it — an
+    // inverted rect intersected with anything is still inverted, which the
+    // degenerate-body test caught on the first run.
+    let p = crate::ui_kit::style::gap_sm()
+        .min(body.width() * 0.5)
+        .min(body.height() * 0.5)
+        .max(0.0);
+    egui::Rect::from_min_max(
+        egui::pos2(body.left() + p, body.top() + p),
+        egui::pos2(body.right() - p, body.bottom() - p),
+    )
+}
+
+/// The bottom caption strip of a widget body, one line high.
+///
+/// Its vertical CENTRE sits one padding above the body's bottom edge, which is
+/// what the call sites meant: eight widgets wrote `body.bottom() - 6.0`,
+/// `- 8.0` and `- 10.0` as the baseline for a bottom caption. Three constants
+/// for one intention. They all become `gap_sm`, so Density moves them together.
+pub(crate) fn body_footer(body: egui::Rect) -> egui::Rect {
+    let c = body_content(body);
+    let h = crate::ui_kit::style::font_xs() + crate::ui_kit::style::gap_xs();
+    let cy = body.bottom() - crate::ui_kit::style::gap_sm();
+    egui::Rect::from_min_max(
+        egui::pos2(c.left(), (cy - h * 0.5).max(body.top())),
+        egui::pos2(c.right(), (cy + h * 0.5).min(body.bottom())),
+    )
+}
+
+/// A single caption in the footer strip, aligned left / centre / right.
+///
+/// `align` selects the horizontal edge only; the vertical is the strip's
+/// centre, so a widget can never disagree with its neighbour about how far a
+/// caption sits from the bottom.
+pub(crate) fn body_footer_text(
+    p: &egui::Painter, body: egui::Rect, text: &str,
+    align: egui::Align2, font: egui::FontId, color: Color32,
+) {
+    let f = body_footer(body);
+    let x = match align.x() {
+        egui::Align::Min => f.left(),
+        egui::Align::Max => f.right(),
+        egui::Align::Center => f.center().x,
+    };
+    p.text(egui::pos2(x, f.center().y), align, text, font, color);
+}
+
+/// A widget's footer row: dim label flush left, value flush right.
+///
+/// Built on [`crate::ui_kit::widgets::kv_row::KvRow`], which is an [`El`] tree
+/// with a spacer between the halves — so "flush right" is a property of the
+/// tree rather than an arithmetic coincidence, and the row honours the cascade.
+/// It is deliberately NOT a second implementation: 26 paint calls in
+/// `chart_widgets` anchored a label to `body.left() + N` and a value to
+/// `body.right() - M`, each stating the row's edges twice, with `N` and `M`
+/// free to disagree.
+pub(crate) fn body_footer_kv(
+    p: &egui::Painter, body: egui::Rect, label: &str, value: &str,
+    value_color: Color32, t: &Theme,
+) {
+    use crate::ui_kit::widgets::kv_row::KvRow;
+    KvRow::new(label, value)
+        .label_font(crate::ui_kit::style::mono_2xs())
+        .label_color(color_dim(t.dim))
+        .value_font(crate::ui_kit::style::mono_xs())
+        .value_color(value_color)
+        .show(p, t, body_footer(body));
+}
+
+#[cfg(test)]
+mod body_geometry_tests {
+    use super::*;
+
+    fn body() -> egui::Rect {
+        egui::Rect::from_min_size(egui::pos2(100.0, 50.0), egui::vec2(200.0, 120.0))
+    }
+
+    /// The content rect is inset on all four sides by ONE value. The defect
+    /// this replaces had a different constant per side per widget.
+    #[test]
+    fn the_content_rect_is_symmetrically_inset() {
+        let c = body_content(body());
+        let l = c.left() - body().left();
+        let r = body().right() - c.right();
+        let tp = c.top() - body().top();
+        let b = body().bottom() - c.bottom();
+        assert!((l - r).abs() < 0.01 && (l - tp).abs() < 0.01 && (l - b).abs() < 0.01,
+            "insets must agree on all four sides: l={l} r={r} t={tp} b={b}");
+        assert!(l > 0.0, "there must BE an inset, got {l}");
+    }
+
+    /// A body narrower than twice its padding must not produce an inverted
+    /// rect — every downstream `width()` would go negative and the row would
+    /// paint backwards.
+    #[test]
+    fn a_degenerate_body_does_not_invert() {
+        let tiny = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(3.0, 3.0));
+        let c = body_content(tiny);
+        assert!(c.width() >= 0.0 && c.height() >= 0.0, "inverted: {c:?}");
+    }
+
+    /// The footer shares the content rect's horizontal bounds, stays inside the
+    /// body, and centres one padding above the body's bottom edge.
+    #[test]
+    fn the_footer_is_contained_and_bottom_anchored() {
+        let c = body_content(body());
+        let f = body_footer(body());
+        assert!(f.left() >= c.left() - 0.01 && f.right() <= c.right() + 0.01,
+            "footer escapes the content rect horizontally: {f:?} vs {c:?}");
+        assert!(f.bottom() <= body().bottom() + 0.01 && f.top() >= body().top() - 0.01,
+            "footer escapes the body vertically: {f:?}");
+        let inset = body().bottom() - f.center().y;
+        assert!((inset - crate::ui_kit::style::gap_sm()).abs() < 0.01,
+            "the caption centre must sit one padding above the bottom, got {inset}");
+        assert!(f.height() > 0.0);
+    }
+
+    /// The payoff, stated as a test: `Settings -> Density` now reaches the
+    /// chart widgets.
+    ///
+    /// Every spacing token multiplies through `spacing_scale_override()`.
+    /// A literal `8.0` does not, and `chart_widgets.rs` referenced a spacing
+    /// token exactly ONCE in 3,348 lines — so changing Density reflowed every
+    /// panel in the app and left all 45 chart widgets untouched. If someone
+    /// reintroduces a literal inset here, this is what fails.
+    ///
+    /// `serial` because the override is process-global; the established
+    /// pattern in this codebase for exactly that.
+    #[test]
+    #[serial_test::serial]
+    fn density_moves_the_widget_geometry() {
+        use crate::ui_kit::style::{set_spacing_scale_override, SpacingScale};
+        let measure = |mode| {
+            set_spacing_scale_override(Some(mode));
+            let f = body_footer(body());
+            let c = body_content(body());
+            (body().bottom() - f.center().y, c.width(), hero_caption_gap())
+        };
+        let tight = measure(SpacingScale::Tight);
+        let loose = measure(SpacingScale::Loose);
+        set_spacing_scale_override(None);
+
+        assert!(loose.0 > tight.0,
+            "the caption must sit further from the bottom at Loose density: {} vs {}",
+            loose.0, tight.0);
+        assert!(loose.1 < tight.1,
+            "a looser body must have a NARROWER content area (more padding): {} vs {}",
+            loose.1, tight.1);
+        assert!(loose.2 > tight.2,
+            "the hero-to-caption gap must open up at Loose density: {} vs {}",
+            loose.2, tight.2);
+    }
+
+    /// Two widgets of DIFFERENT heights put their captions the same distance
+    /// from the bottom. That is the property the eight hand-written insets
+    /// (6.0, 8.0, 10.0) did not have.
+    #[test]
+    fn captions_agree_across_differently_sized_widgets() {
+        let a = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 90.0));
+        let b = egui::Rect::from_min_size(egui::pos2(40.0, 10.0), egui::vec2(120.0, 240.0));
+        let ia = a.bottom() - body_footer(a).center().y;
+        let ib = b.bottom() - body_footer(b).center().y;
+        assert!((ia - ib).abs() < 0.01, "caption insets disagree: {ia} vs {ib}");
     }
 }
