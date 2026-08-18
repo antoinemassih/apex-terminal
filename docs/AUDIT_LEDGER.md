@@ -2181,3 +2181,57 @@ is this unfinished or outgrown — stayed where it had to. What changed is that
 six classes were swept in the time one would have taken.
 
 ---
+
+## AT-185 — acting on the fan-out, including the finding that was wrong
+
+Three of AT-184's verified findings actioned, and one corrected.
+
+**The hotkey pill now rebinds.** `hotkey_editor.rs` painted the current binding
+as a `Chrome`-variant `Button` — hover-animating like every other control — and
+dropped its `Response` on the floor. In a rebinding workflow, the key you want
+to change did nothing when clicked; only the small separate "Edit" label worked.
+
+Wired rather than de-affordanced. `.sense(Sense::hover())` would also have
+removed the lie, but the key is the obvious thing to click, the action already
+existed two lines above, and there is only one thing a click there could mean.
+This is deliberately NOT the `trade_plan_panel` case, where wiring would have
+required inventing which of several surfaces should open a panel.
+
+The `ui_direct_mutation` ratchet then caught the fix adding a second
+command-bus bypass — the same assignment already existed for the "Edit" button.
+Restructured so both controls set one `start_edit` flag and the state changes in
+one place: two controls, one mutation, ratchet flat at 265. The gate was right
+and the better shape was the one that satisfied it.
+
+**`element.rs`'s Container arm is one definition.** `paint`, `paint_with` and
+`solve` each hand-typed the padding inset, the flex build, the solve and the
+translate — three copies of identical arithmetic. The sibling `Kind::Text` arm
+had already been consolidated into `paint_text` on the stated grounds that "two
+copies of how a declared property becomes a glyph position is how one starts
+ignoring them again"; the Container arm never got the same treatment. Now
+`solve_children` returns each child with its absolute rect and the three callers
+differ only in what they do with it. This one was mine.
+
+**And the correction. The author-handle "data loss" finding was wrong.**
+
+A census agent reported that `AppCommand::SetAuthor` routes to
+`set_author_handle_mem`, bypassing the persisting `set_author_handle`, so "a
+user's author handle is lost on restart". The claim is precise, the evidence
+cited was real, and it does not survive reading the call site: `SetAuthor` is
+`#[cfg(debug_assertions)]` and carries the comment "In-memory only — never write
+the user's real author.txt from a test." The memory-only routing is deliberate
+and correct for a test command.
+
+The true state is smaller and different. `author_handle()` reads `author.txt` at
+startup, nothing writes it, and `set_author_handle` is the function that would —
+so the handle can only be set by editing the file by hand. That is a settings
+control that was never built, not a bug in the code that exists. Recorded at the
+definition so the next reader gets the corrected version rather than
+rediscovering the same wrong conclusion.
+
+This is the cost of the fan-out, stated plainly: four reports, every one
+requiring verification, and one headline finding that was confidently wrong in a
+way that would have produced a bad change had I acted on it directly. The
+searching parallelised; the judgment did not.
+
+---

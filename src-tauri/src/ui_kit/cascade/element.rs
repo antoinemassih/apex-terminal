@@ -502,6 +502,44 @@ impl Rendered {
     }
 }
 
+/// Solve a container's children — the ONE definition, shared by every walk.
+///
+/// Returns each child paired with its ABSOLUTE rect, so the three callers
+/// (`paint`, `paint_with`, `solve`) differ only in what they then DO with each
+/// child, not in how the geometry is derived.
+///
+/// The `Kind::Text` arm was consolidated into `paint_text` for exactly this
+/// reason — "two copies of how a declared property becomes a glyph position is
+/// how one starts ignoring them again". The Container arm never got the same
+/// treatment and sat as three hand-typed copies of the padding inset, the flex
+/// build, the solve and the translate. Identical today; three places to forget
+/// tomorrow.
+fn solve_children(
+    row: bool,
+    children: Vec<El>,
+    gap: f32,
+    pad: (f32, f32, f32, f32),
+    rect: Rect,
+    m: Measure<'_>,
+    here: Inherited,
+) -> Vec<(El, Rect)> {
+    let inner = Rect::from_min_max(
+        egui::pos2(rect.left() + pad.0, rect.top() + pad.2),
+        egui::pos2(rect.right() - pad.1, rect.bottom() - pad.3),
+    );
+    let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
+    for c in &children {
+        flex = flex.item(c.as_item(m, here));
+    }
+    let solved = flex.solve(inner.size());
+    let off = inner.min.to_vec2();
+    children
+        .into_iter()
+        .zip(solved)
+        .map(|(c, r)| (c, r.translate(off)))
+        .collect()
+}
+
 fn paint(
     el: El,
     ui: &mut Ui,
@@ -516,18 +554,8 @@ fn paint(
 
     match el.kind {
         Kind::Container { row, children, gap } => {
-            let inner = Rect::from_min_max(
-                egui::pos2(rect.left() + el.pad.0, rect.top() + el.pad.2),
-                egui::pos2(rect.right() - el.pad.1, rect.bottom() - el.pad.3),
-            );
-            let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
-            for c in &children {
-                flex = flex.item(c.as_item(Measure::Ui(ui), here));
-            }
-            let solved = flex.solve(inner.size());
-            let off = inner.min.to_vec2();
-            for (c, r) in children.into_iter().zip(solved) {
-                paint(c, ui, theme, r.translate(off), here, out);
+            for (c, r) in solve_children(row, children, gap, el.pad, rect, Measure::Ui(ui), here) {
+                paint(c, ui, theme, r, here, out);
             }
         }
         Kind::Text { text, tier, font: explicit } => {
@@ -740,18 +768,8 @@ fn paint_with(
     let m = Measure::Painter(painter);
     match el.kind {
         Kind::Container { row, children, gap } => {
-            let inner = Rect::from_min_max(
-                egui::pos2(rect.left() + el.pad.0, rect.top() + el.pad.2),
-                egui::pos2(rect.right() - el.pad.1, rect.bottom() - el.pad.3),
-            );
-            let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
-            for c in &children {
-                flex = flex.item(c.as_item(m, here));
-            }
-            let solved = flex.solve(inner.size());
-            let off = inner.min.to_vec2();
-            for (c, r) in children.into_iter().zip(solved) {
-                paint_with(c, painter, theme, r.translate(off), here, out);
+            for (c, r) in solve_children(row, children, gap, el.pad, rect, m, here) {
+                paint_with(c, painter, theme, r, here, out);
             }
         }
         Kind::Text { text, tier, font: explicit } => {
@@ -841,18 +859,8 @@ fn solve(el: El, m: Measure<'_>, rect: Rect, inherited: Inherited, out: &mut Ren
     let here = el.style.over(inherited);
     match el.kind {
         Kind::Container { row, children, gap } => {
-            let inner = Rect::from_min_max(
-                egui::pos2(rect.left() + el.pad.0, rect.top() + el.pad.2),
-                egui::pos2(rect.right() - el.pad.1, rect.bottom() - el.pad.3),
-            );
-            let mut flex = if row { Flex::row() } else { Flex::column() }.gap(gap);
-            for c in &children {
-                flex = flex.item(c.as_item(m, here));
-            }
-            let solved = flex.solve(inner.size());
-            let off = inner.min.to_vec2();
-            for (c, r) in children.into_iter().zip(solved) {
-                solve(c, m, r.translate(off), here, out);
+            for (c, r) in solve_children(row, children, gap, el.pad, rect, m, here) {
+                solve(c, m, r, here, out);
             }
         }
         Kind::Slot { id, .. } => {

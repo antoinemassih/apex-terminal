@@ -212,8 +212,22 @@ pub(crate) fn set_author_handle_mem(handle: &str) {
     let cell = PLAY_AUTHOR.get_or_init(|| std::sync::Mutex::new(String::new()));
     if let Ok(mut g) = cell.lock() { *g = handle.to_string(); }
 }
-/// Set + persist the author handle (the real settings path).
-#[allow(dead_code)]
+/// Set + persist the author handle — the real settings path, and currently
+/// UNCALLED because there is no settings UI that sets an author handle.
+///
+/// A sub-agent census flagged this as a data-loss bug: `AppCommand::SetAuthor`
+/// routes to `set_author_handle_mem` instead, so "the handle is never persisted
+/// and is lost on restart". That reading does not survive checking the call
+/// site. `SetAuthor` is `#[cfg(debug_assertions)]` and its comment says why —
+/// "In-memory only — never write the user's real author.txt from a test." The
+/// memory-only routing is deliberate and correct for a test command.
+///
+/// The true state is smaller and different: `author_handle()` READS
+/// `author.txt` at startup, nothing writes it, and this is the function that
+/// would. The handle can only be set by editing the file by hand. That is
+/// unfinished wiring — a settings control that was never built — not a bug in
+/// the code that exists.
+#[allow(dead_code)] // no settings UI sets an author handle yet; see above
 pub(crate) fn set_author_handle(handle: &str) {
     set_author_handle_mem(handle);
     let _ = std::fs::write(author_path(), handle);

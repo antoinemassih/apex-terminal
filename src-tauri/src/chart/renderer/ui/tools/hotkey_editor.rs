@@ -93,17 +93,41 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 ui.add_space(gap_lg());
                 ui.add(BodyLabel::new(hk_name.as_str()).size(font_sm()).monospace(true).color(tint(t, Tone::Text, alpha_strong())));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Two controls, ONE state change. Both the "Edit" label and
+                    // the key pill below start a rebind, so the assignment lives
+                    // in one place rather than being written at each control —
+                    // which also keeps this to a single direct-mutation site
+                    // instead of adding a second bypass of the command bus.
+                    let mut start_edit = false;
                     if *is_editing {
                         ui.add(BodyLabel::new("Press a key...").size(font_sm()).monospace(true).color(t.accent));
-                    } else {
-                        if Button::new("Edit").variant(Variant::TextOnly).size(Size::Xs).fg(t.dim).show(ui, t).clicked() {
-                            watchlist.hotkey_editing_id = Some(*hk_id);
-                        }
+                    } else if Button::new("Edit").variant(Variant::TextOnly).size(Size::Xs).fg(t.dim).show(ui, t).clicked() {
+                        start_edit = true;
                     }
                     let key_bg = if *is_editing { tint(t, Tone::Accent, alpha_tint()) } else { tint(t, Tone::Border, alpha_tint()) };
                     let key_fg = if *is_editing { t.accent } else { tint(t, Tone::Text, alpha_muted()) };
-                    Button::new(hk_key_name.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(key_fg)
-                        .fill(key_bg).corner_radius(crate::ui_kit::style::radius_sm()).min_size(egui::vec2(80.0, row_height_dense())).show(ui, t);
+                    // The key pill STARTS A REBIND. It used to drop its
+                    // `Response` on the floor: a `Chrome`-variant `Button` that
+                    // hover-animates like every other control here, sitting in a
+                    // rebinding workflow, doing nothing when clicked. The only
+                    // working target was the small "Edit" text two lines above.
+                    //
+                    // Wired rather than de-affordanced. The alternative fix was
+                    // `.sense(Sense::hover())` to stop it looking pressable, but
+                    // the key you want to change is the obvious thing to click,
+                    // the action already exists directly above, and there is
+                    // only one thing a click here could reasonably mean. This is
+                    // not the `trade_plan_panel` case, where wiring would have
+                    // meant inventing which of several surfaces should open it.
+                    if Button::new(hk_key_name.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(key_fg)
+                        .fill(key_bg).corner_radius(crate::ui_kit::style::radius_sm())
+                        .min_size(egui::vec2(80.0, row_height_dense())).show(ui, t).clicked()
+                    {
+                        start_edit = true;
+                    }
+                    if start_edit {
+                        watchlist.hotkey_editing_id = Some(*hk_id);
+                    }
                 });
             });
         }
