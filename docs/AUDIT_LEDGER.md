@@ -2413,3 +2413,48 @@ pattern is consistent enough to state as a rule: **a check that has never been
 shown to fail has not been shown to work.**
 
 ---
+
+## AT-188 — Converting the overlay bodies, and where the conversion stops
+
+Continuation of AT-187. `body_header` / `body_header_text` were added as the
+mirror of the footer pair — nine bodies wrote `body.top() + 6.0` or `+ 8.0` for
+a header baseline, the same intention in two constants, neither on the scale.
+`the_header_mirrors_the_footer` asserts the two sit the same distance from
+their own edge.
+
+`chart_widgets.rs` across AT-187 and AT-188:
+
+| | before | after |
+|---|---|---|
+| raw `painter.text()` | 104 | 91 |
+| body-edge insets | 142 | 64 |
+| distinct inset constants | 26 | 23 |
+| kit geometry calls | 0 | 76 |
+
+### Where it stops, and why that is the right call
+
+The remaining 64 are NOT the same defect, and sweeping them to move the number
+would be the exact failure this ledger keeps recording. Two classes:
+
+* **Genuine column positions** — `body.left() + 50.0`, `+ 52.0`, `+ 55.0` are
+  the x of a label column in a row grid, not padding. Snapping them to a
+  spacing token would be nonsense.
+* **Row-grid origins** — `let y = body.top() + 4.0 + i as f32 * row_h`. The
+  `+ 4.0` is the pad above the first row, so converting it IS correct in
+  principle. But it shifts every row down by 4px in a widget that then draws
+  `count * row_h` of content, and `draw_positions_panel` already carries an
+  explicit `if y + row_h > body.bottom() - 2.0 { break; } // clip to body`.
+  Four pixels there can drop a row off the bottom.
+
+This app renders to a native window, so the verification rule recorded for it
+is build-and-test, not screenshots. A change that can silently delete a row of
+positions from a trading panel is not one to make without seeing it. The row
+grids need `body_rows(body, row_h, count)` — a helper that owns the origin AND
+the visible-row count together — and that is a change worth making deliberately
+rather than as the tail of a padding sweep.
+
+`overlay_body_insets` is re-baselined at 66 (the count across
+`chart_widgets.rs` and `overlays/`), so the population cannot grow while that
+work waits.
+
+---

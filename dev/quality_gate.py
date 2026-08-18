@@ -563,7 +563,7 @@ PATTERN_SELFTESTS = [
 ]
 
 
-def _selftest():
+def _selftest(quiet=False):
     bad = []
     for name, get, positives, negatives in PATTERN_SELFTESTS:
         try:
@@ -593,7 +593,8 @@ def _selftest():
             "\nwhile reporting success."
         )
         return 1
-    print(f"quality-gate pattern selftest: PASS ({len(PATTERN_SELFTESTS)} patterns)")
+    if not quiet:
+        print(f"quality-gate pattern selftest: PASS ({len(PATTERN_SELFTESTS)} patterns)")
     return 0
 
 
@@ -605,7 +606,8 @@ def main():
 
     # Never report on a broken instrument. A dead pattern silently zeroes its
     # metric, and `--update` would then bake that zero in as the baseline.
-    if _selftest() != 0:
+    # Quiet on success so `--show` emits parseable JSON and nothing else.
+    if _selftest(quiet=True) != 0:
         return 1
 
     cur = collect()

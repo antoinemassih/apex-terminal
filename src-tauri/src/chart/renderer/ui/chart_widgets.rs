@@ -31,6 +31,7 @@ use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
     draw_arc, hero_number, sub_label, stat, radial_gauge, radial_gauge_stacked, metric_row,
+    body_content, body_header, body_header_text,
     overlay_card_frame, overlay_card_header, overlay_header_ctx_rect, progress_bar,
     body_footer, body_footer_kv, body_footer_text,
 };
@@ -1224,13 +1225,13 @@ fn draw_momentum_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
 fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let cx = body.center().x;
     // Label at top
-    sub_label(p, egui::pos2(cx, body.top() + 8.0), "ATR (14)", t.dim);
+    sub_label(p, body_header(body).center(), "ATR (14)", t.dim);
     // Hero number
     let atr_str = if wd.atr > 1.0 { format!("{:.2}", wd.atr) } else { format!("{:.4}", wd.atr) };
     hero_number(p, egui::pos2(cx, body.top() + 28.0), &atr_str, t.accent);
 
     let bar_y = body.top() + 50.0;
-    let bar_x = body.left() + 12.0;
+    let bar_x = body_content(body).left();
     let bar_w = body.width() - 24.0;
     let bar_h = 6.0;
 
@@ -1252,8 +1253,8 @@ fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, 
         .value_font(mono_sm())
         .value_color(vr_col)
         .show(p, t, egui::Rect::from_min_max(
-            egui::pos2(body.left() + 12.0, vr_y - 8.0),
-            egui::pos2(body.right() - 12.0, vr_y + 8.0)));
+            egui::pos2(body_content(body).left(), vr_y - 8.0),
+            egui::pos2(body_content(body).right(), vr_y + 8.0)));
 }
 
 fn draw_volume_profile(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -1322,8 +1323,8 @@ fn draw_session_timer(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 }
 
 fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    let left = body.left() + 10.0;
-    let right = body.right() - 10.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
     let row_h = (body.height() - 8.0) / 5.0;
 
     for (i, (price, label)) in wd.price_levels.iter().enumerate() {
@@ -1391,8 +1392,8 @@ fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     ];
 
     let row_h = (body.height() - 8.0) / 4.0;
-    let left = body.left() + 10.0;
-    let right = body.right() - 10.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
     let bar_max_w = body.width() * 0.35;
 
     // Kit primitive: horizontal magnitude bars (|value| scaled), one per greek.
@@ -1423,7 +1424,7 @@ fn draw_risk_reward(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &T
     let reward = 2.8f32;
     let total = risk + reward;
     let bar_w = body.width() - 24.0;
-    let bar_x = body.left() + 12.0;
+    let bar_x = body_content(body).left();
     let bar_y = body.top() + 12.0;
     let bar_h = 10.0;
 
@@ -1456,8 +1457,8 @@ fn draw_market_breadth(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     ];
 
     let row_h = (body.height() - 8.0) / 4.0;
-    let left = body.left() + 10.0;
-    let right = body.right() - 10.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
 
     let w = body.width() - 20.0;
     for (i, (label, value, color, bar_pct)) in metrics.iter().enumerate() {
@@ -1518,7 +1519,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 
     // Legend: oversold/overbought zones at bottom
     let legend_y = body.bottom() - 10.0;
-    let legend_lx = body.left() + 8.0;
+    let legend_lx = body_content(body).left();
     p.circle_filled(egui::pos2(legend_lx, legend_y), 3.0, t.bear);
     p.text(egui::pos2(legend_lx + 8.0, legend_y), egui::Align2::LEFT_CENTER,
         "<30", mono_4xs(), color_subtle(t.bear));
@@ -1530,7 +1531,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
         ">70", mono_4xs(), color_subtle(t.bull));
 
     // Timeframe labels on the right side of each ring, aligned to each ring.
-    let label_x = body.right() - 6.0;
+    let label_x = body_content(body).right();
     for (i, label) in tf_labels.iter().enumerate() {
         let r = multiring_radius(max_r, n, i);
         let rsi = wd.rsi_multi[i];
@@ -1644,7 +1645,7 @@ fn draw_volume_shelf(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let y = body.top() + 4.0 + i as f32 * row_h;
         let color = if *is_support { t.bull } else { t.bear };
         let label = if *is_support { "S" } else { "R" };
-        p.text(egui::pos2(body.left() + 6.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
+        p.text(egui::pos2(body_content(body).left(), y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{:.1}", price), mono_xs(), t.text);
         p.text(egui::pos2(body.left() + 52.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             label, mono_2xs(), color);
@@ -1691,8 +1692,8 @@ fn draw_confluence(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
                 p,
                 t,
                 egui::Rect::from_min_max(
-                    egui::pos2(body.left() + 6.0, y),
-                    egui::pos2(body.right() - 6.0, y + row_h),
+                    egui::pos2(body_content(body).left(), y),
+                    egui::pos2(body_content(body).right(), y + row_h),
                 ),
             );
     }
@@ -1754,7 +1755,7 @@ fn draw_vol_regime(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     for (i, (label, val, max)) in metrics.iter().enumerate() {
         let r = multiring_radius(max_r, n, i);
         let color = regime_color(regime_frac(*val, *max));
-        p.text(egui::pos2(body.right() - 6.0, cy - r), egui::Align2::RIGHT_CENTER,
+        p.text(egui::pos2(body_content(body).right(), cy - r), egui::Align2::RIGHT_CENTER,
             &format!("{} {:.0}", label, val), mono_4xs(), color_subtle(color));
     }
 
@@ -1803,7 +1804,7 @@ fn draw_breadth_thermo(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
 
     let grid_w = body.width() - 50.0;
     let grid_h = body.height() - 20.0;
-    let ox = body.left() + 6.0;
+    let ox = body_content(body).left();
     let oy = body.top() + 4.0;
 
     // Kit primitive: filled / empty thermometer dot grid.
@@ -1814,9 +1815,9 @@ fn draw_breadth_thermo(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
 
     // Score on the right
     let sc = if score > 60.0 { t.bull } else if score < 40.0 { t.bear } else { t.warn };
-    p.text(egui::pos2(body.right() - 8.0, body.center().y - 8.0), egui::Align2::RIGHT_CENTER,
+    p.text(egui::pos2(body_content(body).right(), body.center().y - 8.0), egui::Align2::RIGHT_CENTER,
         &format!("{:.0}", score), prop_xl(), sc);
-    p.text(egui::pos2(body.right() - 8.0, body.center().y + 12.0), egui::Align2::RIGHT_CENTER,
+    p.text(egui::pos2(body_content(body).right(), body.center().y + 12.0), egui::Align2::RIGHT_CENTER,
         if score > 60.0 { "HEALTHY" } else if score < 40.0 { "WEAK" } else { "MIXED" },
         mono_2xs(), sc);
 }
@@ -1860,7 +1861,7 @@ fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     for (i, (label, val)) in metrics.iter().enumerate() {
         let r = multiring_radius(max_r, n, i);
         let color = if *val > 70.0 { t.bull } else if *val < 30.0 { t.bear } else { t.warn };
-        p.text(egui::pos2(body.right() - 6.0, cy - r), egui::Align2::RIGHT_CENTER,
+        p.text(egui::pos2(body_content(body).right(), cy - r), egui::Align2::RIGHT_CENTER,
             &format!("{} {:.0}", label, val), mono_4xs(), color_subtle(color));
     }
 
@@ -1873,7 +1874,7 @@ fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 
 /// Risk Dashboard — position sizing calculator
 fn draw_risk_dash(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    let left = body.left() + 8.0;
+    let left = body_content(body).left();
     // Two bands: the hero shares figure, then the 2x2 stats grid. `y += 48.0`
     // named the hero's height nowhere; here it is the slot's height.
     let dash = El::column()
@@ -2123,14 +2124,14 @@ fn draw_fundamentals(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let bar_w = body.width() - 12.0;
         let buy_w = bar_w * wd.analyst_buy as f32 / total;
         let hold_w = bar_w * wd.analyst_hold as f32 / total;
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0, bar_y), egui::vec2(buy_w, 6.0)),
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body_content(body).left(), bar_y), egui::vec2(buy_w, 6.0)),
             radius_xs(), t.bull);
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0 + buy_w, bar_y), egui::vec2(hold_w, 6.0)),
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body_content(body).left() + buy_w, bar_y), egui::vec2(hold_w, 6.0)),
             0.0, t.warn);
         let sell_w = bar_w - buy_w - hold_w;
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0 + buy_w + hold_w, bar_y), egui::vec2(sell_w, 6.0)),
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body_content(body).left() + buy_w + hold_w, bar_y), egui::vec2(sell_w, 6.0)),
             radius_xs(), t.bear);
-        p.text(egui::pos2(body.left() + 6.0, bar_y - 4.0), egui::Align2::LEFT_BOTTOM,
+        p.text(egui::pos2(body_content(body).left(), bar_y - 4.0), egui::Align2::LEFT_BOTTOM,
             &format!("{}B {}H {}S  PT ${:.0}", wd.analyst_buy, wd.analyst_hold, wd.analyst_sell, wd.analyst_target),
             mono_4xs(), color_dim(t.dim));
     }
@@ -2147,9 +2148,8 @@ fn draw_econ_calendar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
 
     // Next event hero
     if wd.econ_next_days >= 0 {
-        p.text(egui::pos2(body.left() + 8.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
-            "NEXT EVENT", mono_2xs(), color_dim(t.dim));
-        p.text(egui::pos2(body.left() + 8.0, body.top() + 26.0), egui::Align2::LEFT_CENTER,
+        body_header_text(p, body, "NEXT EVENT", egui::Align2::LEFT_CENTER, mono_2xs(), color_dim(t.dim));
+        p.text(egui::pos2(body_content(body).left(), body.top() + 26.0), egui::Align2::LEFT_CENTER,
             &format!("{}d", wd.econ_next_days), prop_display_sm(), t.accent);
         p.text(egui::pos2(body.left() + 55.0, body.top() + 20.0), egui::Align2::LEFT_CENTER,
             &wd.econ_next_name, mono_sm(), t.text);
@@ -2198,7 +2198,7 @@ fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
             p,
             t,
             egui::Rect::from_min_max(
-                egui::pos2(body.left() + 8.0, body.top() - 2.0),
+                egui::pos2(body_content(body).left(), body.top() - 2.0),
                 egui::pos2(body.right(), body.bottom()),
             ),
         );
@@ -2206,15 +2206,14 @@ fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 
 /// Options Payoff Chart — P&L curve for a position
 fn draw_payoff_chart(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    let left = body.left() + 6.0;
-    let right = body.right() - 6.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
     let chart_top = body.top() + 18.0;
     let chart_bot = body.bottom() - 14.0;
     let chart_w = right - left;
     let chart_h = chart_bot - chart_top;
 
-    p.text(egui::pos2(left, body.top() + 6.0), egui::Align2::LEFT_CENTER,
-        "PAYOFF CURVE", mono_2xs(), color_dim(t.dim));
+    body_header_text(p, body, "PAYOFF CURVE", egui::Align2::LEFT_CENTER, mono_2xs(), color_dim(t.dim));
 
     // Placeholder: long call payoff curve
     let strike = wd.last_close;
@@ -2267,8 +2266,7 @@ fn draw_payoff_chart(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 
 /// Options Flow — unusual activity feed
 fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
-    p.text(egui::pos2(body.left() + 6.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
-        "UNUSUAL FLOW", mono_2xs(), color_dim(t.dim));
+    body_header_text(p, body, "UNUSUAL FLOW", egui::Align2::LEFT_CENTER, mono_2xs(), color_dim(t.dim));
 
     let flows = [
         ("CALL", "450C 0DTE", "$2.4M", true, "sweep"),
@@ -2298,7 +2296,7 @@ fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 
         // Side pill
         let pill_w = 28.0;
-        let pill_rect = egui::Rect::from_min_size(egui::pos2(body.left() + 6.0, y + 2.0), egui::vec2(pill_w, row_h - 4.0));
+        let pill_rect = egui::Rect::from_min_size(egui::pos2(body_content(body).left(), y + 2.0), egui::vec2(pill_w, row_h - 4.0));
         p.rect_filled(pill_rect, radius_xs(), color_alpha(col, alpha_tint()));
         p.text(pill_rect.center(), egui::Align2::CENTER_CENTER,
             side, mono_4xs(), col);
@@ -2323,7 +2321,7 @@ fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
                 t,
                 egui::Rect::from_min_max(
                     egui::pos2(body.left() + 38.0, y),
-                    egui::pos2(body.right() - 6.0, y + row_h),
+                    egui::pos2(body_content(body).right(), y + row_h),
                 ),
             );
     }
@@ -2331,8 +2329,8 @@ fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 
 fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme,
                        hover: Option<egui::Pos2>, btns: &mut Vec<(egui::Rect, WidgetBtnAction)>) {
-    let left = body.left() + 6.0;
-    let right = body.right() - 6.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
     let y = body.top() + 2.0;
 
     if wd.all_positions.is_empty() {
@@ -2497,7 +2495,7 @@ fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 
     // Hero number — proportional display font, vertically centered
     let text_y = body.center().y;
-    let text_x = body.left() + 10.0;
+    let text_x = body_content(body).left();
     p.text(egui::pos2(text_x, text_y), egui::Align2::LEFT_CENTER,
         &label, prop_display_xl(), col);
 
@@ -2518,8 +2516,7 @@ fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     btns.push((btn_rect, WidgetBtnAction::CloseAllPositions));
 
     // Subtle "DAY P&L" label top-left
-    p.text(egui::pos2(body.left() + 10.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
-        "DAY P&L", mono_2xs(), color_dim(t.dim));
+    body_header_text(p, body, "DAY P&L", egui::Align2::LEFT_CENTER, mono_2xs(), color_dim(t.dim));
 }
 
 fn draw_custom(p: &egui::Painter, body: egui::Rect, t: &Theme) {
@@ -2591,8 +2588,8 @@ fn draw_correlation(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 }
 
 fn draw_dark_pool(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    let left = body.left() + 10.0;
-    let right = body.right() - 10.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
 
     // Dark pool ratio — hero number
     let ratio_pct = wd.dark_pool_ratio * 100.0;
@@ -2658,8 +2655,8 @@ fn draw_position_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         &format!("{:+.2}%", wd.position_pnl_pct), mono_sm(), pnl_col);
 
     // Entry line indicator
-    let left = body.left() + 10.0;
-    let right = body.right() - 10.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
     let entry_y = body.bottom() - 10.0;
     KvRow::new("ENTRY", format!("${:.2}", wd.position_avg))
         .label_font(mono_2xs())
@@ -2698,7 +2695,7 @@ fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
     if wd.atr > 0.0 && wd.last_close > 0.0 {
         let implied_move_pct = wd.atr_pct * 2.0;
         let bar_y = body.bottom() - 12.0;
-        let bar_x = body.left() + 12.0;
+        let bar_x = body_content(body).left();
         let bar_w = body.width() - 24.0;
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, 4.0)),
             radius_xs(), tint(t, Tone::Border, alpha_muted()));
@@ -2713,8 +2710,8 @@ fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
 }
 
 fn draw_news_ticker(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    let left = body.left() + 8.0;
-    let right = body.right() - 8.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
     let cy = body.center().y;
 
     // Demo headlines — in production these would come from the news feed
@@ -2991,12 +2988,11 @@ fn draw_trade_plan(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     let dir_label = if dir > 0 { "LONG" } else { "SHORT" };
 
     // Direction pill
-    p.text(egui::pos2(cx, body.top() + 8.0), egui::Align2::CENTER_CENTER,
-        dir_label, mono_sm(), dir_col);
+    body_header_text(p, body, dir_label, egui::Align2::CENTER_CENTER, mono_sm(), dir_col);
 
     // Entry / Target / Stop rows
-    let left = body.left() + 10.0;
-    let right = body.right() - 10.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
     // Three price rows and the R:R line below them. The trailing slot is what
     // the walked `y` became after the loop — declared, so the R:R line does not
     // depend on the loop having run the number of times you assumed.
@@ -3072,8 +3068,8 @@ fn draw_change_points(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
 
 fn draw_zone_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
-    let left = body.left() + 10.0;
-    let right = body.right() - 10.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
 
     // Zone counts
     let rows = [
@@ -3151,7 +3147,7 @@ fn draw_pattern_scanner(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
 
     // Confidence bar
     let bar_y = body.top() + 30.0;
-    let bar_x = body.left() + 12.0;
+    let bar_x = body_content(body).left();
     let bar_w = body.width() - 24.0;
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, 6.0)),
         radius_xs(), tint(t, Tone::Border, alpha_muted()));
@@ -3178,8 +3174,8 @@ fn draw_vix_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     stat(p, egui::pos2(cx, body.top() + 18.0), &format!("{:.1}", wd.vix_spot), "VIX SPOT", vix_col, t.dim);
 
     // Gap % and convergence
-    let left = body.left() + 10.0;
-    let right = body.right() - 10.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
     let y = body.top() + 52.0;
 
     let gap_col = if wd.vix_gap_pct.abs() > 5.0 { t.bear } else { t.dim };
@@ -3206,8 +3202,8 @@ fn draw_vix_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
 fn draw_signal_dashboard(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
-    let left = body.left() + 8.0;
-    let right = body.right() - 8.0;
+    let left = body_content(body).left();
+    let right = body_content(body).right();
 
     // Compact signal overview — each row is a signal with status dot + name + value
     struct Row { name: &'static str, active: bool, value: String, color: Color32 }

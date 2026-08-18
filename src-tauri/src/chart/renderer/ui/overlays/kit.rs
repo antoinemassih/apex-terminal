@@ -420,6 +420,35 @@ pub(crate) fn body_footer(body: egui::Rect) -> egui::Rect {
     )
 }
 
+/// The top caption strip of a widget body, one line high — the mirror of
+/// [`body_footer`].
+///
+/// Nine bodies wrote `body.top() + 6.0` or `+ 8.0` for a header baseline. Same
+/// intention, two constants, neither on the spacing scale.
+pub(crate) fn body_header(body: egui::Rect) -> egui::Rect {
+    let c = body_content(body);
+    let h = crate::ui_kit::style::font_xs() + crate::ui_kit::style::gap_xs();
+    let cy = body.top() + crate::ui_kit::style::gap_sm();
+    egui::Rect::from_min_max(
+        egui::pos2(c.left(), (cy - h * 0.5).max(body.top())),
+        egui::pos2(c.right(), (cy + h * 0.5).min(body.bottom())),
+    )
+}
+
+/// A single caption in the header strip, aligned left / centre / right.
+pub(crate) fn body_header_text(
+    p: &egui::Painter, body: egui::Rect, text: &str,
+    align: egui::Align2, font: egui::FontId, color: Color32,
+) {
+    let f = body_header(body);
+    let x = match align.x() {
+        egui::Align::Min => f.left(),
+        egui::Align::Max => f.right(),
+        egui::Align::Center => f.center().x,
+    };
+    p.text(egui::pos2(x, f.center().y), align, text, font, color);
+}
+
 /// A single caption in the footer strip, aligned left / centre / right.
 ///
 /// `align` selects the horizontal edge only; the vertical is the strip's
@@ -506,6 +535,21 @@ mod body_geometry_tests {
         assert!((inset - crate::ui_kit::style::gap_sm()).abs() < 0.01,
             "the caption centre must sit one padding above the bottom, got {inset}");
         assert!(f.height() > 0.0);
+    }
+
+    /// Header and footer are mirror images: the same distance from their own
+    /// edge, and neither escapes the body.
+    #[test]
+    fn the_header_mirrors_the_footer() {
+        let h = body_header(body());
+        let f = body_footer(body());
+        let top_inset = h.center().y - body().top();
+        let bot_inset = body().bottom() - f.center().y;
+        assert!((top_inset - bot_inset).abs() < 0.01,
+            "header and footer insets must match: {top_inset} vs {bot_inset}");
+        assert!(h.top() >= body().top() - 0.01 && h.bottom() <= body().bottom() + 0.01,
+            "header escapes the body: {h:?}");
+        assert!(h.center().y < f.center().y, "header must sit above the footer");
     }
 
     /// The payoff, stated as a test: `Settings -> Density` now reaches the
