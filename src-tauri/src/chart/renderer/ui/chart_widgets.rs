@@ -970,10 +970,7 @@ impl WidgetData {
         let (position_qty, position_avg, position_pnl, position_pnl_pct) =
             if let Some((_, positions, _)) = crate::chart_renderer::trading::read_account_data() {
                 if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
-                    let pnl_pct = if pos.avg_price > 0.0 {
-                        (last_close - pos.avg_price) / pos.avg_price * 100.0
-                            * if pos.qty < 0 { -1.0 } else { 1.0 }
-                    } else { 0.0 };
+                    let pnl_pct = pos.pnl_pct_at(last_close).unwrap_or(0.0);
                     (pos.qty, pos.avg_price, pos.unrealized_pnl as f32, pnl_pct)
                 } else { (0, 0.0, 0.0, 0.0) }
             } else { (0, 0.0, 0.0, 0.0) };
@@ -1021,10 +1018,7 @@ impl WidgetData {
                     if positions.is_empty() { None }
                     else {
                         let rows: Vec<PositionRow> = positions.iter().map(|p| {
-                            let pnl_pct = if p.avg_price > 0.0 {
-                                (p.current_price - p.avg_price) / p.avg_price * 100.0
-                                    * if p.qty < 0 { -1.0 } else { 1.0 }
-                            } else { 0.0 };
+                            let pnl_pct = p.pnl_pct().unwrap_or(0.0);
                             PositionRow {
                                 symbol: p.symbol.clone(),
                                 qty: p.qty,

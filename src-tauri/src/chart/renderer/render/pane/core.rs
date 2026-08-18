@@ -6416,7 +6416,12 @@ fn render_chart_pane(
             let pos_color = if is_long { t.bull } else { t.bear };
             let last = chart.bars.last().map(|b| b.close).unwrap_or(entry_price);
             let pnl = (last - entry_price) * pos.qty as f32;
-            let pnl_pct = if entry_price > 0.0 { (last / entry_price - 1.0) * 100.0 } else { 0.0 };
+            // Direction-aware, and measured against the PANE's last close
+            // rather than the broker snapshot's. This used to be
+            // `(last / entry_price - 1.0) * 100.0` with no flip for `qty < 0`,
+            // so a profitable short printed `+$1000.00 (-10.0%)` — the dollars
+            // and the percentage contradicting each other on one line.
+            let pnl_pct = pos.pnl_pct_at(last);
             // Dashed entry line (accent/cyan, thicker than order lines)
             let pos_line_color = color_alpha(t.accent, 180);
             {
@@ -6457,7 +6462,10 @@ fn render_chart_pane(
             // Right-edge P&L label
             let pnl_sign = if pnl >= 0.0 { "+" } else { "" };
             let pnl_color = if pnl >= 0.0 { t.bull } else { t.bear };
-            let pnl_text = format!("{}${:.2} ({:+.1}%)", pnl_sign, pnl, pnl_pct);
+            let pnl_text = match pnl_pct {
+                Some(v) => format!("{pnl_sign}${pnl:.2} ({v:+.1}%)"),
+                None => format!("{pnl_sign}${pnl:.2}"),
+            };
             let pnl_font = mono_xs();
             let pnl_galley = painter.layout_no_wrap(pnl_text.clone(), pnl_font.clone(), pnl_color);
             let pnl_x = rect.left() + cw - pnl_galley.size().x - 12.0;

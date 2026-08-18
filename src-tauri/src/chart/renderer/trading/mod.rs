@@ -278,9 +278,109 @@ pub(crate) struct Position {
 
 impl Position {
     pub fn pnl(&self) -> f32 { self.unrealized_pnl as f32 }
-    pub fn pnl_pct(&self) -> f32 {
-        if self.avg_price == 0.0 { return 0.0; }
-        ((self.current_price - self.avg_price) / self.avg_price) * 100.0
+
+    /// Unrealised return on the position, as a percentage, `None` when there
+    /// is no cost basis to measure against.
+    ///
+    /// # The sign
+    ///
+    /// `qty` is negative for a short, and the direction MUST be applied. This
+    /// method did not apply it, and four implementations of the same figure
+    /// existed across the app with three different answers for a short:
+    ///
+    /// | where | direction applied |
+    /// |---|---|
+    /// | `Position::pnl_pct` (here) | no |
+    /// | `render/pane/core.rs` position overlay | no |
+    /// | `chart_widgets` position P&L | yes |
+    /// | `chart_widgets` positions panel | yes |
+    /// | `journal_feed` closed trades | yes (long/short branches) |
+    ///
+    /// Concretely: short 100 at $100, price now $90. The dollar figure comes
+    /// from `unrealized_pnl` and reads `+$1,000.00` — correct, the short is up.
+    /// The unflipped percentage reads `-10.0%`. The chart overlay printed both
+    /// on one line: `+$1000.00 (-10.0%)`. A trader reading a position panel
+    /// during a move should not have to work out which half to believe.
+    ///
+    /// # Why `Option`
+    ///
+    /// `avg_price == 0.0` is a position with no cost basis — a broker
+    /// snapshot that has not populated yet. It returned `0.0`, which renders
+    /// `+0.00%`: a claim that the position is exactly flat. See
+    /// [`crate::foundation::market`] for the same defect on day change.
+    pub fn pnl_pct(&self) -> Option<f32> {
+        self.pnl_pct_at(self.current_price)
+    }
+
+    /// [`Self::pnl_pct`] measured against an explicit price rather than the
+    /// broker's last. The chart overlay wants the pane's own last bar close,
+    /// which can differ from the account snapshot mid-tick.
+    pub fn pnl_pct_at(&self, price: f32) -> Option<f32> {
+        if self.avg_price <= 0.0 || !price.is_finite() {
+            return None;
+        }
+        let raw = (price - self.avg_price) / self.avg_price * 100.0;
+        Some(if self.qty < 0 { -raw } else { raw })
+    }
+}
+
+#[cfg(test)]
+mod position_pnl_tests {
+    use super::*;
+
+    fn pos(qty: i32, avg: f32, cur: f32) -> Position {
+        Position {
+            symbol: "T".into(), qty, avg_price: avg, current_price: cur,
+            market_value: 0.0, unrealized_pnl: 0.0, con_id: 0,
+        }
+    }
+
+    #[test]
+    fn a_long_gains_when_the_price_rises() {
+        let v = pos(100, 100.0, 110.0).pnl_pct().expect("known");
+        assert!((v - 10.0).abs() < 1e-3, "got {v}");
+    }
+
+    /// THE defect. A short is UP when the price falls, and the percentage has
+    /// to say so — the dollar figure beside it already does.
+    #[test]
+    fn a_short_gains_when_the_price_falls() {
+        let v = pos(-100, 100.0, 90.0).pnl_pct().expect("known");
+        assert!((v - 10.0).abs() < 1e-3, "a short at 100 with price 90 is +10%, got {v}");
+    }
+
+    #[test]
+    fn a_short_loses_when_the_price_rises() {
+        let v = pos(-100, 100.0, 110.0).pnl_pct().expect("known");
+        assert!((v + 10.0).abs() < 1e-3, "a short at 100 with price 110 is -10%, got {v}");
+    }
+
+    /// The percentage must never contradict the dollar P&L sign.
+    #[test]
+    fn the_percentage_agrees_with_the_dollar_sign() {
+        for (qty, avg, cur) in [(100, 100.0, 110.0), (100, 100.0, 90.0),
+                                (-100, 100.0, 90.0), (-100, 100.0, 110.0)] {
+            let p = pos(qty, avg, cur);
+            let dollars = (cur - avg) * qty as f32;   // how `pnl` is derived
+            let pct = p.pnl_pct().expect("known");
+            assert_eq!(dollars > 0.0, pct > 0.0,
+                "qty={qty} avg={avg} cur={cur}: dollars={dollars} but pct={pct}");
+        }
+    }
+
+    /// No cost basis is not "flat".
+    #[test]
+    fn a_position_without_a_cost_basis_is_unknown() {
+        assert_eq!(pos(100, 0.0, 110.0).pnl_pct(), None);
+        assert_eq!(pos(100, 100.0, f32::NAN).pnl_pct(), None);
+    }
+
+    #[test]
+    fn an_explicit_price_overrides_the_brokers_last() {
+        let p = pos(-100, 100.0, 100.0);
+        assert_eq!(p.pnl_pct(), Some(0.0));
+        let v = p.pnl_pct_at(90.0).expect("known");
+        assert!((v - 10.0).abs() < 1e-3, "got {v}");
     }
 }
 

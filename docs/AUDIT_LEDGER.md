@@ -2458,3 +2458,52 @@ rather than as the tail of a padding sweep.
 work waits.
 
 ---
+
+## AT-189 — A profitable short printed `+$1000.00 (-10.0%)`
+
+Chasing the trading-surface half of the `fabricated_ratio` population (AT-186)
+turned up something worse than the fabrication.
+
+Position P&L percent had **five implementations**, and they disagreed about
+which way a short moves:
+
+| where | direction applied |
+|---|---|
+| `trading::Position::pnl_pct` | **no** |
+| `render/pane/core.rs` chart position overlay | **no** |
+| `chart_widgets` position P&L | yes |
+| `chart_widgets` positions panel | yes |
+| `portfolio_pane` positions table | yes |
+| `journal_feed` closed trades | yes (long/short branches) |
+
+`qty` is negative for a short. The dollar figure comes from `unrealized_pnl`,
+or from `(last - entry) * qty`, so it flips correctly. The percentage in two of
+those places did not.
+
+Short 100 at $100, price now $90:
+
+* dollars: `+$1,000.00` — correct, the short is up
+* unflipped percent: `-10.0%`
+
+`render/pane/core.rs` printed both, on one line, as
+`format!("{}${:.2} ({:+.1}%)", ...)`. A trader reading a position label during
+a move should not have to work out which half to believe. `Position::pnl_pct`
+fed the bottom dock and the orders panel, so four surfaces showed the wrong
+sign on a short and three showed the right one, simultaneously.
+
+`the_percentage_agrees_with_the_dollar_sign` now asserts the invariant directly
+across all four quadrants (long/short × up/down) rather than testing the
+formula, because the formula was never the thing that mattered. Removing the
+flip fails four tests and prints the contradiction verbatim:
+`qty=-100 avg=100 cur=90: dollars=1000 but pct=-10`.
+
+`pnl_pct` also returns `Option` now: `avg_price == 0.0` is a position whose
+cost basis has not arrived, and it rendered `+0.00%` — a claim the position is
+exactly flat. Same defect as the day change (AT-186), same fix.
+`pnl_pct_at(price)` exists because the chart overlay legitimately wants the
+pane's own last bar close rather than the broker snapshot's price; that was the
+only real difference between the five copies, and it is now the only parameter.
+
+Six call sites, one implementation.
+
+---

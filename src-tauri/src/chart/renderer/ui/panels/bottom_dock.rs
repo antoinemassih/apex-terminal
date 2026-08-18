@@ -326,7 +326,10 @@ fn draw_positions(ui: &mut egui::Ui, t: &Theme, account: &AccountData) {
                     PanelColumn::right(&format!("{:>8.2}", p.current_price)).color(t.text),
                     PanelColumn::right(&money(p.market_value)).color(t.text),
                     PanelColumn::right(&signed_money(pnl)).color(pnl_color),
-                    PanelColumn::right(&format!("{:>+6.2}%", pct)).color(pnl_color),
+                    PanelColumn::right(&match pct {
+                        Some(v) => format!("{v:>+6.2}%"),
+                        None => format!("{:>7}", "\u{2014}"),
+                    }).color(pnl_color),
                 ])
                 .show(ui, t);
         }

@@ -225,9 +225,7 @@ fn positions_table(ui: &mut egui::Ui, t: &Theme, positions: &[Position], net_liq
         for (ri, p) in positions.iter().enumerate() {
             let pnl_c = if p.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
             let dir_c = if p.qty >= 0 { t.bull } else { t.bear };
-            let pnl_pct = if p.avg_price != 0.0 {
-                (p.current_price - p.avg_price) / p.avg_price * 100.0 * if p.qty < 0 { -1.0 } else { 1.0 }
-            } else { 0.0 };
+            let pnl_pct = p.pnl_pct();
             let wt = if net_liq > 0.0 { p.market_value.abs() / net_liq * 100.0 } else { 0.0 };
             let row = ui.horizontal(|ui| {
                 cell(ui, colw[0], egui::Align::Min, p.symbol.clone(), t.text, true);
@@ -236,7 +234,9 @@ fn positions_table(ui: &mut egui::Ui, t: &Theme, positions: &[Position], net_liq
                 cell(ui, colw[3], egui::Align::Max, format!("{:.2}", p.current_price), t.text, false);
                 cell(ui, colw[4], egui::Align::Max, fmt_money(p.market_value), t.dim, false);
                 cell(ui, colw[5], egui::Align::Max, format!("{:+.0}", p.unrealized_pnl), pnl_c, true);
-                cell(ui, colw[6], egui::Align::Max, format!("{:+.1}", pnl_pct), pnl_c, false);
+                cell(ui, colw[6], egui::Align::Max,
+                    pnl_pct.map_or_else(|| "\u{2014}".to_string(), |v| format!("{v:+.1}")),
+                    pnl_c, false);
                 cell(ui, colw[7], egui::Align::Max, format!("{:.0}", wt), color_half(t.dim), false);
             });
             if ri % 2 == 1 {

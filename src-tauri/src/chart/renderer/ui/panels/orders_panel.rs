@@ -206,8 +206,10 @@ fn draw_book(
                                                 .strong(true)
                                                 .color(pnl_color));
                                             ui.add_space(gap_xs());
-                                            ui.add(MonospaceCode::new(&format!(
-                                                "({:+.1}%)", pos.pnl_pct()))
+                                            ui.add(MonospaceCode::new(&match pos.pnl_pct() {
+                                                Some(v) => format!("({v:+.1}%)"),
+                                                None => "(\u{2014})".to_string(),
+                                            })
                                                 .size_px(font_sm_tight())
                                                 .color(pnl_color));
                                             ui.with_layout(
