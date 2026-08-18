@@ -1277,7 +1277,12 @@ pub fn end_frame(
     // Scanner: raw pool + def[0] criteria + the app's filtered+sorted output, so
     // the harness can recompute the expected result and check filter/sort logic.
     let scan_raw_json: Vec<serde_json::Value> = watchlist.scanner.results.iter().take(600)
-        .map(|r| serde_json::json!({"symbol": r.symbol, "price": r.price, "change_pct": r.change_pct, "volume": r.volume}))
+        // `change_pct` is `null` when the previous close has not arrived. The
+        // oracle needs that distinct from `0.0`, because the whole point of the
+        // rule it checks is that an unknown must not satisfy `>= 0.0`.
+        .map(|r| serde_json::json!({"symbol": r.symbol, "price": r.price,
+                                    "prev_close": r.prev_close, "change_pct": r.change_pct(),
+                                    "volume": r.volume}))
         .collect();
     let (scan_def0_json, scan_filtered_json) = match watchlist.scanner.defs.first() {
         Some(d) => {
@@ -1286,7 +1291,7 @@ pub fn end_frame(
                 "min_change": d.min_change, "max_change": d.max_change,
                 "min_volume": d.min_volume, "sort_by": format!("{:?}", d.sort_by), "limit": d.limit,
              }),
-             filtered.iter().map(|r| serde_json::json!({"symbol": r.symbol, "change_pct": r.change_pct, "volume": r.volume}))
+             filtered.iter().map(|r| serde_json::json!({"symbol": r.symbol, "change_pct": r.change_pct(), "volume": r.volume}))
                  .collect::<Vec<_>>())
         }
         None => (serde_json::Value::Null, vec![]),

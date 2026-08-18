@@ -2235,3 +2235,103 @@ way that would have produced a bad change had I acted on it directly. The
 searching parallelised; the judgment did not.
 
 ---
+
+## AT-186 — The unknown day change, and the instrument that was seeing 4% of gpu.rs
+
+Six sites computed a percent change under a `prev_close > 0.0` guard and answered
+the absent case with `0.0`. That is not a neutral placeholder. It is the claim
+"unchanged", and the app acted on it:
+
+* `Top Gainers` filters `change_pct >= 0.0`. A symbol whose previous close never
+  arrived scored exactly `0.0`, passed, and was listed as a gainer. `Top Losers`
+  filters `<= 0.0`, so the SAME symbol was listed as a loser at the same time. A
+  scanner whose entire job is "which names are moving" was including names it had
+  no move data for, in both directions at once.
+* A change cell colours on `>= 0.0`, so the unknown painted BULL green and read
+  `+0.00%` — the most confident thing a price cell can say.
+
+**The inverse was worse.** Three sites reconstructed the previous close back out
+of the fabricated percentage (`price / (1.0 + pct / 100.0)`, falling back to
+`price` itself at `0.0`). That writes `prev_close == price`, and every downstream
+"is this known" check tests `prev_close > 0.0` — so the unknown passed. "Save
+scan as watchlist" wrote it to disk with `loaded: true` beside it. The
+fabrication crossed a persistence boundary and became permanent.
+
+**The fix is to keep the fact and derive the display.** `ScanResult` now stores
+`prev_close` — the datum the feed already sends — instead of a precomputed
+`change_pct`, and `foundation::market::day_change_pct` returns `None` when there
+is nothing to divide by. `Some(0.0)` (genuinely flat) and `None` (unknown) are
+now different values, which is the distinction the whole defect turned on.
+
+Also consolidated: both `ScannerPrice` command handlers — the pane router and the
+winit event loop — carried a verbatim copy of the fabrication. One
+`apply_scanner_price` now.
+
+**The comparator nearly reintroduced the bug it was fixing.** The first version
+sorted descending by passing the arguments reversed, `cmp(b, a)`, which silently
+reversed the `None` handling too and floated every unknown to the TOP of Top
+Gainers. It compiled, it read correctly, and the tests were written after it. The
+replacement takes `(a, b)` in the caller's order and flips only the Some/Some
+comparison. Both mutations — admitting unknowns, and the reversed sort — were
+then re-applied deliberately and confirmed to fail exactly the tests written for
+them.
+
+### The larger finding: the ratchet was seeing 4% of gpu.rs
+
+`quality_gate.py` computed "production code" by truncating each file at its first
+`#[cfg(test)]`, on the Rust convention that test modules sit at the end.
+`gpu.rs` is 11,139 lines and its first test module starts at line 542. Every
+metric in that gate saw 4% of it — including the `.unwrap()` panic budget whose
+own failure message reads "a panic in the render thread kills the window".
+
+`strip_test_hits.py` had already solved this, brace-matched and with a selftest,
+after the same assumption hid 17 violations from `check-design-system.sh` and
+made `token_consumer_gate.py` invent 37 findings. Its docstring even warns that
+the failure is unbounded — "any file that later gains a mid-file test module
+silently drops out of the count below that point, and the ratchet reports an
+improvement for it". That fix was applied to one consumer and not this one.
+Third instance of the same root cause.
+
+What the truncation was hiding, once the shared stripper was wired in:
+
+| metric | was | actually |
+|---|---|---|
+| `.unwrap()` (dev_inspector) | 4 | 78 |
+| `.unwrap()` (data) | 11 | 20 |
+| `.unwrap()` (chart_other) | 2 | 11 |
+| `.expect(` | 56 | 60 |
+| `IndicatorType::` | 151 | 192 |
+
+92 hidden `.unwrap()` calls in a gate whose stated purpose is bounding panic
+risk. The baseline was re-cut upward — the numbers rose because the instrument
+was repaired, not because the code got worse.
+
+`text_width_guess` went 2 → 4 and back to 2: the two newly-visible hits were
+`hist.len() as f32 * bar_w`, a histogram's bar COUNT times its bar pitch, which
+is exactly the count-x-pitch case the exemption exists for. The earlier "0 in
+scope" claim survives.
+
+### New gate, and what it does NOT claim
+
+`fabricated_ratio` counts `if base > 0.0 { a / base } else { 0.0 }`. It baselines
+at 34, not 0, and the doc says why: the shape has two populations and the regex
+cannot separate them. Most are fine — `plus_dm_sum / tr_sum` with no true range,
+`above_avg / total_vol` with no volume: the denominator is genuinely zero and
+`0.0` is the right answer. A minority are this defect in other clothes, and they
+are on the trading surface:
+
+* `(last / entry_price - 1.0) * 100.0` where `entry_price == 0.0` means there is
+  NO POSITION — and renders a P&L of `0.00%`.
+* `maintenance_margin / net_liq` where `net_liq == 0.0` means the account
+  snapshot has not loaded — and renders 0% margin usage, which reads as "no
+  margin risk".
+
+Those are the next pass. The gate is a ceiling on the shape, in the same spirit
+as `dead_code_allows` starting at 52; a passing run must not be read as "no
+fabrication here".
+
+Also removed: `chart_widgets`'s `_prev_close` / `_day_change_pct`, computed every
+frame, stored, and never read — the underscore prefix was someone silencing the
+warning rather than deleting the fields.
+
+---

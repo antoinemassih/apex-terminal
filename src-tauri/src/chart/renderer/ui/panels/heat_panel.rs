@@ -121,9 +121,14 @@ pub(crate) fn render_heat_panel(
     } else {
         watchlist.sections.iter().flat_map(|sec| sec.items.iter())
             .filter(|i| !i.is_option && i.loaded && i.price > 0.0)
-            .map(|i| {
-                let chg = if i.prev_close > 0.0 { (i.price / i.prev_close - 1.0) * 100.0 } else { 0.0 };
-                (i.symbol.clone(), chg, "Watchlist".into())
+            // A heat tile IS its day change — colour and size both encode it.
+            // A symbol with no previous close has nothing to render, and the
+            // `else { 0.0 }` this replaces gave it a confident neutral-green
+            // tile. The preset branch above already filtered on `prev_close`;
+            // this branch did not, so the two disagreed about the same symbol.
+            .filter_map(|i| {
+                let chg = crate::foundation::market::day_change_pct(i.price, i.prev_close)?;
+                Some((i.symbol.clone(), chg, "Watchlist".into()))
             }).collect()
     };
 

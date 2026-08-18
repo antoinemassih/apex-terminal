@@ -364,18 +364,47 @@ fn dispatch(
                 def["min_volume"].as_f64().unwrap_or(0.0),
                 def["limit"].as_u64().unwrap_or(usize::MAX as u64) as usize);
             let sort_by = def["sort_by"].as_str().unwrap_or("ChangeDesc");
-            let mut want: Vec<(String, f64, f64)> = raw.iter().filter_map(|r| {
+            // This is a DELIBERATE second implementation, not a call into
+            // `apply_scanner` — the whole value of the oracle is that it can
+            // disagree with the app. It is written against the JSON dump, so it
+            // stays independent of the Rust types.
+            //
+            // `change_pct` is `null` when the previous close has not arrived.
+            // An unknown is excluded from any scan that constrains change (it
+            // cannot be shown to satisfy `>= 0.0`, which is what made a symbol
+            // with no data show up in Top Gainers AND Top Losers at once), and
+            // sorts last in the scans that do not.
+            let bounded = mn > -999.0 || mx < 999.0;
+            let mut want: Vec<(String, Option<f64>, f64)> = raw.iter().filter_map(|r| {
                 let sym = r["symbol"].as_str()?.to_string();
-                let ch  = r["change_pct"].as_f64()?;
+                let ch  = r["change_pct"].as_f64();
                 let vol = r["volume"].as_f64()?;
                 let px  = r["price"].as_f64().unwrap_or(0.0);
-                // Mirror apply_scanner exactly: price>0, change in [min,max], vol>=min.
-                (px > 0.0 && ch >= mn && ch <= mx && vol >= mv).then_some((sym, ch, vol))
+                let change_ok = match ch {
+                    Some(c) => c >= mn && c <= mx,
+                    None => !bounded,
+                };
+                (px > 0.0 && change_ok && vol >= mv).then_some((sym, ch, vol))
             }).collect();
+            // `None` last in BOTH directions. Take the arguments in the
+            // caller's order and flip only the Some/Some comparison — sorting
+            // descending by passing them reversed would reverse the None
+            // handling with it and float every unknown to the top.
+            fn by_change(a: Option<f64>, b: Option<f64>, desc: bool) -> std::cmp::Ordering {
+                match (a, b) {
+                    (Some(x), Some(y)) => {
+                        let o = x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal);
+                        if desc { o.reverse() } else { o }
+                    }
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                }
+            }
             match sort_by {
-                "ChangeAsc"  => want.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)),
+                "ChangeAsc"  => want.sort_by(|a, b| by_change(a.1, b.1, false)),
                 "VolumeDesc" => want.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)),
-                _            => want.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)),
+                _            => want.sort_by(|a, b| by_change(a.1, b.1, true)),
             }
             want.truncate(limit);
             let want_syms: Vec<String> = want.into_iter().map(|t| t.0).collect();

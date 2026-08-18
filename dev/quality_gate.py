@@ -29,6 +29,8 @@ import json
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import strip_test_hits
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "src-tauri", "src")
@@ -175,8 +177,13 @@ COMMENT_LINE_RE = re.compile(r"^\s*(?://|\*|/\*)")
 # Matched as a whole word OR a suffix, so both `self.lines` and `pinned_items`
 # read as collections. Suffix-only missed the bare `lines` in `tooltip.rs`,
 # where `lines.len() * line_h()` is a stack height and entirely correct.
+# `hist` joined the list when the test-stripping fix (see `_production_only`)
+# made 2,723 previously-invisible lines of `dev_inspector/server.rs` countable
+# and surfaced `hist.len() as f32 * bar_w` — a histogram's BAR COUNT times its
+# bar pitch, which is the count-x-pitch case this exemption exists for and not
+# a text-width guess at all.
 _COLLECTION_NAME_RE = re.compile(
-    r"(?:^|_)(?:list|items|count|indices|zones|rows|lines|entries|trades)$"
+    r"(?:^|_)(?:list|items|count|indices|zones|rows|lines|entries|trades|hist)$"
 )
 # NOTE the optional `\)` before the `*`. The first version required the cast to
 # be followed IMMEDIATELY by the multiply, so it matched
@@ -255,7 +262,116 @@ MUT_RE = re.compile(r"\b(watchlist|wl|chart)\.[a-z_][a-z0-9_]*\s*=\s*[^=]")
 # the count so new code goes through the registry instead of re-growing the enum
 # match sites. Does NOT need to reach 0 (the enum def + its registry_id/label/
 # from_persisted matches are legitimate); it just may only shrink.
+# A RATIO COMPUTED UNDER A ">0" GUARD WHOSE ELSE-BRANCH IS A BARE `0.0`.
+#
+#     let change_pct = if prev_close > 0.0 {
+#         (price - prev_close) / prev_close * 100.0
+#     } else {
+#         0.0            // <-- "no previous close" rendered as "unchanged"
+#     };
+#
+# The guard is there because the denominator may be absent. The `else` then
+# answers the absent case with a NUMBER, and `0.0` is not a neutral one — it is
+# the assertion "unchanged", which the rest of the app acts on:
+#
+#   * The scanner's "Top Gainers" preset filters `change_pct >= 0.0`. A symbol
+#     with no previous close scored exactly `0.0`, passed, and was listed as a
+#     gainer. "Top Losers" filters `<= 0.0`, so the SAME symbol was listed as a
+#     loser at the same time.
+#   * A change cell colours on `>= 0.0`, so the unknown painted BULL green and
+#     read `+0.00%` — the most confident thing a price cell can say.
+#   * Three sites then inverted the fabricated percentage BACK into a previous
+#     close (`price / (1.0 + pct / 100.0)`, falling back to `price` at `0.0`),
+#     which wrote `prev_close == price` with `loaded: true` beside it. "Save
+#     scan as watchlist" committed that to disk, so the unknown became a
+#     permanent, confident `0.00%`.
+#
+# The day-change family — six sites — is fixed: `foundation::market::
+# day_change_pct` returns `None` when there is nothing to divide by, so the
+# caller must decide what to show.
+#
+# THE BASELINE IS NOT ZERO, AND MOST OF WHAT IT COUNTS IS FINE. The shape has
+# two populations and this regex cannot tell them apart:
+#
+#   * The denominator is genuinely ZERO. `plus_dm_sum / tr_sum` with no true
+#     range, `above_avg / total_vol` with no volume, `cell.weight / total_cap`
+#     with an empty book. Nothing moved, `0.0` is the right answer, and these
+#     are the majority.
+#   * The denominator is ABSENT. `(last / entry_price - 1.0) * 100.0` where
+#     `entry_price == 0.0` means there is NO POSITION — and renders a P&L of
+#     `0.00%`. `maintenance_margin / net_liq` where `net_liq == 0.0` means the
+#     account snapshot has not loaded — and renders 0% margin usage, which
+#     reads as "no margin risk". Those are the day-change defect wearing
+#     different clothes, on the trading surface, and they are tracked
+#     separately in the ledger.
+#
+# So this is a CEILING on the shape, in the same spirit as `dead_code_allows`
+# starting at 52: it stops the population growing while the suspect subset is
+# worked through. Do not read a passing run as "no fabrication here".
+#
+# The division inside the then-branch is load-bearing — it is what makes the
+# value a RATIO, and a ratio has no meaningful zero when its base is missing.
+# `else { 0.0 }` after a non-division guard is usually a genuine default and is
+# deliberately not matched.
+FABRICATED_RATIO_RE = re.compile(
+    r">\s*0\.0\s*\{[^{}]*/[^{}]*\}\s*else\s*\{\s*0\.0\s*\}"
+)
+
+
+def _fabricated_ratios(prod):
+    """Count the pattern over a 3-line sliding window (it is often wrapped)."""
+    lines = [ln for ln in prod.splitlines() if not COMMENT_LINE_RE.match(ln)]
+    seen = 0
+    i = 0
+    while i < len(lines):
+        window = " ".join(lines[i : i + 3])
+        if FABRICATED_RATIO_RE.search(window):
+            seen += 1
+            i += 3   # do not count one occurrence three times
+        else:
+            i += 1
+    return seen
+
+
 INDICATOR_ENUM_RE = re.compile(r"IndicatorType::")
+
+
+def _production_only(path, text):
+    """`text` with every test line blanked, preserving line numbering.
+
+    This USED to truncate the file at its first `#[cfg(test)]`, on the Rust
+    convention that test modules sit at the end. `gpu.rs` is 11,139 lines and
+    its first test module starts at line 542, so every metric here saw 4% of
+    it — including the `.unwrap()` budget whose own failure message reads "a
+    panic in the render thread kills the window". The render thread's own file
+    was 96% invisible to it, and the ratchet reported a comfortable number the
+    entire time.
+
+    `strip_test_hits.py` already solved this, brace-matched and with a selftest
+    gate, after the same assumption hid 17 violations from
+    `check-design-system.sh` and made `token_consumer_gate.py` invent 37. Its
+    docstring warns that the failure is unbounded: any file that later grows a
+    mid-file test module silently drops out below that point. That warning was
+    written for one consumer and this one kept the bug. Third time; use the
+    shared implementation.
+
+    Blanking rather than deleting keeps line numbers aligned, which matters for
+    the multi-line window scans below — deleting would splice unrelated lines
+    together and invent matches that span a removed test module.
+    """
+    lines = text.splitlines()
+    try:
+        ranges = strip_test_hits.test_line_ranges(path)
+    except Exception:
+        # Never fail open into "everything is test code" — that would zero
+        # every metric and read as a clean sweep.
+        return text
+    if strip_test_hits.is_test_only_file(path):
+        return ""
+    for a, b in ranges:
+        for i in range(max(a - 1, 0), min(b, len(lines))):
+            lines[i] = ""
+    return chr(10).join(lines)
 
 
 def collect():
@@ -270,6 +386,7 @@ def collect():
         "ui_direct_mutation": 0,
         "eprintln_in_data": 0,
         "indicator_enum_matches": 0,   # W3-01 Stage 4: IndicatorType:: sprawl
+        "fabricated_ratio": 0,         # AT-186: `if base > 0.0 { a/base } else { 0.0 }`
         "file_loc": {},   # relpath -> loc (only for files over soft ceiling)
     }
     for path in iter_rs_files():
@@ -284,8 +401,7 @@ def collect():
         # unwrap/expect are PANIC-RISK metrics — they only matter in production
         # code. `.unwrap()` in a #[cfg(test)] module is idiomatic (a failing
         # unwrap IS the test failure) and must not count against the release
-        # budget. Rust convention puts test modules at the end of the file, so
-        # truncate at the first #[cfg(test)] for these two counts.
+        # budget, so test code is stripped before any of these are counted.
         # AUDIT 2026-08: this used to search for the LITERAL "#[cfg(test)]" only,
         # so a test module gated on a compound predicate — e.g.
         # `#[cfg(all(test, feature = "design-mode"))]` — was never recognised as
@@ -296,13 +412,7 @@ def collect():
         #
         # Match any cfg attribute whose predicate mentions `test` as a whole
         # word, and cut at the earliest one.
-        prod = text
-        cut = min(
-            (m.start() for m in TEST_CFG_RE.finditer(text)),
-            default=-1,
-        )
-        if cut != -1:
-            prod = text[:cut]
+        prod = _production_only(path, text)
         n_unwrap = len(UNWRAP_RE.findall(prod))
         if n_unwrap:
             counts["unwrap_by_dir"][area] = counts["unwrap_by_dir"].get(area, 0) + n_unwrap
@@ -312,6 +422,7 @@ def collect():
             for ln in prod.splitlines()
             if not COMMENT_LINE_RE.match(ln) and _has_identical_branches(ln)
         )
+        counts["fabricated_ratio"] += _fabricated_ratios(prod)
         counts["text_width_guess"] += sum(
             1
             for ln in prod.splitlines()
@@ -369,7 +480,7 @@ def check(cur, base):
     for key in ("expect_total", "dead_code_allows", "dead_code_allows_file", "hand_colour_math",
                 "text_width_guess", "identical_branches",
                 "ui_direct_mutation", "eprintln_in_data",
-                "indicator_enum_matches"):
+                "indicator_enum_matches", "fabricated_ratio"):
         # A newly-added metric absent from the committed baseline seeds to its
         # current value (no spurious first-run failure); --update then locks it.
         c = cur[key]

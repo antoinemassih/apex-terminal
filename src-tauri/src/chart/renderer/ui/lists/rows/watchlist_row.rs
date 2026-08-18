@@ -94,7 +94,10 @@ pub struct WatchlistRowResponse {
 pub struct WatchlistRow<'a> {
     symbol: &'a str,
     price: f32,
-    change_pct: f32,
+    /// `None` until the previous close arrives. See
+    /// [`crate::foundation::market`] for why this is not an `f32` defaulting
+    /// to `0.0`.
+    change_pct: Option<f32>,
 
     // Existing decorations.
     spark: Option<&'a [f32]>,
@@ -165,7 +168,7 @@ pub struct WatchlistRow<'a> {
 }
 
 impl<'a> WatchlistRow<'a> {
-    pub fn new(symbol: &'a str, price: f32, change_pct: f32) -> Self {
+    pub fn new(symbol: &'a str, price: f32, change_pct: Option<f32>) -> Self {
         Self {
             symbol, price, change_pct,
             spark: None, selected: false, height: crate::chart_renderer::ui::style::style_row_height(),
@@ -255,7 +258,9 @@ impl<'a> WatchlistRow<'a> {
     pub fn extreme_move_tint(mut self, avg_daily_range: Option<f32>) -> Self {
         if let Some(adr) = avg_daily_range {
             self.avg_daily_range = adr;
-            self.extreme_move = Some(self.change_pct);
+            // An unknown change cannot be shown to exceed 1.5x ADR, so it gets
+            // no tint rather than the bull tint `0.0` used to imply.
+            self.extreme_move = self.change_pct;
         }
         self
     }
@@ -452,7 +457,12 @@ impl<'a> WatchlistRow<'a> {
                 // Stale (last-good cache) rows mute the change-% color so the
                 // trader can tell the value isn't live, without hiding it.
                 let chg_col = {
-                    let base = if change_pct >= 0.0 { bull } else { bear };
+                    let base = match change_pct {
+                        Some(c) if c >= 0.0 => bull,
+                        Some(_) => bear,
+                        // No previous close: make no claim about direction.
+                        None => color_dim(dim),
+                    };
                     if stale { color_half(base) } else { base }
                 };
 
@@ -690,7 +700,7 @@ impl<'a> WatchlistRow<'a> {
                             // Filled red/green chip covering the whole figure.
                             let fsz = chg_font_id.size;
                             super::watchlist_columns::paint_change_chip(
-                                painter, col_rect, change_pct, fsz, bull, bear);
+                                painter, col_rect, change_pct, fsz, bull, bear, dim);
                         } else {
                             (s.render)(&mut cctx);
                         }
@@ -795,11 +805,17 @@ impl<'a> WatchlistRow<'a> {
             let card_bull = bull;
             let card_bear = bear;
             let card_dim = dim;
-            let card_prev_close = if change_pct.abs() > f32::EPSILON {
-                price / (1.0 + change_pct / 100.0)
-            } else {
-                price
-            };
+            // The absolute day move, or `None` when there is no previous
+            // close to measure it against.
+            //
+            // This used to invert the percentage back into a previous close —
+            // `price / (1.0 + change_pct / 100.0)` — and fall back to `price`
+            // itself when the change was `0.0`. With `0.0` standing in for
+            // "unknown", that fallback wrote `prev_close = price`, so the card
+            // reported a flat `+0.00 (+0.00%)` for a symbol it had no close
+            // for. Deriving the delta straight from the percentage keeps the
+            // unknown unknown.
+            let card_abs_change = change_pct.map(|c| price - price / (1.0 + c / 100.0));
             let _ = HoverCard::new()
                 .delay_ms(700)
                 .show(ui, &resp, theme_ref, |ui| {
@@ -829,10 +845,15 @@ impl<'a> WatchlistRow<'a> {
                     );
 
                     // Day change — colored bull/bear.
-                    let abs_change = card_price - card_prev_close;
-                    let chg_col = if card_change >= 0.0 { card_bull } else { card_bear };
-                    let chg_str =
-                        format!("{:+.2} ({:+.2}%)", abs_change, card_change);
+                    let chg_col = match card_change {
+                        Some(c) if c >= 0.0 => card_bull,
+                        Some(_) => card_bear,
+                        None => card_dim,
+                    };
+                    let chg_str = match (card_abs_change, card_change) {
+                        (Some(a), Some(c)) => format!("{a:+.2} ({c:+.2}%)"),
+                        _ => "—".to_string(),
+                    };
                     ui.label(
                         egui::RichText::new(&chg_str)
                             .monospace()

@@ -804,8 +804,6 @@ pub(crate) struct WidgetData {
     atr_pct: f32,
     vol_ratio: f32,
     last_close: f32,
-    _prev_close: f32,
-    _day_change_pct: f32,
     vol_bars: [f32; 12],
     price_levels: [(f32, &'static str); 5],
     // New widget data
@@ -907,8 +905,6 @@ impl WidgetData {
         let bars = &chart.bars;
         let n = bars.len();
         let last_close = if n > 0 { bars[n - 1].close } else { 0.0 };
-        let prev_close = if n > 1 { bars[n - 2].close } else { last_close };
-        let day_change_pct = if prev_close > 0.0 { (last_close - prev_close) / prev_close * 100.0 } else { 0.0 };
 
         let rsi = compute_rsi(bars, 14);
         let momentum = if n > 10 && bars[n - 11].close > 0.0 {
@@ -1051,7 +1047,7 @@ impl WidgetData {
             trend_dir: chart.trend_health_direction,
             trend_regime: chart.trend_health_regime.clone(),
             rsi, momentum, atr, atr_pct, vol_ratio,
-            last_close, _prev_close: prev_close, _day_change_pct: day_change_pct, vol_bars,
+            last_close, vol_bars,
             price_levels: [(r2, "R2"), (r1, "R1"), (pp, "PP"), (s1, "S1"), (s2, "S2")],
             symbol: chart.symbol.clone(),
             correlation_spy, dark_pool_bars, dark_pool_ratio: dp_ratio,

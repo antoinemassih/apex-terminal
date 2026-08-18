@@ -33,7 +33,10 @@ pub enum WatchlistColumnId {
 pub struct WatchlistItemData<'a> {
     pub symbol: &'a str,
     pub price: f32,
-    pub change_pct: f32,
+    /// The day's percent change, or `None` when the previous close has not
+    /// arrived. Never substitute `0.0` — see [`crate::foundation::market`] for
+    /// what that did to the scanner's gainer/loser filters.
+    pub change_pct: Option<f32>,
     pub spark: Option<&'a [f32]>,
     /// Extended-hours (pre/post-market) % move vs the last regular close.
     /// `Some` only while in extended hours.
@@ -51,7 +54,7 @@ impl<'a> Default for WatchlistItemData<'a> {
         Self {
             symbol: "",
             price: 0.0,
-            change_pct: 0.0,
+            change_pct: None,
             spark: None,
             ext_change: None,
             rvol: None,
@@ -88,19 +91,48 @@ pub struct WatchlistColumnSpec {
 
 // ── Render helpers ──────────────────────────────────────────────────────────
 
+/// Bull / bear / neutral for a possibly-unknown day change.
+///
+/// Three columns tinted themselves with `if change_pct >= 0.0 { bull } else
+/// { bear }`, which has no branch for "we do not know" — so an unknown, which
+/// arrived as `0.0`, painted bull green. A sparkline and a day-range dot in
+/// confident green are a claim about direction; `dim` makes no claim.
+fn direction_color(pct: Option<f32>, bull: Color32, bear: Color32, dim: Color32) -> Color32 {
+    match pct {
+        Some(p) if p >= 0.0 => bull,
+        Some(_) => bear,
+        None => color_dim(dim),
+    }
+}
+
 fn render_change_pct(c: &mut ColumnCtx) {
-    paint_change_chip(c.painter, c.rect, c.item.change_pct, c.font_size, c.bull, c.bear);
+    paint_change_chip(c.painter, c.rect, c.item.change_pct, c.font_size, c.bull, c.bear, c.dim);
 }
 
 /// Paint a red/green filled "chip" behind the whole change value (number + %),
 /// with contrast text on top — so the highlight covers the entire figure
 /// instead of just coloring the glyphs. Shared by the ChangePct column and the
 /// row's inline change render.
+/// `pct` is `None` when the previous close has not arrived. That case paints a
+/// dim em dash and NO coloured chip, because a chip is an assertion: the old
+/// signature took a plain `f32`, an unknown reached it as `0.0`, and `0.0 >= 0.0`
+/// painted a confident BULL-green `+0.00%` over data the terminal did not have.
 pub(crate) fn paint_change_chip(
-    painter: &Painter, rect: Rect, pct: f32, font_size: f32, bull: Color32, bear: Color32,
+    painter: &Painter, rect: Rect, pct: Option<f32>, font_size: f32,
+    bull: Color32, bear: Color32, dim: Color32,
 ) {
+    let Some(pct) = pct else {
+        painter.text(
+            egui::pos2(rect.left(), rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            crate::foundation::market::fmt_change_pct(None),
+            crate::ui_kit::style::prop_at(font_size),
+            color_dim(dim),
+        );
+        return;
+    };
     let base = if pct >= 0.0 { bull } else { bear };
-    let txt = format!("{:+.2}%", pct);
+    let txt = crate::foundation::market::fmt_change_pct(Some(pct));
     let font = crate::ui_kit::style::prop_at(font_size);
     let galley = painter.layout_no_wrap(txt, font.clone(), base);
     let pad = egui::vec2(3.0, 2.0);
@@ -136,7 +168,9 @@ fn render_ext_hours(c: &mut ColumnCtx) {
     // rendered the identical number twice, side by side, in two columns. A
     // second copy of a number carries no information — it just reads as a
     // rendering fault, which is exactly how it looked.
-    if (ext - c.item.change_pct).abs() < 0.005 {
+    // A `None` session change cannot be equal to the extended-hours figure, so
+    // the duplicate-suppression does not apply and the ext value still shows.
+    if c.item.change_pct.is_some_and(|ch| (ext - ch).abs() < 0.005) {
         return;
     }
     let col = if ext >= 0.0 { c.bull } else { c.bear };
@@ -157,7 +191,7 @@ fn render_ext_hours(c: &mut ColumnCtx) {
 fn render_sparkline(c: &mut ColumnCtx) {
     let s = match c.item.spark { Some(s) if s.len() >= 2 => s, _ => return };
     let cy = c.rect.center().y;
-    let chg_col = if c.item.change_pct >= 0.0 { c.bull } else { c.bear };
+    let chg_col = direction_color(c.item.change_pct, c.bull, c.bear, c.dim);
     let sw = 32.0;
     let sh = 12.0;
     let spark_rect = egui::Rect::from_min_size(
@@ -188,7 +222,7 @@ fn render_rvol_badge(c: &mut ColumnCtx) {
 fn render_day_range(c: &mut ColumnCtx) {
     let (lo, hi, last) = match c.item.range_today { Some(t) if t.1 > t.0 => t, _ => return };
     let cy = c.rect.center().y;
-    let chg_col = if c.item.change_pct >= 0.0 { c.bull } else { c.bear };
+    let chg_col = direction_color(c.item.change_pct, c.bull, c.bear, c.dim);
     let rw = 24.0;
     let pos = ((last - lo) / (hi - lo)).clamp(0.0, 1.0);
     let x0 = c.rect.left();

@@ -10,6 +10,7 @@ use super::super::widgets::rows::{
 };
 use super::super::lists::rows::watchlist_columns::{BUILTIN as WL_COLUMNS_BUILTIN};
 use crate::ui_kit::icons::Icon;
+use crate::foundation::market::day_change_pct;
 use crate::chart_renderer::gpu::{fetch_chain_background, fetch_search_background, fetch_watchlist_prices, set_pending_wl_tooltip, WlTooltipData};
 use crate::chart_renderer::trading::{market_session, SessionPhase};
 use super::super::components::text::MonospaceCode;
@@ -619,7 +620,7 @@ if is_spawn || watchlist.open {
                             // Render each pinned row via the design-system WatchlistRow widget.
                             for (si, ii, pin_sym, pin_price, pin_prev, _pin_loaded, avg_range) in &pinned_items {
                                 let is_active = *pin_sym == active_sym;
-                                let change_pct = if *pin_prev > 0.0 { (*pin_price / *pin_prev - 1.0) * 100.0 } else { 0.0 };
+                                let change_pct = day_change_pct(*pin_price, *pin_prev);
                                 // Active row paints over an accent-tinted bg; use the theme's
                                 // text color so light themes (Bauhaus / Peach / Ivory / Newsprint)
                                 // don't get unreadable white-on-light foreground.
@@ -846,8 +847,7 @@ if is_spawn || watchlist.open {
                                             continue;
                                         }
                                         if watchlist.filter_min_change > -999.0 || watchlist.filter_max_change < 999.0 {
-                                            if item_prev_close > 0.0 {
-                                                let chg = (item_price / item_prev_close - 1.0) * 100.0;
+                                            if let Some(chg) = day_change_pct(item_price, item_prev_close) {
                                                 if watchlist.filter_min_change > -999.0 && chg < watchlist.filter_min_change { continue; }
                                                 if watchlist.filter_max_change < 999.0 && chg > watchlist.filter_max_change { continue; }
                                             }
@@ -946,9 +946,7 @@ if is_spawn || watchlist.open {
                                         // ── Stock item rendering — migrated to WatchlistRow widget ──
                                         // Live move vs the prior regular close (today's move
                                         // during RTH, or the pre/post-market move otherwise).
-                                        let live_chg = if item_prev_close > 0.0 {
-                                            ((item_price - item_prev_close) / item_prev_close) * 100.0
-                                        } else { 0.0 };
+                                        let live_chg = day_change_pct(item_price, item_prev_close);
                                         // Main Change %:
                                         //  • RTH                → today's live move (price vs prev close)
                                         //  • closed, day.c set  → last close-to-close (today's
@@ -956,22 +954,26 @@ if is_spawn || watchlist.open {
                                         //    bulk snapshot, no slow daily-bars fetch
                                         //  • pre-open (day.c==0) → prior session's close-to-close
                                         //    via the cached daily-bars fallback
-                                        let close_to_close = if item_day_close > 0.0 && item_prev_close > 0.0 {
-                                            Some(((item_day_close - item_prev_close) / item_prev_close) * 100.0)
+                                        let close_to_close = if item_day_close > 0.0 {
+                                            day_change_pct(item_day_close, item_prev_close)
                                         } else { None };
                                         // Prefer the server's session/DST-aware % (apex-data-v2) — it's
                                         // correct in RTH, after-hours AND pre-market, and doesn't depend
                                         // on the flaky /api/market_status gate. Fall back to the local
                                         // computation only when the server value is absent (older backend
                                         // / not yet loaded / non-stock rows).
-                                        let change_pct = if let Some(p) = item_change_perc {
-                                            p
+                                        // Every arm is now `Option`, so the chain ends in "we
+                                        // do not know" rather than in `live_chg`'s old `0.0`
+                                        // stand-in. A row the feed has not primed yet renders a
+                                        // dim em dash instead of a confident green `+0.00%`.
+                                        let change_pct: Option<f32> = if let Some(p) = item_change_perc {
+                                            Some(p)
                                         } else if mkt_rth {
                                             live_chg
                                         } else {
-                                            close_to_close.or_else(||
-                                                crate::chart_renderer::gpu::prev_session_change_cached(item_sym))
-                                                .unwrap_or(live_chg)
+                                            close_to_close
+                                                .or_else(|| crate::chart_renderer::gpu::prev_session_change_cached(item_sym))
+                                                .or(live_chg)
                                         };
                                         // Ext-Hours column = session close → latest price. Reference
                                         // is today's regular close after the close (day.c), else the

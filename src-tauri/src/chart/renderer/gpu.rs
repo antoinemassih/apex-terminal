@@ -4992,17 +4992,7 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                 watchlist.set_stale(symbol, *stale);
             }
             ChartCommand::ScannerPrice { symbol, price, prev_close, volume } => {
-                // Update or insert into scanner results pool
-                if let Some(r) = watchlist.scanner.results.iter_mut().find(|r| r.symbol == *symbol) {
-                    r.price = *price;
-                    r.volume = *volume;
-                    r.change_pct = if *prev_close > 0.0 { (price - prev_close) / prev_close * 100.0 } else { 0.0 };
-                } else {
-                    let change_pct = if *prev_close > 0.0 { (price - prev_close) / prev_close * 100.0 } else { 0.0 };
-                    watchlist.scanner.results.push(ScanResult {
-                        symbol: symbol.clone(), price: *price, change_pct, volume: *volume,
-                    });
-                }
+                apply_scanner_price(&mut watchlist.scanner, symbol, *price, *prev_close, *volume);
             }
             ChartCommand::HeatmapBars { cells } => {
                 watchlist.heatmap.cells = cells.clone();
@@ -5993,12 +5983,61 @@ pub(crate) enum WatchlistTab { Stocks, Chain, Heat, Scan }
 
 // ─── Scanner types ──────────────────────────────────────────────────────────
 
+/// One row of the scanner's raw result pool.
+///
+/// Stores `prev_close`, the datum the feed actually sends, and NOT a
+/// precomputed `change_pct`. That is deliberate: the derived percentage has no
+/// way to say "unknown", so storing it forced every absent previous close to
+/// be written as `0.0` — which the "Top Gainers" filter (`>= 0.0`) then
+/// accepted, and which "Save as watchlist" reconstructed a fake `prev_close`
+/// back out of. Keep the fact, derive the display; see
+/// [`crate::foundation::market`].
 #[derive(Clone, Debug)]
 pub(crate) struct ScanResult {
     pub(crate) symbol: String,
     pub(crate) price: f32,
-    pub(crate) change_pct: f32,
+    /// Previous session's close. `0.0` means "not received yet", which is why
+    /// [`Self::change_pct`] returns `Option`.
+    pub(crate) prev_close: f32,
     pub(crate) volume: u64,
+}
+
+impl ScanResult {
+    /// The day's percent change, or `None` when `prev_close` has not arrived.
+    pub(crate) fn change_pct(&self) -> Option<f32> {
+        crate::foundation::market::day_change_pct(self.price, self.prev_close)
+    }
+}
+
+/// Upsert a live scanner quote into the result pool.
+///
+/// Both command-dispatch paths — the pane router and the winit event loop —
+/// used to carry a verbatim copy of this, each with its own copy of the
+/// `prev_close > 0.0 { .. } else { 0.0 }` fabrication. Two copies of a rule is
+/// how the two halves come to disagree; this is the one place it lives.
+pub(crate) fn apply_scanner_price(
+    scanner: &mut ScannerState,
+    symbol: &str,
+    price: f32,
+    prev_close: f32,
+    volume: u64,
+) {
+    if let Some(r) = scanner.results.iter_mut().find(|r| r.symbol == symbol) {
+        r.price = price;
+        r.volume = volume;
+        // Only overwrite a known previous close with another known one. A
+        // quote that arrives without it must not erase what we already have.
+        if prev_close > 0.0 {
+            r.prev_close = prev_close;
+        }
+    } else {
+        scanner.results.push(ScanResult {
+            symbol: symbol.to_string(),
+            price,
+            prev_close,
+            volume,
+        });
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -8539,16 +8578,7 @@ impl ApplicationHandler for App {
                             cw.watchlist.set_stale(symbol, stale);
                         }
                         ChartCommand::ScannerPrice { ref symbol, price, prev_close, volume } => {
-                            if let Some(r) = cw.watchlist.scanner.results.iter_mut().find(|r| r.symbol == *symbol) {
-                                r.price = price;
-                                r.volume = volume;
-                                r.change_pct = if prev_close > 0.0 { (price - prev_close) / prev_close * 100.0 } else { 0.0 };
-                            } else {
-                                let change_pct = if prev_close > 0.0 { (price - prev_close) / prev_close * 100.0 } else { 0.0 };
-                                cw.watchlist.scanner.results.push(ScanResult {
-                                    symbol: symbol.clone(), price, change_pct, volume,
-                                });
-                            }
+                            apply_scanner_price(&mut cw.watchlist.scanner, symbol, price, prev_close, volume);
                         }
                         ChartCommand::HeatmapBars { ref cells } => {
                             cw.watchlist.heatmap.cells = cells.clone();

@@ -2142,8 +2142,14 @@ pub(crate) fn render(
         let tip_w = 220.0;
         let tip_x = (tip.sidebar_left - tip_w - 8.0).max(4.0);
         let tip_y = tip.anchor_y - 60.0;
-        let change_pct = if tip.prev_close > 0.0 { (tip.price / tip.prev_close - 1.0) * 100.0 } else { 0.0 };
-        let chg_col = if change_pct >= 0.0 { t.bull } else { t.bear };
+        let change_pct = crate::foundation::market::day_change_pct(tip.price, tip.prev_close);
+        let chg_col = match change_pct {
+            Some(c) if c >= 0.0 => t.bull,
+            Some(_) => t.bear,
+            // No previous close for this symbol yet: the tooltip says so
+            // rather than painting a confident green "+0.00%".
+            None => t.dim,
+        };
         let dim = t.dim;
         let st = style_current();
         let wl_tip_cr = st.r_md as f32;
@@ -2160,7 +2166,8 @@ pub(crate) fn render(
                     ui.label(TextStyle::NumericLg.as_rich_cascading(&tip.sym, t.text));
                     ui.horizontal(|ui| {
                         ui.label(TextStyle::Numeric.as_rich_cascading(&format!("${:.2}", tip.price), tint(t, Tone::Text, 220)));
-                        ui.label(TextStyle::Numeric.as_rich_cascading(&format!("{:+.2}%", change_pct), chg_col));
+                        ui.label(TextStyle::Numeric.as_rich_cascading(
+                            &crate::foundation::market::fmt_change_pct(change_pct), chg_col));
                     });
                     ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
                     if tip.day_high > tip.day_low {
@@ -2199,7 +2206,7 @@ pub(crate) fn render(
                         ui.label(TextStyle::MonoSm.as_rich_cascading(&format!("RVOL {:.1}x", tip.rvol),
                             if tip.rvol > 2.0 { t.warn } else { dim }));
                     });
-                    if change_pct.abs() > tip.avg_range * 1.5 {
+                    if change_pct.is_some_and(|c| c.abs() > tip.avg_range * 1.5) {
                         ui.label(TextStyle::Caption.as_rich_cascading("EXTREME MOVE", chg_col));
                     }
                     if tip.earnings_days >= 0 && tip.earnings_days <= 14 {

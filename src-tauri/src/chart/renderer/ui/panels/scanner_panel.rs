@@ -26,18 +26,70 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
+/// The sentinel the presets and the builder both use for "no bound on change".
+/// `Top Gainers` is `0.0..=999.0`, `Most Active` is `-999.0..=999.0`.
+const CHANGE_UNBOUNDED: f32 = 999.0;
+
+/// Does this definition actually constrain the day change?
+///
+/// It matters because of what an unknown change is allowed to do. A row whose
+/// previous close has not arrived cannot be shown to satisfy `>= 0.0`, so it
+/// must not be admitted to `Top Gainers`. But `Most Active` sorts by volume and
+/// places no change constraint at all, and dropping unknowns there would hide
+/// live, heavily-traded symbols for a reason the user never asked for.
+fn constrains_change(def: &ScannerDef) -> bool {
+    def.min_change > -CHANGE_UNBOUNDED || def.max_change < CHANGE_UNBOUNDED
+}
+
+/// Order two possibly-unknown day changes, `desc` selecting the direction.
+///
+/// A known value always precedes an unknown one, in BOTH directions — an
+/// unknown is not the biggest gainer and it is not the biggest loser either, so
+/// `None` sinks to the bottom of the list either way.
+///
+/// This takes `(a, b)` in the caller's order and flips only the Some/Some
+/// comparison, deliberately. The first version of this sorted descending by
+/// passing the arguments in reverse (`cmp(b, a)`), which silently reversed the
+/// None handling too and floated every unknown to the TOP of Top Gainers —
+/// precisely the bug being fixed, reintroduced by the fix. It compiled and it
+/// looked right.
+fn cmp_change(a: Option<f32>, b: Option<f32>, desc: bool) -> std::cmp::Ordering {
+    match (a, b) {
+        (Some(x), Some(y)) => {
+            let o = x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal);
+            if desc { o.reverse() } else { o }
+        }
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    }
+}
+
 /// Apply a scanner definition to the raw result pool and return filtered+sorted results.
+///
+/// # Unknown day changes
+///
+/// `ScanResult::change_pct` returns `None` until the previous close arrives.
+/// It used to be a plain `f32` that read `0.0` in that case, and `0.0` passes
+/// BOTH `>= 0.0` (Top Gainers) and `<= 0.0` (Top Losers) — so a symbol with no
+/// change data was listed as a gainer and a loser simultaneously. An unknown is
+/// now excluded from any scan that constrains change, and sorts last in the
+/// ones that do not.
 pub(crate) fn apply_scanner(def: &ScannerDef, pool: &[ScanResult]) -> Vec<ScanResult> {
+    let bounded = constrains_change(def);
     let mut filtered: Vec<ScanResult> = pool.iter()
         .filter(|r| r.price > 0.0) // exclude unfetched
-        .filter(|r| r.change_pct >= def.min_change && r.change_pct <= def.max_change)
+        .filter(|r| match r.change_pct() {
+            Some(c) => c >= def.min_change && c <= def.max_change,
+            None => !bounded,
+        })
         .filter(|r| r.volume >= def.min_volume)
         .cloned()
         .collect();
 
     match def.sort_by {
-        ScanSort::ChangeDesc => filtered.sort_by(|a, b| b.change_pct.partial_cmp(&a.change_pct).unwrap_or(std::cmp::Ordering::Equal)),
-        ScanSort::ChangeAsc  => filtered.sort_by(|a, b| a.change_pct.partial_cmp(&b.change_pct).unwrap_or(std::cmp::Ordering::Equal)),
+        ScanSort::ChangeDesc => filtered.sort_by(|a, b| cmp_change(a.change_pct(), b.change_pct(), true)),
+        ScanSort::ChangeAsc => filtered.sort_by(|a, b| cmp_change(a.change_pct(), b.change_pct(), false)),
         ScanSort::VolumeDesc => filtered.sort_by(|a, b| b.volume.cmp(&a.volume)),
     }
 
@@ -411,7 +463,7 @@ pub(crate) fn draw_content(
                             } else {
                                 format!("{:.4}", r.price)
                             };
-                            let resp = WatchlistRow::new(&r.symbol, r.price, r.change_pct)
+                            let resp = WatchlistRow::new(&r.symbol, r.price, r.change_pct())
                                 .height(16.0)
                                 .theme(t)
                                 .price_string(price_str)
@@ -454,7 +506,15 @@ pub(crate) fn draw_content(
             let sym_hash = r.symbol.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
             let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1;
             WatchlistItem {
-                symbol: r.symbol.clone(), price: r.price, prev_close: if r.change_pct != 0.0 { r.price / (1.0 + r.change_pct / 100.0) } else { r.price }, day_close: 0.0, change_perc: None, stale: false, loaded: true,
+                // `prev_close` is now carried on the scan result, so this
+                // copies the real datum. It used to invert `change_pct` back
+                // into a previous close and fall back to `r.price` when the
+                // change read `0.0` — which is what an UNKNOWN change read as.
+                // That wrote `prev_close == price` with `loaded: true` next to
+                // it, and every downstream check for "is this known" tests
+                // `prev_close > 0.0`, so the unknown passed. Saving a scan as a
+                // watchlist committed the fabrication to disk.
+                symbol: r.symbol.clone(), price: r.price, prev_close: r.prev_close, day_close: 0.0, change_perc: None, stale: false, loaded: true,
                 is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
@@ -526,5 +586,117 @@ pub(crate) fn draw(
         if let Some(p) = panes.get_mut(ap) {
             p.pending_symbol_change = Some(sym);
         }
+    }
+}
+
+#[cfg(test)]
+mod scanner_unknown_change_tests {
+    use super::*;
+
+    /// A row whose previous close arrived.
+    fn known(sym: &str, price: f32, change_pct: f32, volume: u64) -> ScanResult {
+        ScanResult {
+            symbol: sym.into(),
+            price,
+            prev_close: price / (1.0 + change_pct / 100.0),
+            volume,
+        }
+    }
+
+    /// A row the feed has priced but not yet given a previous close for.
+    fn unknown(sym: &str, price: f32, volume: u64) -> ScanResult {
+        ScanResult { symbol: sym.into(), price, prev_close: 0.0, volume }
+    }
+
+    fn syms(v: &[ScanResult]) -> Vec<&str> {
+        v.iter().map(|r| r.symbol.as_str()).collect()
+    }
+
+    #[test]
+    fn an_unknown_change_is_none_not_zero() {
+        assert_eq!(unknown("U", 100.0, 1).change_pct(), None);
+        let k = known("K", 110.0, 10.0, 1).change_pct().expect("known");
+        assert!((k - 10.0).abs() < 0.01, "got {k}");
+    }
+
+    /// THE defect. `Top Gainers` filters `change_pct >= 0.0`; an unknown used
+    /// to read `0.0` and pass, so a symbol with no move data was listed as a
+    /// gainer.
+    #[test]
+    fn an_unknown_is_not_a_gainer() {
+        let pool = vec![known("UP", 110.0, 10.0, 1), unknown("NODATA", 50.0, 9)];
+        let out = apply_scanner(&ScannerDef::preset_gainers(), &pool);
+        assert_eq!(syms(&out), vec!["UP"], "an unknown change must not be listed as a gainer");
+    }
+
+    /// The other half of the same defect: `Top Losers` filters `<= 0.0`, which
+    /// the same `0.0` also passed. One symbol, both lists, simultaneously.
+    #[test]
+    fn an_unknown_is_not_a_loser_either() {
+        let pool = vec![known("DOWN", 90.0, -10.0, 1), unknown("NODATA", 50.0, 9)];
+        let out = apply_scanner(&ScannerDef::preset_losers(), &pool);
+        assert_eq!(syms(&out), vec!["DOWN"], "an unknown change must not be listed as a loser");
+    }
+
+    /// A genuinely flat symbol is a real gainer-list entry at 0.00%, and must
+    /// NOT be swept out with the unknowns — the two were indistinguishable
+    /// before and this is the direction that must not over-correct.
+    #[test]
+    fn a_genuinely_flat_symbol_still_qualifies() {
+        let pool = vec![known("FLAT", 100.0, 0.0, 1)];
+        let out = apply_scanner(&ScannerDef::preset_gainers(), &pool);
+        assert_eq!(syms(&out), vec!["FLAT"]);
+    }
+
+    /// `Most Active` places no constraint on change and sorts by volume.
+    /// Dropping unknowns there would hide live, heavily-traded symbols for a
+    /// reason the user never asked for.
+    #[test]
+    fn an_unbounded_scan_keeps_unknowns() {
+        let pool = vec![known("A", 110.0, 10.0, 1_000), unknown("NODATA", 50.0, 9_000)];
+        let out = apply_scanner(&ScannerDef::preset_most_active(), &pool);
+        assert_eq!(syms(&out), vec!["NODATA", "A"], "volume order, unknown retained");
+    }
+
+    /// Unknowns sort LAST descending. The first version of this fix sorted by
+    /// passing the comparator's arguments reversed, which reversed the `None`
+    /// handling too and floated every unknown to the TOP of the list.
+    #[test]
+    fn unknowns_sort_last_descending() {
+        let def = ScannerDef { min_change: -999.0, max_change: 999.0, sort_by: ScanSort::ChangeDesc, ..ScannerDef::preset_most_active() };
+        let pool = vec![
+            unknown("NODATA", 50.0, 1),
+            known("LOW", 95.0, -5.0, 1),
+            known("HIGH", 110.0, 10.0, 1),
+        ];
+        let out = apply_scanner(&def, &pool);
+        assert_eq!(syms(&out), vec!["HIGH", "LOW", "NODATA"]);
+    }
+
+    /// And last ascending too — an unknown is not the biggest loser.
+    #[test]
+    fn unknowns_sort_last_ascending() {
+        let def = ScannerDef { min_change: -999.0, max_change: 999.0, sort_by: ScanSort::ChangeAsc, ..ScannerDef::preset_most_active() };
+        let pool = vec![
+            unknown("NODATA", 50.0, 1),
+            known("HIGH", 110.0, 10.0, 1),
+            known("LOW", 95.0, -5.0, 1),
+        ];
+        let out = apply_scanner(&def, &pool);
+        assert_eq!(syms(&out), vec!["LOW", "HIGH", "NODATA"]);
+    }
+
+    /// A quote that arrives without a previous close must not erase one the
+    /// pool already holds — otherwise a single sparse tick downgrades a known
+    /// row back to unknown.
+    #[test]
+    fn a_later_quote_without_a_close_does_not_erase_a_known_one() {
+        let mut scanner = crate::chart_renderer::watchlist_state::ScannerState::default();
+        crate::chart_renderer::gpu::apply_scanner_price(&mut scanner, "AAPL", 100.0, 90.0, 5);
+        crate::chart_renderer::gpu::apply_scanner_price(&mut scanner, "AAPL", 101.0, 0.0, 6);
+        let r = &scanner.results[0];
+        assert_eq!(r.prev_close, 90.0, "the known previous close must survive");
+        assert_eq!(r.price, 101.0, "the new price must land");
+        assert_eq!(r.volume, 6);
     }
 }

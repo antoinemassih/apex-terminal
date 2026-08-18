@@ -1375,10 +1375,17 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 let f = i as f32;
                 // Spread change_pct across [-9.5, +9.5] deterministically.
                 let change_pct = ((f * 1.9) % 19.0) - 9.5;
+                let price = 10.0 + (f * 3.17) % 490.0;
                 rows.push(crate::chart_renderer::gpu::ScanResult {
                     symbol: format!("SYN{i:03}"),
-                    price: 10.0 + (f * 3.17) % 490.0,
-                    change_pct,
+                    price,
+                    // The pool stores the previous close, not the derived
+                    // percentage, so seed the close that yields the intended
+                    // spread. Every seeded row is deliberately KNOWN — the
+                    // unknown case is covered by the unit tests rather than
+                    // smuggled into the synthetic pool, where it would make
+                    // the scanner oracle's expectations ambiguous.
+                    prev_close: price / (1.0 + change_pct / 100.0),
                     volume: 1_000_000 + (i as u64) * 250_000,
                 });
             }
