@@ -2593,3 +2593,63 @@ Two systems pulled in opposite directions — "keep declarative adoption up" and
   (4 real callers) whose only caller was the fabricating breadth widget.
 
 ---
+
+## AT-191 — A DEMO badge, and a correction to an earlier finding
+
+### The correction first
+
+An earlier census recorded "the Trade Plan panel has no trigger — it can never
+be opened". **That was wrong.** `signals_panel.rs:126` carries a visibility
+toggle ("Trade Plan — Entry / target / stop overlay") alongside ten siblings,
+and a "Start Demo" button populates it. The overlay is reachable and has been.
+
+The real gap is narrower and different: `ChartCommand::TradePlanUpdate` is
+HANDLED in `gpu.rs` and sent by nothing. Outside demo mode a trade plan can
+only appear via the demo block in `core.rs`. That is a missing producer, not a
+missing trigger, and it is recorded here rather than acted on.
+
+### What a Trade Plan is
+
+Worth stating, since the name is ambiguous. It is a suggested options play:
+
+* `direction`, `entry`, `target`, `stop` — painted as dotted lines across the
+  pane with a green zone from entry to target and a red one from entry to stop,
+  plus `T` / `S` labels on the price axis.
+* `contract` — a specific option, e.g. `SPY 455C 5DTE`.
+* `rr` and `conviction` — rendered on a card as `R:R 2.8 | +2.0% | CVT 85`.
+
+So: which contract to buy, where to get in, where to take profit, where to get
+out, and how strongly the engine believes it.
+
+### The badge
+
+"Start Demo" fabricates exactly that — plus supply/demand zones, precursor
+scores and a VIX expiry card — and paints it with the same lines, the same
+axis labels and the same card a real plan would use. The only indication was a
+button in a side panel reading "Stop Demo", which is not on screen when the
+panel is collapsed.
+
+A trader who starts a demo, closes the panel, and returns later has no way to
+distinguish the plan from a live one. Same defect class as the five widgets
+displaying invented quotes (AT-190), at a higher price: this one names a
+contract and a stop.
+
+`render_demo_badge` now paints a persistent "DEMO DATA" pill at the top centre
+of the pane, last, so nothing can cover it.
+
+`Chart::signal_demo_active()` is deliberately shared by the badge and the
+panel's button label. The panel derived the predicate inline; a second copy is
+how a badge comes to under-report, and a badge that under-reports is worse than
+none. `every_demo_signal_raises_the_flag` pins each of the three sources.
+
+### The design-system ratchet caught the badge
+
+The first version used raw `40` / `160` alphas and a `1.0` stroke, and
+`check-design-system.sh` failed with `core.rs: 515 -> 518 (+3)`. Correct call —
+a new off-token primitive is a regression whoever writes it. Replaced with
+`alpha_tint()`, `alpha_strong()` and `stroke_std()`; the baseline then improved
+to 964 and was re-cut. Fixing the code rather than raising the ceiling is the
+whole point of the ratchet, and it is worth recording that it fired on new work
+in this session and not only on inherited code.
+
+---

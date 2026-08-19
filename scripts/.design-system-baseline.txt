@@ -4,7 +4,7 @@
 11 src-tauri/src/chart/renderer/render/pane/notice.rs
 8 src-tauri/src/chart/renderer/render/pane/signal_gauges.rs
 66 src-tauri/src/chart/renderer/render/pane/tool_previews.rs
-148 src-tauri/src/chart/renderer/ui/chart_widgets.rs
+65 src-tauri/src/chart/renderer/ui/chart_widgets.rs
 7 src-tauri/src/chart/renderer/ui/chrome/painter_pane.rs
 10 src-tauri/src/chart/renderer/ui/chrome/pane.rs
 1 src-tauri/src/chart/renderer/ui/command_palette/mod.rs
@@ -26,7 +26,7 @@
 5 src-tauri/src/chart/renderer/ui/lists/rows/order_row.rs
 1 src-tauri/src/chart/renderer/ui/lists/rows/watchlist_columns.rs
 9 src-tauri/src/chart/renderer/ui/lists/rows/watchlist_row.rs
-8 src-tauri/src/chart/renderer/ui/overlays/kit.rs
+7 src-tauri/src/chart/renderer/ui/overlays/kit.rs
 3 src-tauri/src/chart/renderer/ui/panels/bottom_dock.rs
 1 src-tauri/src/chart/renderer/ui/panels/connection_panel.rs
 4 src-tauri/src/chart/renderer/ui/panels/discord_panel.rs

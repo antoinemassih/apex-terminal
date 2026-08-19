@@ -6249,6 +6249,10 @@ fn render_chart_pane(
     // ── Signal gauges + VIX card — extracted to pane/signal_gauges.rs ────
     super::signal_gauges::render_signal_gauges(rect, &painter, t, ctx, chart);
 
+    // ── DEMO DATA badge ───────────────────────────────────────────────────
+    // Painted last so nothing can cover it. See `Chart::signal_demo_active`.
+    render_demo_badge(&painter, rect, t, chart);
+
     // ── Supply/Demand zones — faint fill, clean edge labels ──────────────
     if chart.show_signal_zones { for zone in &chart.signal_zones {
         let y_high = py(zone.price_high);
@@ -14020,4 +14024,83 @@ fn mark_source_segmented(
         }
     }
     total_w
+}
+
+
+/// A persistent "DEMO DATA" badge, painted whenever the pane is showing
+/// fabricated signal data.
+///
+/// # Why this is on the chart and not only in the panel
+///
+/// "Start Demo" fabricates a trade plan — entry, target, stop, an options
+/// contract and a conviction score — and paints it with the same dotted lines,
+/// the same price-axis labels and the same card as a real one would use. The
+/// only signal that it was invented was a button in a side panel reading "Stop
+/// Demo", which is not on screen when the panel is closed.
+///
+/// A trader who starts a demo, collapses the panel and comes back later has no
+/// way to tell the plan from a live one. That is the same defect as the five
+/// widgets that displayed invented quotes (AT-190), with a higher price: this
+/// one names a contract and a stop.
+fn render_demo_badge(painter: &egui::Painter, rect: egui::Rect, t: &Theme, chart: &Chart) {
+    if !chart.signal_demo_active() {
+        return;
+    }
+    let label = "DEMO DATA";
+    let font = crate::ui_kit::style::mono_2xs();
+    let galley = painter.layout_no_wrap(label.to_string(), font.clone(), t.warn);
+    let pad = crate::ui_kit::style::gap_xs();
+    let size = egui::vec2(galley.size().x + pad * 2.0, galley.size().y + pad);
+    // Top-centre: the one place no overlay card claims, and where the eye
+    // lands when reading the symbol.
+    let pill = egui::Rect::from_min_size(
+        egui::pos2(rect.center().x - size.x * 0.5, rect.top() + crate::ui_kit::style::gap_xs()),
+        size,
+    );
+    painter.rect_filled(pill, crate::ui_kit::style::radius_sm(),
+        crate::ui_kit::style::color_alpha(t.warn, crate::ui_kit::style::alpha_tint()));
+    painter.rect_stroke(pill, crate::ui_kit::style::radius_sm(),
+        egui::Stroke::new(
+            crate::ui_kit::style::stroke_std(),
+            crate::ui_kit::style::color_alpha(t.warn, crate::ui_kit::style::alpha_strong()),
+        ),
+        egui::StrokeKind::Inside);
+    painter.galley(
+        egui::pos2(pill.left() + pad, pill.top() + pad * 0.5),
+        galley,
+        t.warn,
+    );
+}
+
+#[cfg(test)]
+mod demo_badge_tests {
+    use super::*;
+
+    /// The badge and the panel's "Stop Demo" label must never disagree about
+    /// whether demo data is on screen. They read the SAME predicate; this
+    /// pins each condition that turns it on, because the panel used to derive
+    /// it inline and a second copy is how the two drift apart.
+    #[test]
+    fn every_demo_signal_raises_the_flag() {
+        let mut c = Chart::new();
+        assert!(!c.signal_demo_active(), "a fresh chart is not in demo");
+
+        c.trend_health_score = 72.0;
+        assert!(c.signal_demo_active(), "a demo trend score must raise it");
+        c.trend_health_score = 0.0;
+
+        c.precursor_active = true;
+        assert!(c.signal_demo_active(), "a demo precursor must raise it");
+        c.precursor_active = false;
+
+        c.trade_plan = Some(crate::chart_renderer::gpu::TradePlan {
+            direction: 1, entry: 100.0, target: 102.0, stop: 98.5,
+            contract: "SPY 455C 5DTE".into(), rr: 2.8, conviction: 85.0,
+        });
+        assert!(c.signal_demo_active(),
+            "a fabricated trade plan MUST raise it — it names a contract and a stop");
+        c.trade_plan = None;
+
+        assert!(!c.signal_demo_active(), "clearing every source must lower it again");
+    }
 }

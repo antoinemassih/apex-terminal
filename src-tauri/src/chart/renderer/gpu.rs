@@ -2768,6 +2768,22 @@ pub(crate) fn evict_oldest_if_full(
 }
 
 impl Chart {
+    /// Is the pane currently showing DEMO signal data rather than live feeds?
+    ///
+    /// `signals_panel`'s "Start Demo" button fabricates a trade plan (entry /
+    /// target / stop / contract / conviction), supply-demand zones, a VIX
+    /// expiry card and precursor scores. That is legitimate — it is opt-in and
+    /// labelled — but it is indistinguishable from real once painted, and the
+    /// only indication was a button in a side panel flipping to "Stop Demo".
+    ///
+    /// This predicate is shared by the panel's button label and the on-chart
+    /// badge deliberately. The panel used to derive it inline; a second copy
+    /// is how the badge and the button come to disagree about whether demo is
+    /// on, and a badge that under-reports is worse than none.
+    pub(crate) fn signal_demo_active(&self) -> bool {
+        self.trend_health_score > 0.0 || self.precursor_active || self.trade_plan.is_some()
+    }
+
     pub(crate) fn new_with(symbol: &str, timeframe: &str) -> Self {
         let mut c = Self::new();
         c.symbol = symbol.into();

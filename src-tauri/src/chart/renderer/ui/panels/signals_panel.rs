@@ -102,7 +102,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
     ui.add_space(gap_sm());
 
     let chart = &mut panes[ap];
-    let demo_on = chart.trend_health_score > 0.0 || chart.precursor_active || chart.trade_plan.is_some();
+    let demo_on = chart.signal_demo_active();
     ui.horizontal(|ui| {
         ui.add(widgets_text::SectionLabel::new("DEMO SIGNALS").tiny().color(t.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
