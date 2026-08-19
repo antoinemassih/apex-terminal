@@ -4,10 +4,10 @@
   "eprintln_in_data": 0,
   "expect_total": 60,
   "fabricated_market_data": 0,
-  "fabricated_ratio": 29,
+  "fabricated_ratio": 26,
   "file_loc": {
-    "chart/renderer/gpu.rs": 11139,
-    "chart/renderer/render/pane/core.rs": 14023,
+    "chart/renderer/gpu.rs": 11155,
+    "chart/renderer/render/pane/core.rs": 14116,
     "chart/renderer/trading/order_manager.rs": 8393,
     "chart/renderer/ui/chart_widgets.rs": 3227,
     "chart/renderer/ui/style.rs": 5003,

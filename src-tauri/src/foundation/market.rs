@@ -53,6 +53,24 @@
 //! existing correct implementation (`WatchlistState::get_change_pct`) already
 //! used `> 0.0`, and this generalises it rather than inventing a new rule.
 
+/// Percent change from `from` to `to`, or `None` when there is no base to
+/// measure against.
+///
+/// The one implementation. [`day_change_pct`] is this with the base named
+/// "previous close"; a pane's range badge is this with the base named "first
+/// loaded bar". They are the same arithmetic and the same unknown case, and
+/// splitting them into separate `if base > 0.0 { .. } else { 0.0 }` expressions
+/// is how the second one came to paint a confident green `+0.00%` for a pane
+/// with no bars at all.
+#[must_use]
+pub fn pct_change(from: f32, to: f32) -> Option<f32> {
+    if from > 0.0 && from.is_finite() && to.is_finite() {
+        Some((to - from) / from * 100.0)
+    } else {
+        None
+    }
+}
+
 /// A day's percent change, or `None` when the previous close is unknown.
 ///
 /// `None` means "we have no basis to compute this" — render it as an em dash
@@ -60,11 +78,7 @@
 /// Do NOT substitute `0.0`; see the module docs for what that costs.
 #[must_use]
 pub fn day_change_pct(price: f32, prev_close: f32) -> Option<f32> {
-    if prev_close > 0.0 && price.is_finite() && prev_close.is_finite() {
-        Some((price - prev_close) / prev_close * 100.0)
-    } else {
-        None
-    }
+    pct_change(prev_close, price)
 }
 
 /// `+1.23%` / `-0.40%` / `—` — the one rendering of a day change.
@@ -116,6 +130,24 @@ mod tests {
         assert_eq!(day_change_pct(f32::NAN, 100.0), None);
         assert_eq!(day_change_pct(100.0, f32::NAN), None);
         assert_eq!(day_change_pct(f32::INFINITY, 100.0), None);
+    }
+
+    /// `day_change_pct` is `pct_change` with its base named. If they ever
+    /// diverge, one surface will disagree with another about the same move.
+    #[test]
+    fn the_day_change_is_the_general_form_with_its_base_named() {
+        for (base, now) in [(100.0f32, 110.0f32), (100.0, 90.0), (100.0, 100.0), (0.0, 50.0)] {
+            assert_eq!(day_change_pct(now, base), pct_change(base, now),
+                "base={base} now={now}");
+        }
+    }
+
+    /// A pane with no loaded bars has no base, and must not report "unchanged".
+    #[test]
+    fn an_absent_base_is_unknown_not_flat() {
+        assert_eq!(pct_change(0.0, 123.0), None);
+        assert_eq!(pct_change(f32::NAN, 123.0), None);
+        assert_eq!(pct_change(100.0, f32::NAN), None);
     }
 
     #[test]

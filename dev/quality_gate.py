@@ -305,9 +305,25 @@ MUT_RE = re.compile(r"\b(watchlist|wl|chart)\.[a-z_][a-z0-9_]*\s*=\s*[^=]")
 #     different clothes, on the trading surface, and they are tracked
 #     separately in the ledger.
 #
+# THE TRIAGE IS NOW COMPLETE, and the remaining 26 are the first kind. Every
+# suspect one has been fixed and is listed in the ledger:
+#
+#   entry_price == 0.0  -> a P&L of 0.00% on a position with no cost basis
+#   net_liq == 0.0      -> 0% margin usage, in bull green, with an empty bar
+#   eps_estimate == 0.0 -> a company nobody forecast shown as missing by 0.0%
+#   first_px == 0.0     -> an empty pane wearing a confident green +0.00% badge
+#
+# What is left divides into: no true range (ADX/DI), no deviation (CCI), no
+# volume (`above_avg / total_vol`, `level.total_vol / vp.max_vol`), an empty
+# book (`cell.weight / total_cap`), a flat set (`change_pct.abs() / max_pct`),
+# a degenerate rect (`dashboard_pane`), and no frames yet (`1000.0 / frame_ms`).
+# In each the denominator is genuinely zero, nothing moved, and `0.0` is the
+# right answer.
+#
 # So this is a CEILING on the shape, in the same spirit as `dead_code_allows`
-# starting at 52: it stops the population growing while the suspect subset is
-# worked through. Do not read a passing run as "no fabrication here".
+# starting at 52. A passing run means "no NEW instance of the shape", not "no
+# fabrication here" — the regex cannot tell the two populations apart, which is
+# why the triage lives in prose and not in the pattern.
 #
 # The division inside the then-branch is load-bearing — it is what makes the
 # value a RATIO, and a ratio has no meaningful zero when its base is missing.

@@ -903,9 +903,12 @@ fn render_chart_pane(
                 // tabbed-mode flow below).
                 chart.tab_symbols.push(chart.symbol.clone());
                 chart.tab_timeframes.push(chart.timeframe.clone());
+                // `tab_changes` is an f32 the tab strip colours on `>= 0.0`,
+                // so an unloaded tab used to read as flat-and-green. Until that
+                // field becomes an Option it stays 0.0, but the derivation now
+                // goes through the one implementation.
                 let (chg, px) = if let (Some(f), Some(l)) = (chart.bars.first(), chart.bars.last()) {
-                    let c = if f.open > 0.0 { (l.close - f.open) / f.open * 100.0 } else { 0.0 };
-                    (c, l.close)
+                    (crate::foundation::market::pct_change(f.open, l.close).unwrap_or(0.0), l.close)
                 } else { (0.0, 0.0) };
                 chart.tab_changes.push(chg);
                 chart.tab_prices.push(px);
@@ -3439,10 +3442,17 @@ fn render_chart_pane(
                     let chrome_title     = chart.symbol.clone();
                     let last_px          = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
                     let first_px         = chart.bars.first().map(|b| b.close).unwrap_or(last_px);
-                    let pct_change       = if first_px > 0.0 { (last_px - first_px) / first_px * 100.0 } else { 0.0 };
-                    let chrome_subtitle  = format!("${:.2}", last_px);
-                    let chrome_badge     = format!("{:+.2}%", pct_change);
-                    let chrome_badge_col = if pct_change >= 0.0 { t.bull } else { t.bear };
+                    // A pane with no bars has no base to measure from. This
+                    // used to fall back to `0.0`, and `0.0 >= 0.0` picked BULL,
+                    // so an empty pane wore a confident green "+0.00%" badge.
+                    let pct_change       = crate::foundation::market::pct_change(first_px, last_px);
+                    let chrome_subtitle  = if last_px > 0.0 { format!("${last_px:.2}") } else { "\u{2014}".to_string() };
+                    let chrome_badge     = crate::foundation::market::fmt_change_pct(pct_change);
+                    let chrome_badge_col = match pct_change {
+                        Some(v) if v >= 0.0 => t.bull,
+                        Some(_) => t.bear,
+                        None => t.dim,
+                    };
 
                     let chrome = FloatingPaneChrome::new(pane.id, &chrome_title)
                         .subtitle(&chrome_subtitle)

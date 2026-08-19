@@ -2805,3 +2805,68 @@ consistent, not a fourth instance. Recorded so the next reader does not
 re-derive it.
 
 ---
+
+## AT-194 — Finishing the fabricated-ratio triage
+
+The `fabricated_ratio` ceiling was installed at 34 with the honest caveat that
+its regex cannot separate two populations. The triage is now complete: 29 sites
+at the start of this pass, 26 remain, and every remaining one is the benign kind.
+
+### Fixed (the denominator was ABSENT, not zero)
+
+| site | what it rendered |
+|---|---|
+| `eps_estimate == 0.0` (`research_panel`) | a company with **no analyst estimate** shown as `0.0%` in BEAR red beside `vs $0.00` — a miss, by nothing |
+| `first_px == 0.0` (`core.rs` pane chrome) | a pane with **no bars** wearing a confident `+0.00%` badge in BULL green |
+
+Plus, earlier in this session: `entry_price == 0.0` rendering a P&L of `0.00%`
+(AT-189) and `net_liq == 0.0` rendering 0% margin usage in bull green with an
+empty bar (AT-190).
+
+The EPS one is worth spelling out because the colour made it worse: `beat` was
+`surprise > 0.0`, and `0.0 > 0.0` is false, so the *absence* of a forecast
+resolved to the bear branch. Nobody forecast the quarter, and the panel said
+the company missed.
+
+### Consolidated
+
+`foundation::market::pct_change(from, to)` is now the one implementation, and
+`day_change_pct(price, prev_close)` is that function with its base named. They
+had been separate `if base > 0.0 { .. } else { 0.0 }` expressions, which is how
+the pane badge came to fabricate while the watchlist row (already fixed) did
+not. A test asserts the two agree across every case including the unknown one.
+
+### Left alone, deliberately, with the reason recorded
+
+The 26 remaining all have a genuinely zero denominator: no true range
+(ADX/DI), no deviation (CCI), no volume (`above_avg / total_vol`,
+`level.total_vol / vp.max_vol`), an empty book (`cell.weight / total_cap`), a
+flat set (`change_pct.abs() / max_pct`), a degenerate rect (`dashboard_pane`),
+no frames yet (`1000.0 / frame_ms`). Nothing moved, and `0.0` is the correct
+answer. That enumeration now lives in the gate's own doc so the next reader
+inherits the triage instead of redoing it, and so a passing run is understood
+as "no NEW instance of the shape" rather than "no fabrication here".
+
+`chart.tab_changes` is a partial: the derivation goes through `pct_change` now,
+but the field is an `f32` the tab strip colours on `>= 0.0`, so an unloaded tab
+still reads flat-and-green. Changing that field to an `Option` is a separate
+change and is noted rather than smuggled in here.
+
+### Flagged, not fixed — "Avg R" is against an assumed risk
+
+`journal_feed` computes the R-multiple with a documented heuristic:
+
+```rust
+// R-multiple: assume 1:1 risk if we have no stop info
+// i.e., risk = 1% of position
+let risk = entry_price * matched_qty as f64 * 0.01 * multiplier;
+```
+
+The journal panel then displays `Avg R` with no indication that the denominator
+is an assumption rather than the trader's actual stop. The number is not
+fabricated — the derivation is deliberate and commented — but the LABEL claims
+more than the number knows, and a trader reading "Avg R 2.3" will take it as
+2.3x their own risk. That is a wording/product decision, so it is recorded here
+for the owner rather than guessed at.
+
+---

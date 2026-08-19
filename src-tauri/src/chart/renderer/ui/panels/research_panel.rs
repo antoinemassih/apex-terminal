@@ -234,15 +234,31 @@ pub(crate) fn draw_content(
             for eq in &f.earnings {
                 ui.horizontal(|ui| {
                     ui.add_space(gap_sm());
+                    // `eps_estimate == 0.0` means NO analyst estimate was
+                    // published, not an estimate of zero. It used to fall back
+                    // to `surprise = 0.0`, and `0.0 > 0.0` is false, so the row
+                    // rendered "0.0%" in BEAR red beside "vs $0.00" — a company
+                    // nobody forecast was shown as having missed, by nothing.
                     let surprise = if eq.eps_estimate > 0.0 {
-                        (eq.eps_actual - eq.eps_estimate) / eq.eps_estimate * 100.0
-                    } else { 0.0 };
-                    let beat = surprise > 0.0;
-                    let col = if beat { t.bull } else { t.bear };
+                        Some((eq.eps_actual - eq.eps_estimate) / eq.eps_estimate * 100.0)
+                    } else {
+                        None
+                    };
+                    let col = match surprise {
+                        Some(v) if v > 0.0 => t.bull,
+                        Some(_) => t.bear,
+                        None => t.dim,
+                    };
                     ui.add(MonospaceCode::new(&eq.quarter).xs().color(t.dim));
                     ui.add(MonospaceCode::new(&format!("${:.2}", eq.eps_actual)).xs().color(t.text));
-                    ui.add(MonospaceCode::new(&format!("vs ${:.2}", eq.eps_estimate)).xs().gamma(0.5));
-                    ui.add(MonospaceCode::new(&format!("{}{:.1}%", if beat { "+" } else { "" }, surprise)).xs().color(col));
+                    ui.add(MonospaceCode::new(&match surprise {
+                        Some(_) => format!("vs ${:.2}", eq.eps_estimate),
+                        None => "vs \u{2014}".to_string(),
+                    }).xs().gamma(0.5));
+                    ui.add(MonospaceCode::new(&match surprise {
+                        Some(v) => format!("{}{:.1}%", if v > 0.0 { "+" } else { "" }, v),
+                        None => "\u{2014}".to_string(),
+                    }).xs().color(col));
                 });
             }
         });
