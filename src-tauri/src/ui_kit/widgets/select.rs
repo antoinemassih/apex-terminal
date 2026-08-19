@@ -393,7 +393,26 @@ fn paint_select<'a, T: 'a>(
     let icon_gap = st::gap_2xs();
 
     // Measure the widest label once (used for both trigger and popup widths).
-    let label_font = st::prop_at(font_size);
+    // MEASURE WITH THE FONT THE PAINT USES.
+    //
+    // This was `st::prop_at(font_size)` while every paint site below —
+    // the single label, the placeholder, the multi-select chips and
+    // `chip_paint` — draws with `st::mono_at(font_size)`. The trigger was
+    // therefore SIZED from a proportional layout of the string and DREW a
+    // monospace one.
+    //
+    // For wide glyphs the proportional measure is larger, so the trigger came
+    // out too roomy and nothing looked wrong. For narrow glyphs it inverts:
+    // proportional `i` is a sliver, monospace `i` occupies a full cell. A
+    // 24-character option of narrow glyphs measured ~62px and painted ~144px,
+    // running 87px PAST the caret — which is then drawn on top of the label.
+    //
+    // `Select` backs the option-chain expiry picker and the DOM order-type
+    // picker, i.e. two of the most-used dropdowns in the app, and this is the
+    // second defect in this one function traceable to the proportional family
+    // (see the chevron comment below, where Inter lacked the caret codepoint
+    // entirely and painted tofu).
+    let label_font = st::mono_at(font_size);
     let mut widest_label: f32 = 0.0;
     // layout-only galleys in this block: only `.rect.width()` is read.
     for i in 0..display.len() {
@@ -1127,6 +1146,51 @@ fn render_row<'a, T>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    /// The trigger's MEASURE must reserve as much room as its PAINT uses.
+    ///
+    /// `desired_w` reserves `caret_w = font_size * 0.6` for the chevron plus
+    /// `trigger_extra_pad`. The paint then places the chevron centred at
+    /// `right_edge - chev_size * 0.5` with `chev_size = font_size * 1.0`, so it
+    /// occupies from `right_edge - chev_size` leftwards — and the single-mode
+    /// label is painted at `left_x` with NO bound (`content_right` is consulted
+    /// only by the multi-chip path). At content width the longest label is
+    /// therefore laid out against one reservation and drawn against another.
+    ///
+    /// This asserts the runs do not collide, which is the property that
+    /// actually matters, rather than the arithmetic that produces it.
+    #[test]
+    fn the_trigger_label_does_not_collide_with_the_caret() {
+        // Every size, because the reservation and the paint scale differently:
+        // the measure grows by `font_size * 0.6 + gap_sm`, the paint by
+        // `font_size * 1.5`. At Xl (`font_xl`) the paint term grows fastest, so
+        // if the margin ever closes it closes there first.
+        // NARROW glyphs are the case that matters and the one a casual test
+        // misses. Under the old proportional MEASURE, `i` is a sliver; under
+        // the monospace PAINT it fills a cell. A first version of this test
+        // used "W" — where proportional is WIDER than mono, so the trigger came
+        // out too roomy and the bug stayed hidden. Both are checked now.
+        for narrow in [true, false] {
+            let wide_opt = "WWWWWWWWWWWWWWWW";
+            let narrow_opt = "iiiiiiiiiiiiiiiiiiiiiiii";
+            let opts = [if narrow { narrow_opt } else { wide_opt }, "b"];
+            for size in [Size::Xs, Size::Sm, Size::Md, Size::Lg, Size::Xl] {
+                let mut idx = 0usize;
+                let runs = paint_probe::probe(|ui| {
+                    let t = PortableTheme::dark();
+                    Select::new(&mut idx, &opts).size(size).show(ui, &t);
+                });
+                assert!(runs.len() >= 2,
+                    "{size:?} narrow={narrow}: expected a label and a caret, got {runs:?}");
+                paint_probe::assert_no_overlap(
+                    &format!("select trigger {size:?} narrow={narrow}"), &runs);
+            }
+        }
+    }
+
     /// Smoke: verify that `paint_select` calls `cursor::focus_ring` on the
     /// trigger response. The dropdown list items are handled by egui internally
     /// and are intentionally excluded from this focus ring wave.

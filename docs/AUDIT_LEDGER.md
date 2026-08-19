@@ -2653,3 +2653,90 @@ whole point of the ratchet, and it is worth recording that it fired on new work
 in this session and not only on inherited code.
 
 ---
+
+## AT-192 — `Select` sized itself with one font and painted with another
+
+The component-layer pass started by looking for hand-built widgets with real
+structure. `Select` topped the list — 10 text paints, 3 anchors, 6
+hand-advanced x offsets — and reading its trigger turned up a live defect.
+
+`paint_select` measured the widest option with:
+
+```rust
+let label_font = st::prop_at(font_size);   // PROPORTIONAL
+```
+
+and every paint site below it — the single label, the placeholder, the
+multi-select chips, `chip_paint` — drew with `st::mono_at(font_size)`. The
+trigger was SIZED from a proportional layout of the string and DREW a
+monospace one. `content_right` exists but is consulted only by the multi-chip
+path, so the single-mode label had no bound at all.
+
+For wide glyphs the proportional measure is the larger of the two, the trigger
+came out roomy, and nothing looked wrong. Narrow glyphs invert it: a
+proportional `i` is a sliver, a monospace `i` fills a cell. Measured at
+`Size::Xs`, a 24-character narrow label:
+
+```
+label   10.0 → 154.2
+caret   67.0 →  71.6      <- painted ON TOP of the label
+```
+
+87 pixels of overrun, with the caret drawn over the text. `Select` backs the
+option-chain expiry picker and the DOM order-type picker — by the file's own
+comment, "two of the most-used dropdowns in the app" — and this is the SECOND
+defect in this one function traceable to the proportional family. The first was
+the chevron: Inter does not carry U+25BC, so every trigger painted a tofu box
+where its caret belonged.
+
+Fixed by measuring with the font the paint uses.
+
+### How the first version of the test hid it
+
+The test was originally written with `"WWWWWWWWWWWWWWWW"`, and it passed. It
+passed across all five sizes. It even passed with `trigger_extra_pad` mutated
+to zero. Every one of those was a green run that proved nothing, because `W` is
+the glyph where the proportional measure is WIDER than the monospace paint —
+the safe direction.
+
+Only dumping the actual runs showed the tell: a 56–134px gap between label and
+caret at every size, far more than any padding accounts for. A measure that
+over-reports by that much is the same bug as one that under-reports; it just
+does not show. Switching the fixture to narrow glyphs failed immediately.
+
+The test now covers both glyph classes at all five sizes, and reverting the
+one-line fix fails it.
+
+### And the thing that was already there
+
+`select.rs`'s only existing test was:
+
+```rust
+let src = include_str!("select.rs");
+assert!(src.contains("cursor::focus_ring"), ...);
+```
+
+A grep of the file's own source text. It cannot see geometry, it cannot see
+overlap, and it passes for any arrangement of pixels whatsoever. The widget had
+a test and no coverage.
+
+### Guard, not discovery
+
+`Tag` got the same overlap probe — it is the same two-part shape (label plus a
+close glyph) and the same failure was available to it. `tag.rs` measures and
+paints both with `prop_at`, so it is currently correct; the test is a guard
+against drift, and it is honest to say so. It is not vacuous: under-measuring
+the label reproduces the overlap immediately.
+
+An audit of every widget that measures and paints found only these two files
+mixing families, and `input.rs`'s mix is deliberate — an explicit
+`proportional` flag selects the font, and its prefix/suffix measure and paint
+both with `mono_at`. `prop_at` for icon glyphs is the established convention
+(`header.rs`, `selectable_row.rs`), so `Icon::X` in the tag close button is
+consistent rather than a third instance.
+
+**A check that has never been shown to fail has not been shown to work** — and
+this is the first time in this session that rule caught a test of MINE rather
+than an instrument I inherited.
+
+---

@@ -357,6 +357,30 @@ pub fn paint_badge(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+
+    /// A closable tag is a label plus a close glyph — the same two-part shape
+    /// as the `Select` trigger, which turned out to size itself from a
+    /// PROPORTIONAL layout of its label and paint a MONOSPACE one, so a
+    /// narrow-glyph label overran the caret by 87px and the caret was drawn on
+    /// top of the text.
+    ///
+    /// Narrow glyphs are the case that exposes it: under a proportional
+    /// measure `i` is a sliver, under a monospace paint it fills a cell. A
+    /// test written with "W" passes either way, which is how that one hid.
+    #[test]
+    fn a_closable_tag_keeps_its_label_clear_of_the_close_glyph() {
+        for label in ["iiiiiiiiiiiiiiiiiiii", "WWWWWWWWWW", "Mixed Label 123"] {
+            let runs = paint_probe::probe(|ui| {
+                let t = PortableTheme::dark();
+                Tag::new(label).closable(true).show(ui, &t);
+            });
+            assert!(!runs.is_empty(), "{label:?}: the tag painted nothing");
+            paint_probe::assert_no_overlap(&format!("tag {label:?}"), &runs);
+        }
+    }
+
     use crate::design_system::recipes::RecipeSet;
     use crate::ui_kit::sx::{
         recipe_spec::{ColorSpec, RadiusTier, RecipeDelta, RecipeSpec, ToneRef},
