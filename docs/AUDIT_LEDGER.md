@@ -2507,3 +2507,89 @@ only real difference between the five copies, and it is now the only parameter.
 Six call sites, one implementation.
 
 ---
+
+## AT-190 — Five on-chart widgets displayed invented market data
+
+Found while converting row grids, and it outranks everything else in this pass.
+
+Five widget bodies rendered hardcoded literals as live market data. None of
+them read `WidgetData`; three took no data parameter at all.
+
+| widget | what it displayed |
+|---|---|
+| `draw_cross_asset` | `SPY +0.42%`, `QQQ +0.68%`, `DXY -0.15%`, `VIX +2.3%`, `TNX`, `GLD`, `CL`, `BTC +1.8%` |
+| `draw_market_breadth` | `ADV / DEC 1,842 / 1,156`, `NEW HI 48`, `NEW LO 12`, `VIX 18.5` |
+| `draw_options_flow` | six prints incl. `460C 5DTE $3.1M sweep`, `440P 1DTE $1.8M block` |
+| `draw_earnings_mom` | `EPS +12%`, `REV +8%`, `REVISIONS ↑3`, `FWD P/E 22.4x` |
+| `draw_risk_reward` | `risk = 1.0`, `reward = 2.8` — the bar always read 1:2.8 |
+
+On a terminal used to place real orders, a titled panel showing a figure a
+trader can act on is not a placeholder.
+
+### The pattern already existed and was applied inconsistently
+
+`draw_widget_no_feed(p, body, t, "<name> feed", "not connected")` was already
+in the file and already used by `draw_sector_rotation`,
+`draw_options_sentiment` and `draw_econ_calendar`. So the app taught the user
+that "not connected" means not connected — and therefore that a panel showing
+numbers means it IS connected. Inconsistency here is worse than uniform
+absence, because it manufactures the confidence.
+
+All five now use it. `WidgetData` does carry `vix_spot`, `eps_ttm` and
+`revenue_growth`, so parts of breadth and fundamentals COULD be wired — but a
+panel with two real rows beside two invented ones reads as fully real and is
+worse than one that says nothing. Wire them when the whole panel has a feed.
+
+### The gate
+
+`fabricated_market_data` matches a string literal that is unambiguously a
+market VALUE — a signed percentage, a currency figure, or a multiple — inside
+a widget file. Labels (`"SPY"`, `"EPS"`) are bare words and do not match;
+format strings are excluded by their brace. 17 hits before, 0 after, and
+`quality_gate.py --selftest` proves the pattern against both known-positive and
+known-negative samples.
+
+The one false positive it did produce is worth recording: `"4x"` is the
+max-end AXIS LABEL on the tape-speed gauge, whose reading is
+`format!("{:.1}x", speed)` from real data. Requiring a decimal in the multiple
+form separates a round scale label from a reported metric. Not airtight, and
+the doc says so — a bare `"18.5"` carries no marker and would slip through.
+This backs up review rather than replacing it.
+
+### The adoption floor did its job
+
+Deleting `draw_options_flow`'s body removed 7 `El::` nodes with it, and
+`cascade_adoption_gate` failed: `el_nodes 167 -> 160`, `declared_rows 74 -> 72`,
+`self_painting 46 -> 42`. That is the floor working exactly as intended — it
+refused to let adoption fall silently and made the drop be justified. Every one
+of the 7 removals is inside the fabricating widget (verified against the diff;
+no `Flex::` removals, one `show_with`), so the floors were re-cut downward with
+the reason recorded here rather than raised past the problem.
+
+Two systems pulled in opposite directions — "keep declarative adoption up" and
+"never display invented data" — and the second wins every time.
+
+### Also in this pass
+
+* `body_rows` divides a body into fitted rows. Five grids wrote
+  `let row_h = (body.height() - 8.0) / 5.0` next to
+  `let y = body.top() + 4.0 + ...`, stating the padding TWICE — doubled in the
+  height, halved in the origin — with nothing connecting them. They agree
+  today (8 = 2 x 4); change one and rows run past the bottom edge.
+  `every_fitted_row_lands_inside_the_body` asserts the property over eight row
+  counts and four body heights; breaking the link fails it immediately.
+* `portfolio_pane`'s margin utilisation: `net_liq == 0.0` means the account
+  snapshot has not arrived, and it rendered `0%` in BULL green with an empty
+  bar — the most reassuring possible display of "we have no idea", on the one
+  figure that says how close a trader is to a margin call. Now `—`, Muted, and
+  NO bar (an empty bar reads as "none used"). Position weights likewise.
+* Removed `body_rows_of_height` and `RowGrid::rect_of`, which I had just added.
+  The former was built to replace two `break` clips; `draw_options_flow` is now
+  a no-feed stub and the positions panel clips against the same `El` geometry it
+  lays out with, so a separate count would REINTRODUCE the two-mechanisms
+  defect. Keeping either "for when it's needed" is precisely how `stat()` sat
+  unused with the wrong signature (AT-187).
+* Removed kit's `metric_row` — a painter-side duplicate of `ui_kit::MetricRow`
+  (4 real callers) whose only caller was the fabricating breadth widget.
+
+---

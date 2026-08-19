@@ -359,6 +359,48 @@ BODY_INSET_RE = re.compile(r"\bbody\.(?:left|right|top|bottom)\(\)\s*[-+]\s*[0-9
 BODY_INSET_FILES = ("/ui/chart_widgets.rs", "/ui/overlays/")
 
 
+# A HARDCODED MARKET FIGURE IN AN ON-CHART WIDGET.
+#
+# Five widget bodies rendered invented data as if it were live:
+#
+#   draw_cross_asset    ("SPY", "+0.42%"), ("QQQ", "+0.68%"), ("BTC", "+1.8%") ...
+#   draw_market_breadth ("ADV / DEC", "1,842 / 1,156"), ("VIX", "18.5")
+#   draw_options_flow   ("CALL", "460C 5DTE", "$3.1M", "sweep") x6
+#   draw_earnings_mom   ("EPS", "+12%"), ("REV", "+8%"), ("FWD P/E", "22.4x")
+#   draw_risk_reward    risk = 1.0, reward = 2.8  (bar always read 1:2.8)
+#
+# None of them read `WidgetData`; three took no data parameter at all. On a
+# terminal used to place real orders, a titled panel showing a figure a trader
+# can act on is not a placeholder.
+#
+# The honest pattern already existed and was already used by three sibling
+# widgets — `draw_widget_no_feed(p, body, t, "<name> feed", "not connected")`.
+# It was simply applied inconsistently, which is the worst case: the user
+# learns that "not connected" means not connected, and therefore that a panel
+# showing numbers means it IS connected.
+#
+# WHAT THIS MATCHES: a string literal that is unambiguously a market VALUE —
+# a signed percentage, a currency figure, or a multiple. Labels ("SPY", "EPS")
+# are bare words and are not matched; format strings are excluded because they
+# contain a brace. It is deliberately narrow, and therefore not exhaustive: a
+# bare "18.5" carries no marker and slips through. A ceiling only holds the
+# shape it can see, so this backs up review rather than replacing it.
+MARKET_LITERAL_RE = re.compile(
+    r'"(?:'
+    r'[+-][0-9]+(?:[.][0-9]+)?%'          # +0.42%  -1.2%
+    r'|[$][0-9]+(?:[.][0-9]+)?[KMB]'      # $3.1M   $890K
+    r'|[0-9]+[.][0-9]+x'                  # 22.4x (a decimal is required)
+    r')"'
+)
+
+# `"4x"` is the max-end AXIS LABEL on the tape-speed gauge (a 0..4x scale),
+# while the reading itself is `format!("{:.1}x", speed)` from real data. A scale
+# label is a round number; a reported metric carries a decimal. Not airtight,
+# but a real distinction, and it removes the only false positive without hiding
+# the class.
+MARKET_LITERAL_FILES = ("/ui/chart_widgets.rs", "/ui/overlays/")
+
+
 INDICATOR_ENUM_RE = re.compile(r"IndicatorType::")
 
 
@@ -414,6 +456,7 @@ def collect():
         "indicator_enum_matches": 0,   # W3-01 Stage 4: IndicatorType:: sprawl
         "fabricated_ratio": 0,         # AT-186: `if base > 0.0 { a/base } else { 0.0 }`
         "overlay_body_insets": 0,      # AT-187: `body.top() + 18.0` vs a spacing token
+        "fabricated_market_data": 0,   # AT-190: invented quotes in a widget body
         "file_loc": {},   # relpath -> loc (only for files over soft ceiling)
     }
     for path in iter_rs_files():
@@ -452,6 +495,12 @@ def collect():
         counts["fabricated_ratio"] += _fabricated_ratios(prod)
         if any(k in "/" + r for k in BODY_INSET_FILES):
             counts["overlay_body_insets"] += len(BODY_INSET_RE.findall(prod))
+        if any(k in "/" + r for k in MARKET_LITERAL_FILES):
+            counts["fabricated_market_data"] += sum(
+                len(MARKET_LITERAL_RE.findall(ln))
+                for ln in prod.splitlines()
+                if not COMMENT_LINE_RE.match(ln) and "///" not in ln
+            )
         counts["text_width_guess"] += sum(
             1
             for ln in prod.splitlines()
@@ -510,7 +559,7 @@ def check(cur, base):
                 "text_width_guess", "identical_branches",
                 "ui_direct_mutation", "eprintln_in_data",
                 "indicator_enum_matches", "fabricated_ratio",
-                "overlay_body_insets"):
+                "overlay_body_insets", "fabricated_market_data"):
         # A newly-added metric absent from the committed baseline seeds to its
         # current value (no spurious first-run failure); --update then locks it.
         c = cur[key]
@@ -546,6 +595,10 @@ def check(cur, base):
 # under different disguises. A regex that cannot be shown to match anything is
 # not a check; it is a decoration. Every pattern here has to prove it works.
 PATTERN_SELFTESTS = [
+    ("MARKET_LITERAL_RE", lambda: MARKET_LITERAL_RE,
+     ['("SPY", "+0.42%", true),', 'let v = "$3.1M";', '("FWD P/E", "22.4x", t.dim),'],
+     ['("SPY", "spy"),', 'format!("{:+.2}%", chg)', 'let s = "not connected";',
+      '"4x", mono_4xs(), color_dim(t.dim));']),
     ("BODY_INSET_RE", lambda: BODY_INSET_RE,
      ["    let bar_y = body.top() + 50.0;", "body.right() - 8.0"],
      ["let x = other.top() + 4.0;", "body.top() + gap_sm()"]),

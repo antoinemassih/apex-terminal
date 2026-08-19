@@ -148,11 +148,35 @@ pub(crate) fn render(
                     PanelKeyValueRow::new("Initial", &money0(summary.initial_margin)).tone(PTone::Default).show(ui, t);
                     PanelKeyValueRow::new("Excess Liq", &money0(summary.excess_liquidity)).tone(PTone::Default).show(ui, t);
                 });
-                let margin_util = if net_liq > 0.0 { (summary.maintenance_margin / net_liq) as f32 } else { 0.0 };
-                let mtone = if margin_util > 0.7 { MetricTone::Bear } else if margin_util > 0.5 { MetricTone::Warn } else { MetricTone::Bull };
+                // `net_liq == 0.0` means the account snapshot has not arrived,
+                // not that the account is empty. This used to fall back to
+                // `0.0`, which rendered "0%" in BULL green with an empty bar —
+                // the most reassuring possible display of "we have no idea",
+                // on the one figure that tells a trader how close they are to
+                // a margin call.
+                let margin_util = if net_liq > 0.0 {
+                    Some((summary.maintenance_margin / net_liq) as f32)
+                } else {
+                    None
+                };
+                let mtone = match margin_util {
+                    Some(u) if u > 0.7 => MetricTone::Bear,
+                    Some(u) if u > 0.5 => MetricTone::Warn,
+                    Some(_) => MetricTone::Bull,
+                    None => MetricTone::Muted,
+                };
                 ui.add_space(gap_xs());
-                MetricRow::new("Margin used").value(format!("{:.0}%", margin_util * 100.0))
-                    .tone(mtone).bar(margin_util).show(ui, t);
+                let mut margin_row = MetricRow::new("Margin used")
+                    .value(match margin_util {
+                        Some(u) => format!("{:.0}%", u * 100.0),
+                        None => "\u{2014}".to_string(),
+                    })
+                    .tone(mtone);
+                // No bar at all when unknown — an empty bar reads as "none used".
+                if let Some(u) = margin_util {
+                    margin_row = margin_row.bar(u);
+                }
+                margin_row.show(ui, t);
                 ui.add_space(gap_md());
 
                 // RISK (real limits + circuit breaker)
@@ -226,7 +250,9 @@ fn positions_table(ui: &mut egui::Ui, t: &Theme, positions: &[Position], net_liq
             let pnl_c = if p.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
             let dir_c = if p.qty >= 0 { t.bull } else { t.bear };
             let pnl_pct = p.pnl_pct();
-            let wt = if net_liq > 0.0 { p.market_value.abs() / net_liq * 100.0 } else { 0.0 };
+            // Same story as margin: an unknown net liquidation value makes
+            // every position's portfolio weight unknowable, not 0%.
+            let wt = if net_liq > 0.0 { Some(p.market_value.abs() / net_liq * 100.0) } else { None };
             let row = ui.horizontal(|ui| {
                 cell(ui, colw[0], egui::Align::Min, p.symbol.clone(), t.text, true);
                 cell(ui, colw[1], egui::Align::Max, format!("{}{}", if p.qty > 0 { "+" } else { "" }, p.qty), dir_c, false);
@@ -237,7 +263,9 @@ fn positions_table(ui: &mut egui::Ui, t: &Theme, positions: &[Position], net_liq
                 cell(ui, colw[6], egui::Align::Max,
                     pnl_pct.map_or_else(|| "\u{2014}".to_string(), |v| format!("{v:+.1}")),
                     pnl_c, false);
-                cell(ui, colw[7], egui::Align::Max, format!("{:.0}", wt), color_half(t.dim), false);
+                cell(ui, colw[7], egui::Align::Max,
+                    wt.map_or_else(|| "\u{2014}".to_string(), |v| format!("{v:.0}")),
+                    color_half(t.dim), false);
             });
             if ri % 2 == 1 {
                 ui.painter().rect_filled(row.response.rect.expand2(egui::vec2(2.0, 0.0)), 0.0, tint(t, Tone::Border, alpha_faint()));

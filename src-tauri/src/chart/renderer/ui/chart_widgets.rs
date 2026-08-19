@@ -30,15 +30,15 @@ use crate::ui_kit::sx::Tone;
 use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
-    draw_arc, hero_number, sub_label, stat, radial_gauge, radial_gauge_stacked, metric_row,
-    body_content, body_header, body_header_text,
+    draw_arc, hero_number, sub_label, stat, radial_gauge, radial_gauge_stacked,
+    body_content, body_header, body_header_text, body_rows,
     overlay_card_frame, overlay_card_header, overlay_header_ctx_rect, progress_bar,
     body_footer, body_footer_kv, body_footer_text,
 };
 use super::overlays::registry::OverlayWidget;
 use super::overlays::viz::charts::{
     bars_colored, compass, dot_matrix, hbars, heatmap_signed, lollipops, multiring_colored,
-    multiring_radius, multiring_thickness, spoke_radar, tile_grid,
+    multiring_radius, multiring_thickness, spoke_radar,
 };
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
@@ -1317,12 +1317,11 @@ fn draw_session_timer(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 }
 
 fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    let left = body_content(body).left();
-    let right = body_content(body).right();
-    let row_h = (body.height() - 8.0) / 5.0;
+    let g = body_rows(body, 5);
+    let (left, right) = (g.left, g.right);
 
-    for (i, (price, label)) in wd.price_levels.iter().enumerate() {
-        let y = body.top() + 4.0 + i as f32 * row_h + row_h / 2.0;
+    for (i, (price, label)) in wd.price_levels.iter().enumerate().take(g.visible) {
+        let y = g.mid_of(i);
         let is_pp = *label == "PP";
         let is_r = label.starts_with('R');
 
@@ -1385,22 +1384,21 @@ fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         ("\u{03BD} Vega",  vega,  greeks_palette()[3]),
     ];
 
-    let row_h = (body.height() - 8.0) / 4.0;
-    let left = body_content(body).left();
-    let right = body_content(body).right();
+    let g = body_rows(body, 4);
+    let (left, right, row_h) = (g.left, g.right, g.row_h);
     let bar_max_w = body.width() * 0.35;
 
     // Kit primitive: horizontal magnitude bars (|value| scaled), one per greek.
     let st = ChartStyle::resolve(t);
     let bars_rect = egui::Rect::from_min_size(
-        egui::pos2(left + 64.0, body.top() + 4.0), egui::vec2(bar_max_w, row_h * 4.0));
+        egui::pos2(left + 64.0, g.top), egui::vec2(bar_max_w, row_h * 4.0));
     let rows: Vec<(f32, Color32)> = greeks.iter()
         .map(|(_, val, color)| ((val.abs() * 2.0).min(1.0), color_alpha(*color, alpha_dim()))).collect();
     hbars(p, bars_rect, &rows, 6.0, &st);
 
     // Labels (left) + values (right).
-    for (i, (name, val, color)) in greeks.iter().enumerate() {
-        let y = body.top() + 4.0 + i as f32 * row_h + row_h / 2.0;
+    for (i, (name, val, color)) in greeks.iter().enumerate().take(g.visible) {
+        let y = g.mid_of(i);
         let val_str = if val.abs() < 0.01 { format!("{:.3}", val) } else { format!("{:.2}", val) };
         KvRow::new(*name, val_str)
             .label_font(mono_sm())
@@ -1412,56 +1410,34 @@ fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     }
 }
 
+/// NO FEED. This widget rendered hardcoded literals as live market data.
+///
+/// risk = 1.0 and reward = 2.8 were hardcoded, so the bar always read 1:2.8.
+///
+/// There is no data source behind any of it — the function never read
+/// `WidgetData`. On a terminal used to place real orders, a titled panel
+/// showing invented figures is not a placeholder, it is a number a trader
+/// can act on. `draw_widget_no_feed` is the pattern three sibling widgets
+/// already use for exactly this; it was applied inconsistently.
+///
+/// Restore the body when a real feed exists, not before.
 fn draw_risk_reward(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
-    let cx = body.center().x;
-    let risk = 1.0f32;
-    let reward = 2.8f32;
-    let total = risk + reward;
-    let bar_w = body.width() - 24.0;
-    let bar_x = body_content(body).left();
-    let bar_y = body.top() + 12.0;
-    let bar_h = 10.0;
-
-    let risk_w = bar_w * (risk / total);
-    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(risk_w, bar_h)),
-        egui::CornerRadius { nw: radius_sm() as u8, sw: radius_sm() as u8, ne: 0, se: 0 }, tint(t, Tone::Bear, alpha_strong()));
-    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + risk_w, bar_y), egui::vec2(bar_w - risk_w, bar_h)),
-        egui::CornerRadius { nw: 0, sw: 0, ne: radius_sm() as u8, se: radius_sm() as u8 }, tint(t, Tone::Bull, alpha_strong()));
-    p.circle_filled(egui::pos2(bar_x + risk_w, bar_y + bar_h / 2.0), 4.0, t.text);
-
-    let rr_str = format!("{:.1} : 1", reward);
-    let rr_col = if reward >= 2.0 { t.bull } else if reward >= 1.0 { t.warn } else { t.bear };
-    hero_number(p, egui::pos2(cx, body.top() + 40.0), &rr_str, rr_col);
-
-    p.text(egui::pos2(bar_x, bar_y + bar_h + 6.0), egui::Align2::LEFT_TOP,
-        "RISK", mono_2xs(), color_subtle(t.bear));
-    p.text(egui::pos2(bar_x + bar_w, bar_y + bar_h + 6.0), egui::Align2::RIGHT_TOP,
-        "REWARD", mono_2xs(), color_subtle(t.bull));
-    sub_label(p, egui::pos2(cx, body.top() + 58.0), "RISK / REWARD", t.dim);
+    draw_widget_no_feed(p, body, t, "Risk / reward", "no active plan");
 }
 
+/// NO FEED. This widget rendered hardcoded literals as live market data.
+///
+/// ADV/DEC "1,842 / 1,156", NEW HI "48", NEW LO "12", VIX "18.5" were literals.
+///
+/// There is no data source behind any of it — the function never read
+/// `WidgetData`. On a terminal used to place real orders, a titled panel
+/// showing invented figures is not a placeholder, it is a number a trader
+/// can act on. `draw_widget_no_feed` is the pattern three sibling widgets
+/// already use for exactly this; it was applied inconsistently.
+///
+/// Restore the body when a real feed exists, not before.
 fn draw_market_breadth(p: &egui::Painter, body: egui::Rect, t: &Theme) {
-    let metrics: [(&str, &str, Color32, f32); 4] = [
-        ("ADV / DEC", "1,842 / 1,156", t.bull, 0.614),
-        // Categorical, NOT directional: t.bull/t.bear are already spoken for
-        // by the ADV/DEC row above, so hi/lo keep their own identity tints.
-        ("NEW HI", "48", status_info(), 0.4),
-        ("NEW LO", "12", COLOR_CORAL, 0.1),
-        ("VIX", "18.5", t.warn, 0.37),
-    ];
-
-    let row_h = (body.height() - 8.0) / 4.0;
-    let left = body_content(body).left();
-    let right = body_content(body).right();
-
-    let w = body.width() - 20.0;
-    for (i, (label, value, color, bar_pct)) in metrics.iter().enumerate() {
-        let y = body.top() + 4.0 + i as f32 * row_h;
-        // Kit metric row: label + value + thin bar.
-        let row = egui::Rect::from_min_size(egui::pos2(left, y + 5.0), egui::vec2(w, row_h));
-        metric_row(p, row, label, value, *bar_pct, *color, t);
-    }
-    let _ = right;
+    draw_widget_no_feed(p, body, t, "Market breadth feed", "not connected");
 }
 
 fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -1621,13 +1597,14 @@ fn draw_volume_shelf(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         return;
     }
     let count = wd.vol_shelves.len();
-    let row_h = (body.height() - 8.0) / count.min(5) as f32;
+    let g = body_rows(body, count.min(5));
+    let row_h = g.row_h;
     let max_w = body.width() - 60.0;
 
     // Kit primitive: horizontal strength bars (bull = support, bear = resistance).
     let st = ChartStyle::resolve(t);
     let bars_rect = egui::Rect::from_min_size(
-        egui::pos2(body.left() + 50.0, body.top() + 4.0), egui::vec2(max_w, row_h * count as f32));
+        egui::pos2(body.left() + 50.0, g.top), egui::vec2(max_w, row_h * count as f32));
     let rows: Vec<(f32, Color32)> = wd.vol_shelves.iter().map(|(_, strength, is_support)| {
         let color = if *is_support { t.bull } else { t.bear };
         (*strength, color_alpha(color, alpha_dim()))
@@ -1635,8 +1612,8 @@ fn draw_volume_shelf(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     hbars(p, bars_rect, &rows, row_h - 6.0, &st);
 
     // Price + S/R labels.
-    for (i, (price, _strength, is_support)) in wd.vol_shelves.iter().enumerate() {
-        let y = body.top() + 4.0 + i as f32 * row_h;
+    for (i, (price, _strength, is_support)) in wd.vol_shelves.iter().enumerate().take(g.visible) {
+        let y = g.top_of(i);
         let color = if *is_support { t.bull } else { t.bear };
         let label = if *is_support { "S" } else { "R" };
         p.text(egui::pos2(body_content(body).left(), y + row_h * 0.5), egui::Align2::LEFT_CENTER,
@@ -1653,13 +1630,14 @@ fn draw_confluence(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         return;
     }
     let zones = wd.confluence_zones.len();
-    let row_h = (body.height() - 4.0) / zones.min(5) as f32;
+    let g = body_rows(body, zones.min(5));
+    let row_h = g.row_h;
     let max_w = body.width() - 70.0;
 
     // Kit primitive: horizontal cluster-strength bars (count → length, proximity → alpha).
     let st = ChartStyle::resolve(t);
     let bars_rect = egui::Rect::from_min_size(
-        egui::pos2(body.left() + 55.0, body.top() + 2.0), egui::vec2(max_w, row_h * zones as f32));
+        egui::pos2(body.left() + 55.0, g.top), egui::vec2(max_w, row_h * zones as f32));
     let rows: Vec<(f32, Color32)> = wd.confluence_zones.iter().map(|(_, count, dist)| {
         let frac = (*count as f32 / 5.0).min(1.0);
         let proximity_alpha = (1.0 - dist / 3.0).max(0.2);
@@ -1667,8 +1645,8 @@ fn draw_confluence(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     }).collect();
     hbars(p, bars_rect, &rows, row_h - 8.0, &st);
 
-    for (i, (price, count, dist)) in wd.confluence_zones.iter().enumerate() {
-        let y = body.top() + 2.0 + i as f32 * row_h;
+    for (i, (price, count, dist)) in wd.confluence_zones.iter().enumerate().take(g.visible) {
+        let y = g.top_of(i);
 
         // price | count badge | distance — declared. The count sat at a bare
         // `left + 48.0` while the price started at `left + 6.0`, so the badge
@@ -1914,29 +1892,22 @@ fn draw_risk_dash(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 }
 
 /// Earnings Momentum — mini 2x2 grid (style3 card grid inspiration)
+/// NO FEED. This widget rendered hardcoded literals as live market data.
+///
+/// EPS "+12%", REV "+8%", REVISIONS, FWD P/E "22.4x" were literals.
+/// `WidgetData` does carry `eps_ttm` and `revenue_growth`; wiring only those
+/// would leave two real rows beside two invented ones, which reads as fully
+/// real and is worse than saying nothing.
+///
+/// There is no data source behind any of it — the function never read
+/// `WidgetData`. On a terminal used to place real orders, a titled panel
+/// showing invented figures is not a placeholder, it is a number a trader
+/// can act on. `draw_widget_no_feed` is the pattern three sibling widgets
+/// already use for exactly this; it was applied inconsistently.
+///
+/// Restore the body when a real feed exists, not before.
 fn draw_earnings_mom(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
-    let hw = body.width() * 0.5;
-    let hh = body.height() * 0.5;
-    let cells = [
-        ("EPS", "+12%", t.bull),
-        ("REV", "+8%", t.bull),
-        ("REVISIONS", "\u{2191}3", t.warn),
-        ("FWD P/E", "22.4x", t.dim),
-    ];
-
-    for (i, (label, val, color)) in cells.iter().enumerate() {
-        let col = i % 2;
-        let row = i / 2;
-        let x = body.left() + col as f32 * hw;
-        let y = body.top() + row as f32 * hh;
-        let cell = egui::Rect::from_min_size(egui::pos2(x + 2.0, y + 2.0), egui::vec2(hw - 4.0, hh - 4.0));
-
-        p.rect_filled(cell, radius_sm(), color_alpha(*color, alpha_faint()));
-        p.text(egui::pos2(cell.left() + 6.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
-            label, mono_4xs(), color_half(t.dim));
-        p.text(egui::pos2(cell.center().x, cell.center().y + 4.0), egui::Align2::CENTER_CENTER,
-            val, prop_lg(), *color);
-    }
+    draw_widget_no_feed(p, body, t, "Fundamentals feed", "not connected");
 }
 
 /// Liquidity Score — single donut gauge (chart3 pie style)
@@ -1999,38 +1970,19 @@ fn draw_signal_radar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 }
 
 /// Cross-Asset Pulse — compact 2x4 market grid (style3 card grid)
+/// NO FEED. This widget rendered hardcoded literals as live market data.
+///
+/// SPY "+0.42%", QQQ "+0.68%", DXY, VIX, TNX, GLD, CL, BTC were all literals.
+///
+/// There is no data source behind any of it — the function never read
+/// `WidgetData`. On a terminal used to place real orders, a titled panel
+/// showing invented figures is not a placeholder, it is a number a trader
+/// can act on. `draw_widget_no_feed` is the pattern three sibling widgets
+/// already use for exactly this; it was applied inconsistently.
+///
+/// Restore the body when a real feed exists, not before.
 fn draw_cross_asset(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
-    let assets = [
-        ("SPY", "+0.42%", true),  ("QQQ", "+0.68%", true),
-        ("DXY", "-0.15%", false), ("VIX", "+2.3%", true),
-        ("TNX", "-0.08%", false), ("GLD", "+0.31%", true),
-        ("CL", "-1.2%", false),   ("BTC", "+1.8%", true),
-    ];
-    let cols = 4;
-    let rows = 2;
-    let cell_w = body.width() / cols as f32;
-    let cell_h = body.height() / rows as f32;
-
-    // Kit primitive: tinted asset tiles (bull = up, bear = down).
-    let st = ChartStyle::resolve(t);
-    let cells: Vec<Color32> = assets.iter()
-        .map(|(_, _, positive)| color_alpha(if *positive { t.bull } else { t.bear }, alpha_faint())).collect();
-    tile_grid(p, body, rows, cols, &cells, &st);
-
-    // Symbol + change text per tile.
-    for (i, (sym, chg, positive)) in assets.iter().enumerate() {
-        let col = i % cols;
-        let row = i / cols;
-        let x = body.left() + col as f32 * cell_w;
-        let y = body.top() + row as f32 * cell_h;
-        let cell = egui::Rect::from_min_size(egui::pos2(x + 1.0, y + 1.0),
-            egui::vec2(cell_w - 2.0, cell_h - 2.0));
-        let col_c = if *positive { t.bull } else { t.bear };
-        p.text(egui::pos2(cell.left() + 4.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
-            sym, mono_2xs(), color_half(t.dim));
-        p.text(egui::pos2(cell.center().x, cell.center().y + 4.0), egui::Align2::CENTER_CENTER,
-            chg, prop_md(), col_c);
-    }
+    draw_widget_no_feed(p, body, t, "Cross-asset feed", "not connected");
 }
 
 /// Tape Speed — speedometer gauge showing trade velocity
@@ -2259,66 +2211,19 @@ fn draw_payoff_chart(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 }
 
 /// Options Flow — unusual activity feed
+/// NO FEED. This widget rendered hardcoded literals as live market data.
+///
+/// Six invented prints including "460C 5DTE $3.1M sweep" and "440P 1DTE $1.8M block".
+///
+/// There is no data source behind any of it — the function never read
+/// `WidgetData`. On a terminal used to place real orders, a titled panel
+/// showing invented figures is not a placeholder, it is a number a trader
+/// can act on. `draw_widget_no_feed` is the pattern three sibling widgets
+/// already use for exactly this; it was applied inconsistently.
+///
+/// Restore the body when a real feed exists, not before.
 fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
-    body_header_text(p, body, "UNUSUAL FLOW", egui::Align2::LEFT_CENTER, mono_2xs(), color_dim(t.dim));
-
-    let flows = [
-        ("CALL", "450C 0DTE", "$2.4M", true, "sweep"),
-        ("PUT",  "440P 1DTE", "$1.8M", false, "block"),
-        ("CALL", "460C 5DTE", "$3.1M", true, "sweep"),
-        ("CALL", "455C 0DTE", "$890K", true, "multi"),
-        ("PUT",  "435P 3DTE", "$1.2M", false, "block"),
-        ("CALL", "470C 10DTE", "$2.7M", true, "sweep"),
-    ];
-
-    let row_h = (body.height() - 20.0) / flows.len().min(6) as f32;
-    let rows_el = flows
-        .iter()
-        .enumerate()
-        .fold(El::column(), |el, (i, _)| {
-            el.child(El::slot(format!("f{i}"), egui::vec2(0.0, row_h)))
-        })
-        .solve_rect(egui::Rect::from_min_max(
-            egui::pos2(body.left(), body.top() + 18.0),
-            body.max,
-        ));
-
-    for (i, (side, contract, value, bullish, flow_type)) in flows.into_iter().enumerate() {
-        let y = rows_el.rect(&format!("f{i}")).top();
-        if y + row_h > body.bottom() { break; }
-        let col = if bullish { t.bull } else { t.bear };
-
-        // Side pill
-        let pill_w = 28.0;
-        let pill_rect = egui::Rect::from_min_size(egui::pos2(body_content(body).left(), y + 2.0), egui::vec2(pill_w, row_h - 4.0));
-        p.rect_filled(pill_rect, radius_xs(), color_alpha(col, alpha_tint()));
-        p.text(pill_rect.center(), egui::Align2::CENTER_CENTER,
-            side, mono_4xs(), col);
-
-        // contract | value | flow type — declared. The pill above keeps its own
-        // rect: it is a filled shape with text centred in it, not a text run.
-        //
-        // The three right-hand anchors were `right - 30` and `right - 6`, two
-        // pinned insets that had to stay clear of each other by hand. As
-        // siblings after a spacer, the value ends where the flow type begins.
-        El::row()
-            .child(El::text_with_font(contract, mono_xs()).color(t.text))
-            .child(El::spacer())
-            .child(El::text_with_font(value, mono_xs()).color(col))
-            .child(
-                El::text_with_font(flow_type, mono_4xs())
-                    .color(color_dim(t.dim))
-                    .margin_start(gap_sm()),
-            )
-            .show_with(
-                p,
-                t,
-                egui::Rect::from_min_max(
-                    egui::pos2(body.left() + 38.0, y),
-                    egui::pos2(body_content(body).right(), y + row_h),
-                ),
-            );
-    }
+    draw_widget_no_feed(p, body, t, "Options flow feed", "not connected");
 }
 
 fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme,

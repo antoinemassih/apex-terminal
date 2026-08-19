@@ -176,27 +176,6 @@ pub(crate) fn hero_caption_gap() -> f32 {
     crate::ui_kit::style::gap_lg() + crate::ui_kit::style::gap_2xs()
 }
 
-/// A labelled metric row: dim `label` (left) + `value` (right) + a thin
-/// progress bar below at `frac` 0..1. The breadth / greeks-style overlay row.
-/// `rect.top()` is the text baseline; the bar sits ~11px under it.
-pub(crate) fn metric_row(
-    p: &egui::Painter, rect: egui::Rect, label: &str, value: &str,
-    frac: f32, color: Color32, t: &Theme,
-) {
-    p.text(egui::pos2(rect.left(), rect.top()), egui::Align2::LEFT_TOP,
-        label, crate::ui_kit::style::mono_at(FONT_2XS),
-        crate::ui_kit::style::color_alpha(color, crate::ui_kit::style::alpha_heavy()));
-    p.text(egui::pos2(rect.right(), rect.top()), egui::Align2::RIGHT_TOP,
-        value, crate::ui_kit::style::mono_at(FONT_SM), color);
-    let bar_y = rect.top() + 11.0;
-    let track = egui::Rect::from_min_size(egui::pos2(rect.left(), bar_y), egui::vec2(rect.width(), 3.0));
-    p.rect_filled(track, r_pill(), tint(t, Tone::Border, alpha_faint()));
-    let fw = rect.width() * frac.clamp(0.0, 1.0);
-    if fw > 0.5 {
-        let fill = egui::Rect::from_min_size(egui::pos2(rect.left(), bar_y), egui::vec2(fw, 3.0));
-        p.rect_filled(fill, r_pill(), color_alpha(color, alpha_dim()));
-    }
-}
 
 // ── Card shell (the chrome every overlay widget shares) ───────────────────────
 
@@ -467,6 +446,56 @@ pub(crate) fn body_footer_text(
     p.text(egui::pos2(x, f.center().y), align, text, font, color);
 }
 
+/// A row grid inside a widget body: where row `i` sits, and how many rows
+/// actually fit.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RowGrid {
+    /// Top of the first row.
+    pub top: f32,
+    pub row_h: f32,
+    /// Rows that fit inside the content area. Never more than requested.
+    pub visible: usize,
+    pub left: f32,
+    pub right: f32,
+}
+
+impl RowGrid {
+    /// Top edge of row `i`.
+    pub(crate) fn top_of(&self, i: usize) -> f32 {
+        self.top + i as f32 * self.row_h
+    }
+    /// Vertical centre of row `i` — what a `LEFT_CENTER` text anchor wants.
+    pub(crate) fn mid_of(&self, i: usize) -> f32 {
+        self.top_of(i) + self.row_h * 0.5
+    }
+}
+
+/// Divide a widget body into `count` rows that FIT it.
+///
+/// # The defect this removes
+///
+/// Five bodies wrote the pair:
+///
+/// ```ignore
+/// let row_h = (body.height() - 8.0) / 5.0;
+/// let y = body.top() + 4.0 + i as f32 * row_h + row_h / 2.0;
+/// ```
+///
+/// The padding is stated TWICE — once doubled in the height subtraction, once
+/// halved in the origin — and nothing connects them. They happen to agree
+/// (8 = 2 x 4) in every copy today. Change one and the rows silently run past
+/// the bottom edge, which is the same shape as the tab strip's fit/paint
+/// disagreement and the spreadsheet's three spellings of a column offset: not
+/// a bug yet, a bug the moment one of the two moves.
+///
+/// Here the padding is named once and both derive from it.
+pub(crate) fn body_rows(body: egui::Rect, count: usize) -> RowGrid {
+    let c = body_content(body);
+    let row_h = if count == 0 { 0.0 } else { c.height() / count as f32 };
+    RowGrid { top: c.top(), row_h, visible: count, left: c.left(), right: c.right() }
+}
+
+
 /// A widget's footer row: dim label flush left, value flush right.
 ///
 /// Built on [`crate::ui_kit::widgets::kv_row::KvRow`], which is an [`El`] tree
@@ -550,6 +579,37 @@ mod body_geometry_tests {
         assert!(h.top() >= body().top() - 0.01 && h.bottom() <= body().bottom() + 0.01,
             "header escapes the body: {h:?}");
         assert!(h.center().y < f.center().y, "header must sit above the footer");
+    }
+
+    /// The invariant the hand-written grids could not state: EVERY row fits.
+    ///
+    /// The old form encoded its padding twice — `(body.height() - 8.0)` for
+    /// the row height and `body.top() + 4.0` for the origin — with nothing
+    /// tying them together. This asserts the property directly, over a range
+    /// of row counts and body heights, rather than trusting the arithmetic.
+    #[test]
+    fn every_fitted_row_lands_inside_the_body() {
+        for count in 1..=8usize {
+            for h in [40.0f32, 90.0, 137.0, 240.0] {
+                let b = egui::Rect::from_min_size(egui::pos2(7.0, 3.0), egui::vec2(180.0, h));
+                let g = body_rows(b, count);
+                assert_eq!(g.visible, count);
+                for i in 0..g.visible {
+                    let (top, bot) = (g.top_of(i), g.top_of(i) + g.row_h);
+                    assert!(top >= b.top() - 0.01 && bot <= b.bottom() + 0.01,
+                        "count={count} h={h} row {i} spans {top}..{bot}, outside {b:?}");
+                    assert!(g.left >= b.left() - 0.01 && g.right <= b.right() + 0.01,
+                        "count={count} h={h} grid escapes horizontally");
+                }
+            }
+        }
+    }
+
+    /// Degenerate inputs must not panic or produce nonsense counts.
+    #[test]
+    fn a_zero_count_or_height_is_handled() {
+        let b = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(100.0, 100.0));
+        assert_eq!(body_rows(b, 0).visible, 0);
     }
 
     /// The payoff, stated as a test: `Settings -> Density` now reaches the
