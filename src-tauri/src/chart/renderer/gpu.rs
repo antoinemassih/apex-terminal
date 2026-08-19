@@ -2709,7 +2709,26 @@ pub(crate) struct Chart {
     // ── Tabs (multiple symbols per pane) ──
     pub(crate) tab_symbols: Vec<String>, // symbol per tab
     pub(crate) tab_timeframes: Vec<String>, // timeframe per tab
-    pub(crate) tab_changes: Vec<f32>, // cached daily change % per tab
+    /// Cached change % per tab. **Maintained but never displayed.**
+    ///
+    /// The chain is complete and closed: `core.rs` recomputes this every frame,
+    /// pushes it on tab-add, removes it on tab-close, and carries it across
+    /// panes in `TabDragState::change` — and the tab strip binds the value as
+    /// `_chg` at both its width-measure and its paint site. Nothing reads it.
+    ///
+    /// It is almost certainly unfinished rather than useless: `tab_prices` sits
+    /// beside it, is maintained identically, and IS rendered. Someone built
+    /// both and wired one.
+    ///
+    /// Wiring it is a design decision, not a repair — every tab would grow by
+    /// the width of a percentage, and `painter_pane` solves the strip into
+    /// `rect.max`, so a pane with several tabs could overflow. That belongs to
+    /// whoever owns the tab strip's appearance.
+    ///
+    /// Left in place deliberately. Do not "clean it up" without deciding the
+    /// display question first — deleting it throws away the plumbing, and the
+    /// plumbing is the part that was done right.
+    pub(crate) tab_changes: Vec<f32>,
     pub(crate) tab_prices: Vec<f32>,  // cached last-known price per tab (0.0 = unknown)
     pub(crate) tab_active: usize, // index of active tab (0-based)
     pub(crate) tab_hovered: Option<usize>, // which tab the mouse is over (for close button)

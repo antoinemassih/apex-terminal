@@ -45,6 +45,7 @@
 //! tighter vertical to keep the action row compact.
 
 use egui::{Color32, Context, CornerRadius, Pos2, Rect, Stroke, Ui};
+use crate::ui_kit::cascade::El;
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
@@ -345,28 +346,47 @@ impl<'a> ToolOverlay<'a> {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
             }
 
-            // ── Optional accent dot at fixed offset ──────────────────────
-            let mut text_x = header_rect.left() + st::gap_md();
-            if let Some(dot) = accent_dot {
-                let dot_center = egui::pos2(text_x + 4.0, header_rect.center().y);
-                ui.painter().circle_filled(dot_center, 4.5, dot);
-                text_x += 16.0;
-            }
-            // Measure title width so we can position the leading slot after it.
+            // ── Accent dot + title, declared ────────────────────────────
+            //
+            // Was `let mut text_x = header_rect.left() + gap_md();` followed by
+            // a conditional `text_x += 16.0;` for the dot — a cursor walk whose
+            // one advance encoded the dot's width, its gap and its presence all
+            // at once, and which `cascade_adoption_gate` could not see because
+            // its name list did not include `text_x`.
+            //
+            // The dot's 16px slot is the same 16 the walk added, so nothing
+            // moves; it is now a reserved width rather than a hidden increment.
             let title_galley = ui.fonts(|f| f.layout_no_wrap(
                 title.to_string(),
                 TextStyle::MonoSm.font_id_in(ui),
                 text_color,
             ));
+            let head = El::row()
+                // `gap_lg()` is 16 at Standard density — the same 16 the walk
+                // added — and unlike the literal it moves with Settings ->
+                // Density, which is the point of taking it off a raw value.
+                .child_if(accent_dot.is_some(),
+                    El::slot("dot", egui::Vec2::splat(st::gap_lg())))
+                .child(El::slot("title", title_galley.size()))
+                .solve_rect(Rect::from_min_max(
+                    egui::pos2(header_rect.left() + st::gap_md(), header_rect.top()),
+                    header_rect.max,
+                ));
+            if let Some(dot) = accent_dot {
+                let slot = head.rect("dot");
+                let dot_center = egui::pos2(slot.left() + st::gap_xs(), header_rect.center().y);
+                ui.painter().circle_filled(dot_center, 4.5, dot);
+            }
+            let title_rect = head.rect("title");
             ui.painter().galley(
-                egui::pos2(text_x, header_rect.center().y - title_galley.size().y / 2.0),
+                egui::pos2(title_rect.left(), header_rect.center().y - title_galley.size().y / 2.0),
                 title_galley.clone(),
                 text_color,
             );
 
             // ── Optional header_leading slot (right of title text) ──────
             if let Some(lh) = header_leading.take() {
-                let leading_x = text_x + title_galley.size().x + st::gap_sm();
+                let leading_x = title_rect.right() + st::gap_sm();
                 let leading_rect = Rect::from_min_max(
                     egui::pos2(leading_x, header_rect.top() + crate::ui_kit::style::gap_2xs()),
                     egui::pos2(header_rect.right() - 28.0, header_rect.bottom() - crate::ui_kit::style::gap_2xs()),

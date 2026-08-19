@@ -1,9 +1,9 @@
 {
   "cascade_sites": 6,
   "chained_walks": 0,
-  "cursor_walks": 0,
-  "declared_rows": 72,
-  "el_nodes": 160,
+  "cursor_walks": 5,
+  "declared_rows": 77,
+  "el_nodes": 175,
   "flex_rows": 31,
-  "self_painting": 42
+  "self_painting": 49
 }

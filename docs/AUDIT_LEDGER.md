@@ -2870,3 +2870,82 @@ more than the number knows, and a trader reading "Avg R 2.3" will take it as
 for the owner rather than guessed at.
 
 ---
+
+## AT-195 — The cursor-walk gate could not name `ly`
+
+`core.rs`'s signal tooltip walked down its own panel:
+
+```rust
+let mut ly = tip_y + 10.0;
+... painter.text(pos2(lx, ly), ...); ly += 14.0;
+... painter.text(pos2(lx + 60.0, ly), ...); ly += 13.0;   // x6
+```
+
+Two pitches for one list (14 then 13), a value column pinned at a bare
+`lx + 60.0` seven times, and a fixed `tip_h = 120.0` chosen to fit whatever
+that arithmetic happened to produce.
+
+`cascade_adoption_gate` reported **0 cursor walks** for this file. Its pattern
+is `(?:x|y|cx|cy|cursor|left_cursor|top_cursor)\s*\+=`, and the walk advanced
+`ly`. Same lesson as the backspaced regex (AT-187) and the truncated ratchet
+(AT-186): **a ceiling only holds the shape it can see.**
+
+### What extending the list found
+
+Adding `lx|ly|left_x|text_x|ind_x|gauge_y` took the count from 0 to 6 — five
+production walks that were always there:
+
+| file | variable | note |
+|---|---|---|
+| `watchlist_row.rs` x3 | `ind_x` | an indicator strip with THREE advances: `pw + 3.0`, `14.0`, `12.0` |
+| `select.rs` x2 | `left_x` | the multi-chip strip and a badge strip |
+| `tool_overlay.rs` | `text_x` | fixed in this pass |
+
+A general `\w*[xy]\s*\+=` was measured and rejected: across `ui_kit/` and
+`chart/` it also catches `dx`/`dy` (dashed-line deltas, 18 sites),
+`sxx`/`sxy`/`sx`/`sy`/`hxx` (regression accumulators), `idx`, and `order_qty`
+— which ends in `y` and is a share count. A gate that demanded those become
+element trees would be demanding nonsense, and a gate that demands nonsense
+gets baselined away. An explicit list, extended when a real walk escapes it.
+
+The ceiling is now 5 rather than 0, and the reason is written next to the
+pattern: it rose because the instrument improved, not because walks were added.
+Reading it as a regression is what would push the next person to shrink the
+list again.
+
+### Migrated
+
+* **The signal tooltip** — `El::column()` of label/value rows with the score
+  bar in a named slot, so the bar and the value beside it cannot drift. One
+  gap token instead of two pitches.
+* **The trade-plan card** — three lines at `card_y + 10 / +24 / +38`, a 14px
+  pitch stated three times, now a declared column. It also divided by `entry`
+  **completely unguarded**: a plan whose entry had not been populated made
+  `move_pct` `inf`, and the card printed `+inf%` into its R:R line. Every other
+  ratio in that file is guarded; this one had no `else` branch to notice, so
+  `fabricated_ratio` could not see it either.
+* **`tool_overlay`'s header** — the dot's `text_x += 16.0` became a reserved
+  16px slot.
+
+### The design-system ratchet caught my migration, twice
+
+First for a raw `16.0` in the dot slot; then, after I tokenised that, for
+`slot.left() + 4.0` — which its own edge-inset pattern flags. The original was
+`text_x + 4.0`, a variable offset, so my rewrite CREATED a literal edge inset
+of exactly the kind this session has spent days removing. Both fixed with
+tokens (`gap_lg`, `gap_xs`) that hold the same value at Standard density, so
+nothing moves and both now track Density.
+
+### Left, with the reason
+
+`chart.tab_changes` is maintained every frame, pushed on tab-add, removed on
+close, carried across panes in `TabDragState::change` — and bound as `_chg` at
+both the tab strip's width-measure and its paint. Nothing reads it. It is
+almost certainly unfinished rather than useless, since `tab_prices` sits beside
+it, is maintained identically, and IS rendered. Wiring it widens every tab and
+`painter_pane` solves the strip into `rect.max`, so a pane with several tabs
+could overflow: that is a decision for whoever owns the tab strip's appearance,
+and the finding is now recorded at the field definition so it is not
+rediscovered or "cleaned up" into deletion.
+
+---

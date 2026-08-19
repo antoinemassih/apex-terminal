@@ -174,7 +174,33 @@ PATTERNS = {
     # at all. A chain is defined by the second binding reading the first's name.
     # was real, not because the count is large.
     "chained_walks": r"let[ ]+([a-z_][a-z0-9_]*)[ ]*=[ ]*[a-z_][a-z0-9_]*[ ]*\+[^;]*;[ ]*let[ ]+[a-z_][a-z0-9_]*[ ]*=[ ]*\1[ ]*\+",
-    "cursor_walks":  r"(?<![.\w])(?:x|y|cx|cy|cursor|left_cursor|top_cursor)\s*\+=(?!\s*\d+\s*;)",
+    # The name list is the whole check, and it was too short. A seven-row
+    # tooltip in `core.rs` walked DOWN the panel with `ly += 14.0` once and
+    # `ly += 13.0` six more times — two pitches for one list — and this gate
+    # read 0 for the file, because `ly` was not a name it knew.
+    #
+    # Names are matched rather than a general `\w*[xy] +=` because that form
+    # is worse: measured across `ui_kit/` and `chart/` it catches `dx`/`dy`
+    # (dashed-line deltas, 18 sites), `sxx`/`sxy`/`sx`/`sy`/`hxx` (regression
+    # accumulators), `idx`, and `order_qty` — which ends in `y` and is a share
+    # count. A gate that demands those be rewritten as element trees would be
+    # demanding nonsense, and a gate that demands nonsense gets baselined away.
+    #
+    # So: an explicit list, extended when a real walk escapes it. That has now
+    # happened once and the escape is the reason each new name is here.
+    #
+    # THE BASELINE WENT 0 -> 5 WHEN THIS LIST GREW. Those five were always
+    # there; the gate simply could not name them:
+    #
+    #   watchlist_row.rs  `ind_x` x3 — an indicator strip with THREE different
+    #                     advances (`pw + 3.0`, `14.0`, `12.0`)
+    #   select.rs         `left_x` x2 — the multi-chip strip and a badge strip
+    #
+    # A ceiling that rises because the instrument improved is not a regression,
+    # and reading it as one would push the next person to shrink the list again.
+    # `core.rs`'s seven-row `ly` walk and `tool_overlay`'s `text_x` were fixed
+    # in the same pass, which is why the number is 5 and not 13.
+    "cursor_walks":  r"(?<![.\w])(?:x|y|cx|cy|lx|ly|left_x|text_x|ind_x|gauge_y|cursor|left_cursor|top_cursor)\s*\+=(?!\s*\d+\s*;)",
 }
 
 # Which way each metric is allowed to move.

@@ -47,6 +47,7 @@ use crate::chart_renderer::compute::{
     compute_cci, compute_williams_r,
 };
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::cascade::El;
 // Disambiguate APEXIB_URL (exists in both gpu and trading)
 use crate::chart_renderer::gpu::APEXIB_URL;
 
@@ -6398,18 +6399,34 @@ fn render_chart_pane(
             egui::Rounding { nw: 6, sw: 6, ne: 0, se: 0 }, accent,
         );
 
-        // Contract name (bold, first line)
-        painter.text(egui::pos2(card_x + 10.0, card_y + 10.0), egui::Align2::LEFT_CENTER,
-            contract, mono_xs_plus(), t.text);
-        // R:R and conviction (second line)
-        let move_pct = ((target - entry) / entry * 100.0).abs();
-        painter.text(egui::pos2(card_x + 10.0, card_y + 24.0), egui::Align2::LEFT_CENTER,
-            format!("R:R {:.1}  |  +{:.1}%  |  CVT {:.0}", rr, move_pct, conviction),
-            mono_2xs(), t.dim);
-        // Entry → Target (third line)
-        painter.text(egui::pos2(card_x + 10.0, card_y + 38.0), egui::Align2::LEFT_CENTER,
-            format!("{:.2} → {:.2}  stop {:.2}", entry, target, stop),
-            mono_2xs(), t.dim.gamma_multiply(0.75));
+        // The card is three stacked lines. It was three `card_y + N` literals
+        // — 10, 24, 38 — which state a 14px line pitch three times and a top
+        // inset once, with nothing connecting them: move the card's height and
+        // the last line runs out of it.
+        //
+        // `move_pct` divided by `entry` UNGUARDED. A plan whose entry has not
+        // been populated makes that `inf` (or `NaN` when target is 0 too), and
+        // the card printed "+inf%" straight into the R:R line. Every other
+        // ratio in this file is guarded; this one was missed because it has no
+        // `else` branch to notice.
+        let move_pct = crate::foundation::market::pct_change(entry, target).map(f32::abs);
+        let rr_line = match move_pct {
+            Some(m) => format!("R:R {rr:.1}  |  +{m:.1}%  |  CVT {conviction:.0}"),
+            None => format!("R:R {rr:.1}  |  \u{2014}  |  CVT {conviction:.0}"),
+        };
+        El::column()
+            .gap(crate::ui_kit::style::gap_xs())
+            .pad(crate::ui_kit::style::gap_sm())
+            .child(El::text_with_font(contract, mono_xs_plus()).color(t.text))
+            .child(El::text_with_font(rr_line, mono_2xs()).color(t.dim))
+            .child(
+                El::text_with_font(
+                    format!("{entry:.2} \u{2192} {target:.2}  stop {stop:.2}"),
+                    mono_2xs(),
+                )
+                .color(t.dim.gamma_multiply(0.75)),
+            )
+            .show_with(&painter, t, card_rect);
     }
 
     // ── Periodic signal fetch (every 30s) ────────────────────────────────
@@ -9591,66 +9608,73 @@ fn render_chart_pane(
                     painter.rect_filled(tip_rect, 4.0, t.toolbar_bg);
                     painter.rect_stroke(tip_rect, 4.0, egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)), egui::StrokeKind::Outside);
 
-                    let lx = tip_x + 8.0;
-                    let mut ly = tip_y + 10.0;
                     let label_font = mono_2xs();
                     let value_font = mono_xs();
                     let dim = t.dim.gamma_multiply(0.5);
 
-                    // Score bar
+                    // Was a cursor walk down the tooltip: `ly += 14.0` once and
+                    // `ly += 13.0` six more times — TWO pitches for one list —
+                    // with every value column pinned at a bare `lx + 60.0`. The
+                    // fixed `tip_h` above was then chosen to fit whatever that
+                    // arithmetic happened to produce.
+                    //
+                    // `cursor_walks` reads 0 for this file. The gate's name list
+                    // is `x|y|cx|cy|cursor|left_cursor|top_cursor`, and this walk
+                    // advanced `ly`, so it was invisible — a ceiling only holds
+                    // the shape it can see.
+                    let bar_w = 80.0;
+                    let label_w = 60.0;
                     let score_color = if sig.score >= 7.0 { COLOR_AMBER }
                         else if sig.score >= 5.0 { t.bull }
                         else if sig.score >= 3.0 { t.accent }
                         else { t.dim.gamma_multiply(0.6) };
-                    painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Score", label_font.clone(), dim);
-                    let bar_x = lx + 42.0;
-                    let bar_w = 80.0;
-                    let bar_rect = egui::Rect::from_min_size(egui::pos2(bar_x, ly - 4.0), egui::vec2(bar_w, 8.0));
-                    painter.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, 40));
-                    let fill_w = (sig.score / 10.0).clamp(0.0, 1.0) * bar_w;
-                    painter.rect_filled(egui::Rect::from_min_size(bar_rect.min, egui::vec2(fill_w, 8.0)), 2.0, score_color);
-                    painter.text(egui::pos2(bar_x + bar_w + 6.0, ly), egui::Align2::LEFT_CENTER, &format!("{:.1}", sig.score), value_font.clone(), score_color);
-                    ly += 14.0;
-
-                    // Strength badge
                     let str_color = match sig.strength.as_str() {
                         "CRITICAL" => t.bear,
                         "STRONG" => COLOR_AMBER,
                         "MODERATE" => t.bull,
                         _ => t.dim,
                     };
-                    painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Strength", label_font.clone(), dim);
-                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &sig.strength, value_font.clone(), str_color);
-                    ly += 13.0;
-
-                    // Touches
-                    painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Touches", label_font.clone(), dim);
-                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &format!("{}", sig.touches), value_font.clone(), t.dim);
-                    ly += 13.0;
-
-                    // Volume Index
-                    painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Vol Idx", label_font.clone(), dim);
                     let vi_color = if sig.volume_index > 1.5 { COLOR_AMBER } else { t.dim };
-                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &format!("{:.1}x", sig.volume_index), value_font.clone(), vi_color);
-                    ly += 13.0;
+                    let test_str = if sig.last_tested_bars == 0 { "now".to_string() }
+                        else { format!("{} bars ago", sig.last_tested_bars) };
+                    let age_str = if sig.age_days == 0 { "< 1 day".to_string() }
+                        else { format!("{} days", sig.age_days) };
 
-                    // Last Tested
-                    painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Tested", label_font.clone(), dim);
-                    let test_str = if sig.last_tested_bars == 0 { "now".to_string() } else { format!("{} bars ago", sig.last_tested_bars) };
-                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &test_str, value_font.clone(), t.dim);
-                    ly += 13.0;
+                    let kv = |label: &str, value: String, vcol: egui::Color32| {
+                        El::row()
+                            .child(El::text_with_font(label.to_string(), label_font.clone())
+                                .color(dim).fixed(label_w))
+                            .child(El::text_with_font(value, value_font.clone()).color(vcol))
+                    };
 
-                    // Age
-                    painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Age", label_font.clone(), dim);
-                    let age_str = if sig.age_days == 0 { "< 1 day".to_string() } else { format!("{} days", sig.age_days) };
-                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &age_str, value_font.clone(), t.dim);
+                    let solved = El::column()
+                        .gap(crate::ui_kit::style::gap_xs())
+                        .pad(crate::ui_kit::style::gap_sm())
+                        .child(
+                            El::row()
+                                .child(El::text_with_font("Score", label_font.clone())
+                                    .color(dim).fixed(42.0))
+                                .child(El::slot("scorebar", egui::vec2(bar_w, 8.0)))
+                                .child(El::text_with_font(format!("{:.1}", sig.score), value_font.clone())
+                                    .color(score_color).margin_start(crate::ui_kit::style::gap_xs_mid())),
+                        )
+                        .child(kv("Strength", sig.strength.clone(), str_color))
+                        .child(kv("Touches", format!("{}", sig.touches), t.dim))
+                        .child(kv("Vol Idx", format!("{:.1}x", sig.volume_index), vi_color))
+                        .child(kv("Tested", test_str, t.dim))
+                        .child(kv("Age", age_str, t.dim))
+                        .child_if(!sig.timeframe.is_empty(),
+                            kv("TF", sig.timeframe.clone(), t.accent))
+                        .show_with(&painter, t, tip_rect);
 
-                    // Timeframe (if set by backend)
-                    if !sig.timeframe.is_empty() {
-                        ly += 13.0;
-                        painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "TF", label_font.clone(), dim);
-                        painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &sig.timeframe, value_font.clone(), t.accent);
-                    }
+                    // The score bar paints into the slot the tree reserved for
+                    // it, so the bar and the value beside it cannot drift.
+                    let bar_rect = solved.rect("scorebar");
+                    painter.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, 40));
+                    let fill_w = (sig.score / 10.0).clamp(0.0, 1.0) * bar_rect.width();
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(bar_rect.min, egui::vec2(fill_w, bar_rect.height())),
+                        2.0, score_color);
                 }
             }
         }
