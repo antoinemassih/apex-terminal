@@ -1105,6 +1105,22 @@ if is_spawn || watchlist.open {
                                         if item_day_high > item_day_low {
                                             row_b = row_b.day_range(item_day_low, item_day_high, item_price);
                                         }
+                                        // ATR and 52-week range were offered in the COLUMN PICKER
+                                        // and never fed. `WL_COLUMNS_BUILTIN` lists both, the picker
+                                        // renders an eye toggle for each, and `applicable` returns
+                                        // false when the field is `None` — so the column silently
+                                        // did not appear and the toggle did nothing.
+                                        //
+                                        // The data was already here: `item_atr`, `item_high_52wk`
+                                        // and `item_low_52wk` are read a few lines below to fill the
+                                        // hover tooltip. Same values, same scope, never passed to
+                                        // the row. Guarded the same way `day_range` is.
+                                        if item_atr > 0.0 {
+                                            row_b = row_b.atr(item_atr);
+                                        }
+                                        if item_high_52wk > item_low_52wk {
+                                            row_b = row_b.week52(item_low_52wk, item_high_52wk, item_price);
+                                        }
 
                                         let wresp = row_b.show(ui);
                                         let rect = wresp.response.rect;

@@ -1505,6 +1505,7 @@ mod ladder_ordering_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn spacing_ladder_stays_ordered_at_every_scale() {
         let _g = LADDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = spacing_scale_override();
@@ -1539,6 +1540,7 @@ mod ladder_ordering_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn radius_ladder_stays_ordered_at_every_scale() {
         let _g = LADDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = corner_scale_override();
@@ -1567,6 +1569,7 @@ mod ladder_ordering_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn stroke_ladder_stays_ordered_at_every_weight() {
         let _g = LADDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = border_weight_override();
@@ -1664,6 +1667,7 @@ mod corner_scale_tests {
     /// This test exists so the distinction stays deliberate: if the scale ever
     /// stops applying, the reason ~30 sites were converted disappears with it.
     #[test]
+    #[serial_test::serial]
     fn corner_scale_override_actually_scales_the_radius_tokens() {
         let base = radius_md();
 
@@ -1693,6 +1697,7 @@ mod corner_scale_tests {
     /// Covering EVERY tier is the point: a per-tier accessor that forgets the
     /// scale is invisible unless the test enumerates them.
     #[test]
+    #[serial_test::serial]
     fn sharp_squares_every_radius_tier_including_pill() {
         set_corner_scale_override(Some(CornerScale::Sharp));
 

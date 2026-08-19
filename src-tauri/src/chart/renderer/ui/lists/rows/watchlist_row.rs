@@ -1028,6 +1028,49 @@ mod stale_tests {
         .collect()
     }
 
+    /// A column the picker OFFERS must be able to render when its data is
+    /// supplied.
+    ///
+    /// `WL_COLUMNS_BUILTIN` drives the watchlist's column picker: every entry
+    /// gets an eye toggle. `Atr` and `Week52Range` were listed there and the
+    /// panel never called `.atr()` / `.week52()`, so `applicable` returned
+    /// false, the column silently did not appear, and the toggle did nothing.
+    /// The values were already in scope — both are read a few lines below the
+    /// row to fill the hover tooltip.
+    ///
+    /// This asserts the column paints once fed, which is the half that was
+    /// missing; the panel passing the data is the other half.
+    #[test]
+    fn an_offered_column_renders_when_its_data_is_supplied() {
+        use super::super::watchlist_columns::WatchlistColumnId;
+        let theme = crate::chart_renderer::theme_registry::get_theme(0);
+        // `Atr` writes text; `Week52Range` draws a range bar and writes none,
+        // so each is measured with the probe that can see it. A text-only
+        // check would report the bar as "identical" and read as the column
+        // working — the exact confusion this test exists to prevent.
+        for id in [WatchlistColumnId::Atr, WatchlistColumnId::Week52Range] {
+            let cols = [id];
+            let draw = |fed: bool, ui: &mut egui::Ui| {
+                let mut r = WatchlistRow::new("AAPL", 190.0, Some(1.0))
+                    .theme(&theme)
+                    .columns(&cols);
+                if fed {
+                    r = r.atr(2.5).week52(150.0, 210.0, 190.0);
+                }
+                r.show(ui);
+            };
+            let bare_text = paint_probe::probe(|ui| draw(false, ui));
+            let fed_text = paint_probe::probe(|ui| draw(true, ui));
+            let bare_shapes = paint_probe::shape_count(|ui| draw(false, ui));
+            let fed_shapes = paint_probe::shape_count(|ui| draw(true, ui));
+            assert!(
+                fed_text != bare_text || fed_shapes > bare_shapes,
+                "{id:?} is offered in the column picker but paints identically with                  and without its data (text {} -> {}, shapes {bare_shapes} -> {fed_shapes})                  — the toggle does nothing",
+                bare_text.len(), fed_text.len()
+            );
+        }
+    }
+
     /// `.stale(v)` promises, in its own doc comment, to mute the change-%
     /// colour so a trader can tell a last-good cached price from a live one.
     ///

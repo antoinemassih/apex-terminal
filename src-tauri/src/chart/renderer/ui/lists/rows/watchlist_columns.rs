@@ -313,6 +313,13 @@ pub static BUILTIN: &[WatchlistColumnSpec] = &[
     // clamp in `paint_change_chip`, outgrowing this width now truncates inside
     // the chip instead of painting over the neighbouring column.
     WatchlistColumnSpec { id: WatchlistColumnId::ChangePct,   label: "Change %",   default_width: 64.0, applicable: always,         render: render_change_pct },
+    // OFFERED BUT NEVER FED. `watchlist_panel` carries the comment "Sparkline
+    // removed per design — the Ext-Hours column takes its slot", followed by
+    // `let _ = item_price_history;`. The decision is deliberate; leaving the
+    // spec in BUILTIN is not, because BUILTIN drives the column PICKER, so the
+    // user still gets an eye toggle that cannot do anything. Removing it needs
+    // a migration for anyone whose persisted `wl_columns` names it — recorded
+    // rather than done blind.
     WatchlistColumnSpec { id: WatchlistColumnId::Sparkline,   label: "Sparkline",  default_width: 38.0, applicable: has_spark,      render: render_sparkline },
     WatchlistColumnSpec { id: WatchlistColumnId::ExtHours,    label: "Ext Hours",  default_width: 50.0, applicable: has_ext_hours,  render: render_ext_hours },
     WatchlistColumnSpec { id: WatchlistColumnId::RvolBadge,   label: "RVOL",       default_width: 26.0, applicable: has_rvol,       render: render_rvol_badge },
@@ -320,6 +327,10 @@ pub static BUILTIN: &[WatchlistColumnSpec] = &[
     WatchlistColumnSpec { id: WatchlistColumnId::Week52Range, label: "52W Range",  default_width: 30.0, applicable: has_week52,     render: render_week52 },
     WatchlistColumnSpec { id: WatchlistColumnId::Volume,      label: "Volume",     default_width: 36.0, applicable: has_volume,     render: render_volume },
     WatchlistColumnSpec { id: WatchlistColumnId::Atr,         label: "ATR",        default_width: 32.0, applicable: has_atr,        render: render_atr },
+    // OFFERED BUT UNFEEDABLE. `WatchlistItem` carries no market-cap field, so
+    // no call site can populate this one — unlike Atr and Week52Range, which
+    // were merely unwired and now are. It needs a data source before the toggle
+    // can mean anything.
     WatchlistColumnSpec { id: WatchlistColumnId::MarketCap,   label: "Market Cap", default_width: 40.0, applicable: has_market_cap, render: render_market_cap },
 ];
 

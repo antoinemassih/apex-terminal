@@ -4385,6 +4385,7 @@ mod m1_ladder_tests {
     /// is worse than no test, because it reports coverage it does not have.
     #[cfg(feature = "design-mode")]
     #[test]
+    #[serial_test::serial]
     fn the_four_scale_ladders_respond_on_both_cascade_branches() {
         use crate::design_tokens as dtk;
         use crate::ui_kit::style::DensityMode;
@@ -4654,6 +4655,7 @@ mod m1_ladder_tests {
     /// RELATIONSHIP (every row and control moves together) rather than pinning
     /// numbers, so it survives re-authoring.
     #[test]
+    #[serial_test::serial]
     fn density_scales_the_whole_vertical_ladder_uniformly() {
         let _guard = M1_GLOBAL_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = density_override();

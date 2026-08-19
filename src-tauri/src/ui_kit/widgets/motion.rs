@@ -682,6 +682,7 @@ mod tests {
     /// was arithmetic that never happened, not a rendering problem, and a test
     /// that needs a window to prove a multiplication is a test nobody runs.
     #[test]
+    #[serial_test::serial]
     fn motion_speed_scales_durations() {
         use crate::ui_kit::style::{
             motion_speed_override, set_motion_speed_override, MotionSpeed,

@@ -3017,3 +3017,83 @@ which is the very split that produces disagreement. The cursor-walk ceiling
 stays at 5 for that reason, not for want of effort.
 
 ---
+
+## AT-197 — Four column toggles that did nothing, and eight racing tests
+
+### The column picker offered what the panel never fed
+
+`WL_COLUMNS_BUILTIN` drives the watchlist's column picker: every entry gets an
+eye toggle. Four of its nine entries had no call site supplying their data, so
+`applicable` returned false, the column silently did not appear, and the toggle
+did nothing at all.
+
+| column | state |
+|---|---|
+| **ATR** | unwired — **now fixed** |
+| **52W Range** | unwired — **now fixed** |
+| Sparkline | deliberately removed, spec left behind |
+| Market Cap | no data source exists |
+
+ATR and 52W were pure oversight: `item_atr`, `item_high_52wk` and
+`item_low_52wk` are read *a few lines below the row* to fill the hover tooltip.
+Same values, same scope, never passed. Guarded the way `day_range` beside them
+already was.
+
+The other two are recorded at their spec entries rather than guessed at.
+Sparkline carries an explicit decision in `watchlist_panel` — "Sparkline removed
+per design — the Ext-Hours column takes its slot", followed by
+`let _ = item_price_history;`. The decision is deliberate; leaving the spec in
+`BUILTIN` is the part that was not, because `BUILTIN` is what the picker reads.
+Removing it needs a migration for anyone whose persisted `wl_columns` names it.
+Market Cap has no field on `WatchlistItem` at all, so no call site could feed it.
+
+### The probe had to learn to see shapes
+
+`Atr` writes text and `Week52Range` draws a range bar — a line and a dot, no
+text. A text-only probe reported the bar as "identical with and without its
+data", which reads exactly like the bug. `paint_probe::shape_count` was added
+for it, which is what that module's own doc invites: "Add shape kinds when a
+test needs one, not speculatively." Deliberately a count, not a shape model.
+
+Removing the feed reproduces the original state and fails the test.
+
+### Eight tests were racing on process-global style state
+
+The full-matrix run failed on `sharp_squares_every_radius_tier_including_pill`,
+a test that had passed minutes earlier and passed again on re-run. Not a real
+failure — a race.
+
+`set_corner_scale_override`, `set_spacing_scale_override`,
+`set_motion_speed_override` and `set_border_weight_override` are all
+process-global, and eight tests mutate them under `cargo test`'s default
+parallelism:
+
+```
+chart/renderer/ui/style.rs   the_four_scale_ladders_respond_on_both_cascade_branches
+                             density_scales_the_whole_vertical_ladder_uniformly
+ui_kit/style.rs              spacing_ladder_stays_ordered_at_every_scale
+                             radius_ladder_stays_ordered_at_every_scale
+                             stroke_ladder_stays_ordered_at_every_weight
+                             corner_scale_override_actually_scales_the_radius_tokens
+                             sharp_squares_every_radius_tier_including_pill
+ui_kit/widgets/motion.rs     motion_speed_scales_durations
+```
+
+One sets `Sharp` and asserts a radius is 0; another sets `Round` in the same
+instant. `serial_test` is already this codebase's pattern for exactly that —
+`gpu.rs` and `order_manager.rs` use it, and `density_moves_the_widget_geometry`
+(AT-187) was written with it. These eight predate that and never got it.
+
+All eight are `#[serial_test::serial]` now; three consecutive full runs are
+green. A flaky test is worse than no test: it teaches the reader to re-run
+rather than to look, which is how the next real failure gets waved through.
+
+### And the gate caught my fix
+
+Inserting the attribute left a blank line between `#[test]` and
+`#[serial_test::serial]`, and `orphan_attr_gate` — written earlier in this
+session after an orphaned `#[cfg]` silently re-targeted onto an import — failed
+on it. Second time this session a gate has caught my own edit rather than
+inherited code.
+
+---

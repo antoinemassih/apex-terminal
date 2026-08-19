@@ -63,6 +63,45 @@ pub fn probe(f: impl FnOnce(&mut Ui)) -> Vec<Run> {
     out.into_inner()
 }
 
+/// How many NON-TEXT shapes the closure painted.
+///
+/// The module doc says to add shape kinds "when a test needs one, not
+/// speculatively". One now does: the watchlist's `Week52Range` column draws a
+/// range bar — a line segment and a dot — and paints no text at all, so a
+/// text-only probe cannot tell "the column rendered" from "the column returned
+/// early because its data was `None`". That distinction is the entire point of
+/// the test, and getting it wrong reads as the column working.
+///
+/// Deliberately a COUNT and not a shape model. The question a caller has is
+/// "did this draw anything", and a richer return would be inventing an API for
+/// a need nobody has yet.
+pub fn shape_count(f: impl FnOnce(&mut Ui)) -> usize {
+    let cell = std::cell::Cell::new(Some(f));
+    let out = std::cell::Cell::new(0usize);
+    let ctx = egui::Context::default();
+    let _ = ctx.run(Default::default(), |_| {});
+    let _ = ctx.run(Default::default(), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            crate::ui_kit::text_style::TextStyle::install(ui.style_mut());
+            if let Some(f) = cell.take() {
+                f(ui);
+            }
+            let layer = ui.layer_id();
+            let n = ui.ctx().graphics(|g| {
+                g.get(layer)
+                    .map(|l| {
+                        l.all_entries()
+                            .filter(|cs| !matches!(&cs.shape, egui::Shape::Text(_)))
+                            .count()
+                    })
+                    .unwrap_or(0)
+            });
+            out.set(n);
+        });
+    });
+    out.get()
+}
+
 fn collect(ui: &Ui) -> Vec<Run> {
     let layer = ui.layer_id();
     let mut runs: Vec<Run> = ui.ctx().graphics(|g| {
