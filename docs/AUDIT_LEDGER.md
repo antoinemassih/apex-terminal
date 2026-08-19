@@ -3097,3 +3097,53 @@ on it. Second time this session a gate has caught my own edit rather than
 inherited code.
 
 ---
+
+## AT-198 — The DOM row carried two order mechanisms; one had been dead all along
+
+A census of public builders with zero call sites turned up 41 across the widget
+kit. Most are ordinary library surface — an option nobody has reached for yet is
+not a defect. Five sat on `dom_row`, which is a trading surface, so those got
+read first.
+
+`DomRow` had **two** ways to receive orders:
+
+```rust
+pub fn orders(mut self, o: &'a [OrderBadge]) -> Self       // zero callers
+pub fn rich_orders(mut self, o: &'a [(u32, char, u32, Color32)]) -> Self
+```
+
+`rich_orders` is called by `dom_panel` and renders **draggable** order badges —
+drag-start, drag-delta and drag-stop all route through it. `orders` rendered
+static chips into an `ORD` column, and was dead three times over:
+
+1. `.orders()` had no callers, so the slice was always empty.
+2. The block was gated on `find(DomColumn::Orders)`, and `DomColumn::Orders`
+   appeared in exactly one place in the entire codebase — that `find` call. No
+   column spec ever contained it.
+3. Both guards had to pass for a single pixel to be painted.
+
+So it was a superseded mechanism, not unfinished work: `rich_orders` is
+strictly richer and does the job. Removed — the `OrderBadge` struct, the field,
+the builder, the `DomColumn::Orders` variant and 33 lines of render.
+`DomColumn` is not persisted, so the variant could go without a migration
+(checked, not assumed).
+
+Also removed: `is_inside`, an exact alias of `inside_spread` setting the same
+field. `inside_spread` is the one `dom_panel` calls.
+
+This one is worth separating from the day's other findings. `.stale(true)`
+(AT-196) and the four column toggles (AT-197) were promises the UI made and the
+code did not keep. This is the opposite shape — code nobody was calling, behind
+a flag nobody set, which is why it cost nothing and why deleting it is safe.
+The census surfaces both, and telling them apart is the whole job: the standing
+rule here is to delete what is genuinely useless and to WIRE what is merely
+unconnected, and applying the wrong one either throws away working plumbing or
+leaves a lie in place.
+
+The remaining 36 uncalled builders are left. `table.rs`'s `sortable` /
+`striping` / `sticky_first` and `modal.rs`'s `scrim` / `panel_accent` are
+library options with no evidence of a broken promise behind them, and deleting
+a widget's option because today's callers do not use it is how a kit stops
+being a kit.
+
+---

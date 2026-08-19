@@ -89,7 +89,6 @@ pub enum DomColumn {
     Price,
     Ask,
     Volume,
-    Orders,
 }
 
 /// Width spec for a single column inside the row.
@@ -98,16 +97,6 @@ pub struct ColumnSpec {
     pub kind: DomColumn,
     /// Fraction of the row width (0..=1). Specs are normalized at paint time.
     pub frac: f32,
-}
-
-/// One order chip rendered inside the ORD column.
-#[derive(Clone, Copy, Debug)]
-pub struct OrderBadge {
-    pub id: u32,
-    /// 'B' for buy/long-trigger, 'S' for sell/short-trigger.
-    pub side: char,
-    pub qty: u32,
-    pub color: Color32,
 }
 
 /// Response returned by `DomRow::show`. Includes per-zone click flags so
@@ -137,7 +126,6 @@ pub struct DomRow<'a> {
     imbalance: f32, // -1..=1, positive = ask side, negative = bid side
     height: f32,
     columns: Option<&'a [ColumnSpec]>,
-    orders: &'a [OrderBadge],
     show_numbers: bool,
     theme: Option<&'a Theme>,
     column_layout: Option<ColumnLayout>,
@@ -181,7 +169,7 @@ impl<'a> DomRow<'a> {
             // while the row paints `MonoMd`.
             height: crate::chart_renderer::ui::style::style_row_height()
                 .max(dom_row_min_height()),
-            columns: None, orders: &[],
+            columns: None,
             show_numbers: true,
             theme: None,
             column_layout: None,
@@ -204,10 +192,8 @@ impl<'a> DomRow<'a> {
     pub fn volume(mut self, v: u64, fill: f32) -> Self {
         self.volume = v; self.volume_fill = fill.clamp(0.0, 1.0); self
     }
-    pub fn orders(mut self, o: &'a [OrderBadge]) -> Self { self.orders = o; self }
     pub fn columns(mut self, c: &'a [ColumnSpec]) -> Self { self.columns = Some(c); self }
     pub fn inside_spread(mut self, v: bool) -> Self { self.is_inside = v; self }
-    pub fn is_inside(mut self, v: bool) -> Self { self.is_inside = v; self }
     pub fn current_price(mut self, v: bool) -> Self { self.current_price = v; self }
     pub fn imbalance_fill(mut self, dir: f32) -> Self {
         self.imbalance = dir.clamp(-1.0, 1.0); self
@@ -251,7 +237,6 @@ impl<'a> DomRow<'a> {
             None => default_cols.to_vec(),
         };
         // Order chips passed in.
-        let orders: Vec<OrderBadge> = self.orders.to_vec();
 
         // Carry zone-click flags out of the closure.
         let zones = std::cell::RefCell::new(ZoneInfo::default());
@@ -409,39 +394,6 @@ impl<'a> DomRow<'a> {
                     }
                 }
 
-                // ── ORD column: order badges ──
-                if let Some(or) = find(DomColumn::Orders) {
-                    if !orders.is_empty() {
-                        // Stack chips horizontally inside the column.
-                        let n = orders.len() as f32;
-                        let chip_w = (or.width() - 2.0) / n.max(1.0);
-                        for (i, ord) in orders.iter().enumerate() {
-                            let cr = Rect::from_min_size(
-                                egui::pos2(or.min.x + 1.0 + i as f32 * chip_w, or.min.y + 1.0),
-                                egui::vec2(chip_w - 1.0, or.height() - 2.0),
-                            );
-                            painter.rect_filled(cr, radius_xs(), color_alpha(ord.color, alpha_intense()));
-                            painter.rect_stroke(cr, radius_xs(),
-                                Stroke::new(stroke_thin(), color_alpha(ord.color, alpha_prominent())),
-                                StrokeKind::Outside);
-                            let label = format!("{}{}", ord.side, ord.qty);
-                            painter.text(cr.center(), egui::Align2::CENTER_CENTER,
-                                &label, f_sm.clone(), theme_ref.overlay_text);
-
-                            // Hit-test: per-chip click + drag.
-                            let id = ui.id().with(("dom_row_chip", ord.id));
-                            let chip_resp = ui.interact(cr, id, Sense::click_and_drag());
-                            let mut z = zones.borrow_mut();
-                            if chip_resp.clicked() { z.order_clicked = Some(ord.id); }
-                            if chip_resp.drag_started() { z.order_drag_started = Some(ord.id); }
-                        }
-                    }
-                }
-
-                // ── Inside-spread highlight ──
-                if is_inside {
-                    painter.rect_filled(rect, 0.0, color_alpha(accent, alpha_subtle()));
-                }
 
                 // ── Current-price border ──
                 if is_current {
