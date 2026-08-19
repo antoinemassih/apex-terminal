@@ -2949,3 +2949,71 @@ and the finding is now recorded at the field definition so it is not
 rediscovered or "cleaned up" into deletion.
 
 ---
+
+## AT-196 — `.stale(true)` did nothing, and the compiler had been saying so
+
+Chasing the last cursor walks into `watchlist_row` turned up a defect that the
+build had been reporting as a warning the entire time.
+
+```rust
+/// Mark the row's data as stale (last-good cache) — mutes the change-% color.
+pub fn stale(mut self, v: bool) -> Self { self.stale = v; self }
+```
+
+`stale` was read in exactly one place:
+
+```rust
+let chg_col = {
+    let base = /* bull / bear / dim by sign */;
+    if stale { color_half(base) } else { base }
+};
+```
+
+…and `chg_col` was never used. `paint_change_chip` colours purely on the sign
+and takes no staleness. So a row showing a LAST-GOOD CACHED price painted it in
+full-strength bull or bear, indistinguishable from a live one — on a trading
+terminal, where "is this price live" is the question the mute exists to answer.
+
+The compiler reported `unused variable: chg_col` on every build. It predates
+this session's changes to the file (confirmed against `db4e5f37~1`), so it sat
+in the warning noise long enough to stop being read.
+
+Fixed by muting the PALETTE (`chg_bull` / `chg_bear` / `chg_dim`) rather than
+the resolved colour, which keeps the direction decision in the chip — one place
+— while restoring the signal.
+
+`a_stale_row_paints_a_different_change_colour` asserts the painted OUTPUT
+differs, deliberately, because computing a muted colour is exactly what the
+broken version did. Live paints `#3E78B4`, stale `#1F3C5A80`. Discarding the
+muted palette again fails it.
+
+Writing that test also required finding out that the chip only paints when the
+`ChangePct` column is enabled — the first version passed nothing but the symbol
+and price and would have "passed" for the wrong reason if the assertion had
+been weaker.
+
+### Also in this pass
+
+`watchlist_row`'s indicator strip advanced by three literals — `pw + 3.0`,
+`14.0`, `12.0` — each folding an item's width and the gap after it into one
+number, with a different implicit gap in each. The gap is now named once
+(`ind_gap`), and each advance reads `width + ind_gap`.
+
+It is deliberately NOT an element tree. The exemption recorded above it is a
+measured per-row cost decision, and a Taffy solve per indicator per row would
+buy structure this strip does not have. Naming the gap is the part of the
+migration that costs nothing — which is the distinction the exemption's own
+comment draws ("that exemption was about LAYOUT ARITHMETIC").
+
+The correlation dot's `ind_x += 12.0` was dead: it is the last indicator and
+the next line was `let _ = ind_x;`, the compiler being told to ignore the fact.
+Removed.
+
+`select.rs`'s two `left_x` walks are LEFT. Their advance is `chip_paint`'s own
+return value — the width it actually used — so measure and paint cannot
+disagree by construction. It is a running pen rather than a defect, and
+declaring it would mean splitting `chip_paint` into measure and paint halves,
+which is the very split that produces disagreement. The cursor-walk ceiling
+stays at 5 for that reason, not for want of effort.
+
+---

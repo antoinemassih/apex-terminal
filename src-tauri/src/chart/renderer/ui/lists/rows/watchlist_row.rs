@@ -456,14 +456,25 @@ impl<'a> WatchlistRow<'a> {
                 let cy = rect.center().y;
                 // Stale (last-good cache) rows mute the change-% color so the
                 // trader can tell the value isn't live, without hiding it.
-                let chg_col = {
-                    let base = match change_pct {
-                        Some(c) if c >= 0.0 => bull,
-                        Some(_) => bear,
-                        // No previous close: make no claim about direction.
-                        None => color_dim(dim),
-                    };
-                    if stale { color_half(base) } else { base }
+                // The stale-muted palette the change chip paints with.
+                //
+                // This used to be a `chg_col` that resolved the direction AND
+                // applied the staleness — and was then never read. `.stale(v)`
+                // is a public builder whose doc comment reads "mutes the
+                // change-% color", `stale` was consulted nowhere else, and
+                // `paint_change_chip` colours purely on the sign. So a row
+                // showing a LAST-GOOD CACHED price rendered it in full-strength
+                // bull or bear, identical to a live one. The compiler had been
+                // reporting the dead binding as an unused-variable warning the
+                // whole time.
+                //
+                // Muting the palette instead of the resolved colour keeps the
+                // direction decision in one place (the chip) while restoring
+                // the signal the builder promises.
+                let (chg_bull, chg_bear, chg_dim) = if stale {
+                    (color_half(bull), color_half(bear), color_half(dim))
+                } else {
+                    (bull, bear, dim)
                 };
 
                 // ── Project row tint (e.g. pinned-row faint bg) ─────────
@@ -565,6 +576,22 @@ impl<'a> WatchlistRow<'a> {
                     .x
                     + 6.0;
 
+                // The indicator strip advances by WIDTH + GAP, with the gap
+                // named once.
+                //
+                // It was three literals — `pw + 3.0`, `14.0`, `12.0` — each
+                // folding an item's width and the space after it into a single
+                // number, and a different implicit gap in each (3, 3, and 6).
+                // Nothing tied them together, so moving one item's size meant
+                // finding and re-deriving its neighbour's constant.
+                //
+                // This row is deliberately NOT an element tree: the exemption
+                // above is a measured per-row cost decision, and a Taffy solve
+                // per indicator per row would pay for structure this strip does
+                // not have. Naming the gap is the part of the migration that
+                // costs nothing.
+                let ind_gap = crate::ui_kit::style::gap_xs();
+
                 // ── Earnings pill ───────────────────────────────────────
                 if let Some(days) = earnings_days {
                     if days <= 14 {
@@ -587,7 +614,7 @@ impl<'a> WatchlistRow<'a> {
                         painter.text(egui::pos2(ind_x + pw / 2.0, cy), egui::Align2::CENTER_CENTER,
                             &e_text, e_font, crate::ui_kit::style::contrast_fg(theme_ref.accent));
                         zones_body.borrow_mut().earnings = Some(pill_rect);
-                        ind_x += pw + 3.0;
+                        ind_x += pw + ind_gap;
                     }
                 }
 
@@ -599,7 +626,10 @@ impl<'a> WatchlistRow<'a> {
                         icon_set.alert, crate::ui_kit::style::prop_at(crate::ui_kit::style::font_sm()), contrast_fg(theme_ref.bear));
                     zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
                         egui::pos2(ind_x + 5.0, cy), egui::vec2(12.0, 12.0)));
-                    ind_x += 14.0;
+                    // The bell is a circle of r=5.5 centred at `ind_x + 5.0`,
+                    // so it occupies 11px; the old `14.0` was that plus a 3px
+                    // gap it never named.
+                    ind_x += 11.0 + ind_gap;
                 }
 
                 // ── Correlation dot ─────────────────────────────────────
@@ -608,9 +638,11 @@ impl<'a> WatchlistRow<'a> {
                         else if corr <= -0.5 { bear }
                         else { color_half(dim) };
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 3.0, dot_col);
-                    ind_x += 12.0;
+                    // No advance: the correlation dot is the LAST indicator and
+                    // nothing reads `ind_x` after it. The `ind_x += 12.0` that
+                    // was here was immediately followed by `let _ = ind_x;`,
+                    // which is the compiler being told to ignore the fact.
                 }
-                let _ = ind_x;
 
                 // ── Column-spec dispatch ────────────────────────────────
                 // Build the per-row item-data view from row-level fields, then
@@ -700,7 +732,8 @@ impl<'a> WatchlistRow<'a> {
                             // Filled red/green chip covering the whole figure.
                             let fsz = chg_font_id.size;
                             super::watchlist_columns::paint_change_chip(
-                                painter, col_rect, change_pct, fsz, bull, bear, dim);
+                                painter, col_rect, change_pct, fsz,
+                                chg_bull, chg_bear, chg_dim);
                         } else {
                             (s.render)(&mut cctx);
                         }
@@ -973,5 +1006,49 @@ impl<'a> WatchlistRow<'a> {
             hovered_zone,
             response: resp,
         }
+    }
+}
+
+#[cfg(test)]
+mod stale_tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+
+    fn run_colors(stale: bool) -> Vec<Color32> {
+        let theme = crate::chart_renderer::theme_registry::get_theme(0);
+        paint_probe::probe(move |ui| {
+            WatchlistRow::new("AAPL", 190.0, Some(1.25))
+                .theme(&theme)
+                .columns(&[super::super::watchlist_columns::WatchlistColumnId::ChangePct])
+                .stale(stale)
+                .show(ui);
+        })
+        .into_iter()
+        .map(|r| r.color)
+        .collect()
+    }
+
+    /// `.stale(v)` promises, in its own doc comment, to mute the change-%
+    /// colour so a trader can tell a last-good cached price from a live one.
+    ///
+    /// It did nothing. The muting lived in a `chg_col` binding that was
+    /// computed and never read — the compiler reported it as an unused
+    /// variable — while `paint_change_chip` coloured purely on the sign. A
+    /// cached price rendered in full-strength bull, identical to a live one.
+    ///
+    /// This asserts the painted OUTPUT differs, not that some intermediate
+    /// colour was computed, because computing it was exactly what the broken
+    /// version did.
+    #[test]
+    fn a_stale_row_paints_a_different_change_colour() {
+        let live = run_colors(false);
+        let stale = run_colors(true);
+        assert!(!live.is_empty(), "the row painted nothing");
+        assert_eq!(live.len(), stale.len(), "stale must not change WHAT is painted");
+        assert_ne!(
+            live, stale,
+            "`.stale(true)` must change the painted colours — it is the only \
+             signal that a price is a last-good cache rather than live"
+        );
     }
 }
