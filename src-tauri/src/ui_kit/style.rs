@@ -1445,6 +1445,39 @@ pub fn measure_with(ui: &egui::Ui, text: &str, font: egui::FontId) -> egui::Vec2
 /// current that day — which is the pane-header defect that motivated
 /// `Button::measure_content_w`: a 60px slot sized for a font that had since
 /// grown, overrun by "LAYERS", with the next control painted on top of it.
+/// Shorten `text` with a trailing ellipsis until it fits `max_w`.
+///
+/// Lives beside [`measure_with_painter`] because it is the same concern: a
+/// caller that knows how much room a string HAS, deciding what to draw. It was
+/// private to `tabs.rs`, which is why `Stepper` painted its labels unbounded —
+/// the widget next door had solved it and there was no shared place to find it.
+///
+/// Measures with the painter, so the fit is decided against the face that will
+/// actually draw it.
+pub fn ellipsize_to(
+    painter: &egui::Painter,
+    text: &str,
+    font: &egui::FontId,
+    max_w: f32,
+    color: egui::Color32,
+) -> String {
+    let g = painter.layout_no_wrap(text.to_string(), font.clone(), color);
+    if g.rect.width() <= max_w {
+        return text.to_string();
+    }
+    let ell = "\u{2026}";
+    let mut chars: Vec<char> = text.chars().collect();
+    while !chars.is_empty() {
+        chars.pop();
+        let candidate: String = chars.iter().collect::<String>() + ell;
+        let g = painter.layout_no_wrap(candidate.clone(), font.clone(), color);
+        if g.rect.width() <= max_w {
+            return candidate;
+        }
+    }
+    ell.to_string()
+}
+
 pub fn measure_with_painter(p: &egui::Painter, text: &str, font: egui::FontId) -> egui::Vec2 {
     p.fonts(|f| f.layout_no_wrap(text.to_string(), font, egui::Color32::PLACEHOLDER))
         .size()

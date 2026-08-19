@@ -142,10 +142,25 @@ fn paint_horizontal(
         paint_circle(&painter, center, circle_d, i, current, &num_font, accent, dim);
         if show_labels {
             let col = if i == current { text } else if i < current { text } else { dim };
+            // Bound the label to its fair share of the strip.
+            //
+            // It was painted CENTER_TOP at `center.x` with no width at all, and
+            // the circles are `Item::fixed(circle_d)` in a space-between row —
+            // so their spacing is driven by the CIRCLE width and the label has
+            // no say in it. On a 150px strip, a four-step "Configure /
+            // Validate / Deploy / Verify" put "Configure" at x = -3.2 (outside
+            // the widget) overlapping "Validate" by 7px. Nothing in the layout
+            // could notice, because nothing measured the label.
+            //
+            // `tabs.rs` already ellipsized its labels for the same reason; the
+            // helper was private to that file, so this one went without.
+            let max_label_w = (rect.width() / n as f32 - crate::ui_kit::style::gap_xs()).max(0.0);
+            let shown = crate::ui_kit::style::ellipsize_to(
+                &painter, label, &label_font, max_label_w, col);
             painter.text(
                 Pos2::new(center.x, rect.top() + circle_d + 4.0),
                 egui::Align2::CENTER_TOP,
-                label,
+                shown,
                 label_font.clone(),
                 col,
             );
@@ -268,5 +283,63 @@ impl<'a> Widget for Stepper<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, &theme)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    /// Step labels sit under evenly-spaced circles, centred on each. The
+    /// circles are `Item::fixed(circle_d)` in a `space-between` row, so their
+    /// spacing is driven by the CIRCLE width — the label width has no say in
+    /// it. Long labels on a narrow strip therefore run into each other, and
+    /// nothing in the layout can notice.
+    ///
+    /// Narrow glyphs are included because a proportional measure of `i` is a
+    /// sliver: a test written only with wide text would pass while the real
+    /// failure sits at the other end (see `Select`, AT-192).
+    /// Two widths. 360 is a comfortable dialog; 150 is the one that used to
+    /// break — four word-labels there put "Configure" at x = -3.2, outside the
+    /// widget, overlapping "Validate" by 7px. Testing only the comfortable
+    /// width would have passed against the unbounded label paint.
+    const STRIP_WIDTHS: [f32; 3] = [360.0, 220.0, 150.0];
+
+    #[test]
+    fn step_labels_do_not_collide() {
+        for steps in [
+            &["One", "Two", "Three"][..],
+            &["Configure", "Validate", "Deploy", "Verify"][..],
+            &["iiiiiiiiii", "iiiiiiiiii", "iiiiiiiiii"][..],
+            &["A", "B"][..],
+        ] {
+            for (size, strip_w) in [Size::Xs, Size::Sm, Size::Md, Size::Lg]
+                .into_iter()
+                .flat_map(|s| STRIP_WIDTHS.into_iter().map(move |w| (s, w)))
+            {
+                // Constrained to a realistic strip width. The probe's panel is
+                // effectively unbounded, and a `space-between` row spreads the
+                // circles ~5000px apart there — no two labels could collide, so
+                // the assertion would hold for any widget whatsoever.
+                let runs = paint_probe::probe(|ui| {
+                    let t = PortableTheme::dark();
+                    let rect = egui::Rect::from_min_size(
+                        ui.max_rect().min, egui::vec2(strip_w, 80.0));
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
+                    Stepper::new(steps, 1).size(size).show_labels(true).show(&mut child, &t);
+                });
+                if runs.is_empty() {
+                    continue;
+                }
+                paint_probe::assert_no_overlap(
+                    &format!("stepper {steps:?} {size:?} w={strip_w}"), &runs);
+            }
+        }
     }
 }

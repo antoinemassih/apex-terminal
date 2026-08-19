@@ -34,6 +34,13 @@ use egui::{Color32, Rect, Ui, Vec2};
 pub struct Run {
     pub left: f32,
     pub right: f32,
+    /// Vertical extent. Present so [`assert_no_overlap`] can tell a STACKED
+    /// layout from a colliding one: the stepper paints a number inside a
+    /// circle and its label directly beneath, sharing an x-range entirely by
+    /// design. An x-only check called that a collision and would have had the
+    /// widget "fixed" to satisfy the test.
+    pub top: f32,
+    pub bottom: f32,
     pub color: Color32,
 }
 
@@ -112,6 +119,8 @@ fn collect(ui: &Ui) -> Vec<Run> {
                         egui::Shape::Text(t) => Some(Run {
                             left: t.pos.x,
                             right: t.pos.x + t.galley.size().x,
+                            top: t.pos.y,
+                            bottom: t.pos.y + t.galley.size().y,
                             // `Painter::text` bakes the colour into the layout
                             // job's sections and leaves `override_text_color`
                             // as `None` — reading the override instead is a
@@ -186,13 +195,20 @@ pub fn assert_contained(name: &str, rect: Rect, runs: &[Run]) {
 /// top of the label. Only this caught it.
 #[track_caller]
 pub fn assert_no_overlap(name: &str, runs: &[Run]) {
-    for w in runs.windows(2) {
-        assert!(
-            w[0].right <= w[1].left + 0.5,
-            "{name}: runs overlap — one ends at {} and the next starts at {}. runs={runs:?}",
-            w[0].right,
-            w[1].left
-        );
+    for (i, a) in runs.iter().enumerate() {
+        for b in &runs[i + 1..] {
+            // Two runs collide only if they overlap on BOTH axes. Comparing x
+            // alone flags every stacked layout — a caption under a value, a
+            // step number above its label — as a collision.
+            let x = a.right > b.left + 0.5 && b.right > a.left + 0.5;
+            let y = a.bottom > b.top + 0.5 && b.bottom > a.top + 0.5;
+            assert!(
+                !(x && y),
+                "{name}: runs overlap — [{}..{}]x[{}..{}] and [{}..{}]x[{}..{}]. runs={runs:?}",
+                a.left, a.right, a.top, a.bottom,
+                b.left, b.right, b.top, b.bottom
+            );
+        }
     }
 }
 
@@ -224,17 +240,30 @@ mod tests {
     #[test]
     fn overlapping_runs_are_detected() {
         let runs = [
-            Run { left: 0.0, right: 50.0, color: Color32::WHITE },
-            Run { left: 40.0, right: 90.0, color: Color32::WHITE },
+            Run { left: 0.0, right: 50.0, top: 0.0, bottom: 12.0, color: Color32::WHITE },
+            Run { left: 40.0, right: 90.0, top: 0.0, bottom: 12.0, color: Color32::WHITE },
         ];
         let caught = std::panic::catch_unwind(|| assert_no_overlap("t", &runs)).is_err();
         assert!(caught, "assert_no_overlap must reject overlapping runs");
     }
 
+    /// Runs that share an x-range on DIFFERENT LINES are a stack, not a
+    /// collision. The stepper paints a step number inside its circle and the
+    /// label directly beneath it; an x-only check reported that as an overlap,
+    /// which would have had a correct widget "fixed" to satisfy the test.
+    #[test]
+    fn vertically_separated_runs_are_not_a_collision() {
+        let runs = [
+            Run { left: 0.0, right: 50.0, top: 0.0, bottom: 12.0, color: Color32::WHITE },
+            Run { left: 10.0, right: 40.0, top: 20.0, bottom: 32.0, color: Color32::WHITE },
+        ];
+        assert_no_overlap("stacked", &runs);
+    }
+
     #[test]
     fn a_run_past_the_right_edge_is_detected() {
         let rect = probe_rect(100.0, 20.0);
-        let runs = [Run { left: 30.0, right: 200.0, color: Color32::WHITE }];
+        let runs = [Run { left: 30.0, right: 200.0, top: 10.0, bottom: 22.0, color: Color32::WHITE }];
         let caught =
             std::panic::catch_unwind(move || assert_contained("t", rect, &runs)).is_err();
         assert!(caught, "assert_contained must reject an overrun");

@@ -1258,6 +1258,9 @@ fn paint_one_tab_painter(
     }
 }
 
+/// Delegates to [`crate::ui_kit::style::ellipsize_to`], which is where this
+/// used to live privately. `Stepper` needed the same thing and could not reach
+/// it, so it painted its labels unbounded instead.
 fn ellipsize(
     painter: &egui::Painter,
     text: &str,
@@ -1265,19 +1268,7 @@ fn ellipsize(
     max_w: f32,
     color: Color32,
 ) -> String {
-    let g = painter.layout_no_wrap(text.to_string(), font.clone(), color);
-    if g.rect.width() <= max_w {
-        return text.to_string();
-    }
-    let ell = "…";
-    let mut chars: Vec<char> = text.chars().collect();
-    while !chars.is_empty() {
-        chars.pop();
-        let candidate: String = chars.iter().collect::<String>() + ell;
-        let g = painter.layout_no_wrap(candidate.clone(), font.clone(), color);
-        if g.rect.width() <= max_w { return candidate; }
-    }
-    ell.to_string()
+    crate::ui_kit::style::ellipsize_to(painter, text, font, max_w, color)
 }
 
 // ── Unit tests ─────────────────────────────────────────────────────────────────

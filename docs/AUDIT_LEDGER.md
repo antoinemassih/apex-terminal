@@ -3147,3 +3147,64 @@ a widget's option because today's callers do not use it is how a kit stops
 being a kit.
 
 ---
+
+## AT-199 — The overlap assertion could not tell a stack from a collision
+
+Probing `Stepper` — 5 paints, 3 anchors, zero tests — failed immediately, and
+the first read of the failure was wrong.
+
+```
+runs overlap — one ends at 30.7 and the next starts at 15.9
+```
+
+Those two runs were the step NUMBER inside its circle and the step LABEL
+directly beneath it. They share an x-range entirely by design.
+`assert_no_overlap` compared x only, so every stacked layout in the codebase
+was one probe away from being reported as broken — and the "fix" would have
+been to move a correct widget.
+
+`Run` now carries `top`/`bottom`, and two runs collide only when they overlap
+on BOTH axes. `vertically_separated_runs_are_not_a_collision` pins it.
+
+That is the third instrument this session that reported confidently and wrongly
+(after the truncated ratchet, the backspaced regex, and the `W`-only fixture),
+and the second where believing it would have caused a bad change rather than
+merely hiding a good one.
+
+### Then the widget turned out to be broken anyway
+
+With the axis fixed the test passed — and proved nothing. The probe's panel is
+effectively unbounded, so a `space-between` row spread the circles ~5,000px
+apart; no two labels could collide at any width. A green run on a strip no user
+will ever see.
+
+Constrained to real widths, at 150px:
+
+```
+"Configure"  x = -3.2 .. 49.2      <- starts OUTSIDE the widget
+"Validate"   x = 41.8 .. 84.2      <- 7px of overlap
+```
+
+The circles are `Item::fixed(circle_d)` in a space-between row, so their
+spacing is driven by the CIRCLE width and the label has no say in it. The label
+was painted `CENTER_TOP` at `center.x` with no width bound at all, so nothing
+in the layout could notice.
+
+`tabs.rs` had already solved this — it ellipsizes tab labels to their slot —
+but the helper was a private `fn ellipsize` in that file, so the widget next
+door went without. Moved to `ui_kit::style::ellipsize_to`, beside
+`measure_with_painter`, because it is the same concern: a caller that knows how
+much room a string has, deciding what to draw. `tabs` now delegates to it.
+
+The test runs four sizes x three strip widths (360 / 220 / 150). Removing the
+ellipsis reproduces the -3.2px overrun.
+
+### The lesson worth keeping
+
+Two green runs preceded the real finding, and each was green for a different
+false reason: the first because the assertion asked the wrong question, the
+second because the fixture was unrealistic. Neither would have looked suspicious
+in CI. **A test that has not been shown to fail has not been shown to work** —
+and "shown to fail" means on input the widget will actually meet.
+
+---
