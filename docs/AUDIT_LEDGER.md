@@ -2740,3 +2740,68 @@ this is the first time in this session that rule caught a test of MINE rather
 than an instrument I inherited.
 
 ---
+
+## AT-193 — Measure-then-re-layout is the shape, and 29 files have it
+
+AT-192 fixed one instance. This is the class.
+
+Every fit/paint disagreement this codebase has produced has the same
+structure: a string is laid out ONCE to decide how much room to reserve, and
+laid out AGAIN to be drawn. Two code paths, two sets of arguments, and nothing
+forcing them to agree. `Select` differed in the font family. The tab strip
+differed in a gap. The spreadsheet had three spellings of a column offset.
+
+`toggle_row` shows the form that cannot fail:
+
+```rust
+let g = ui.fonts(|f| f.layout_no_wrap(label.clone(), font.clone(), col));
+let w = g.rect.width();
+painter.galley(pos, g, col);        // the SAME galley
+```
+
+One layout, used twice. A mismatch is not merely unlikely, it is unexpressible.
+
+Counted across `ui_kit/` and `chart/renderer/ui/`:
+
+* **8 files reuse the measured galley** — `toggle_row`, `alert`,
+  `panel_list_row`, `panel_sub_section`, `status_pill`, `tool_overlay`,
+  `dom_panel`, `watchlist_columns`.
+* **29 measure and then re-lay-out** — led by `tabs.rs` (8 measures),
+  `painter_pane.rs` (8), `button.rs` (6), `panels/kit.rs` (5), `select.rs` (3).
+
+The second form is not wrong and mass-refactoring 29 files on the strength of
+one bug would be exactly the kind of speculative sweep this ledger keeps
+arguing against. What it needs is COVERAGE, and the rule is now in
+`DESIGN_SYSTEM.md` next to the measure guidance.
+
+### Probes added
+
+`tabs` — 24 configurations (four label sets x closable x three sizes), all
+producing runs, none skipped. Verified non-vacuous by dropping `inner_gap`
+from `measure_tab_width`, which reproduces a 0.6px label/close-glyph overlap.
+The existing test in that file opens "We can't run a full egui render in a unit
+test", which is the assumption `paint_probe` was built to disprove.
+
+`kbd` — the chord is an alternating cap/`+` strip with every segment
+pre-measured, so an under-measure accumulates across it. Currently correct
+(mono both ways); shrinking the cap width makes the caps collide.
+
+Both are guards rather than discoveries, and saying so matters — a test whose
+value is "it would have caught X" should not be written up as if it found X.
+
+### The fixture rule
+
+Every one of these uses a NARROW-glyph case. `W` is wider proportionally than
+in mono, so a test built on it passes whichever font the measure used. That is
+how AT-192's first three green runs proved nothing, and it is now written down
+rather than remembered.
+
+### Checked and left alone
+
+`toggle_row`, `input.rs` and `kbd` were each read for the `Select` defect and
+none has it. `prop_at` for icon glyphs is the established convention
+(`header.rs`, `selectable_row.rs`), so `Icon::X` in the tag close button is
+consistent, not a fourth instance. Recorded so the next reader does not
+re-derive it.
+
+---

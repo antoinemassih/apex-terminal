@@ -104,6 +104,32 @@ Every surface that packs variable-width items — the ticker strip, the tab
 strip — asks this instead of painting and discovering the overflow. Do not
 re-derive it by solving into an infinite rect and reading a probe slot back.
 
+### Paint the galley you measured
+
+```rust
+// GOOD — one layout, used twice. They cannot disagree.
+let g = ui.fonts(|f| f.layout_no_wrap(label.clone(), font.clone(), col));
+let w = g.rect.width();
+// ... place using w ...
+painter.galley(pos, g, col);
+
+// RISKY — two layouts of the same string, through two code paths.
+let w = ui.fonts(|f| f.layout_no_wrap(label.clone(), font_a, col)).rect.width();
+painter.text(pos, anchor, label, font_b, col);   // font_b had better equal font_a
+```
+
+`Select` sized its trigger from a **proportional** layout of the option label
+and painted a **monospace** one. Wide glyphs hid it — proportional is the wider
+measure, so the control merely came out roomy. Narrow glyphs inverted it: a
+24-character label measured ~62px, painted ~144px, and ran 87px past the caret,
+which was then drawn on top of the text. Two of the app's most-used dropdowns.
+
+Eight files in the UI reuse the galley they measured; twenty-nine measure and
+then re-lay-out. The second form is not wrong, but it is the shape every
+fit/paint disagreement in this codebase has had, so it needs a
+`paint_probe::assert_no_overlap` test, with a **narrow-glyph** fixture — a test
+written with `W` passes either way.
+
 ---
 
 ## Rules

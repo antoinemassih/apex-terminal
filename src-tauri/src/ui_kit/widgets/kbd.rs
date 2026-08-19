@@ -153,3 +153,32 @@ impl<'a> Widget for Kbd<'a> {
         self.show(ui, &theme)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    /// The chord is an alternating strip — cap, `+`, cap, … — and every
+    /// segment's width is PRE-MEASURED, then each is painted by re-laying out
+    /// the same string. That is the shape the `Select` trigger had when it
+    /// measured with a proportional font and painted a monospace one, and a
+    /// chord is denser: an under-measure of a couple of pixels per cap
+    /// accumulates across the strip.
+    ///
+    /// `Kbd` measures and paints both with `mono_at(font_size)`, so it is
+    /// currently correct. This is a guard, not a discovery — and it is not
+    /// vacuous: shrinking the measured cap width makes the caps collide.
+    #[test]
+    fn a_chord_never_overlaps_its_joiners() {
+        for chord in ["Ctrl+Shift+P", "A", "Ctrl+Alt+Delete", "iiii+WWWW+iiii"] {
+            let runs = paint_probe::probe(|ui| {
+                let t = PortableTheme::dark();
+                Kbd::new(chord).show(ui, &t);
+            });
+            assert!(!runs.is_empty(), "{chord:?}: painted nothing");
+            paint_probe::assert_no_overlap(&format!("kbd {chord:?}"), &runs);
+        }
+    }
+}

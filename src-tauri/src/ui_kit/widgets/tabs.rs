@@ -1285,6 +1285,55 @@ fn ellipsize(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+
+    /// A tab strip must never paint one tab's text on top of its neighbour's.
+    ///
+    /// `measure_tab_width` sums `pad_x * 2` plus an `inner_gap`-separated run
+    /// of segments (icon, label, badge, close), and `paint_tab` lays the same
+    /// segments out. Nothing links the two sets: a segment added to one and
+    /// not the other, or a gap counted once instead of twice, produces a strip
+    /// whose tabs advance by less than they draw. The ledger records that exact
+    /// disagreement in this widget once already.
+    ///
+    /// Overlap is asserted rather than the width arithmetic, because the
+    /// arithmetic is what would change and the property is what matters.
+    ///
+    /// Narrow glyphs are included deliberately. `Select` measured with a
+    /// PROPORTIONAL font and painted a MONOSPACE one, and a test written with
+    /// `W` passed at every size — `W` is wider proportionally, which is the
+    /// safe direction. `i` is the one that exposes an under-measure.
+    #[test]
+    fn tabs_never_overlap_their_neighbours() {
+        let cases: [&[&str]; 4] = [
+            &["Chart", "DOM", "Options"],
+            &["iiiiiiiiiiii", "iiiiiiiiiiiiiiii", "ii"],
+            &["WWWWWWWW", "W", "WWWWWWWWWWWW"],
+            &["A", "B", "C", "D", "E", "F", "G", "H"],
+        ];
+        for labels in cases {
+            for closable in [false, true] {
+                for size in [Size::Sm, Size::Md, Size::Lg] {
+                    let mut active = 0usize;
+                    let runs = paint_probe::probe(|ui| {
+                        let t = PortableTheme::dark();
+                        Tabs::new(&mut active, labels)
+                            .size(size)
+                            .closable(closable)
+                            .show(ui, &t);
+                    });
+                    if runs.is_empty() {
+                        continue; // treatment may paint no text for this config
+                    }
+                    paint_probe::assert_no_overlap(
+                        &format!("tabs {labels:?} closable={closable} {size:?}"),
+                        &runs,
+                    );
+                }
+            }
+        }
+    }
+
 
     /// Smoke test: the slide path is exercised when `prev_active_rect` exists.
     ///
