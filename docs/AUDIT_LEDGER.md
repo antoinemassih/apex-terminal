@@ -3290,3 +3290,73 @@ where a width was computed and then not applied to the text it was computed
 for.
 
 ---
+
+## AT-201 — A menu shortcut painted on top of its own label
+
+Fourth widget in the same class, found by sweeping for it rather than
+stumbling on it: a scan for widgets that paint caller-supplied text with no
+width bound, in files where a width is already in scope. Six candidates;
+`context_menu` read first because menu labels come from callers and menus are
+everywhere.
+
+The label goes through `Button`, which sizes itself from the label alone. The
+shortcut is then painted `RIGHT_CENTER` over the same rect — the button never
+learns a shortcut exists, so it reserved nothing for one. In a **320px menu, an
+ordinary width**:
+
+```
+"Save workspace layout as template"   52.4 .. 283.6
+"Ctrl+Shift+S"                       248.1 .. 320.0     <- 35px of overlap
+```
+
+and the shortcut runs to the exact right edge.
+
+### Two wrong fixes before the right one
+
+**First:** reserve the shortcut's width and ellipsise the label. Still
+overlapped — 283.6 became 266.1 against a shortcut starting at 248.1. `Button`
+left-aligns its label inside its CONTENT rect and centres that block when the
+button is wider, which it is here because `min_size` stretches it across the
+row for the hover highlight. So the label grows symmetrically about the centre
+and every pixel costs half a pixel each side. **Reserving once shortened the
+text and moved the problem.** The reservation has to be doubled.
+
+**Second:** with the doubling, 320 and 200 passed and 140 did not. There a
+`Ctrl+Shift+S` is 72px of a 140px row — over half — so the label ellipsised to
+a bare `…` that still collided. No arithmetic fixes that; the row cannot hold
+both. The shortcut is now dropped below a minimum label width: two unreadable
+halves is a worse answer than one readable one, and the accelerator simply is
+not advertised at a width where it cannot be read.
+
+Both intermediate states passed a naive reading of "the label got shorter".
+Only the probe said otherwise.
+
+### The gates caught the fix, again
+
+`control_size_lint` failed on `min_size(vec2(row_w, 20.0))`. The `20.0`
+predates this change — it was hidden because the first argument used to be an
+inline expression, and rewriting it to `row_w` made the pair match the lint's
+shape. It sat between `control_xs` (18) and `control_sm` (22): off the ladder,
+unable to follow Density, unable to agree with its neighbours. Moved to
+`Size::Sm.height()`; `min_size` is a floor and the row is content-driven, so it
+costs 2px.
+
+That is the third time this session a gate has bitten work done in this
+session rather than inherited code — `orphan_attr_gate`, `check-design-system`,
+and now `control_size_lint`. Worth stating because a gate that only ever fires
+on other people's code is one nobody believes.
+
+### The class, so far
+
+| widget | what was unbounded |
+|---|---|
+| `Select` | trigger label measured proportional, painted mono |
+| `Stepper` | step labels painted `CENTER_TOP` with no width |
+| `ToggleRow` | description wrapped to `left_max_w`, label not |
+| `MenuItemWithShortcut` | shortcut painted over a label sized without it |
+
+Every one is the same sentence: **a width was computed and not applied to the
+text it was computed for.** Three of the four had the correct width sitting in
+scope already.
+
+---

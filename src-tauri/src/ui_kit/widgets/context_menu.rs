@@ -259,15 +259,72 @@ fn paint_row(
         display.push_str(sx);
     }
 
+    // Reserve the shortcut's width before the label is laid out.
+    //
+    // The label goes through `Button`, which sizes and centres itself from the
+    // label ALONE; the shortcut is then painted `RIGHT_CENTER` over the same
+    // rect. The button never learns a shortcut exists, so it reserved nothing
+    // for one, and the two shared pixels with neither able to notice. In a
+    // 320px menu — an ordinary width — "Save workspace layout as template"
+    // spanned 52..284 and "Ctrl+Shift+S" spanned 248..320: 35px of overlap,
+    // with the shortcut running to the exact right edge.
+    //
+    // The button still spans the full width, so the hover highlight covers the
+    // whole row; only the TEXT is bounded.
+    let sc_font = TextStyle::MonoXs.font_id_in(ui);
+    let sc_w = shortcut
+        .map(|sc| crate::ui_kit::style::measure_with_painter(ui.painter(), sc, sc_font.clone()).x)
+        .unwrap_or(0.0);
+    let row_w = ui.available_width().max(80.0);
+    // Room the label needs before a shortcut is worth showing at all.
+    //
+    // On a row too narrow for both, reserving for the shortcut ellipsised the
+    // label to a bare "…" that STILL overlapped it — at 140px a
+    // "Ctrl+Shift+S" is 72px, over half the row. Two unreadable halves is a
+    // worse answer than one readable one, so the shortcut is dropped and the
+    // label keeps the row. The menu is still usable; the accelerator is simply
+    // not advertised at a width where it cannot be.
+    let min_label_room = gap_lg() * 3.0;
+    let show_shortcut = sc_w > 0.0
+        && row_w - 2.0 * (sc_w + gap_sm()) - gap_lg() * 2.0 >= min_label_room;
+    if show_shortcut {
+        // Reserve the shortcut TWICE.
+        //
+        // `Button` left-aligns its label inside its CONTENT rect, and centres
+        // that content block when the button is wider than it — which it is
+        // here, because `min_size` stretches the button across the whole row
+        // for the hover highlight. So the label grows symmetrically about the
+        // row's centre, and every pixel of label costs half a pixel on each
+        // side. Reserving the shortcut's width once left the label centred and
+        // still overlapping (283.6 -> 266.1 against a shortcut starting at
+        // 248.1): the first version of this fix shortened the text and moved
+        // the problem rather than removing it.
+        let label_room =
+            (row_w - 2.0 * (sc_w + gap_sm()) - gap_lg() * 2.0).max(0.0);
+        // Measured in the face the Button will lay the label in, not a
+        // convenient stand-in — measuring one font and painting another is the
+        // defect this session has now found in three widgets.
+        let label_font = crate::ui_kit::style::prop_at(super::tokens::Size::Md.font_size());
+        let fitted = crate::ui_kit::style::ellipsize_to(
+            ui.painter(), &display, &label_font, label_room, fg);
+        display = fitted;
+    }
+
     let resp = ui
         .horizontal(|ui| {
             let r = ui.add(
                 super::Button::new(display.as_str())
                     .variant(super::tokens::Variant::Ghost)
                     .fg(fg)
-                    .min_size(egui::vec2(ui.available_width().max(80.0), 20.0)),
+                    // `20.0` sat between control_xs (18) and control_sm (22)
+                    // — off the ladder, so it could not follow Density and
+                    // could not agree with the controls around it. It was a
+                    // pre-existing literal that this rewrite made visible to
+                    // `control_size_lint`; `min_size` is a floor and the row is
+                    // content-driven, so moving it onto the rung costs 2px.
+                    .min_size(egui::vec2(row_w, super::tokens::Size::Sm.height())),
             );
-            if let Some(sc) = shortcut {
+            if let (Some(sc), true) = (shortcut, show_shortcut) {
                 let sc_color = color_alpha(theme.dim(), alpha_muted());
                 let max_x = r.rect.right() - gap_sm();
                 let y = r.rect.center().y;
@@ -275,7 +332,7 @@ fn paint_row(
                     egui::pos2(max_x, y),
                     Align2::RIGHT_CENTER,
                     sc,
-                    TextStyle::MonoXs.font_id_in(ui),
+                    sc_font.clone(),
                     sc_color,
                 );
             }
@@ -510,5 +567,50 @@ impl<'a> DangerMenuItem<'a> {
 impl<'a> MenuRow for DangerMenuItem<'a> {
     fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
         paint_row(ui, theme, self.label, theme.danger(), self.icon, None, None, None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+
+    /// A menu row's shortcut must not land on top of its label.
+    ///
+    /// The label goes through `Button`, which sizes itself from the label
+    /// alone. The shortcut is then painted `RIGHT_CENTER` at the button's
+    /// right edge — the button never learns a shortcut exists, so it reserves
+    /// no room for one. A long label and a shortcut therefore share the same
+    /// pixels, and neither half can notice.
+    ///
+    /// Widths are constrained: an unbounded probe panel gives the row so much
+    /// space that nothing can collide, which is how two earlier probes in this
+    /// session passed while the widget was broken.
+    #[test]
+    fn a_shortcut_never_lands_on_its_label() {
+        for width in [320.0f32, 200.0, 140.0] {
+            for (label, sc) in [
+                ("Copy", "Ctrl+C"),
+                ("Save workspace layout as template", "Ctrl+Shift+S"),
+                ("Duplicate this pane into a new tab", "Ctrl+D"),
+            ] {
+                let runs = paint_probe::probe(|ui| {
+                    let t = PortableTheme::dark();
+                    let rect = egui::Rect::from_min_size(
+                        ui.max_rect().min, egui::vec2(width, 40.0));
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
+                    MenuItemWithShortcut::new(label, sc).show(&mut child, &t);
+                });
+                if runs.is_empty() {
+                    continue;
+                }
+                paint_probe::assert_no_overlap(
+                    &format!("menu row w={width} {label:?} + {sc:?}"), &runs);
+            }
+        }
     }
 }
