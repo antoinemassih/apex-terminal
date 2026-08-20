@@ -1179,10 +1179,22 @@ mod tests {
             let opts = [if narrow { narrow_opt } else { wide_opt }, "b"];
             for size in [Size::Xs, Size::Sm, Size::Md, Size::Lg, Size::Xl] {
                 let mut idx = 0usize;
-                let runs = paint_probe::probe(|ui| {
-                    let t = PortableTheme::dark();
-                    Select::new(&mut idx, &opts).size(size).show(ui, &t);
-                });
+                // PROPORTIONAL_PROBE_FONT, not the default.
+                //
+                // `init_fonts`'s default arm makes JetBrains MONO the
+                // proportional primary, so at preset 0 `prop_at` and `mono_at`
+                // measure identically (verified: delta 0.0 at every size) and
+                // this assertion cannot fail however the trigger is measured.
+                // The defect is only reachable for a user who has picked one of
+                // the six proportional presets in the font picker — which is
+                // exactly who this test has to stand in for.
+                let runs = paint_probe::probe_with_font(
+                    paint_probe::PROPORTIONAL_PROBE_FONT,
+                    |ui| {
+                        let t = PortableTheme::dark();
+                        Select::new(&mut idx, &opts).size(size).show(ui, &t);
+                    },
+                );
                 assert!(runs.len() >= 2,
                     "{size:?} narrow={narrow}: expected a label and a caret, got {runs:?}");
                 paint_probe::assert_no_overlap(

@@ -50,12 +50,73 @@ impl Run {
     }
 }
 
+/// A `Context` with the app's REAL font set installed.
+///
+/// A bare `egui::Context` knows only egui's default families, so any widget
+/// reaching for a named family panics inside epaint:
+///
+/// ```text
+/// FontFamily::Name("inter_semibold") is not bound to any fonts
+/// ```
+///
+/// `ToggleRow` does exactly that for its label, and there was no way to probe
+/// it at all until this existed — the harness could only see widgets that
+/// happened to stay on the default families, which is a silent limit on what
+/// can be tested rather than a visible one.
+///
+/// Uses the same `icons::init_fonts` the app calls, so a probe measures against
+/// the faces that ship. Measuring against substitutes would make every width
+/// assertion here a statement about the wrong font.
+fn probe_ctx() -> egui::Context {
+    probe_ctx_with_font(DEFAULT_PROBE_FONT)
+}
+
+/// The font preset a bare [`probe`] uses.
+///
+/// **0 is not neutral.** `init_fonts`'s `match font_idx` maps the default arm
+/// to `"jetbrains_mono"` as the PROPORTIONAL primary, so at preset 0
+/// `prop_at()` and `mono_at()` resolve to the same face and measure
+/// identically. Presets 1..=6 (Inter, Plus Jakarta, Space Grotesk, DM Sans,
+/// Geist, IBM Plex Sans) put a genuinely proportional face there.
+///
+/// A test about the DIFFERENCE between the two families must therefore choose
+/// its preset explicitly — at 0 the difference is zero and the assertion is
+/// vacuous. See `select.rs`, where exactly that happened.
+pub const DEFAULT_PROBE_FONT: usize = 0;
+
+/// A preset where Proportional and Monospace are genuinely different faces.
+pub const PROPORTIONAL_PROBE_FONT: usize = 1;
+
+/// [`probe`] under an explicit font preset.
+pub fn probe_with_font(font_idx: usize, f: impl FnOnce(&mut Ui)) -> Vec<Run> {
+    let cell = std::cell::Cell::new(Some(f));
+    let out = std::cell::RefCell::new(Vec::new());
+    let ctx = probe_ctx_with_font(font_idx);
+    let _ = ctx.run(Default::default(), |_| {});
+    let _ = ctx.run(Default::default(), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            crate::ui_kit::text_style::TextStyle::install(ui.style_mut());
+            if let Some(f) = cell.take() {
+                f(ui);
+            }
+            *out.borrow_mut() = collect(ui);
+        });
+    });
+    out.into_inner()
+}
+
+fn probe_ctx_with_font(font_idx: usize) -> egui::Context {
+    let ctx = egui::Context::default();
+    crate::ui_kit::icons::init_fonts(&ctx, font_idx);
+    ctx
+}
+
 /// Run `f` in a `Ui` whose font atlas is built, and return every text run it
 /// painted, ordered left to right.
 pub fn probe(f: impl FnOnce(&mut Ui)) -> Vec<Run> {
     let cell = std::cell::Cell::new(Some(f));
     let out = std::cell::RefCell::new(Vec::new());
-    let ctx = egui::Context::default();
+    let ctx = probe_ctx();
     // Frame 1 builds the atlas and is deliberately empty.
     let _ = ctx.run(Default::default(), |_| {});
     let _ = ctx.run(Default::default(), |c| {
@@ -85,7 +146,7 @@ pub fn probe(f: impl FnOnce(&mut Ui)) -> Vec<Run> {
 pub fn shape_count(f: impl FnOnce(&mut Ui)) -> usize {
     let cell = std::cell::Cell::new(Some(f));
     let out = std::cell::Cell::new(0usize);
-    let ctx = egui::Context::default();
+    let ctx = probe_ctx();
     let _ = ctx.run(Default::default(), |_| {});
     let _ = ctx.run(Default::default(), |c| {
         egui::CentralPanel::default().show(c, |ui| {

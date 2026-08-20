@@ -130,8 +130,24 @@ fn paint_toggle_row<'a>(
     let label_font = FontId::new(st::font_sm(), egui::FontFamily::Name("inter_semibold".into()));
     let desc_font = crate::ui_kit::style::prop_at(st::font_xs());
 
+    // Bound the LABEL to the same `left_max_w` the description already
+    // respects.
+    //
+    // The description is laid out with `f.layout(.., left_max_w)` and wraps.
+    // The label used `layout_no_wrap` with no bound at all, so the width was
+    // computed once and applied to one of the two. On a 180px row, "A very
+    // long option label indeed" painted out to x = 192.75 against a right edge
+    // of 188 — past the switch and outside the widget.
+    //
+    // Ellipsised BEFORE layout so the galley that gets measured is the galley
+    // that gets painted; this widget's reuse of one galley for both is the
+    // property that makes a fit/paint mismatch unexpressible here (AT-193),
+    // and truncating afterwards would throw it away.
+    let label_col = palette_ct(theme).base(Tone::Text);
+    let label_shown = crate::ui_kit::style::ellipsize_to(
+        ui.painter(), &label, &label_font, left_max_w, label_col);
     let label_galley = ui.fonts(|f| {
-        f.layout_no_wrap(label.clone(), label_font.clone(), palette_ct(theme).base(Tone::Text))
+        f.layout_no_wrap(label_shown, label_font.clone(), label_col)
     });
     let label_h = label_galley.rect.height();
     let label_w = label_galley.rect.width();
@@ -264,4 +280,70 @@ fn scale_alpha(c: Color32, s: f32) -> Color32 {
         c.b(),
         ((c.a() as f32) * s.clamp(0.0, 1.0)).round() as u8,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    /// The label and description sit left of a switch pinned to the right
+    /// edge. The left column is bounded by
+    /// `(avail_w - right_reserve).max(80.0)` — and that `.max(80.0)` is a
+    /// FLOOR, not a fit: on a strip narrower than the switch plus 80px it
+    /// hands the text more room than exists, and the text runs under the
+    /// control.
+    ///
+    /// Widths are constrained deliberately. An unbounded probe panel gives the
+    /// left column effectively infinite room, so the assertion holds for any
+    /// widget at all — that is how the `Stepper` probe passed twice before it
+    /// found anything (AT-199).
+    #[test]
+    fn the_label_never_runs_under_the_switch() {
+        for width in [420.0f32, 260.0, 180.0, 120.0] {
+            for (label, desc) in [
+                ("Enable", Some("Turns the thing on")),
+                ("A very long option label indeed", Some("And a description that also runs on")),
+                ("iiiiiiiiiiiiiiiiiiiiiiiiiiii", None),
+                ("Short", None),
+            ] {
+                let mut v = true;
+                // The row's actual right edge, captured from inside the probe.
+                // Computing it out here would be a second derivation of the
+                // same number — the exact habit this session keeps unpicking.
+                let right_edge = std::cell::Cell::new(0.0f32);
+                let runs = paint_probe::probe(|ui| {
+                    let t = PortableTheme::dark();
+                    let rect = egui::Rect::from_min_size(
+                        ui.max_rect().min, egui::vec2(width, 60.0));
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
+                    right_edge.set(rect.right());
+                    let mut r = ToggleRow::new(&mut v).label(label);
+                    if let Some(d) = desc {
+                        r = r.description(d);
+                    }
+                    r.show(&mut child, &t);
+                });
+                if runs.is_empty() {
+                    continue;
+                }
+                let name = format!("toggle_row w={width} {label:?}");
+                paint_probe::assert_no_overlap(&name, &runs);
+                // And nothing may escape the strip it was given.
+                let edge = right_edge.get();
+                for r in &runs {
+                    assert!(
+                        r.right <= edge + 0.5,
+                        "{name}: text runs to {}, past the row's right edge {edge}",
+                        r.right
+                    );
+                }
+            }
+        }
+    }
 }

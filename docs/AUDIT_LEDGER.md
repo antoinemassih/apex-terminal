@@ -3208,3 +3208,85 @@ in CI. **A test that has not been shown to fail has not been shown to work** —
 and "shown to fail" means on input the widget will actually meet.
 
 ---
+
+## AT-200 — Correcting AT-192, and the probe that could not see the app's fonts
+
+### The correction
+
+AT-192 reported that `Select` sized its trigger with a proportional font and
+painted a monospace one, overrunning the caret by 87px, and described it as a
+live defect in "two of the most-used dropdowns in the app". **That was
+overstated, and this is the qualifier it needed.**
+
+`init_fonts`'s `match font_idx` maps the DEFAULT arm to `"jetbrains_mono"` as
+the *proportional* primary:
+
+```rust
+let primary = match font_idx {
+    1 => "inter", 2 => "plus_jakarta", 3 => "space_grotesk",
+    4 => "dm_sans", 5 => "geist", 6 => "ibm_plex_sans",
+    _ => "jetbrains_mono",          // <- the default
+};
+```
+
+So at the shipping default, `prop_at()` and `mono_at()` resolve to the same
+face and measure identically — verified at every size, delta `0.0`. The overrun
+cannot happen there.
+
+It is real for any user who picks one of the six proportional presets in the
+font picker. Measured at preset 1 (Inter), `Size::Xs`, a 24-character narrow
+label:
+
+```
+label   10.0 .. 153.9
+caret   67.0 ..  72.0      <- 82px INSIDE the label
+```
+
+The fix stands and was needed. The claim about who sees it did not.
+
+### How the overstatement happened, and how it nearly became permanent
+
+AT-192 measured against a bare `egui::Context`, whose Proportional and
+Monospace are genuinely different faces — a condition that resembles preset 1
+and is not the default. The 87px number was real for that context and was
+reported as if it were the app's.
+
+Then, probing `ToggleRow`, the harness panicked:
+
+```
+FontFamily::Name("inter_semibold") is not bound to any fonts
+```
+
+A bare `Context` knows only egui's default families, so any widget reaching for
+a named family could not be probed at all — a silent limit on what was testable.
+Installing the app's real fonts fixed that, and **silently made the `Select`
+test vacuous**: with the bug reintroduced it passed, because preset 0 makes the
+two families identical.
+
+That was caught only by re-running the mutation after changing the harness. A
+harness change is a change to every test that uses it, and the fix here was
+indistinguishable from an improvement.
+
+`probe_with_font` now makes the preset explicit, `DEFAULT_PROBE_FONT` and
+`PROPORTIONAL_PROBE_FONT` are named, and the doc says plainly that **0 is not
+neutral**. The `Select` test runs at the proportional preset, where the mutation
+fails as it should.
+
+### And `ToggleRow` had the same defect the stepper did
+
+Its description is laid out with `f.layout(.., left_max_w)` and wraps. Its
+label used `layout_no_wrap` with no bound, so the width was computed once and
+applied to one of the two. On a 180px row, "A very long option label indeed"
+painted to x = 192.75 against a right edge of 188 — past the switch, outside
+the widget.
+
+Ellipsised through the shared `ellipsize_to`, and BEFORE layout, so the galley
+that is measured is the galley that is painted. That reuse is what makes a
+fit/paint mismatch unexpressible in this widget (AT-193); truncating after
+layout would have thrown it away to fix a narrower problem.
+
+Third widget in a row — `Stepper`, `ToggleRow`, and `Select` before them —
+where a width was computed and then not applied to the text it was computed
+for.
+
+---
