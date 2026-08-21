@@ -3774,3 +3774,36 @@ made the `Select` test vacuous). The rule earned twice over: **after changing a
 shared harness, re-run every mutation that harness was proven against.**
 
 ---
+
+## AT-210 — The panel key/value row said it was unmeasured, and it was
+
+`PanelKeyValueRow` carries this comment above its solve:
+
+> Measure the meta galley (the only intrinsically-sized column) so the flex
+> engine can reserve it; **label and value stay unmeasured**.
+
+It is accurate, and it is the defect. The two halves anchor to opposite slot
+edges — label `LEFT_CENTER` at `slots.label.left()`, value `RIGHT_CENTER` at
+`slots.value.right()` — and grow TOWARD each other, neither bounded by its
+slot. `ui.painter_at(rect)` keeps both inside the ROW and does nothing about
+them meeting inside it.
+
+At 220px, a portfolio row:
+
+```
+"Maintenance margin requirement"     8.0 .. 187.9
+"$1,234,567.89"                    136.7 .. 228.0     <- 51px of overlap
+```
+
+The **value** is never truncated — a money figure with its digits cut off is
+worse than no figure — so the label gives way. Same call as the heatmap cell
+(AT-202) and the menu row (AT-201): whichever half is the datum keeps its room.
+
+Eighth widget in the class. The distinguishing feature of this one is that a
+comment said plainly what was unmeasured, sat directly above the code, and had
+presumably been read many times.
+
+Its five existing tests all still pass — they cover `solve_key_value_row`'s
+slot geometry, not the painted text, which is exactly why they never saw this.
+
+---

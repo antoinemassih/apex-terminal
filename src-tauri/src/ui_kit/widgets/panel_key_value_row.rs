@@ -141,10 +141,34 @@ impl<'a> PanelKeyValueRow<'a> {
         // app-wide label=proportional / value=mono rule.
         let label_color = color_muted(palette_ct(t).base(SxTone::Dim));
         let label_font = crate::ui_kit::style::prop_at(crate::ui_kit::style::font_xs());
+        // Bound the label by what the value leaves.
+        //
+        // The two halves anchor to opposite slot edges — label `LEFT_CENTER` at
+        // `slots.label.left()`, value `RIGHT_CENTER` at `slots.value.right()` —
+        // and grow TOWARD each other, neither bounded by its slot. The comment
+        // above `solve_key_value_row` says as much: only the meta column is
+        // measured, "label and value stay unmeasured". `painter_at(rect)` keeps
+        // both inside the ROW and does nothing about them meeting in it.
+        //
+        // Measured at 220px: "Maintenance margin requirement" spanned 8..187.9
+        // while "$1,234,567.89" spanned 136.7..228 — 51px of overlap, on a
+        // portfolio row.
+        //
+        // The VALUE is the datum and is never truncated; a figure with its
+        // digits cut off is worse than no figure. The label is the description
+        // and gives way, which is the same call made for the heatmap cell
+        // (AT-202) and the menu row (AT-201).
+        let value_font_for_fit = TextStyle::MonoSm.font_id_in(ui);
+        let value_w = crate::ui_kit::style::measure_with_painter(
+            &painter, &self.value, value_font_for_fit).x;
+        let label_room =
+            (slots.value.right() - slots.label.left() - value_w - gap_xs()).max(0.0);
+        let label_shown = crate::ui_kit::style::ellipsize_to(
+            &painter, self.label, &label_font, label_room, label_color);
         painter.text(
             Pos2::new(slots.label.left(), slots.label.center().y),
             egui::Align2::LEFT_CENTER,
-            self.label,
+            label_shown,
             label_font,
             label_color,
         );
@@ -183,6 +207,54 @@ impl<'a> PanelKeyValueRow<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::ui_kit::widgets::paint_probe;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+    use super::PanelKeyValueRow;
+
+    /// Label left, value right, optional meta between — and the comment above
+    /// `solve_key_value_row` says plainly that "label and value stay
+    /// unmeasured". Only the meta column is measured, so nothing stops a long
+    /// label meeting a long value in the middle.
+    ///
+    /// The row clips to itself via `ui.painter_at(rect)`, which keeps the text
+    /// inside the ROW but does nothing about the two halves colliding with each
+    /// other. Seven widgets in this kit had exactly this shape and every one of
+    /// them collided (AT-203).
+    ///
+    /// Widths are constrained: an unbounded probe panel gives the row so much
+    /// room that nothing can meet, which is how two earlier probes passed
+    /// against broken widgets (AT-199).
+    #[test]
+    fn label_and_value_never_meet() {
+        for width in [320.0f32, 220.0, 150.0] {
+            for (label, value, meta) in [
+                ("Net", "$12,345.67", None),
+                ("Maintenance margin requirement", "$1,234,567.89", None),
+                ("Unrealised profit and loss today", "-$98,765.43", Some("USD")),
+                ("P/L", "0.00", Some("since open")),
+            ] {
+                let runs = paint_probe::probe(|ui| {
+                    let t = PortableTheme::dark();
+                    let rect = egui::Rect::from_min_size(
+                        ui.max_rect().min, egui::vec2(width, 40.0));
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
+                    let mut r = PanelKeyValueRow::new(label, value);
+                    if let Some(m) = meta { r = r.meta(m); }
+                    r.show(&mut child, &t);
+                });
+                if runs.is_empty() {
+                    continue;
+                }
+                let name = format!("kv row w={width} {label:?} / {value:?} meta={meta:?}");
+                paint_probe::assert_no_overlap(&name, &runs);
+            }
+        }
+    }
+
     use super::*;
 
     fn approx(a: f32, b: f32) -> bool { (a - b).abs() < 0.01 }
