@@ -155,22 +155,87 @@ impl<'a> HeatmapGrid<'a> {
             } else {
                 st::color_alpha(palette_ct(theme).base(Tone::Text), 190)
             };
+            // The symbol and the change share one cell, and the change is
+            // pinned to the right edge — so the symbol has to be bounded by
+            // what the change leaves. Neither was bounded before: an OCC option
+            // ticker (this app puts them on watchlists) painted
+            // "SPY241220C00450000" out to x = 122.9 while "+1.5%" started at
+            // 113.1 — overlapping in a 420px grid, a comfortable width.
+            let chg_col = if is_up { palette_ct(theme).base(Tone::Bull) } else { palette_ct(theme).base(Tone::Bear) };
+            let cell_font = crate::ui_kit::style::mono_at(font_sz);
+            let chg_text = format!("{:+.1}%", item.change_pct);
+            let chg_w = crate::ui_kit::style::measure_with_painter(
+                &painter, &chg_text, cell_font.clone()).x;
+            // 7 leading inset + 3 trailing + one gap between the two halves.
+            let sym_room = (col_w - 7.0 - 3.0 - chg_w - st::gap_xs()).max(0.0);
+            let sym_shown = crate::ui_kit::style::ellipsize_to(
+                &painter, &item.symbol, &cell_font, sym_room, sym_col);
             painter.text(
                 egui::pos2(cx + 7.0, cy + cell_h / 2.0),
                 egui::Align2::LEFT_CENTER,
-                &item.symbol,
-                crate::ui_kit::style::mono_at(font_sz),
+                sym_shown,
+                cell_font.clone(),
                 sym_col);
-            // Change% text
-            let chg_col = if is_up { palette_ct(theme).base(Tone::Bull) } else { palette_ct(theme).base(Tone::Bear) };
             painter.text(
                 egui::pos2(cx + col_w - 3.0, cy + cell_h / 2.0),
                 egui::Align2::RIGHT_CENTER,
-                &format!("{:+.1}%", item.change_pct),
-                crate::ui_kit::style::mono_at(font_sz),
+                &chg_text,
+                cell_font,
                 chg_col);
         }
 
         resp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    fn cells(syms: &[&str]) -> Vec<HeatmapCell> {
+        syms.iter()
+            .enumerate()
+            .map(|(i, s)| HeatmapCell {
+                symbol: (*s).to_string(),
+                change_pct: if i % 2 == 0 { 1.5 } else { -12.75 },
+            })
+            .collect()
+    }
+
+    /// A cell's symbol and its change% share one cell rect: the symbol is
+    /// `LEFT_CENTER` at `cx + 7`, the change is `RIGHT_CENTER` at
+    /// `cx + col_w - 3`, and neither is bounded by the space between them.
+    ///
+    /// Ordinary tickers are short enough to hide it. This app also puts OCC
+    /// option tickers on watchlists, and those are long.
+    #[test]
+    fn a_cell_symbol_never_collides_with_its_change() {
+        for width in [420.0f32, 280.0, 200.0] {
+            for syms in [
+                &["AAPL", "MSFT", "NVDA", "TSLA"][..],
+                &["SPY241220C00450000", "QQQ241220P00380000"][..],
+                &["A", "B"][..],
+            ] {
+                let data = cells(syms);
+                let runs = paint_probe::probe(|ui| {
+                    let t = PortableTheme::dark();
+                    let rect = egui::Rect::from_min_size(
+                        ui.max_rect().min, egui::vec2(width, 120.0));
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
+                    HeatmapGrid::new(&data).show(&mut child, &t);
+                });
+                if runs.is_empty() {
+                    continue;
+                }
+                paint_probe::assert_no_overlap(
+                    &format!("heatmap w={width} {syms:?}"), &runs);
+            }
+        }
     }
 }

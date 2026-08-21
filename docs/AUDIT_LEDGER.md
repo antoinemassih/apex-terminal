@@ -3360,3 +3360,21 @@ text it was computed for.** Three of the four had the correct width sitting in
 scope already.
 
 ---
+
+## AT-202 — Fifth in the class: a heatmap cell's symbol over its own change%
+
+`HeatmapGrid` paints a symbol `LEFT_CENTER` at `cx + 7` and a change%
+`RIGHT_CENTER` at `cx + col_w - 3`, sharing one cell, with neither bounded by
+what the other leaves.
+
+Ordinary tickers are short enough to hide it. This app also puts OCC option
+tickers on watchlists, and at a **420px grid — a comfortable width** —
+`SPY241220C00450000` painted to x = 122.9 while `+1.5%` started at 113.1.
+
+Bounded through the shared `ellipsize_to`, with the change measured first
+because it is the half pinned to an edge.
+
+Fifth widget, same sentence: a width was available and was not applied to the
+text that had to fit in it.
+
+---
