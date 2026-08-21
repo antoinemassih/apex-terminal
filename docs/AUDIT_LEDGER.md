@@ -3378,3 +3378,51 @@ Fifth widget, same sentence: a width was available and was not applied to the
 text that had to fit in it.
 
 ---
+
+## AT-203 — Closing the unbounded-text sweep
+
+The last two candidates from the scan, both the same shape and both with the
+bound already in hand:
+
+* **`trade_card`'s notes row.** `entry.notes` is caller-supplied free text,
+  painted into `rows.rect("r4")` — a rect the element tree had already solved —
+  without using its width. Every other row in that card goes through `El` and is
+  bounded by construction; this one stepped outside and lost it.
+* **`tool_popover`'s title.** `title_rect` is allocated `avail_w` wide two
+  statements above the paint, and then not used to constrain the text that
+  fills it. A long tool name painted past the popover edge.
+
+`risk_reward_bar` and `text_engine` were read and left alone. The bar's only
+label is a fixed-format `R/R: 2.50` — bounded in length by its own format
+string, not by luck — and `text_engine`'s `max_w` is a computed OUTPUT of
+measuring runs, not a bound being ignored. Recording that they were checked
+matters as much as recording the fixes: the next sweep should not re-derive it.
+
+### The class, closed
+
+| widget | what was unbounded |
+|---|---|
+| `Select` | trigger measured proportional, painted mono |
+| `Stepper` | step labels painted with no width |
+| `ToggleRow` | description wrapped to `left_max_w`, label not |
+| `MenuItemWithShortcut` | shortcut painted over a label sized without it |
+| `HeatmapGrid` | symbol and change% sharing a cell, neither bounded |
+| `TradeCard` | notes painted outside the tree that had solved its rect |
+| `ToolPopover` | title painted past a rect allocated for it |
+
+Seven, every one the same sentence: **a width was computed and not applied to
+the text it was computed for.** In five of the seven the correct width was
+already in scope — usually within a few lines.
+
+`ellipsize_to` went from a private helper in `tabs.rs` to the shared answer for
+all of them. That is the pattern worth taking forward: the fix existed, in the
+codebase, next door, and was unreachable.
+
+### Not yet tested
+
+`TradeCard` and `ToolPopover` are fixed but unprobed — the popover needs a live
+popup context and the card needs a `JournalEntry` fixture. Both are bounded by
+construction now (the rect is used), which is weaker than a test that fails
+without the fix, and this note is here so that gap is not mistaken for coverage.
+
+---

@@ -194,8 +194,14 @@ impl<'a> TradeCard<'a> {
         // Optional notes row
         if !entry.notes.is_empty() {
             let r4 = rows.rect("r4");
+            // `notes` is caller-supplied free text and was painted unbounded
+            // into a rect whose width was sitting right there — the tree had
+            // already solved `r4`. Every other row in this card goes through
+            // `El` and is bounded by construction; this one bypassed it.
+            let notes_col = st::color_dim(pal.base(Tone::Dim));
+            let shown = st::ellipsize_to(&p, entry.notes, &f_mono_sm, r4.width(), notes_col);
             p.text(egui::pos2(r4.left(), baseline(r4)), egui::Align2::LEFT_CENTER,
-                entry.notes, f_mono_sm.clone(), st::color_dim(pal.base(Tone::Dim)));
+                shown, f_mono_sm.clone(), notes_col);
         }
 
         ui.add_space(gap_xs());

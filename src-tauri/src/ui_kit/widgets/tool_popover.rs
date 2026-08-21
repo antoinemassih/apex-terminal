@@ -173,11 +173,20 @@ impl<'a> ToolPopover<'a> {
                                 title_rect.bottom(),
                                 Stroke::new(st::stroke_thin(), color_alpha(border_col, st::alpha_muted())),
                             );
+                            // The title rect spans the popover, so its width IS
+                            // the bound — it was allocated two statements above
+                            // and then not used to constrain the text that fills
+                            // it. A long tool name simply painted past the edge.
+                            let title_font = TextStyle::MonoSm.font_id_in(ui);
+                            let title_room =
+                                (title_rect.width() - st::gap_md() * 2.0).max(0.0);
+                            let shown = st::ellipsize_to(
+                                ui.painter(), t, &title_font, title_room, text_color);
                             ui.painter().text(
                                 egui::pos2(title_rect.left() + st::gap_md(), title_rect.center().y),
                                 egui::Align2::LEFT_CENTER,
-                                t,
-                                TextStyle::MonoSm.font_id_in(ui),
+                                shown,
+                                title_font,
                                 text_color,
                             );
                         }
