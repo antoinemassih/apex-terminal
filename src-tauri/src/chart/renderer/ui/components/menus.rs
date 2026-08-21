@@ -102,10 +102,26 @@ impl<'a> Widget for MenuItem<'a> {
         let display = format!("{}{}{}", prefix, self.label, suffix);
         let resp = ui.horizontal(|ui| {
             let min_w = ui.available_width().max(80.0);
+            // Same row, same defect, same rule.
+            //
+            // This is a SECOND implementation of the menu row that
+            // `ui_kit::widgets::context_menu::paint_row` already provides —
+            // built the same way, and carrying the same bug: `Button` sizes
+            // itself from the label alone and the shortcut is then painted
+            // RIGHT_CENTER over the same rect. Fixing one and leaving the other
+            // would be worse than fixing neither, because two menus that look
+            // identical would truncate differently.
+            let sc_font = crate::ui_kit::style::mono_xs();
+            let label_font = crate::ui_kit::style::prop_at(
+                crate::ui_kit::widgets::tokens::Size::Sm.font_size());
+            let (display, show_shortcut) =
+                crate::ui_kit::widgets::context_menu::fit_menu_label(
+                    ui.painter(), &display, &label_font, dim,
+                    self.shortcut, &sc_font, min_w);
             let r = KitButton::new(display.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm)
                 .fg(dim).min_size(egui::vec2(min_w, row_height_compact()))
                 .full_width(true).show(ui, &amb);
-            if let Some(sc) = self.shortcut {
+            if let (Some(sc), true) = (self.shortcut, show_shortcut) {
                 let sc_color = color_alpha(dim, alpha_muted());
                 let max_x = r.rect.right() - gap_sm();
                 let y = r.rect.center().y;
@@ -113,7 +129,7 @@ impl<'a> Widget for MenuItem<'a> {
                     egui::pos2(max_x, y),
                     egui::Align2::RIGHT_CENTER,
                     sc,
-                    crate::ui_kit::style::mono_xs(),
+                    sc_font.clone(),
                     sc_color,
                 );
             }

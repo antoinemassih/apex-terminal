@@ -3553,3 +3553,59 @@ gap that is named once. Driving this ceiling to 0 would mean splitting
 disagreement the rest of this work has been removing.
 
 ---
+
+## AT-206 — There are two menu-row implementations, and only one was fixed
+
+A sweep for `available_width().max(N)` — a FLOOR that can exceed the space it is
+floored against, which is the shape behind both AT-201 and the `ToggleRow` fix —
+returned 32 sites. Most are `.max(0.0)`, a correct clamp against a negative
+width. The suspect subset is a floor greater than zero, and the first one read
+was `menus.rs:104`:
+
+```rust
+let min_w = ui.available_width().max(80.0);
+let r = KitButton::new(display.as_str()) ... .min_size(vec2(min_w, ...));
+if let Some(sc) = self.shortcut {
+    ui.painter().text(pos2(r.rect.right() - gap_sm(), y), RIGHT_CENTER, sc, ...);
+}
+```
+
+That is `context_menu::paint_row` again — a **second implementation of the same
+menu row**, in a different module, with the same defect fixed in AT-201 one tick
+earlier.
+
+**Fixing one and leaving the other is worse than fixing neither.** Two menus
+that look identical would then truncate differently, and the next person to hit
+it would find a fix already applied "somewhere" and reasonably conclude the bug
+was elsewhere.
+
+`fit_menu_label` now holds the rule and both call it. It carries the two things
+that are easy to get wrong and were got wrong in sequence during AT-201:
+
+* the reservation is **doubled**, because `Button` centres its content block in
+  an over-wide button, so every pixel of label costs half a pixel each side;
+* below a minimum label width the shortcut is **dropped**, because reserving for
+  a 72px `Ctrl+Shift+S` in a 140px row ellipsises the label to a bare `…` that
+  still collides.
+
+Neither is deducible from looking at one call site, which is exactly why the
+second copy would not have grown them on its own.
+
+### The floor sweep, honestly
+
+Of the 32 hits, most are legitimate and are recorded as checked rather than
+fixed:
+
+* `.max(0.0)` — a clamp against negative width, correct everywhere it appears.
+* `tabs.rs`'s `.max(20.0)` / `.max(14.0)` / `.max(8.0)` — deliberate minimum
+  segment widths, so a tab with a one-character label is still clickable.
+* `select.rs`'s `set_max_width(width.max(280.0))` — a popup minimum, intended.
+
+The remaining >0 floors on a container width (`top_nav` 60, `inputs/stepper` 40,
+`msg_tension_panel` 60, `trade_plan_panel` 40, `watchlist_panel` 40,
+`screener_heatmap` 12) are unexamined. They are the same SHAPE but not
+necessarily the same defect — a floor is only wrong when something else must
+also fit in the same space. Listed here so the next pass starts from a list
+rather than a regex.
+
+---

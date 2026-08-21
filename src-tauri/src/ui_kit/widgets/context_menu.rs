@@ -260,55 +260,19 @@ fn paint_row(
     }
 
     // Reserve the shortcut's width before the label is laid out.
-    //
-    // The label goes through `Button`, which sizes and centres itself from the
-    // label ALONE; the shortcut is then painted `RIGHT_CENTER` over the same
-    // rect. The button never learns a shortcut exists, so it reserved nothing
-    // for one, and the two shared pixels with neither able to notice. In a
-    // 320px menu — an ordinary width — "Save workspace layout as template"
-    // spanned 52..284 and "Ctrl+Shift+S" spanned 248..320: 35px of overlap,
-    // with the shortcut running to the exact right edge.
+    // The rule lives in `fit_menu_label` because `chart/renderer/ui/components/
+    // menus.rs` is a second implementation of this same row and had the same
+    // defect; see that function for why the reservation is doubled and why the
+    // shortcut is dropped below a minimum.
     //
     // The button still spans the full width, so the hover highlight covers the
     // whole row; only the TEXT is bounded.
     let sc_font = TextStyle::MonoXs.font_id_in(ui);
-    let sc_w = shortcut
-        .map(|sc| crate::ui_kit::style::measure_with_painter(ui.painter(), sc, sc_font.clone()).x)
-        .unwrap_or(0.0);
     let row_w = ui.available_width().max(80.0);
-    // Room the label needs before a shortcut is worth showing at all.
-    //
-    // On a row too narrow for both, reserving for the shortcut ellipsised the
-    // label to a bare "…" that STILL overlapped it — at 140px a
-    // "Ctrl+Shift+S" is 72px, over half the row. Two unreadable halves is a
-    // worse answer than one readable one, so the shortcut is dropped and the
-    // label keeps the row. The menu is still usable; the accelerator is simply
-    // not advertised at a width where it cannot be.
-    let min_label_room = gap_lg() * 3.0;
-    let show_shortcut = sc_w > 0.0
-        && row_w - 2.0 * (sc_w + gap_sm()) - gap_lg() * 2.0 >= min_label_room;
-    if show_shortcut {
-        // Reserve the shortcut TWICE.
-        //
-        // `Button` left-aligns its label inside its CONTENT rect, and centres
-        // that content block when the button is wider than it — which it is
-        // here, because `min_size` stretches the button across the whole row
-        // for the hover highlight. So the label grows symmetrically about the
-        // row's centre, and every pixel of label costs half a pixel on each
-        // side. Reserving the shortcut's width once left the label centred and
-        // still overlapping (283.6 -> 266.1 against a shortcut starting at
-        // 248.1): the first version of this fix shortened the text and moved
-        // the problem rather than removing it.
-        let label_room =
-            (row_w - 2.0 * (sc_w + gap_sm()) - gap_lg() * 2.0).max(0.0);
-        // Measured in the face the Button will lay the label in, not a
-        // convenient stand-in — measuring one font and painting another is the
-        // defect this session has now found in three widgets.
-        let label_font = crate::ui_kit::style::prop_at(super::tokens::Size::Md.font_size());
-        let fitted = crate::ui_kit::style::ellipsize_to(
-            ui.painter(), &display, &label_font, label_room, fg);
-        display = fitted;
-    }
+    let label_font = crate::ui_kit::style::prop_at(super::tokens::Size::Md.font_size());
+    let (fitted, show_shortcut) = fit_menu_label(
+        ui.painter(), &display, &label_font, fg, shortcut, &sc_font, row_w);
+    display = fitted;
 
     let resp = ui
         .horizontal(|ui| {
@@ -387,6 +351,56 @@ impl<'a> MenuRow for MenuItem<'a> {
     fn show(self, ui: &mut Ui, theme: &PortableTheme) -> Response {
         paint_row(ui, theme, self.label, theme.dim(), None, None, None, None)
     }
+}
+
+/// Fit a menu row's label around its shortcut, and say whether the shortcut
+/// fits at all.
+///
+/// Returns `(label_to_paint, show_shortcut)`.
+///
+/// # Why this is a function and not four lines at each call site
+///
+/// There are TWO menu-row implementations in this codebase — this one and
+/// `chart/renderer/ui/components/menus.rs` — built the same way and carrying
+/// the same defect: the label goes through `Button`, which sizes itself from
+/// the label ALONE, and the shortcut is then painted `RIGHT_CENTER` over the
+/// same rect. Fixing one and not the other is worse than fixing neither: two
+/// menus that look identical would truncate differently.
+///
+/// # The two things it gets right that are easy to get wrong
+///
+/// **The reservation is doubled.** `Button` left-aligns its label inside its
+/// CONTENT rect and centres that block when the button is wider — which it is,
+/// because `min_size` stretches it across the row for the hover highlight. The
+/// label therefore grows symmetrically about the centre, so every pixel of
+/// label costs half a pixel on each side. Reserving the shortcut once leaves
+/// the label centred and still overlapping.
+///
+/// **Below a minimum, the shortcut is dropped.** At 140px a `Ctrl+Shift+S` is
+/// 72px — over half the row — and reserving for it ellipsises the label to a
+/// bare `…` that still collides. Two unreadable halves is a worse answer than
+/// one readable one, so the accelerator is not advertised at a width where it
+/// cannot be read.
+pub(crate) fn fit_menu_label(
+    painter: &egui::Painter,
+    display: &str,
+    label_font: &egui::FontId,
+    label_color: Color32,
+    shortcut: Option<&str>,
+    shortcut_font: &egui::FontId,
+    row_w: f32,
+) -> (String, bool) {
+    let sc_w = shortcut
+        .map(|sc| crate::ui_kit::style::measure_with_painter(painter, sc, shortcut_font.clone()).x)
+        .unwrap_or(0.0);
+    let min_label_room = gap_lg() * 3.0;
+    let label_room = row_w - 2.0 * (sc_w + gap_sm()) - gap_lg() * 2.0;
+    if sc_w <= 0.0 || label_room < min_label_room {
+        return (display.to_string(), false);
+    }
+    let fitted = crate::ui_kit::style::ellipsize_to(
+        painter, display, label_font, label_room.max(0.0), label_color);
+    (fitted, true)
 }
 
 // ─── MenuItemWithShortcut ───────────────────────────────────────────────────
