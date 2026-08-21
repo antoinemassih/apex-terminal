@@ -382,11 +382,24 @@ fn draw_ladder(ui: &mut egui::Ui, t: &Theme, avail_w: f32, sc: &TensionScenario)
         let bar_center_x = bar_origin_x + bar_w / 2.0;
 
         // ── Label ──────────────────────────────────────────────────────────
+        // Bound the symbol to the 36px label column it was given.
+        //
+        // `label_w` is declared right above the row loop and spent on the bar's
+        // width (`bar_w = avail_w - label_w - attain_w - gaps`) — but never
+        // applied to the symbol that column exists for. A ticker wider than
+        // 36px simply painted on into the bar. Ordinary symbols fit; this app
+        // also puts OCC option tickers in symbol columns, which do not (see the
+        // heatmap cell, AT-202).
+        let sym_font = mono_sm();
+        let sym_x = area.left() + crate::ui_kit::style::gap_2xs();
+        let sym_room = (label_w - crate::ui_kit::style::gap_2xs() * 2.0).max(0.0);
+        let sym_shown = crate::ui_kit::style::ellipsize_to(
+            &painter, &abs.symbol, &sym_font, sym_room, t.text);
         painter.text(
-            egui::pos2(area.left() + crate::ui_kit::style::gap_2xs(), mid_y),
+            egui::pos2(sym_x, mid_y),
             egui::Align2::LEFT_CENTER,
-            &abs.symbol,
-            mono_sm(),
+            sym_shown,
+            sym_font,
             t.text,
         );
 

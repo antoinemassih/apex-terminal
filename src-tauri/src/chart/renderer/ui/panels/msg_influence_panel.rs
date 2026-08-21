@@ -244,10 +244,26 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, t: &Theme) {
             let text_y = bar_rect.center().y;
             let x0 = bar_rect.left() + gap_xs();
             let x1 = bar_rect.right() - gap_xs();
+            // Bound the symbol by where the centred percentage begins.
+            //
+            // Three texts share this bar — symbol LEFT at `x0`, `ds_pct`
+            // CENTER, `ir_str` RIGHT at `x1` — and none was bounded. The
+            // painter comes from `allocate_painter`, so nothing escapes the
+            // ROW; the three simply collide inside it. The symbol is the only
+            // one of variable length (the other two are formatted numbers), so
+            // it is the one that gives way.
+            let row_font = mono_sm();
+            let sym_color = if idx == 0 { t.text } else { t.dim };
+            let ds_w = crate::ui_kit::style::measure_with_painter(
+                &bar_painter, &ds_pct, row_font.clone()).x;
+            let sym_room =
+                (((x0 + x1) / 2.0 - ds_w / 2.0) - x0 - gap_xs()).max(0.0);
+            let sym_shown = crate::ui_kit::style::ellipsize_to(
+                &bar_painter, &row.symbol, &row_font, sym_room, sym_color);
             bar_painter.text(
                 egui::pos2(x0, text_y), egui::Align2::LEFT_CENTER,
-                &row.symbol, mono_sm(),
-                if idx == 0 { t.text } else { t.dim },
+                sym_shown, row_font,
+                sym_color,
             );
             bar_painter.text(
                 egui::pos2((x0 + x1) / 2.0, text_y), egui::Align2::CENTER_CENTER,

@@ -3895,3 +3895,55 @@ class is not universal, and the widgets that avoid it do so by the same
 mechanism every time — measure once, paint the thing you measured.
 
 ---
+
+## AT-213 — The class is exhausted in `ui_kit/widgets`; two panels still had it
+
+### The widget kit is clean
+
+All twelve remaining structural widgets were read and are correct. Two forms
+account for every one of them:
+
+* **Reuse** — measure a galley, paint THAT galley: `panel_sub_section`,
+  `status_pill`, `alert`, `panel_list_row` (which additionally clips per cell,
+  "so overflow doesn't bleed into the next column").
+* **Matched re-layout** — measure and paint with the same `FontId`: `badge`,
+  `checkbox`, `switch`, `separator`, `input_group`, `segmented_control`.
+
+`text_engine` and `tool_overlay` were checked earlier. Nothing left in
+`ui_kit/widgets` has the defect.
+
+Ten widgets were fixed getting here. The twelve that were always correct all
+avoided it by the same mechanism, which is the rule worth carrying forward:
+**measure once, paint the thing you measured** — or, if you must re-layout,
+re-layout in the same font.
+
+### Two panels still had it
+
+Scanning `chart/renderer/ui/panels` for text painted with no measurement and no
+clipping returned three files, all `msg_*`. One (`msg_rrg_panel`) paints only
+fixed labels — "LEADING", "WEAKENING", "LAGGING" — which are bounded by their
+own content. The other two paint DATA:
+
+* `msg_tension_panel` — the symbol is painted at `area.left() + gap_2xs()` with
+  no bound, while `label_w = 36.0` is declared right above the row loop and
+  spent on the bar's width (`bar_w = avail_w - label_w - attain_w - gaps`). The
+  column exists for the symbol and was never applied to it.
+* `msg_influence_panel` — three texts share one bar: symbol LEFT at `x0`,
+  `ds_pct` CENTER, `ir_str` RIGHT at `x1`, none bounded. `allocate_painter`
+  clips them to the ROW, so nothing escapes; they simply collide inside it. The
+  symbol is the only one of variable length, so it gives way.
+
+Ordinary tickers fit both. OCC option tickers do not, and this app puts them in
+symbol columns — the same reasoning that made the heatmap cell a real defect
+rather than a theoretical one (AT-202).
+
+### Neither fix is probe-tested
+
+Both panels need a `MarketStructureGraph` fixture to render, which is a
+substantially larger setup than any widget probe in this session. The fixes are
+bounded-by-construction — the ellipsis is applied to a measured room — and that
+is weaker than a test that fails without them. Said plainly so the gap is not
+mistaken for coverage, the same way `TradeCard` and `ToolPopover` were recorded
+in AT-203.
+
+---
