@@ -3609,3 +3609,52 @@ also fit in the same space. Listed here so the next pass starts from a list
 rather than a regex.
 
 ---
+
+## AT-207 — Triaging the six width floors (read-only pass)
+
+AT-206 left six `>0` floors on a container width unexamined, on the grounds
+that a floor is only wrong when something else must also fit the same space.
+Read and classified. Not yet fixed — a release build was occupying the
+toolchain and a fix that cannot be compiled cannot be verified.
+
+**Worth fixing — a floor inside an accumulating walk:**
+
+`screener_heatmap.rs:396`
+```rust
+let cell_w = (avail_w * cell_w_frac - gap).max(12.0);
+cell_rect = Rect::from_min_size(pos2(cx_offset, row_y), vec2(cell_w, cell_h));
+cx_offset += cell_w + gap;
+```
+Every cell whose weight is small enough gets floored to 12px, and `cx_offset`
+accumulates. A row of low-weight cells therefore runs progressively off the
+right edge — each floored cell pushes every later one further out. This is the
+only one of the six where the error COMPOUNDS rather than happening once, which
+is what makes it different in kind from the rest.
+
+**Same shape, one-off overflow, plausible but unverified:**
+
+* `inputs/stepper.rs:126` — `center_w = (avail_w - h*2).max(40.0)` between two
+  `h`-wide buttons; below `2h + 40` the control exceeds its container.
+* `msg_tension_panel.rs:339` — `bar_w = (avail_w - 36 - 30 - gaps).max(60.0)`;
+  below ~126px the bar overlaps the attainment column.
+* `top_nav.rs:729` — `middle_width = (avail_w - right_width).max(60.0)` feeding
+  a horizontal `ScrollArea`. The ScrollArea clips its own content, so this is
+  the mildest of the three: the strip may overlap the right group's rect
+  without the text escaping.
+
+Whether any is reachable depends on each panel's minimum width, which is not
+something a regex can answer and was not chased here.
+
+**Checked and left — the floor is the point:**
+
+* `trade_plan_panel.rs:288` — `tip_w = avail_w.max(40.0)` for a single band with
+  no neighbour, directly under a comment about keeping a degenerate range
+  visible. The floor is doing what it says.
+* `watchlist_panel.rs:772` — a rename field at `(avail_w - 10).max(40.0)`;
+  worst case is 10px of overflow on a transient inline editor.
+
+Recording the triage rather than the regex is the point of this entry: AT-206
+handed the next pass a list of 32 matches, and 26 of them were `.max(0.0)`
+clamps that are correct everywhere they appear.
+
+---
