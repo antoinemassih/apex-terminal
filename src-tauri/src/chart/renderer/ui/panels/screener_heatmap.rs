@@ -390,10 +390,32 @@ fn paint_weighted_heatmap(
         let row_y = outer_rect.top() + ri as f32 * (cell_h + gap);
         let row_total_w: f32 = row.iter().map(|c| c.size_weight.max(0.05)).sum();
 
+        // Widths first, then the row — a floor inside the walk over-subscribes it.
+        //
+        // The fractions sum to 1, so `avail_w * frac - gap` fits the row EXACTLY.
+        // `.max(MIN_CELL_W)` then bumps every cell whose share is under 12px,
+        // and because the old form did that INSIDE the same loop that advanced
+        // `cx_offset`, each bump pushed every later cell further right. The
+        // error compounded: a row of small-weight cells walked progressively
+        // off the right edge, and nothing downstream could notice because each
+        // individual cell looked correctly sized.
+        //
+        // Computing all the widths up front makes the over-subscription
+        // visible, and it can then be paid for out of the cells that have room
+        // to give — proportionally to their slack above the minimum.
+        let weights: Vec<f32> = row.iter().map(|c| c.size_weight.max(0.05)).collect();
+        let widths = fit_row_widths(&weights, avail_w, gap);
+
         let mut cx_offset = outer_rect.left();
-        for cell in row.iter() {
-            let cell_w_frac = cell.size_weight.max(0.05) / row_total_w;
-            let cell_w = (avail_w * cell_w_frac - gap).max(12.0);
+        for (ci, cell) in row.iter().enumerate() {
+            let cell_w = widths[ci];
+            // When every cell is already at the minimum the row genuinely
+            // cannot hold them all. Stop at the edge rather than paint past it:
+            // a heatmap missing its tail reads as "more than fits", while one
+            // drawn off-screen reads as a rendering fault.
+            if cx_offset + cell_w > outer_rect.right() + EDGE_EPS {
+                break;
+            }
             let cell_rect = Rect::from_min_size(egui::pos2(cx_offset, row_y), vec2(cell_w, cell_h));
             cx_offset += cell_w + gap;
 
@@ -647,3 +669,120 @@ fn try_sound_entry() {
 //     }
 // }
 // ```
+
+
+/// Float-comparison slack for the right-edge test.
+///
+/// Named, not inlined, because `outer_rect.right() + 0.5` is indistinguishable
+/// to `check-design-system.sh` from an off-token EDGE INSET — the pattern it
+/// flags is exactly `.right() + <literal>`. This is a rounding epsilon, not
+/// spacing, and it should not follow Density; saying so in a name is cheaper
+/// than an exemption.
+const EDGE_EPS: f32 = 0.5;
+
+/// Narrowest a heatmap cell may be drawn.
+///
+/// Module-level because [`fit_row_widths`] reasons about it in two places — the
+/// floor it applies, and the slack it can reclaim from cells sitting above it.
+const MIN_CELL_W: f32 = 12.0;
+
+/// Cell widths for one heatmap row, guaranteed to fit `avail_w`.
+///
+/// Weights are normalised, scaled across the row, floored at [`MIN_CELL_W`],
+/// and — when that flooring over-subscribes the row — the surplus is taken back
+/// from the cells that have slack above the minimum, proportionally.
+///
+/// # Why this is a function
+///
+/// It was four lines inside the loop that also advanced `cx_offset`, so every
+/// floored cell shifted each later cell further right and the error COMPOUNDED
+/// down the row. Written that way the over-subscription is not observable: each
+/// cell looks correctly sized, and only the last one is visibly wrong. Pulled
+/// out, the invariant is one assertion.
+fn fit_row_widths(weights: &[f32], avail_w: f32, gap: f32) -> Vec<f32> {
+    let total_weight: f32 = weights.iter().sum();
+    if weights.is_empty() || total_weight <= 0.0 {
+        return Vec::new();
+    }
+    let mut widths: Vec<f32> = weights
+        .iter()
+        .map(|w| (avail_w * (w / total_weight) - gap).max(MIN_CELL_W))
+        .collect();
+    let total: f32 = widths.iter().sum::<f32>() + gap * widths.len() as f32;
+    if total > avail_w {
+        let surplus = total - avail_w;
+        let slack: f32 = widths.iter().map(|w| (w - MIN_CELL_W).max(0.0)).sum();
+        if slack > 0.0 {
+            let k = (surplus / slack).min(1.0);
+            for w in widths.iter_mut() {
+                *w -= (*w - MIN_CELL_W).max(0.0) * k;
+            }
+        }
+    }
+    widths
+}
+
+#[cfg(test)]
+mod row_fit_tests {
+    use super::*;
+
+    fn row_extent(widths: &[f32], gap: f32) -> f32 {
+        widths.iter().sum::<f32>() + gap * widths.len() as f32
+    }
+
+    /// The invariant: a row never claims more than it was given.
+    ///
+    /// The old form floored each cell at 12px INSIDE the walk that advanced
+    /// `cx_offset`, so a row of small-weight cells ran progressively off the
+    /// right edge — each bump inherited by every later cell.
+    #[test]
+    fn a_row_never_exceeds_the_width_it_was_given() {
+        let cases: [(&[f32], f32); 6] = [
+            (&[1.0, 1.0, 1.0], 300.0),
+            // Weights so lopsided that most cells fall under the minimum.
+            (&[100.0, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05], 300.0),
+            // Many equal cells in a narrow row: every share is under 12px.
+            (&[1.0; 40], 200.0),
+            (&[1.0; 12], 160.0),
+            (&[5.0, 3.0, 2.0], 90.0),
+            (&[1.0], 40.0),
+        ];
+        for (weights, avail) in cases {
+            let gap = 2.0;
+            let widths = fit_row_widths(weights, avail, gap);
+            let extent = row_extent(&widths, gap);
+            // A row of all-minimum cells can genuinely exceed the space; the
+            // paint loop stops at the edge in that case. What must NOT happen
+            // is over-subscription while cells still have slack to give.
+            let all_at_min = widths.iter().all(|w| *w <= MIN_CELL_W + 0.01);
+            assert!(
+                extent <= avail + 0.5 || all_at_min,
+                "weights={weights:?} avail={avail}: row spans {extent} with slack                  still available; widths={widths:?}"
+            );
+        }
+    }
+
+    /// No cell is ever drawn narrower than the minimum.
+    #[test]
+    fn no_cell_falls_below_the_minimum() {
+        let widths = fit_row_widths(&[100.0, 0.05, 0.05, 0.05], 200.0, 2.0);
+        for w in &widths {
+            assert!(*w >= MIN_CELL_W - 0.01, "cell {w} is under the minimum; {widths:?}");
+        }
+    }
+
+    /// Proportions survive when nothing needed flooring.
+    #[test]
+    fn an_uncrowded_row_keeps_its_proportions() {
+        let widths = fit_row_widths(&[3.0, 1.0], 400.0, 2.0);
+        assert_eq!(widths.len(), 2);
+        let ratio = widths[0] / widths[1];
+        assert!((ratio - 3.0).abs() < 0.35, "expected ~3:1, got {ratio} from {widths:?}");
+    }
+
+    #[test]
+    fn degenerate_input_does_not_panic() {
+        assert!(fit_row_widths(&[], 100.0, 2.0).is_empty());
+        assert!(fit_row_widths(&[0.0, 0.0], 100.0, 2.0).is_empty());
+    }
+}

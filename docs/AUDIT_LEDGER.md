@@ -3658,3 +3658,56 @@ handed the next pass a list of 32 matches, and 26 of them were `.max(0.0)`
 clamps that are correct everywhere they appear.
 
 ---
+
+## AT-208 — A floor inside a walk, where the error compounds
+
+The one entry from the AT-207 triage that differed in kind rather than degree.
+
+`screener_heatmap` sized each cell inside the same loop that advanced the pen:
+
+```rust
+let cell_w = (avail_w * cell_w_frac - gap).max(12.0);
+cell_rect = Rect::from_min_size(pos2(cx_offset, row_y), vec2(cell_w, cell_h));
+cx_offset += cell_w + gap;
+```
+
+The fractions sum to 1, so `avail_w * frac - gap` fits the row EXACTLY. The
+`.max(12.0)` then bumps every cell whose share falls under 12px — and because
+the bump happens inside the walk, each one is inherited by every later cell.
+
+Measured on a realistic shape (one dominant name, six small ones, 300px row):
+
+```
+row spans 383.1 against avail 300
+widths  [297.1, 12, 12, 12, 12, 12, 12]
+```
+
+**83px off the right edge.** The reason it survived is that no individual cell
+looks wrong — each is correctly sized for its own weight, and only the tail is
+visibly out of place.
+
+### The fix, and why it is a function now
+
+`fit_row_widths(weights, avail_w, gap)` computes all widths first, then — when
+flooring has over-subscribed the row — reclaims the surplus from the cells with
+slack above the minimum, proportionally. Pulled out of the loop, the invariant
+is one assertion instead of an emergent property of an accumulation.
+
+When every cell is already at the minimum the row genuinely cannot hold them
+all, and the paint loop now stops at the edge. A heatmap missing its tail reads
+as "more than fits"; one drawn past the edge reads as a rendering fault.
+
+Four tests, including the lopsided case above. Removing the reclaim reproduces
+383.1 exactly.
+
+### The gate caught the fix
+
+`outer_rect.right() + 0.5` tripped `check-design-system.sh` — its edge-inset
+pattern is precisely `.right() + <literal>`. That 0.5 is a float-comparison
+epsilon, not spacing, and it should NOT follow Density. Named `EDGE_EPS` rather
+than exempted: the lint was right that the shape is suspicious, and a name is a
+cheaper answer than an allow-list entry.
+
+Fourth time a gate has bitten this session's own work.
+
+---
