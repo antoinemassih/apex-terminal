@@ -1107,13 +1107,10 @@ fn render_chart_pane(
                             let tpl_id = format!("pane_picker_template_{pane_idx}");
                             let tpl_opts: Vec<(String, String)> =
                                 template_names.iter().map(|n| (n.clone(), n.clone())).collect();
-                            let mut tpl_sel = cur_template.clone();
-                            if crate::chart_renderer::ui::inputs::select::DropdownOwned::new()
-                                .options(tpl_opts)
-                                .width(140.0)
-                                .theme(t)
-                                .show(ui, &mut tpl_sel)
-                            {
+                            let tpl_cur = cur_template.clone();
+                            if let Some(tpl_sel) = crate::ui_kit::widgets::select::select_by_value(
+                                ui, t, &tpl_opts, &tpl_cur, |sel| sel.min_width(140.0),
+                            ) {
                                 chart.pane_template_name = if tpl_sel == "None" { None } else { Some(tpl_sel) };
                             }
                             // Stock | Option toggle — switches the body below between
@@ -1459,13 +1456,10 @@ fn render_chart_pane(
                             let tpl_id = format!("{id_salt}_{pane_idx}");
                             let tpl_opts: Vec<(String, String)> =
                                 templates_snapshot.iter().map(|n| (n.clone(), n.clone())).collect();
-                            let mut tpl_sel = cur.clone();
-                            if crate::chart_renderer::ui::inputs::select::DropdownOwned::new()
-                                .options(tpl_opts)
-                                .width(140.0)
-                                .theme(t)
-                                .show(ui, &mut tpl_sel)
-                            {
+                            let tpl_cur = cur.clone();
+                            if let Some(tpl_sel) = crate::ui_kit::widgets::select::select_by_value(
+                                ui, t, &tpl_opts, &tpl_cur, |sel| sel.min_width(140.0),
+                            ) {
                                 newly_selected = Some(tpl_sel);
                             }
                             ui.add(egui::TextEdit::singleline(&mut chart.pane_picker_save_name)

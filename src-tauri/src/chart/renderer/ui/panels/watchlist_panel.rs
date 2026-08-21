@@ -173,30 +173,54 @@ if is_spawn || watchlist.open {
                             let active_name = wl_names.get(active_idx).cloned().unwrap_or_else(|| "Default".into());
                             let wl_opts: Vec<(usize, String)> = wl_names.iter().enumerate()
                                 .map(|(i, n)| (i, n.clone())).collect();
-                            let (_, combo_resp) = super::super::inputs::select::DropdownOwned::new()
-                                .options(wl_opts)
-                                .width(ui.available_width() - right_cluster_w - plus_w)
-                                .font_size(9.0)
-                                .item_context_menu(|idx, ui| {
-                                    let i = *idx;
+                            // Kit `Select` directly — the "value" here IS the
+                            // index, so no `select_by_value` adapter is needed.
+                            //
+                            // The kit stores `item_context_menu` as `Box<dyn Fn>`
+                            // while this closure MUTATES three captured slots.
+                            // `Cell` is the adapter: `Cell::set` takes `&self`,
+                            // so a `Fn` closure can write through it. Widening
+                            // the kit's field to `FnMut` would mean taking the
+                            // box by `&mut` through the whole paint path, which
+                            // is a large change to serve one call site.
+                            //
+                            // `font_size(9.0)` is gone — 9px is off the size
+                            // ladder and cannot follow Density. `Size::Xs` is
+                            // the rung it was approximating.
+                            let rename_cell = std::cell::Cell::new(wl_rename_idx);
+                            let dup_cell = std::cell::Cell::new(wl_dup_idx);
+                            let delete_cell = std::cell::Cell::new(wl_delete_idx);
+                            let wl_labels: Vec<String> =
+                                wl_opts.iter().map(|(_, n)| n.clone()).collect();
+                            let combo_resp = crate::ui_kit::widgets::Select::new_with(
+                                &mut watchlist.active_watchlist_idx,
+                                &wl_labels,
+                                |s: &String| s.clone(),
+                            )
+                                .min_width(ui.available_width() - right_cluster_w - plus_w)
+                                .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                                .item_context_menu(|i, ui| {
                                     if MenuItem::new("Rename").show(ui, t).clicked() {
-                                        wl_rename_idx = Some(i);
+                                        rename_cell.set(Some(i));
                                         ui.close_menu();
                                     }
                                     if MenuItem::new("Duplicate").show(ui, t).clicked() {
-                                        wl_dup_idx = Some(i);
+                                        dup_cell.set(Some(i));
                                         ui.close_menu();
                                     }
                                     if wl_count > 1 {
                                         ui.separator();
                                         if MenuItem::new("Delete").tint(t.bear).show(ui, t).clicked() {
-                                            wl_delete_idx = Some(i);
+                                            delete_cell.set(Some(i));
                                             ui.close_menu();
                                         }
                                     }
                                 })
-                                .theme(t)
-                                .show_resp(ui, &mut watchlist.active_watchlist_idx);
+                                .show(ui, t)
+                                .response;
+                            wl_rename_idx = rename_cell.get();
+                            wl_dup_idx = dup_cell.get();
+                            wl_delete_idx = delete_cell.get();
                             if watchlist.active_watchlist_idx != active_idx {
                                 wl_switch_to = Some(watchlist.active_watchlist_idx);
                                 // Restore — actual switch is handled by wl_switch_to below
@@ -1656,13 +1680,10 @@ if is_spawn || watchlist.open {
                             .map(|(d, l)| (*d, l.as_str())).collect();
                         ui.add_space(chain_row_inset());
                         dim_label(ui, "DTE", t.dim);
-                        let mut cur_dte = watchlist.chain.far_dte;
-                        if super::super::inputs::select::Dropdown::new()
-                            .options(&dte_opts)
-                            .width(100.0)
-                            .theme(t)
-                            .show(ui, &mut cur_dte)
-                        {
+                        let cur_dte = watchlist.chain.far_dte;
+                        if let Some(cur_dte) = crate::ui_kit::widgets::select::select_by_value(
+                            ui, t, &dte_opts, &cur_dte, |sel| sel.min_width(100.0),
+                        ) {
                             watchlist.chain.far_dte = cur_dte;
                             let sym = watchlist.chain.symbol.clone();
                             watchlist.chain.loading = true;

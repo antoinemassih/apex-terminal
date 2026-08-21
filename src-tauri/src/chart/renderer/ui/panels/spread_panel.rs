@@ -389,14 +389,12 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         {
                             let expiry_id = format!("leg_expiry_{}", idx);
                             let opts: Vec<(&'static str, &'static str)> = EXPIRY_OPTIONS.iter().map(|&s| (s, s)).collect();
-                            let mut cur: &'static str = EXPIRY_OPTIONS.iter().copied().find(|&s| s == leg.expiry.as_str()).unwrap_or("0DTE");
-                            if super::super::inputs::select::Dropdown::new()
-                                .options(&opts)
-                                .width(52.0)
-                                .theme(t)
-                                .show(ui, &mut cur)
-                            {
-                                leg.expiry = cur.to_string();
+                            let cur: &'static str = EXPIRY_OPTIONS.iter().copied()
+                                .find(|&s| s == leg.expiry.as_str()).unwrap_or("0DTE");
+                            if let Some(picked) = crate::ui_kit::widgets::select::select_by_value(
+                                ui, t, &opts, &cur, |sel| sel.min_width(52.0),
+                            ) {
+                                leg.expiry = picked.to_string();
                             }
                         }
                     });

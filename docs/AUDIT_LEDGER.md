@@ -3999,3 +3999,63 @@ Remaining: `core.rs` x2 (template picker), `watchlist_panel:176` (uses
 old `FnMut(&T, &mut Ui)`), `spread_panel:396`, `watchlist_panel:1660`.
 
 ---
+
+## AT-215 — The shadow input module is gone, and the audit was wrong twice
+
+`chart/renderer/ui/inputs/select.rs` — 434 lines — is deleted. It held three
+things, and only one of them was what the audit said it was.
+
+| Thing | Kit equivalent | Call sites | Outcome |
+|---|---|---|---|
+| `Dropdown` / `DropdownOwned` | `ui_kit::Select` | 10 | migrated |
+| `SegmentedControl` | `ui_kit::SegmentedControl` | 9 | migrated |
+| `Autocomplete` | none | 0 | deleted, unused |
+
+### Two corrections, in sequence
+
+**First error.** The audit listed `ui/inputs/stepper.rs::NumericStepper` as a
+duplicate of `ui_kit::Stepper`. Wrong: `Stepper` is a wizard step indicator,
+`NumericStepper` is a numeric spinner. They share a filename. I had matched
+`stepper.rs` against `stepper.rs`.
+
+**Second error — the correction itself.** I then recorded that the kit "has no
+numeric spinner at all". Also wrong. `ui_kit::NumberStepper` exists, in
+`number_stepper.rs`, with the same API surface: `new(&mut T)`, `range`, `step`,
+`prefix`, `suffix`, `size`, `width`, `disabled`. `form.rs` was already importing
+it three lines below the shadow import.
+
+So `NumericStepper` IS a duplicate — of `NumberStepper`, not `Stepper`. Both
+errors came from the same habit: comparing filenames instead of reading the two
+implementations. The audit page now states this.
+
+**Third thing the audit missed entirely.** `SegmentedControl` was in the same
+shadow file with 9 call sites, and did not appear in the census at all — the
+scan matched module paths, and this one lived inside a file named `select.rs`.
+
+### What the kit gained, and what it refused
+
+`select_by_value` (value-driven instead of index-driven) and
+`Select::trigger_text` (a fixed trigger label, for a dropdown used as a menu).
+Both were real capabilities the shadow had and the kit lacked — the reason it
+existed.
+
+`font_size(f32)` was NOT ported, and neither was `height(f32)`. The call sites
+passed 8px, 9px and 18px; 18 is exactly `control_xs`, and the other two are off
+the ladder entirely. All of them became `Size::Xs`, which says the same thing
+and follows Density as no literal can.
+
+One call site needed a `Cell` adapter: the kit stores `item_context_menu` as
+`Box<dyn Fn>` while the watchlist's closure mutates three captured slots.
+`Cell::set` takes `&self`, so a `Fn` closure can write through it. Widening the
+kit's field to `FnMut` would mean threading `&mut` through the whole paint path
+to serve one caller.
+
+### Why this category mattered most
+
+A shadow implementation passes every ratchet the real one passes. No gate in
+this repo could see 434 lines of parallel widget code, and a fix applied to one
+copy silently misses the other — which is exactly what happened to the menu row
+in AT-206. The census found it only because two files shared a name, and it
+missed `SegmentedControl` because two files did not.
+
+---

@@ -1107,7 +1107,7 @@ impl ApertureOrderTicket {
     }
 
     pub fn show(self, ui: &mut Ui, s: &mut ApertureOrderState<'_>) -> ApertureOrderOutcome {
-        use super::select::SegmentedControl;
+        use crate::ui_kit::widgets::SegmentedControl;
         use crate::ui_kit::widgets::NumberStepper;
         use crate::ui_kit::widgets::Button;
         use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
@@ -1142,22 +1142,22 @@ impl ApertureOrderTicket {
                     (0, "MKT"), (1, "LMT"), (2, "STP"), (3, "STP-LMT"), (4, "TRAIL"), (5, "UND"),
                 ];
                 let ot_opts = if s.is_option { OT_OPTION } else { OT_STOCK };
-                if SegmentedControl::new()
-                    .options(ot_opts)
-                    .connected_pills(true)
+                // Kit `SegmentedControl`, which takes the value by `&mut`
+                // directly. `height(18.0)` is dropped: 18px is `control_xs`, so
+                // `Size::Xs` says the same thing on the ladder and follows
+                // Density, which the literal never did.
+                if SegmentedControl::new(s.order_type_idx, ot_opts)
+                    .connected(true)
                     .compact(true)
-                    .height(18.0)
-                    .theme(&t_stub)
-                    .show(ui, s.order_type_idx)
+                    .size(KitSize::Xs)
+                    .show(ui, &t_stub)
+                    .changed()
                 {
                     *s.order_market = *s.order_type_idx == 0;
                 }
                 ui.add_space(gap_lg());
                 let tif_opts: &[(usize, &str)] = &[(0, "DAY"), (1, "GTC"), (2, "IOC")];
-                SegmentedControl::new()
-                    .options(tif_opts)
-                    .theme(&t_stub)
-                    .show(ui, s.order_tif_idx);
+                SegmentedControl::new(s.order_tif_idx, tif_opts).show(ui, &t_stub);
                 ui.add_space(gap_md());
                 let rth_amber = COLOR_AMBER;
                 let rth_fg = if *s.order_outside_rth { rth_amber } else { color_alpha(self.dim, crate::ui_kit::style::alpha_subtle()) };
@@ -1185,10 +1185,7 @@ impl ApertureOrderTicket {
         ui.horizontal(|ui| {
             ui.add_space(pad);
             let mode_opts: &[(bool, &str)] = &[(false, "QTY"), (true, "$")];
-            SegmentedControl::new()
-                .options(mode_opts)
-                .theme(&t_stub)
-                .show(ui, s.order_notional_mode);
+            SegmentedControl::new(s.order_notional_mode, mode_opts).show(ui, &t_stub);
             if *s.order_notional_mode {
                 ui.add_space(gap_sm());
                 let premium = last;

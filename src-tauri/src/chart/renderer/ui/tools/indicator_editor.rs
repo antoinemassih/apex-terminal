@@ -11,7 +11,7 @@ use crate::ui_kit::widgets::NumberStepper;
 use super::super::inputs::form::{IndicatorParamRow, IndicatorParamRowF};
 use crate::ui_kit::widgets::FormRow;
 use super::super::inputs::inputs::{ColorSwatchPicker, ThicknessPicker};
-use super::super::inputs::select::SegmentedControl;
+use crate::ui_kit::widgets::SegmentedControl;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::LineStyle;
 
@@ -108,8 +108,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
                             (IndicatorType::WMA, "WMA"), (IndicatorType::DEMA, "DEMA"),
                             (IndicatorType::TEMA, "TEMA"),
                         ];
-                        if SegmentedControl::new().options(MA_KINDS).connected_pills(true).compact(true)
-                            .height(row_height_compact()).theme(t).show(ui, &mut ind.kind) {
+                        if SegmentedControl::new(&mut ind.kind, MA_KINDS)
+                            .connected(true).compact(true)
+                            .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                            .show(ui, t).changed()
+                        {
                             needs_recompute = true;
                         }
                     });
@@ -125,8 +128,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
                             (IndicatorType::BollingerBands, "BB"),
                             (IndicatorType::KeltnerChannels, "KC"),
                         ];
-                        if SegmentedControl::new().options(BAND_KINDS).connected_pills(true).compact(true)
-                            .height(row_height_compact()).theme(t).show(ui, &mut ind.kind) {
+                        if SegmentedControl::new(&mut ind.kind, BAND_KINDS)
+                            .connected(true).compact(true)
+                            .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                            .show(ui, t).changed()
+                        {
                             needs_recompute = true;
                         }
                     });
@@ -254,8 +260,10 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
                         const SOURCES: &[(u8, &str)] = &[
                             (0, "C"), (1, "O"), (2, "H"), (3, "L"), (4, "HL"), (5, "OHLC"),
                         ];
-                        if SegmentedControl::new().options(SOURCES).connected_pills(true).compact(true)
-                            .height(row_height_compact()).theme(t).show(ui, &mut ind.source) {
+                        if SegmentedControl::new(&mut ind.source, SOURCES)
+                            .connected(true).compact(true).size(crate::ui_kit::widgets::tokens::Size::Xs)
+                            .show(ui, t).changed()
+                        {
                             needs_recompute = true;
                         }
                     });
@@ -312,8 +320,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
                     const LINE_STYLES: &[(LineStyle, &str)] = &[
                         (LineStyle::Solid, "━"), (LineStyle::Dashed, "╌"), (LineStyle::Dotted, "┈"),
                     ];
-                    SegmentedControl::new().options(LINE_STYLES).connected_pills(true).compact(true)
-                        .height(row_height_compact()).theme(t).show(ui, &mut ind.line_style);
+                    SegmentedControl::new(&mut ind.line_style, LINE_STYLES)
+                        .connected(true).compact(true).size(crate::ui_kit::widgets::tokens::Size::Xs)
+                        .show(ui, t);
                 });
 
                 // ── BAND STYLING (BB / KC only) ──

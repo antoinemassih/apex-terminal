@@ -204,7 +204,7 @@ pub fn show_drawing_properties_bar_ui(
 
         ui.add(egui::Separator::default().spacing(gap_xs()));
 
-        // Group dropdown — unified DropdownOwned. The trailing sentinel
+        // Group dropdown — kit `Select`. The trailing sentinel
         // "__new_group__" option acts as the "+ New Group…" action footer.
         const NEW_GROUP_SENTINEL: &str = "__new_group__";
         let mut grp_opts: Vec<(String, String)> = vec![("default".to_string(), "default".to_string())];
