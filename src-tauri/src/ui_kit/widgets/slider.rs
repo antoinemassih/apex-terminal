@@ -130,8 +130,38 @@ fn paint_slider<T: egui::emath::Numeric>(
         }
 
         ui.horizontal(|ui| {
-            // Compute available width.
-            let value_label_w = if show_value { 50.0 } else { 0.0 };
+            // Reserve what the value will actually MEASURE, not 50px.
+            //
+            // This was `if show_value { 50.0 } else { 0.0 }` — a guess about how
+            // wide a formatted number comes out. `format_value` keeps enough
+            // decimals to show one step, so a fine step over a wide range blows
+            // straight through it: at `step = 0.001` over `0..=1_000_000`,
+            // "123456.789" measured 70.3px and ran 20px past the widget's right
+            // edge, because the value is painted `LEFT_CENTER` at
+            // `rect.right() + gap_xs()` with nothing bounding it.
+            //
+            // Measured from the RANGE ENDPOINTS rather than the current value,
+            // deliberately: the reservation must not change while the user
+            // drags. Sizing it from `new_val` would make the track resize under
+            // the thumb as digits come and go.
+            let value_font = if size == Size::Sm || size == Size::Xs {
+                TextStyle::MonoXs.font_id_in(ui)
+            } else {
+                TextStyle::MonoSm.font_id_in(ui)
+            };
+            let value_label_w = if show_value {
+                let lo = range.start().to_f64();
+                let hi = range.end().to_f64();
+                let span = hi - lo;
+                let widest = [format_value(lo, step, span), format_value(hi, step, span)]
+                    .into_iter()
+                    .map(|t| crate::ui_kit::style::measure_with_painter(
+                        ui.painter(), &t, value_font.clone()).x)
+                    .fold(0.0_f32, f32::max);
+                widest + st::gap_xs()
+            } else {
+                0.0
+            };
             let avail = ui.available_width();
             let track_w = if full_width || avail < 240.0 {
                 (avail - value_label_w - st::gap_xs()).max(80.0)
@@ -325,5 +355,65 @@ mod slider_format_tests {
     fn step_sets_precision() {
         assert_eq!(format_value(0.25, Some(0.05), 1.0), "0.25");
         assert_eq!(format_value(7.0, Some(1.0), 100.0), "7");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    /// The value label is reserved a HARDCODED 50px
+    /// (`let value_label_w = if show_value { 50.0 } else { 0.0 };`) and then
+    /// painted `LEFT_CENTER` at `rect.right() + gap_xs()` — growing right from
+    /// the track's end with nothing bounding it.
+    ///
+    /// 50px is a guess about how wide a formatted number will be. `format_value`
+    /// keeps enough decimals to show one step, so a fine step over a wide range
+    /// produces a string that guess does not cover, and the value runs past the
+    /// widget's right edge.
+    ///
+    /// Constrained widths, as ever: an unbounded probe panel gives the row
+    /// enough room that the reservation never binds (AT-199).
+    #[test]
+    fn the_value_label_stays_inside_the_widget() {
+        for width in [420.0f32, 260.0, 180.0] {
+            for (mut v, lo, hi, step) in [
+                (0.5f64, 0.0f64, 1.0f64, Some(0.1f64)),
+                (123456.789, 0.0, 1_000_000.0, Some(0.001)),
+                (-98765.4321, -100_000.0, 100_000.0, Some(0.0001)),
+                (7.0, 0.0, 10.0, Some(1.0)),
+            ] {
+                let right_edge = std::cell::Cell::new(0.0f32);
+                let runs = paint_probe::probe(|ui| {
+                    let t = PortableTheme::dark();
+                    let rect = egui::Rect::from_min_size(
+                        ui.max_rect().min, egui::vec2(width, 60.0));
+                    right_edge.set(rect.right());
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
+                    let mut sl = Slider::new(&mut v, lo..=hi).show_value(true).full_width();
+                    if let Some(st) = step { sl = sl.step(st); }
+                    sl.show(&mut child, &t);
+                });
+                if runs.is_empty() {
+                    continue;
+                }
+                let edge = right_edge.get();
+                let name = format!("slider w={width} v={v} step={step:?}");
+                paint_probe::assert_no_overlap(&name, &runs);
+                for r in &runs {
+                    assert!(
+                        r.right <= edge + 0.5,
+                        "{name}: text reaches {} past the widget's right edge {edge}; runs={runs:?}",
+                        r.right
+                    );
+                }
+            }
+        }
     }
 }

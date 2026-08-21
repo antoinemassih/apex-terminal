@@ -3807,3 +3807,41 @@ Its five existing tests all still pass — they cover `solve_key_value_row`'s
 slot geometry, not the painted text, which is exactly why they never saw this.
 
 ---
+
+## AT-211 — The slider reserved 50px for a number it never measured
+
+```rust
+let value_label_w = if show_value { 50.0 } else { 0.0 };
+```
+
+50px is a guess about how wide a formatted number comes out. `format_value`
+keeps enough decimals to show one step, so a fine step over a wide range blows
+straight through it. The value is then painted `LEFT_CENTER` at
+`rect.right() + gap_xs()`, growing right from the track with nothing bounding
+it:
+
+```
+step = 0.001 over 0..=1_000_000
+"123456.789"   378.0 .. 448.3     widget right edge: 428.0
+```
+
+**20px past the edge.**
+
+### Measured from the range, not the value
+
+The reservation now takes the wider of the two formatted ENDPOINTS. Sizing it
+from the current value would have been the obvious fix and the wrong one: the
+track would resize under the thumb as digits appeared and vanished mid-drag.
+The endpoints are stable for the life of the widget, and always at least as
+wide as anything between them.
+
+Ninth widget in the class, and the first where the reservation was a bare
+constant rather than a measurement applied to the wrong thing. Same sentence
+with one word changed: **a width was guessed, and not applied to the text it
+was guessed for.**
+
+`alert` and `panel_sub_section` were read in the same pass. `alert` measures its
+message galley and paints THAT galley (`painter.galley(...)`), the reuse form
+that makes a mismatch unexpressible — left alone.
+
+---
