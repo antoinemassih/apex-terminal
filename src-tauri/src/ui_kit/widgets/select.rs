@@ -1091,12 +1091,17 @@ fn render_row<'a, T>(
             StrokeKind::Inside,
         );
         if selected {
-            let p1 = Pos2::new(bx.center().x - bs * 0.25, bx.center().y + bs * 0.02);
-            let p2 = Pos2::new(bx.center().x - bs * 0.05, bx.center().y + bs * 0.20);
-            let p3 = Pos2::new(bx.center().x + bs * 0.28, bx.center().y - bs * 0.18);
-            let s = Stroke::new(1.4, st::contrast_fg(palette_ct(theme).base(Tone::Accent))); // TODO: off-token (stroke width)
-            painter.line_segment([p1, p2], s);
-            painter.line_segment([p2, p3], s);
+            // Was a character-for-character copy of `Checkbox`'s tick — same
+            // three control points — drawn at 1.4 where the original used 1.6.
+            // A checkbox in a dropdown row and a checkbox on a form are the
+            // same control; two functions drawing it had already drifted 0.2px
+            // apart.
+            super::checkbox::paint_check_mark(
+                &painter,
+                bx.center(),
+                bs,
+                st::contrast_fg(palette_ct(theme).base(Tone::Accent)),
+            );
         }
         left_x += bs + st::gap_2xs();
     }

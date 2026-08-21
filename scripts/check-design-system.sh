@@ -64,11 +64,7 @@ PATTERNS=(
   # weight per call site instead of using the stroke-width tokens. grep -F, so
   # each common literal is its own fixed string (regex would need -E and would
   # false-positive on computed widths).
-  "Stroke::new(0.5,"
-  "Stroke::new(1.0,"
-  "Stroke::new(1.5,"
-  "Stroke::new(2.0,"
-  "Stroke::new(3.0,"
+
 )
 
 # ── Regex patterns (grep -E) ─────────────────────────────────────────────────
@@ -133,6 +129,21 @@ REGEX_PATTERNS=(
   "add_space\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*\)"
   "Margin::(same|symmetric)\([[:space:]]*[0-9]+"
   "item_spacing[[:space:]]*=[[:space:]]*egui::vec2\([[:space:]]*[0-9]+\.[0-9]+"
+  # ANY literal stroke width, not five hand-picked ones.
+  #
+  # This was five `-F` patterns naming 0.5, 1.0, 1.5, 2.0 and 3.0, so every
+  # other literal was invisible: 0.6, 0.8, 1.2, 1.8, 3.5 and 5.0 accounted for
+  # 20 uncounted sites. Three of them were the SAME check mark drawn at 1.4,
+  # 1.6 and 1.8 by two functions with identical geometry, each carrying a
+  # `// TODO: off-token` nobody came back to (AT-205).
+  #
+  # `0.8` is the sharpest illustration: it IS the value of `stroke_medium`, so
+  # the literal is an off-token spelling of an ON-ladder number — it looks
+  # correct and still cannot follow the Border Weight setting.
+  #
+  # The baseline rose when this was widened. That is the instrument improving,
+  # not the code regressing.
+  "Stroke::new\([[:space:]]*[0-9]+\.[0-9]+[[:space:]]*,"
 )
 
 # Files that DEFINE the design system (they must use raw primitives to build

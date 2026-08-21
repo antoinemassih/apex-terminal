@@ -3491,3 +3491,65 @@ same thing through one more layer. Converting it would move a number and change
 nothing about the program.
 
 ---
+
+## AT-205 — One check mark, three stroke widths, and a ratchet naming five numbers
+
+Chasing the last four cursor walks turned up something better than the walks.
+
+### The check mark
+
+`select.rs`'s multi-select row painted a tick from three control points:
+
+```rust
+p1 = (c.x - s*0.25, c.y + s*0.02)
+p2 = (c.x - s*0.05, c.y + s*0.20)
+p3 = (c.x + s*0.28, c.y - s*0.18)
+```
+
+Character for character the same three points as `checkbox.rs`. A hand-copied
+tick — drawn at **1.4** where the original used **1.6**, while the same
+checkbox's indeterminate dash used **1.8**. Three widths for one mark, each
+carrying a `// TODO: off-token` nobody came back to.
+
+A checkbox in a dropdown row and a checkbox on a form are the same control.
+They were drawn by two functions that had already drifted 0.2px apart and had
+no reason to stop. Consolidated into `checkbox::paint_check_mark`, on
+`stroke_bold()` — 1.5 at the default weight, the rung all three were circling —
+which also means the mark now follows the Border Weight setting, as no literal
+ever did.
+
+### The ratchet named five numbers
+
+`check-design-system.sh` matched stroke literals with five `-F` patterns:
+`Stroke::new(0.5,`, `(1.0,`, `(1.5,`, `(2.0,`, `(3.0,`. Every other literal was
+invisible — **20 sites** at 0.6, 0.8, 1.2, 1.8, 3.5 and 5.0, including all three
+check marks above.
+
+`0.8` is the sharpest case: it IS the value of `stroke_medium`, so the literal
+is an off-token spelling of an ON-ladder number. It looks correct, reviews
+clean, and still cannot follow Border Weight.
+
+Replaced with one regex over any float literal. The baseline went **964 → 984**,
+and the diff matched the predicted 20 exactly. A ceiling rising because the
+instrument improved is not a regression, and the note lives next to the pattern
+so the next reader does not "fix" it by narrowing the match again.
+
+That is the fifth blind instrument in this codebase's tooling: the truncated
+ratchet, the backspaced regex, the cursor-walk name list, the single-line
+branch check, and now a stroke lint that could only see five widths.
+
+### The four remaining cursor walks are not a backlog
+
+All four are `advance = width + named_gap`:
+
+* `watchlist_row` x2 — `ind_x += pw + ind_gap`, under a measured per-row cost
+  exemption recorded above it.
+* `select.rs` x2 — `left_x += w + icon_gap`, where `w` is `chip_paint`'s own
+  return value, and `left_x += bs + gap_2xs()` for a checkbox strip.
+
+None can disagree with itself: the advance is the width actually used plus a
+gap that is named once. Driving this ceiling to 0 would mean splitting
+`chip_paint` into measure and paint halves — manufacturing the very
+disagreement the rest of this work has been removing.
+
+---

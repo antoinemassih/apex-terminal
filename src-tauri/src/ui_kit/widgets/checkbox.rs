@@ -210,20 +210,16 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
         CheckState::On => {
             // Hand-drawn checkmark: two line segments.
             let c = box_rect.center();
-            let s = bs;
-            let p1 = Pos2::new(c.x - s * 0.25, c.y + s * 0.02);
-            let p2 = Pos2::new(c.x - s * 0.05, c.y + s * 0.20);
-            let p3 = Pos2::new(c.x + s * 0.28, c.y - s * 0.18);
-            let stroke = Stroke::new(1.6, fg_mark); // TODO: off-token
-            painter.line_segment([p1, p2], stroke);
-            painter.line_segment([p2, p3], stroke);
+            paint_check_mark(&painter, c, bs, fg_mark);
         }
         CheckState::Indeterminate => {
             let c = box_rect.center();
             let s = bs;
             let p1 = Pos2::new(c.x - s * 0.28, c.y);
             let p2 = Pos2::new(c.x + s * 0.28, c.y);
-            painter.line_segment([p1, p2], Stroke::new(1.8, fg_mark)); // TODO: off-token
+            // Same rung as the tick — an indeterminate dash and a check are the
+            // same mark in the same box, and they were 1.8 and 1.6.
+            painter.line_segment([p1, p2], Stroke::new(mark_stroke(), fg_mark));
         }
         CheckState::Off => {}
     }
@@ -267,4 +263,40 @@ fn with_alpha_scale(c: Color32, s: f32) -> Color32 {
         c.r(), c.g(), c.b(),
         ((c.a() as f32) * s.clamp(0.0, 1.0)).round() as u8,
     )
+}
+
+
+/// The check tick, in one place.
+///
+/// Three copies of this existed, with the SAME three control points and three
+/// different stroke widths: `checkbox` drew the tick at 1.6 and its
+/// indeterminate dash at 1.8, and `select`'s multi-select row had a
+/// character-for-character copy of the geometry at 1.4. All three carried a
+/// `// TODO: off-token` that nobody came back to.
+///
+/// A checkbox in a dropdown row and a checkbox on a form are the same control;
+/// they were drawn by two functions that had already drifted apart by 0.2px and
+/// would have kept drifting.
+pub(crate) fn paint_check_mark(
+    painter: &egui::Painter,
+    center: Pos2,
+    box_size: f32,
+    color: egui::Color32,
+) {
+    let s = box_size;
+    let p1 = Pos2::new(center.x - s * 0.25, center.y + s * 0.02);
+    let p2 = Pos2::new(center.x - s * 0.05, center.y + s * 0.20);
+    let p3 = Pos2::new(center.x + s * 0.28, center.y - s * 0.18);
+    let stroke = Stroke::new(mark_stroke(), color);
+    painter.line_segment([p1, p2], stroke);
+    painter.line_segment([p2, p3], stroke);
+}
+
+/// Stroke width for a check tick or indeterminate dash.
+///
+/// `stroke_bold()` is 1.5 at the default weight — the rung the three hand-tuned
+/// values (1.4, 1.6, 1.8) were all circling. Being on the ladder means it also
+/// follows the Border Weight setting, which a literal never did.
+pub(crate) fn mark_stroke() -> f32 {
+    crate::ui_kit::style::stroke_bold()
 }

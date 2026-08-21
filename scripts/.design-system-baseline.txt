@@ -1,10 +1,10 @@
-21 src-tauri/src/chart/renderer/gpu.rs
+22 src-tauri/src/chart/renderer/gpu.rs
 2 src-tauri/src/chart/renderer/inspector_window.rs
-515 src-tauri/src/chart/renderer/render/pane/core.rs
+529 src-tauri/src/chart/renderer/render/pane/core.rs
 11 src-tauri/src/chart/renderer/render/pane/notice.rs
 8 src-tauri/src/chart/renderer/render/pane/signal_gauges.rs
 66 src-tauri/src/chart/renderer/render/pane/tool_previews.rs
-65 src-tauri/src/chart/renderer/ui/chart_widgets.rs
+67 src-tauri/src/chart/renderer/ui/chart_widgets.rs
 7 src-tauri/src/chart/renderer/ui/chrome/painter_pane.rs
 10 src-tauri/src/chart/renderer/ui/chrome/pane.rs
 1 src-tauri/src/chart/renderer/ui/command_palette/mod.rs
@@ -30,7 +30,7 @@
 3 src-tauri/src/chart/renderer/ui/panels/bottom_dock.rs
 1 src-tauri/src/chart/renderer/ui/panels/connection_panel.rs
 4 src-tauri/src/chart/renderer/ui/panels/discord_panel.rs
-14 src-tauri/src/chart/renderer/ui/panels/dom_panel.rs
+15 src-tauri/src/chart/renderer/ui/panels/dom_panel.rs
 2 src-tauri/src/chart/renderer/ui/panels/heatmap_pane.rs
 1 src-tauri/src/chart/renderer/ui/panels/indicators_panel.rs
 6 src-tauri/src/chart/renderer/ui/panels/kit.rs
@@ -43,8 +43,8 @@
 1 src-tauri/src/chart/renderer/ui/panels/screener_results.rs
 1 src-tauri/src/chart/renderer/ui/panels/script_panel.rs
 3 src-tauri/src/chart/renderer/ui/panels/settings_panel.rs
-8 src-tauri/src/chart/renderer/ui/panels/side_panel_shell.rs
-2 src-tauri/src/chart/renderer/ui/panels/split_tabs.rs
+9 src-tauri/src/chart/renderer/ui/panels/side_panel_shell.rs
+3 src-tauri/src/chart/renderer/ui/panels/split_tabs.rs
 1 src-tauri/src/chart/renderer/ui/panels/spread_panel.rs
 2 src-tauri/src/chart/renderer/ui/panels/spreadsheet_pane.rs
 9 src-tauri/src/chart/renderer/ui/panels/watchlist_panel.rs
