@@ -3426,3 +3426,68 @@ construction now (the rect is used), which is weaker than a test that fails
 without the fix, and this note is here so that gap is not mistaken for coverage.
 
 ---
+
+## AT-204 — `identical_branches` read 0 because it could only see one line
+
+Went looking at the 34 remaining raw `Flex::row()` sites and found something
+else on the way.
+
+`segmented_control` measures each segment with `mono_at(font_size)` and paints
+with `mono_at(font_size)` — correct on the class the last several entries have
+been about. But five lines below:
+
+```rust
+let font_id = if is_active {
+    crate::ui_kit::style::mono_at(font_size)
+} else {
+    crate::ui_kit::style::mono_at(font_size)
+};
+```
+
+A branch on `is_active` whose two arms are character-for-character the same.
+`quality_gate`'s `identical_branches` ceiling is set at **0** and read 0, because
+`IDENTICAL_BRANCH_RE` is anchored to a single line.
+
+The second hit was `playground/designer.rs`:
+
+```rust
+} else if c.is_whitespace() {
+    '_'
+} else {
+    '_'
+}
+```
+
+The whitespace test selects nothing. Every non-slug character becomes `_`, and
+saying that once is the whole rule.
+
+Both collapsed rather than guessed at. Giving the active segment a different
+weight is a design decision and should be made deliberately, not inferred from
+a dead branch — the active state is already carried by `fg` and the fill.
+
+`_identical_branches_multiline` now counts the wrapped form, restricted to a
+single-statement body with no nested braces so it stays quiet enough to be
+believed. Verified against `git show HEAD:` — one hit in each file before the
+fix, zero after — and added to `--selftest`, now 10 patterns.
+
+**Third time in this codebase's tooling.** The truncated ratchet (AT-186), the
+backspaced regex (AT-187), the cursor-walk name list (AT-195), and now this:
+a ceiling only holds the shape it can see, and a ceiling of 0 is the easiest
+number in the world to keep.
+
+### On the 34 raw `Flex` sites — not a backlog
+
+Counting them as work-to-do would be wrong, and the count is why. `El` is
+BUILT ON `Flex`: `cascade/element.rs` (2) and `layout/flex.rs` (3) are the
+implementation and its tests, and `layout/surface.rs` (2) is a sibling
+primitive. Of the widget uses, several are documented leave-alones with reasons
+already recorded — `header` (6 exact-pixel tests), `panel_key_value_row`
+(likewise), `panel_list_row` (hundreds of rows per frame), `input`.
+
+`segmented_control` is the honest example of the rest: it solves segment rects
+with `Flex::row()` and paints into them, with `Item::fixed` chosen over
+`Item::content` for a reason stated in a comment. `El::slot` would express the
+same thing through one more layer. Converting it would move a number and change
+nothing about the program.
+
+---

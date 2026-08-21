@@ -228,9 +228,11 @@ fn sanitize_filename(name: &str) -> String {
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
                 c.to_ascii_lowercase()
-            } else if c.is_whitespace() {
-                '_'
             } else {
+                // Was `else if c.is_whitespace() { '_' } else { '_' }` — the
+                // whitespace test selected nothing, both arms being `'_'`.
+                // Every non-slug character becomes an underscore; saying that
+                // once is the whole rule.
                 '_'
             }
         })

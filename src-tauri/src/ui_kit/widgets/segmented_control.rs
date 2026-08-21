@@ -293,11 +293,20 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
                 fg = st::color_alpha(fg, (fg.a() as f32 * 0.5) as u8);
             }
 
-            let font_id = if is_active {
-                crate::ui_kit::style::mono_at(font_size)
-            } else {
-                crate::ui_kit::style::mono_at(font_size)
-            };
+            // One font for every segment.
+            //
+            // This was `if is_active { mono_at(font_size) } else {
+            // mono_at(font_size) }` — a branch on `is_active` whose two arms
+            // were character-for-character the same. Either someone meant the
+            // active segment to carry a different weight and it never landed,
+            // or the two converged and the test outlived its reason. It cost a
+            // reader a double-take every time and did nothing.
+            //
+            // Collapsed rather than guessed at: giving the active segment a
+            // weight is a design decision, and it should be made deliberately
+            // rather than inferred from a dead branch. The active state is
+            // already carried by `fg` and the segment fill.
+            let font_id = crate::ui_kit::style::mono_at(font_size);
 
             painter.text(
                 Pos2::new(seg_rect.center().x, cy),

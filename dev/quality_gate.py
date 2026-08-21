@@ -229,9 +229,53 @@ def _is_text_width_guess(line):
 #
 # Neither survives review as written, and neither fails a test: both branches
 # compile and the code does something reasonable. Only a census sees them.
+BS_S = chr(92) + 's'
+BS_N = chr(92) + 'n'
+BS_BRACE_O = chr(92) + '{'
+BS_BRACE_C = chr(92) + '}'
+
 IDENTICAL_BRANCH_RE = re.compile(
     r"if\s+[^{}\n]{1,80}?\s*\{\s*([^{}\n;]{1,60}?)\s*\}\s*else\s*\{\s*([^{}\n;]{1,60}?)\s*\}"
 )
+
+
+# The MULTI-LINE form of the same thing.
+#
+# `IDENTICAL_BRANCH_RE` above is anchored to one line, so it read 0 while
+# `segmented_control` carried
+#
+#     let font_id = if is_active {
+#         crate::ui_kit::style::mono_at(font_size)
+#     } else {
+#         crate::ui_kit::style::mono_at(font_size)
+#     };
+#
+# and `playground/designer.rs` carried an `else if c.is_whitespace() { '_' }`
+# whose arm matched the fallback exactly, so the test selected nothing. Both are
+# precisely what the single-line ceiling exists to catch, and both were invisible
+# to it — the ceiling only holds the shape it can see, for the third time in this
+# codebase's tooling.
+#
+# Bodies are restricted to a single statement with no nested braces, because a
+# multi-statement pair that happens to start the same is not evidence of
+# anything and this check has to stay quiet enough to be believed.
+IDENTICAL_BRANCH_MULTILINE_RE = re.compile(
+    r"if" + BS_S + r"+[^{" + BS_N + r"]{1,90}" + BS_BRACE_O + BS_S + r"*" + BS_N
+    + BS_S + r"*([^" + BS_N + r"{}]{3,110}?)" + BS_S + r"*" + BS_N
+    + BS_S + r"*" + BS_BRACE_C + BS_S + r"*else" + BS_S + r"*" + BS_BRACE_O
+    + BS_S + r"*" + BS_N + BS_S + r"*([^" + BS_N + r"{}]{3,110}?)" + BS_S + r"*"
+    + BS_N + BS_S + r"*" + BS_BRACE_C
+)
+
+
+def _identical_branches_multiline(prod):
+    """Count multi-line `if c { X } else { X }` with byte-identical arms."""
+    n = 0
+    for m in IDENTICAL_BRANCH_MULTILINE_RE.finditer(prod):
+        a, b = m.group(1).strip(), m.group(2).strip()
+        if a == b and not a.startswith("//"):
+            n += 1
+    return n
 
 
 def _has_identical_branches(line):
@@ -508,6 +552,7 @@ def collect():
             for ln in prod.splitlines()
             if not COMMENT_LINE_RE.match(ln) and _has_identical_branches(ln)
         )
+        counts["identical_branches"] += _identical_branches_multiline(prod)
         counts["fabricated_ratio"] += _fabricated_ratios(prod)
         if any(k in "/" + r for k in BODY_INSET_FILES):
             counts["overlay_body_insets"] += len(BODY_INSET_RE.findall(prod))
@@ -611,6 +656,11 @@ def check(cur, base):
 # under different disguises. A regex that cannot be shown to match anything is
 # not a check; it is a decoration. Every pattern here has to prove it works.
 PATTERN_SELFTESTS = [
+    # Not a bare pattern: the multi-line branch check needs its two arms
+    # compared, so it is selftested through its function.
+    ("IDENTICAL_BRANCH_MULTILINE_RE", lambda: IDENTICAL_BRANCH_MULTILINE_RE,
+     ["if a {" + chr(10) + "    foo(x)" + chr(10) + "} else {" + chr(10) + "    foo(x)" + chr(10) + "}"],
+     ["let z = 1;"]),
     ("MARKET_LITERAL_RE", lambda: MARKET_LITERAL_RE,
      ['("SPY", "+0.42%", true),', 'let v = "$3.1M";', '("FWD P/E", "22.4x", t.dim),'],
      ['("SPY", "spy"),', 'format!("{:+.2}%", chg)', 'let s = "not connected";',
