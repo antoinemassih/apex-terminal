@@ -3845,3 +3845,53 @@ message galley and paints THAT galley (`painter.galley(...)`), the reuse form
 that makes a mismatch unexpressible — left alone.
 
 ---
+
+## AT-212 — The header solved it for the title and not the subtitle
+
+Milder than the nine before it, and worth recording precisely BECAUSE it is
+milder — the pattern held but the consequence did not.
+
+`Header` truncates its title properly:
+
+```rust
+job.wrap = TextWrapping {
+    max_width: slots.title.width().max(0.0),
+    max_rows: 1,
+    overflow_character: Some('…'),
+};
+```
+
+Two statements later the subtitle was a bare
+`painter.text(pos2(slots.rest.left(), ..), LEFT_CENTER, ..)` with no bound.
+
+**It never escaped the header.** The painter clips, so a long subtitle was cut
+mid-glyph — no ellipsis — while the title beside it ended in a tidy `…`. One
+widget, two pieces of text, one of them handled. The author had plainly solved
+this exact problem; the subtitle was written without it.
+
+So: a cosmetic inconsistency, not a collision. Recorded at that weight.
+
+### The test that could see it
+
+`assert_no_overlap` passed. The right-edge check passed. Both are blind here,
+because the clip already prevented an overflow — the text was simply being
+guillotined inside the widget. Only `Run::clipped` (added in AT-209, for a
+different reason) distinguishes truncation-with-an-ellipsis from
+truncation-by-clipping, and `assert_not_clipped` is what fails on the mutation.
+
+An assertion added to answer one question turned out to answer this one too,
+which is the argument for keeping the two properties separate rather than
+folding them into a single "does it look right" check.
+
+### Checked and left alone
+
+* `panel_list_row` — measures a galley, paints THAT galley, and clips per cell
+  with the comment "so overflow doesn't bleed into the next column". Correct,
+  and its truncation is deliberate: fixed column widths.
+* `alert` — measures its message galley and paints it. Same reuse form.
+
+Two of the three widgets read this tick were already right. Worth stating: the
+class is not universal, and the widgets that avoid it do so by the same
+mechanism every time — measure once, paint the thing you measured.
+
+---

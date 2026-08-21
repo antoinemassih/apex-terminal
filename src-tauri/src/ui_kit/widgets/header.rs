@@ -374,10 +374,28 @@ impl<'a> Header<'a> {
         // ── Subtitle (muted, right after title) ──
         if let Some(sub) = self.subtitle {
             let sub_font = TextStyle::MonoXs.font_id_in(ui);
+            // Truncate the subtitle the way the TITLE above already does.
+            //
+            // The title builds a `LayoutJob` with `max_width`, `max_rows: 1`
+            // and `overflow_character: Some('…')`. The subtitle, two statements
+            // later, was a bare `painter.text(..)` with no bound — so a long
+            // one was hard-clipped by the header's painter and cut mid-glyph,
+            // with no ellipsis, while the title beside it ended in a tidy `…`.
+            //
+            // Not an overflow: the clip meant nothing escaped the header. Just
+            // two pieces of text in one widget treated differently, where the
+            // author had plainly already solved it once.
+            let sub_room = (slots.rest.width()
+                - st::gap_sm().min(slots.rest.width())).max(0.0);
+            let sub_shown = st::ellipsize_to(
+                &painter, sub, &sub_font,
+                sub_room,
+                st::color_muted(palette_ct(theme).base(Tone::Dim)),
+            );
             painter.text(
                 egui::pos2(slots.rest.left(), rect.center().y),
                 egui::Align2::LEFT_CENTER,
-                sub,
+                sub_shown,
                 sub_font,
                 st::color_muted(palette_ct(theme).base(Tone::Dim)),
             );
@@ -442,6 +460,67 @@ impl<'a> Header<'a> {
 #[cfg(test)]
 mod header_layout_tests {
     use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+
+    /// The title truncates properly — a `LayoutJob` with
+    /// `max_width: slots.title.width()`, `max_rows: 1` and an overflow
+    /// character. The SUBTITLE, two statements below, is a bare
+    /// `painter.text(pos2(slots.rest.left(), ..), LEFT_CENTER, ..)` with no
+    /// bound at all, growing right through the slot that also holds the
+    /// trailing actions.
+    ///
+    /// One widget, two pieces of text, one of them handled. That asymmetry is
+    /// the finding: the author plainly knew the problem — the title is the
+    /// evidence — and the subtitle was written without it.
+    #[test]
+    fn the_subtitle_stays_inside_the_header() {
+        for width in [420.0f32, 260.0, 170.0] {
+            for (title, sub) in [
+                ("Positions", Some("3 open")),
+                ("Positions", Some("3 open - 2 long - 1 short - $12,345.67 unrealised")),
+                ("A rather long panel title that eats the row", Some("and a subtitle after it")),
+                ("Positions", Some("3 open - 2 long - 1 short - $12,345.67 unrealised - 4 working orders - last sync 12:04:33")),
+            ] {
+                let right_edge = std::cell::Cell::new(0.0f32);
+                let runs = paint_probe::probe(|ui| {
+                    let t = crate::ui_kit::widgets::theme::PortableTheme::dark();
+                    let rect = egui::Rect::from_min_size(
+                        ui.max_rect().min, egui::vec2(width, 44.0));
+                    right_edge.set(rect.right());
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
+                    let mut h = Header::new(title, HeaderVariant::Panel);
+                    if let Some(sb) = sub { h = h.subtitle(sb); }
+                    h.show(&mut child, &t);
+                });
+                if runs.is_empty() {
+                    continue;
+                }
+                let edge = right_edge.get();
+                let name = format!("header w={width} {title:?} / {sub:?}");
+                paint_probe::assert_no_overlap(&name, &runs);
+                // The assertion that actually distinguishes the fix.
+                //
+                // The subtitle never escaped the header — it was hard-clipped
+                // by the painter. So `assert_no_overlap` and the right-edge
+                // check both passed while it was being cut mid-glyph. Only
+                // `clipped` tells truncation-with-an-ellipsis apart from
+                // truncation-by-guillotine.
+                paint_probe::assert_not_clipped(&name, &runs);
+                for r in &runs {
+                    assert!(
+                        r.right <= edge + 0.5,
+                        "{name}: text reaches {} past the header's right edge {edge}; runs={runs:?}",
+                        r.right
+                    );
+                }
+            }
+        }
+    }
+
 
     fn approx(a: f32, b: f32) -> bool { (a - b).abs() < 0.01 }
 
