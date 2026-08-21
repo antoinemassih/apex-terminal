@@ -3947,3 +3947,55 @@ mistaken for coverage, the same way `TradeCard` and `ToolPopover` were recorded
 in AT-203.
 
 ---
+
+## AT-214 — Collapsing the shadow dropdown, and a correction to the audit
+
+### The correction first
+
+The migration audit listed `ui/inputs/stepper.rs::NumericStepper` as a duplicate
+of `ui_kit::Stepper`. **It is not.** `NumericStepper` is a numeric spinner —
+`value`, `step`, `min`/`max`, `decimals`, `prefix`/`suffix`. `ui_kit::Stepper` is
+a wizard step indicator — `steps: &[&str]`, `current`, `show_labels`. They share
+a filename and nothing else, and the kit has no numeric spinner at all.
+
+Matching on filename is how that got through. It is a GAP in the kit, not a
+duplicate, and the audit page has been corrected.
+
+`Autocomplete`, in the same module, turned out to have **zero call sites** and no
+kit equivalent — dead rather than duplicated.
+
+### The real duplicate
+
+`Dropdown` / `DropdownOwned` (434 lines, 10 call sites) does what
+`ui_kit::Select` does. Reading the call sites shows exactly why it grew:
+
+* **`&mut T` instead of `&mut usize`.** `Select` stores an index; every caller
+  holds a value and had to convert both ways around the call.
+* **`selected_text`** — a trigger showing a fixed label rather than the
+  selection. The option-chain strike pickers use it as a menu, not a value
+  display. The kit had no equivalent.
+* **`font_size(f32)`** — raw 8px and 9px.
+
+The kit gained the first two and deliberately **not** the third.
+`Select::trigger_text` covers the menu-style trigger; `select_by_value` covers
+the value-driven shape. `font_size` is not ported: 8 and 9 are off the size
+ladder, cannot follow Density, and are precisely what `control_size_lint`
+exists to catch — those sites move to `Size::Xs`, the rung they were
+approximating.
+
+**A shadow implementation is worse than either version alone.** It passes every
+ratchet the real one passes, so no gate can see it, and a fix applied to one
+silently misses the other — which is what happened to the menu row in AT-206.
+The fix is not to contort ten call sites into index arithmetic; it is to give
+the kit the shape the callers actually wanted.
+
+### Migrated so far — 5 of 10
+
+`properties_bar` (group picker), `watchlist_panel` x2 (near/far strike mode),
+`heat_panel` (index), `spread_panel` (strategy).
+
+Remaining: `core.rs` x2 (template picker), `watchlist_panel:176` (uses
+`item_context_menu`, whose kit signature is `Fn(usize, &mut Ui)` against the
+old `FnMut(&T, &mut Ui)`), `spread_panel:396`, `watchlist_panel:1660`.
+
+---

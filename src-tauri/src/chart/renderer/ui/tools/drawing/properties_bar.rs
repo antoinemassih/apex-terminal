@@ -214,13 +214,14 @@ pub fn show_drawing_properties_bar_ui(
             }
         }
         grp_opts.push((NEW_GROUP_SENTINEL.to_string(), format!("{} New Group...", Icon::PLUS)));
-        let mut grp_sel = sel_draw.group_id.clone();
-        if crate::chart_renderer::ui::inputs::select::DropdownOwned::new()
-            .options(grp_opts)
-            .width(80.0)
-            .theme(t)
-            .show(ui, &mut grp_sel)
-        {
+        // Migrated off the chart-side `DropdownOwned` onto the kit's `Select`.
+        // `select_by_value` exists so this reads the same as it did — the kit
+        // gained the value-driven shape rather than the call site gaining index
+        // arithmetic.
+        let grp_current = sel_draw.group_id.clone();
+        if let Some(grp_sel) = crate::ui_kit::widgets::select::select_by_value(
+            ui, t, &grp_opts, &grp_current, |s| s.min_width(80.0),
+        ) {
             if grp_sel == NEW_GROUP_SENTINEL {
                 open_group_manager = true;
             } else if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {

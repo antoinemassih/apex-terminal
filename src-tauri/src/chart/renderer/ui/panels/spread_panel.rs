@@ -298,14 +298,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(gap_xs());
                     let strat_opts: Vec<(SpreadStrategy, &'static str)> = SpreadStrategy::all()
                         .iter().map(|s| (*s, s.label())).collect();
-                    let mut cur_strat = watchlist.spread_state.strategy;
-                    if super::super::inputs::select::Dropdown::new()
-                        .options(&strat_opts)
-                        .width(180.0)
-                        .theme(t)
-                        .show(ui, &mut cur_strat)
-                    {
-                        pending_strategy = Some(cur_strat);
+                    let cur_strat = watchlist.spread_state.strategy;
+                    if let Some(picked) = crate::ui_kit::widgets::select::select_by_value(
+                        ui, t, &strat_opts, &cur_strat, |sel| sel.min_width(180.0),
+                    ) {
+                        pending_strategy = Some(picked);
                     }
                 });
                 ui.add_space(gap_sm());

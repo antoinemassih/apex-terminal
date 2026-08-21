@@ -56,14 +56,12 @@ pub(crate) fn render_heat_panel(
     // Index preset dropdown + expand/collapse
     ui.horizontal(|ui| {
         {
-            let mut cur: &'static str = HEAT_OPTS.iter().map(|&(v, _)| v).find(|&s| s == watchlist.heat.index.as_str()).unwrap_or("Watchlist");
-            if super::super::inputs::select::Dropdown::new()
-                .options(HEAT_OPTS)
-                .width(100.0)
-                .theme(t)
-                .show(ui, &mut cur)
-            {
-                watchlist.heat.index = cur.to_string();
+            let cur: &'static str = HEAT_OPTS.iter().map(|&(v, _)| v)
+                .find(|&s| s == watchlist.heat.index.as_str()).unwrap_or("Watchlist");
+            if let Some(picked) = crate::ui_kit::widgets::select::select_by_value(
+                ui, t, HEAT_OPTS, &cur, |sel| sel.min_width(100.0),
+            ) {
+                watchlist.heat.index = picked.to_string();
                 watchlist.heat.collapsed.clear();
             }
         }

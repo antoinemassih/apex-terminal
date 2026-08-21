@@ -74,6 +74,8 @@ pub struct Select<'a, T> {
     mode: Mode<'a>,
     display: Display<'a, T>,
     placeholder: Option<String>,
+    /// Overrides the trigger label. See `trigger_text`.
+    trigger_text: Option<String>,
     searchable: bool,
     size: Size,
     full_width: bool,
@@ -106,12 +108,57 @@ pub struct SelectResponse {
 
 // ─── Constructors ─────────────────────────────────────────────────────────
 
+/// Drive a [`Select`] by VALUE rather than by index.
+///
+/// # Why the kit needed this
+///
+/// `Select` stores `&mut usize`. Most callers hold a value — a group id, an
+/// order type, a timeframe — and had to convert both ways around every call:
+/// find the index before, read the value back after. That friction is why a
+/// second dropdown grew in `chart/renderer/ui/inputs/select.rs`
+/// (`Dropdown` / `DropdownOwned`, 10 call sites) taking `&mut T` and
+/// `&[(T, &str)]` directly.
+///
+/// A shadow implementation is worse than either version alone: it passes every
+/// ratchet the real one passes, so nothing can see it, and a fix applied to one
+/// silently misses the other — which is exactly what happened to the menu row
+/// (AT-206). The fix is not to contort ten call sites into index arithmetic; it
+/// is to give the kit the shape those callers actually wanted.
+///
+/// Returns `Some(value)` when the selection changed, mirroring the `bool` the
+/// old dropdown returned but handing back the chosen value so the caller does
+/// not index the slice again.
+pub fn select_by_value<T: Clone + PartialEq, L: AsRef<str>>(
+    ui: &mut Ui,
+    theme: &dyn ComponentTheme,
+    options: &[(T, L)],
+    current: &T,
+    configure: impl FnOnce(Select<'_, String>) -> Select<'_, String>,
+) -> Option<T> {
+    if options.is_empty() {
+        return None;
+    }
+    let labels: Vec<String> = options.iter().map(|(_, l)| l.as_ref().to_string()).collect();
+    // An unknown current value selects nothing rather than silently showing the
+    // first option as if it were chosen — the same reasoning as `Option` for an
+    // absent day change (AT-186).
+    let mut idx = options.iter().position(|(v, _)| v == current).unwrap_or(0);
+    let sel = Select::new_with(&mut idx, &labels, |s: &String| s.clone());
+    let resp = configure(sel).show(ui, theme);
+    if resp.changed {
+        options.get(idx).map(|(v, _)| v.clone())
+    } else {
+        None
+    }
+}
+
 impl<'a> Select<'a, &'a str> {
     pub fn new(value: &'a mut usize, options: &'a [&'a str]) -> Select<'a, &'a str> {
         Select {
             mode: Mode::Single(value),
             display: Display::Strs(options),
             placeholder: None,
+            trigger_text: None,
             searchable: false,
             size: Size::Md,
             full_width: false,
@@ -132,6 +179,7 @@ impl<'a> Select<'a, &'a str> {
             mode: Mode::Multi(value),
             display: Display::Strs(options),
             placeholder: None,
+            trigger_text: None,
             searchable: false,
             size: Size::Md,
             full_width: false,
@@ -160,6 +208,7 @@ impl<'a, T: 'a> Select<'a, T> {
                 to_string: Box::new(display),
             },
             placeholder: None,
+            trigger_text: None,
             searchable: false,
             size: Size::Md,
             full_width: false,
@@ -186,6 +235,7 @@ impl<'a, T: 'a> Select<'a, T> {
                 to_string: Box::new(display),
             },
             placeholder: None,
+            trigger_text: None,
             searchable: false,
             size: Size::Md,
             full_width: false,
@@ -199,6 +249,23 @@ impl<'a, T: 'a> Select<'a, T> {
             sticky_last: false,
             item_context_menu: None,
         }
+    }
+
+    /// Show fixed text in the trigger instead of the selected option's label.
+    ///
+    /// For a dropdown that acts as a MENU rather than a value display — the
+    /// option-chain strike-mode pickers show a column header and change what
+    /// the chain does, they do not report a current value back to the reader.
+    ///
+    /// The kit lacked this, which is one of the two reasons a second dropdown
+    /// (`chart/renderer/ui/inputs/select.rs`) existed at all. The other was a
+    /// raw `font_size(f32)`, which is deliberately NOT ported: 8px and 9px are
+    /// off the size ladder, cannot follow Density, and are exactly what
+    /// `control_size_lint` exists to catch. Those call sites move to
+    /// `Size::Xs` instead.
+    pub fn trigger_text(mut self, text: impl Into<String>) -> Self {
+        self.trigger_text = Some(text.into());
+        self
     }
 
     pub fn placeholder(mut self, hint: impl Into<String>) -> Self {
@@ -373,6 +440,7 @@ fn paint_select<'a, T: 'a>(
         mut mode,
         display,
         placeholder,
+        trigger_text,
         searchable,
         size,
         full_width,
@@ -577,7 +645,16 @@ fn paint_select<'a, T: 'a>(
             } else {
                 let painter = ui.painter_at(rect);
                 let label_pos = Pos2::new(left_x, cy);
-                if **v < n {
+                if let Some(fixed) = &trigger_text {
+                    // A menu-style trigger: fixed text, not the selection.
+                    painter.text(
+                        label_pos,
+                        egui::Align2::LEFT_CENTER,
+                        fixed,
+                        st::mono_at(font_size),
+                        text_col,
+                    );
+                } else if **v < n {
                     let label = display.label(**v);
                     painter.text(
                         label_pos,
@@ -1206,6 +1283,38 @@ mod tests {
                     &format!("select trigger {size:?} narrow={narrow}"), &runs);
             }
         }
+    }
+
+    /// `select_by_value` maps value to index and back without the caller doing
+    /// arithmetic. It exists so the chart-side `DropdownOwned` can be deleted
+    /// rather than reimplemented, so the round-trip is the contract.
+    #[test]
+    fn select_by_value_round_trips_without_changing_anything() {
+        let opts: Vec<(String, String)> = vec![
+            ("default".into(), "Default".into()),
+            ("alpha".into(), "Alpha Group".into()),
+            ("beta".into(), "Beta Group".into()),
+        ];
+        // No interaction, so nothing changed and the caller keeps its value.
+        let got = paint_probe::probe_value(|ui| {
+            let t = PortableTheme::dark();
+            super::select_by_value(ui, &t, &opts, &"beta".to_string(), |s| s.min_width(80.0))
+        });
+        assert_eq!(got, None, "an untouched dropdown must report no change");
+    }
+
+    /// An unknown current value must not silently read as the first option.
+    #[test]
+    fn an_unknown_value_does_not_masquerade_as_the_first_option() {
+        let opts: Vec<(String, String)> = vec![
+            ("a".into(), "A".into()),
+            ("b".into(), "B".into()),
+        ];
+        let got = paint_probe::probe_value(|ui| {
+            let t = PortableTheme::dark();
+            super::select_by_value(ui, &t, &opts, &"missing".to_string(), |s| s)
+        });
+        assert_eq!(got, None, "no interaction means no change, whatever the current value");
     }
 
     /// Smoke: verify that `paint_select` calls `cursor::focus_ring` on the

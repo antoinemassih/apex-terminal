@@ -181,6 +181,28 @@ pub fn shape_count(f: impl FnOnce(&mut Ui)) -> usize {
     out.get()
 }
 
+/// Run `f` in a probe `Ui` and return what it RETURNED, discarding the runs.
+///
+/// The other entry points answer "what did this paint". Some contracts are
+/// about the value a widget hands back instead — `select_by_value` maps a
+/// value to an index and back, and the thing under test is the mapping, not
+/// the pixels.
+pub fn probe_value<R>(f: impl FnOnce(&mut Ui) -> R) -> R {
+    let cell = std::cell::Cell::new(Some(f));
+    let out = std::cell::RefCell::new(None);
+    let ctx = probe_ctx();
+    let _ = ctx.run(Default::default(), |_| {});
+    let _ = ctx.run(Default::default(), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            crate::ui_kit::text_style::TextStyle::install(ui.style_mut());
+            if let Some(f) = cell.take() {
+                *out.borrow_mut() = Some(f(ui));
+            }
+        });
+    });
+    out.into_inner().expect("probe_value: the closure never ran")
+}
+
 fn collect(ui: &Ui) -> Vec<Run> {
     let layer = ui.layer_id();
     let mut runs: Vec<Run> = ui.ctx().graphics(|g| {

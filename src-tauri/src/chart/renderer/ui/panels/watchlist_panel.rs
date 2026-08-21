@@ -2196,13 +2196,19 @@ if is_spawn || watchlist.open {
                                     sm_opts.push((StrikeMode::Pct(pi as u8), format!("{}%", pct)));
                                 }
                                 sm_opts.push((StrikeMode::StdDev, "Std Dev".into()));
-                                super::super::inputs::select::DropdownOwned::new()
-                                    .options(sm_opts)
-                                    .width(40.0)
-                                    .font_size(8.0)
-                                    .selected_text(sm_header)
-                                    .theme(t)
-                                    .show(ui, &mut watchlist.chain.near_strike_mode);
+                                // Kit `Select` via `select_by_value`. The old
+                                // `font_size(8.0)` is gone: 8px is off the size
+                                // ladder and cannot follow Density, so this is
+                                // `Size::Xs` — the rung it was approximating.
+                                let sm_current = watchlist.chain.near_strike_mode;
+                                if let Some(picked) = crate::ui_kit::widgets::select::select_by_value(
+                                    ui, t, &sm_opts, &sm_current,
+                                    |sel| sel.min_width(40.0)
+                                        .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                                        .trigger_text(sm_header.clone()),
+                                ) {
+                                    watchlist.chain.near_strike_mode = picked;
+                                }
                             }
                             // Count ± (always visible)
                             if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain.near_num_strikes = watchlist.chain.near_num_strikes.saturating_sub(1).max(1); }
@@ -2257,13 +2263,19 @@ if is_spawn || watchlist.open {
                                     sm_opts.push((StrikeMode::Pct(pi as u8), format!("{}%", pct)));
                                 }
                                 sm_opts.push((StrikeMode::StdDev, "Std Dev".into()));
-                                super::super::inputs::select::DropdownOwned::new()
-                                    .options(sm_opts)
-                                    .width(40.0)
-                                    .font_size(8.0)
-                                    .selected_text(sm_header)
-                                    .theme(t)
-                                    .show(ui, &mut watchlist.chain.far_strike_mode);
+                                // Kit `Select` via `select_by_value`. The old
+                                // `font_size(8.0)` is gone: 8px is off the size
+                                // ladder and cannot follow Density, so this is
+                                // `Size::Xs` — the rung it was approximating.
+                                let sm_current = watchlist.chain.far_strike_mode;
+                                if let Some(picked) = crate::ui_kit::widgets::select::select_by_value(
+                                    ui, t, &sm_opts, &sm_current,
+                                    |sel| sel.min_width(40.0)
+                                        .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                                        .trigger_text(sm_header.clone()),
+                                ) {
+                                    watchlist.chain.far_strike_mode = picked;
+                                }
                             }
                             if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain.far_num_strikes = watchlist.chain.far_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain.far_num_strikes)).size_px(font_xs()).color(t.dim));
