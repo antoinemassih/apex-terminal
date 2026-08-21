@@ -3711,3 +3711,66 @@ cheaper answer than an allow-list entry.
 Fourth time a gate has bitten this session's own work.
 
 ---
+
+## AT-209 — `Input` painted past its slot, and fixing the probe blinded another test
+
+Probing `Input` — the densest row in the kit, six segments competing for one
+width — failed at 240px with the full complement:
+
+```
+edit value   67.6 .. 147.8
+clear  x    133.2 .. 148.2      <- 15px under the button
+```
+
+The flex row is **not** at fault. It hands the clear its own
+`Item::fixed(icon_w)` and shrinks the edit's `Item::grow(1.0)` accordingly. The
+slots are correct; the TEXT ignored them. `ui.new_child(UiBuilder::new()
+.max_rect(edit_rect))` bounds LAYOUT, not painting — the child inherits the
+parent's clip rect, so a value longer than the field paints straight over
+whatever comes next.
+
+Fixed with `child.set_clip_rect(edit_rect.intersect(ui.clip_rect()))`, which is
+what this codebase already does for the same problem: `paint_change_chip` clips
+"so a value too long for the slot is cut at the chip edge rather than escaping
+it".
+
+### The probe could not see the fix
+
+With the clip in place the test reported **identical numbers**. egui stores
+clipping on the `ClippedShape`, not in the galley, so a clipped run still
+reports its full requested width. A harness that cannot see a fix cannot verify
+one, so `Run` now reports the VISIBLE extent — the galley rect intersected with
+the clip rect in force when it was queued.
+
+### Which promptly blinded the tabs test
+
+That change is a change to every test using the probe, and re-running the
+mutations caught it: `tabs_never_overlap` **passed with `inner_gap` dropped from
+`measure_tab_width`** — the mutation it was written to catch.
+
+The two questions had been conflated:
+
+* *do visible glyphs collide?* → visible extent
+* *did a widget ask for more room than its slot?* → the run was cut
+
+`Run::clipped` and `assert_not_clipped` now answer the second, and `tabs`
+asserts both.
+
+### And the honest limit
+
+Even with both assertions, the `inner_gap` mutation no longer fails. Dropping
+one gap moves tabs **0.6px** closer — below the 0.5 slack in both assertions,
+and absorbed by the clip. A real under-measure still fires: halving the label
+segment produces a 4.8px overlap and the test catches it.
+
+So the tabs test lost sensitivity, from sub-pixel to about a pixel, in exchange
+for the probe no longer reporting false overlaps on every widget that clips.
+That is a real trade and it is recorded as one rather than described as a
+straight improvement.
+
+This is the second time a harness change silently weakened a test that had been
+verified before it (AT-200 was the first, when installing the app's real fonts
+made the `Select` test vacuous). The rule earned twice over: **after changing a
+shared harness, re-run every mutation that harness was proven against.**
+
+---

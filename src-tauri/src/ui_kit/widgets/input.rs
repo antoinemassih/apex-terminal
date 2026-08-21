@@ -475,6 +475,22 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         );
         child.spacing_mut().item_spacing = Vec2::ZERO;
         child.spacing_mut().button_padding = Vec2::ZERO;
+        // CLIP the edit to the slot the row gave it.
+        //
+        // `max_rect` bounds LAYOUT, not painting: the child inherits the
+        // parent's clip rect, so a value longer than the field painted straight
+        // over whatever came next. The flex row is not at fault — it hands the
+        // clear button its own `Item::fixed(icon_w)` and shrinks the edit's
+        // `Item::grow(1.0)` accordingly — the text simply ignored the slot.
+        //
+        // Measured at width 240 with prefix, suffix and both icons: the value
+        // painted 67.6..147.8 while the clear `x` sat at 133.2..148.2, so the
+        // glyphs ran 15px under the button.
+        //
+        // Clipping is what this codebase already does for the same problem —
+        // see `paint_change_chip`, which clips "so a value too long for the
+        // slot is cut at the chip edge rather than escaping it".
+        child.set_clip_rect(edit_rect.intersect(ui.clip_rect()));
 
         let font_id = if proportional {
             crate::ui_kit::style::prop_at(font_size)
@@ -765,5 +781,57 @@ mod tests {
             src.contains("pub has_focus: bool"),
             "InputResponse must expose `pub has_focus: bool`"
         );
+    }
+}
+
+#[cfg(test)]
+mod overlap_tests {
+    use super::*;
+    use crate::ui_kit::widgets::paint_probe;
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    /// The densest row in the kit: leading icon, prefix, the edit field, a
+    /// clear `x`, suffix, trailing icon — six segments competing for one width.
+    ///
+    /// `Input` is exempt from the element-tree migration (it drives a live
+    /// `TextEdit` and has geometry the tree would have to reproduce exactly),
+    /// so the one thing that CAN be checked cheaply is that its segments never
+    /// land on each other. Every widget in this kit that placed two things in
+    /// one rect without one knowing about the other turned out to collide —
+    /// seven of them, closed in AT-203.
+    ///
+    /// Widths are constrained deliberately: an unbounded probe panel hands the
+    /// row so much space that nothing can collide, which is how two earlier
+    /// probes passed against broken widgets (AT-199).
+    #[test]
+    fn input_segments_never_overlap() {
+        for width in [360.0f32, 240.0, 150.0, 96.0] {
+            for (prefix, suffix, lead, trail, clearable) in [
+                (None, None, None, None, false),
+                (Some("$"), Some("USD"), None, None, true),
+                (Some("$"), Some(" shares"), Some("\u{1F50D}"), Some("\u{2715}"), true),
+                (None, Some("%"), None, None, true),
+            ] {
+                let mut value = "1234567890".to_string();
+                let runs = paint_probe::probe(|ui| {
+                    let t = PortableTheme::dark();
+                    let mut i = Input::new(&mut value).width(width);
+                    if let Some(p) = prefix { i = i.prefix(p); }
+                    if let Some(s) = suffix { i = i.suffix(s); }
+                    if let Some(l) = lead { i = i.leading_icon(l); }
+                    if let Some(tr) = trail { i = i.trailing_icon(tr); }
+                    i.clearable(clearable).show(ui, &t);
+                });
+                if runs.is_empty() {
+                    continue;
+                }
+                paint_probe::assert_no_overlap(
+                    &format!("input w={width} prefix={prefix:?} suffix={suffix:?} \
+                              lead={} trail={} clear={clearable}",
+                             lead.is_some(), trail.is_some()),
+                    &runs,
+                );
+            }
+        }
     }
 }

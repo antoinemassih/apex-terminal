@@ -1316,10 +1316,18 @@ mod tests {
                     if runs.is_empty() {
                         continue; // treatment may paint no text for this config
                     }
-                    paint_probe::assert_no_overlap(
-                        &format!("tabs {labels:?} closable={closable} {size:?}"),
-                        &runs,
-                    );
+                    let name = format!("tabs {labels:?} closable={closable} {size:?}");
+                    paint_probe::assert_no_overlap(&name, &runs);
+                    // The one that actually catches an under-measured tab.
+                    //
+                    // Each label is painted through a per-tab clip, so a tab
+                    // that reserves too little room TRUNCATES its label rather
+                    // than colliding with its neighbour. Once the probe began
+                    // reporting visible extents, `assert_no_overlap` stopped
+                    // failing when `inner_gap` was dropped from
+                    // `measure_tab_width` — the defect was still there, and the
+                    // assertion had gone blind to it.
+                    paint_probe::assert_not_clipped(&name, &runs);
                 }
             }
         }

@@ -41,6 +41,17 @@ pub struct Run {
     /// widget "fixed" to satisfy the test.
     pub top: f32,
     pub bottom: f32,
+    /// The run was CUT by the clip rect in force when it was queued — it asked
+    /// for more room than it was given.
+    ///
+    /// Reported separately because "do visible glyphs collide" and "did a
+    /// widget ask for more space than its slot" are different questions, and a
+    /// harness that answers only the first goes blind on any widget that clips.
+    /// `tabs` clips each label to its own tab, so once the visible extent was
+    /// used for overlap, dropping `inner_gap` from `measure_tab_width` stopped
+    /// failing its test — the under-measured label was simply truncated instead
+    /// of colliding. Truncation IS the defect there; it just is not an overlap.
+    pub clipped: bool,
     pub color: Color32,
 }
 
@@ -177,11 +188,31 @@ fn collect(ui: &Ui) -> Vec<Run> {
             .map(|l| {
                 l.all_entries()
                     .filter_map(|cs| match &cs.shape {
-                        egui::Shape::Text(t) => Some(Run {
-                            left: t.pos.x,
-                            right: t.pos.x + t.galley.size().x,
-                            top: t.pos.y,
-                            bottom: t.pos.y + t.galley.size().y,
+                        // Reported extent is the VISIBLE one: the galley's rect
+                        // intersected with the clip rect in force when it was
+                        // queued.
+                        //
+                        // egui stores clipping on the `ClippedShape`, not in the
+                        // galley, so a text run that is clipped to its slot
+                        // still reports its full requested width. `Input` clips
+                        // its edit field to the slot the flex row gave it, and
+                        // an unclipped read said the value still overlapped the
+                        // clear button by 15px — identical numbers before and
+                        // after the fix. A harness that cannot see a fix cannot
+                        // verify one.
+                        egui::Shape::Text(t) => {
+                            let full = egui::Rect::from_min_size(t.pos, t.galley.size());
+                            let vis = full.intersect(cs.clip_rect);
+                            if !vis.is_positive() {
+                                return None;   // entirely clipped away
+                            }
+                            Some(Run {
+                            left: vis.left(),
+                            right: vis.right(),
+                            top: vis.top(),
+                            bottom: vis.bottom(),
+                            clipped: vis.width() < full.width() - 0.5
+                                || vis.height() < full.height() - 0.5,
                             // `Painter::text` bakes the colour into the layout
                             // job's sections and leaves `override_text_color`
                             // as `None` — reading the override instead is a
@@ -192,7 +223,8 @@ fn collect(ui: &Ui) -> Vec<Run> {
                                 .sections
                                 .first()
                                 .map_or(Color32::PLACEHOLDER, |s| s.format.color),
-                        }),
+                        })
+                        }
                         _ => None,
                     })
                     .collect()
@@ -273,6 +305,25 @@ pub fn assert_no_overlap(name: &str, runs: &[Run]) {
     }
 }
 
+/// No run was cut off by its clip rect.
+///
+/// This is the under-measurement check. A widget that reserves less room than
+/// its text needs, and clips to that reservation, produces no overlap at all —
+/// the glyphs are simply truncated. `assert_no_overlap` cannot see it, and for
+/// widgets that clip per element it is the only signal there is.
+///
+/// Deliberately separate from [`assert_no_overlap`]: a caller that ellipsises
+/// on purpose wants one and not the other.
+#[track_caller]
+pub fn assert_not_clipped(name: &str, runs: &[Run]) {
+    for (i, r) in runs.iter().enumerate() {
+        assert!(
+            !r.clipped,
+            "{name}: run {i} was clipped — it asked for more room than its slot              gave it. runs={runs:?}"
+        );
+    }
+}
+
 /// Convenience for the common shape: paint into an explicit rect, then assert
 /// both contracts.
 #[track_caller]
@@ -301,8 +352,8 @@ mod tests {
     #[test]
     fn overlapping_runs_are_detected() {
         let runs = [
-            Run { left: 0.0, right: 50.0, top: 0.0, bottom: 12.0, color: Color32::WHITE },
-            Run { left: 40.0, right: 90.0, top: 0.0, bottom: 12.0, color: Color32::WHITE },
+            Run { left: 0.0, right: 50.0, top: 0.0, bottom: 12.0, clipped: false, color: Color32::WHITE },
+            Run { left: 40.0, right: 90.0, top: 0.0, bottom: 12.0, clipped: false, color: Color32::WHITE },
         ];
         let caught = std::panic::catch_unwind(|| assert_no_overlap("t", &runs)).is_err();
         assert!(caught, "assert_no_overlap must reject overlapping runs");
@@ -315,8 +366,8 @@ mod tests {
     #[test]
     fn vertically_separated_runs_are_not_a_collision() {
         let runs = [
-            Run { left: 0.0, right: 50.0, top: 0.0, bottom: 12.0, color: Color32::WHITE },
-            Run { left: 10.0, right: 40.0, top: 20.0, bottom: 32.0, color: Color32::WHITE },
+            Run { left: 0.0, right: 50.0, top: 0.0, bottom: 12.0, clipped: false, color: Color32::WHITE },
+            Run { left: 10.0, right: 40.0, top: 20.0, bottom: 32.0, clipped: false, color: Color32::WHITE },
         ];
         assert_no_overlap("stacked", &runs);
     }
@@ -324,7 +375,7 @@ mod tests {
     #[test]
     fn a_run_past_the_right_edge_is_detected() {
         let rect = probe_rect(100.0, 20.0);
-        let runs = [Run { left: 30.0, right: 200.0, top: 10.0, bottom: 22.0, color: Color32::WHITE }];
+        let runs = [Run { left: 30.0, right: 200.0, top: 10.0, bottom: 22.0, clipped: false, color: Color32::WHITE }];
         let caught =
             std::panic::catch_unwind(move || assert_contained("t", rect, &runs)).is_err();
         assert!(caught, "assert_contained must reject an overrun");
